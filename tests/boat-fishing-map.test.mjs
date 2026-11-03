@@ -348,3 +348,72 @@ test("confirmed catch presentation celebrates a real weight record and never lea
   f.frame(4000); assert(f.find(node => node.props["data-confirmed-catch"]), "a record remains visible longer than an ordinary catch");
   f.frame(2001); assert.equal(f.find(node => node.props["data-confirmed-catch"]), undefined);
 });
+
+test("the final confirmed fish keeps a prominent direct return action and then shows the actual onboard recap", () => {
+  const f = fixture(); f.state.boat.voyage.maxCasts = 1; f.state.boat.voyage.slots = f.state.boat.voyage.slots.slice(0, 1); f.state.boat.voyage.maxCatches = 1; f.render();
+  f.cast(); f.play(); assert.equal(f.playToResult().status, "caught");
+  assert.equal(f.find(node => node.props["data-fishing-finished"]), undefined, "unconfirmed client success is not a completed fishing trip");
+  f.click(f.byAction("submit")); f.flush();
+  const caught = f.state.boat.voyage.catches[0], inventory = structuredClone(f.state.inventory);
+  assert(f.find(node => node.props["data-confirmed-catch"] === caught.fishId), "preserve the last fish celebration");
+  assert.equal(f.byAction("cast"), undefined);
+  assert.equal(f.byAction("return").props["aria-label"], "Завершить рыбалку и вернуться домой");
+  f.frame(6500);
+  const recap = f.find(node => node.props["data-fishing-complete"] === f.state.boat.voyage.id);
+  assert(recap); assert.match(text(recap), /Ящик полон|1 на борту/); assert.match(text(recap), /Самая крупная/);
+  assert.equal(text(f.find(node => node.tag === "header")).includes("До возвращения"), false);
+  assert(f.byAction("catch-details")); f.click(f.byAction("catch-details"));
+  assert(f.find(node => node.props["data-boat-catch"] === caught.castIndex));
+  f.click(f.find(node => node.props["aria-label"] === "Закрыть улов"));
+  const returnButton = f.byAction("return"); f.click(returnButton); returnButton.props.onClick(event(returnButton));
+  assert.equal(f.find(node => node.props.role === "alertdialog"), undefined);
+  assert.equal(f.pending.filter(command => command.action === "return_boat").length, 1);
+  f.flush(); assert.equal(f.find(node => node.props["data-boat-map-view"]), undefined);
+  assert.deepEqual(f.state.inventory, inventory, "returning is travel, not unloading");
+  assert.equal(f.commands.filter(command => command.action === "claim_boat").length, 0);
+});
+
+test("an exhausted empty trip and expired last attempt return directly after reopening without invented rewards", () => {
+  const f = fixture(); f.state.boat.voyage.maxCasts = 1; f.state.boat.voyage.slots = f.state.boat.voyage.slots.slice(0, 1); f.render(); f.cast();
+  f.advanceTo(Date.parse(f.state.boat.voyage.challenge.expiresAt)); f.frame(0);
+  assert.equal(f.byAction("cast"), undefined); assert.equal(f.byAction("play"), undefined);
+  assert(f.find(node => node.props["data-fishing-complete"]));
+  assert.match(text(f.find(node => node.props["data-fishing-complete"])), /без улова/);
+  f.close(); f.reopen(); f.frame(0);
+  assert(f.byAction("return")); assert.equal(f.state.boat.voyage.catches.length, 0);
+  f.click(f.byAction("return")); assert.equal(f.find(node => node.props.role === "alertdialog"), undefined);
+  assert.equal(f.pending.length, 1); assert.equal(f.pending[0].action, "return_boat");
+});
+
+test("a live final reel crossing expiry clears stale held fish and resistance before its controller unmounts", () => {
+  const f = fixture(); f.state.boat.voyage.maxCasts = 1; f.state.boat.voyage.slots = f.state.boat.voyage.slots.slice(0, 1); f.render();
+  f.cast(); f.play(); f.hold(true); f.frame(50);
+  const before = f.find(node => node.tag === "canvas").props.frame;
+  assert.equal(before.stage, "reeling"); assert.equal(before.held, true); assert(before.reel);
+  const inventory = structuredClone(f.state.inventory);
+  f.advanceTo(Date.parse(f.state.boat.voyage.challenge.expiresAt));
+  const expired = f.find(node => node.tag === "canvas").props.frame;
+  assert.equal(expired.stage, "expired"); assert.equal(expired.held, false);
+  assert.equal(expired.reel, undefined); assert.equal(expired.resistancePhase, undefined);
+  assert.equal(f.find(node => node.props["data-boat-reel"]), undefined);
+  assert(f.find(node => node.props["data-fishing-complete"])); assert(f.byAction("return"));
+  assert.equal(frames.size, 0); assert.equal(f.pending.length, 0);
+  assert.deepEqual(f.state.inventory, inventory); assert.equal(f.state.boat.voyage.catches.length, 0);
+  f.click(f.byAction("return")); assert.equal(f.find(node => node.props.role === "alertdialog"), undefined);
+  assert.equal(f.pending.length, 1); assert.equal(f.pending[0].action, "return_boat");
+});
+
+test("a full fish box blocks unusable extra casts and returns directly", () => {
+  const f = fixture(); f.state.boat.voyage.maxCatches = 1; f.render(); f.cast(); f.play(); assert.equal(f.playToResult().status, "caught");
+  f.click(f.byAction("submit")); f.flush(); f.frame(6500);
+  assert(f.state.boat.voyage.castsUsed < f.state.boat.voyage.maxCasts); assert.equal(f.byAction("cast"), undefined);
+  f.click(f.byAction("return")); assert.equal(f.find(node => node.props.role === "alertdialog"), undefined);
+  assert.equal(f.pending.length, 1);
+});
+
+test("return warning names only what an unfinished final cast can forfeit", () => {
+  const f = fixture(); f.state.boat.voyage.maxCasts = 1; f.state.boat.voyage.slots = f.state.boat.voyage.slots.slice(0, 1); f.render(); f.cast();
+  f.click(f.byAction("return")); const warning = f.find(node => node.props.role === "alertdialog");
+  assert(warning); assert.match(text(warning), /Текущая рыба уйдёт/); assert.doesNotMatch(text(warning), /Оставшиеся забросы/);
+  assert.equal(f.pending.length, 0);
+});

@@ -5,12 +5,16 @@ import { ArrowDown, ArrowUp, Check, Pause, Play, Send } from "lucide-react";
 import type { FishingSceneFrame } from "./scene/fishing-scene-types";
 import { useBoatReelController, type BoatReelControllerProps } from "./use-boat-reel-controller";
 import { boatReelFeedback } from "./boat-reel-feedback";
+import { boatReelResistancePhase } from "@/features/economy/domain/boat-reel";
+import { boatResistanceFeedback } from "./boat-resistance-feedback";
+import resistanceStyles from "./boat-resistance-feedback.module.css";
 import { boatCoachInstruction, type BoatCoachView, type BoatCoachObservation } from "./boat-fishing-coach";
 import coachStyles from "./boat-fishing-coach.module.css";
 import { BoatReelProgress } from "./boat-reel-progress";
 import styles from "./boat-fishing-map.module.css";
 
 export type BoatReelVisualState = { challengeId: string; stage: FishingSceneFrame["stage"]; held: boolean;
+  resistancePhase?: FishingSceneFrame["resistancePhase"];
   reel: NonNullable<FishingSceneFrame["reel"]> };
 type Props = BoatReelControllerProps & { coachView?: BoatCoachView; onCoachObservation?: (sample: BoatCoachObservation) => void; onVisualState?: (frame: BoatReelVisualState) => void; suspended?: boolean };
 
@@ -25,9 +29,10 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
   useEffect(() => { if (suspended && playing) togglePlay(); }, [suspended, playing, togglePlay]);
   const stage: FishingSceneFrame["stage"] = waitingForConfirmation ? "pending" : expired ? "expired"
     : reel.status === "caught" ? "caught" : reel.status === "escaped" ? "escaped" : playing ? "reeling" : reel.tick ? "paused" : castStage;
-  const visual = useMemo<BoatReelVisualState>(() => ({ challengeId: challenge.id, stage: waitingForConfirmation && reel.status !== "active" ? reel.status : stage, held,
+  const resistancePhase = boatReelResistancePhase(challenge, reel.tick);
+  const visual = useMemo<BoatReelVisualState>(() => ({ challengeId: challenge.id, stage: waitingForConfirmation && reel.status !== "active" ? reel.status : stage, held, resistancePhase,
     reel: { bar: reel.bar, fish: reel.fish, progress: reel.progress, zoneWidth: challenge.zoneWidth } }),
-  [challenge.id, challenge.zoneWidth, stage, held, reel.status, waitingForConfirmation, reel.bar, reel.fish, reel.progress]);
+  [challenge.id, challenge.zoneWidth, stage, held, resistancePhase, reel.status, waitingForConfirmation, reel.bar, reel.fish, reel.progress]);
   useEffect(() => { onVisualState?.(visual); }, [onVisualState, visual]);
   useEffect(() => { onCoachObservation?.({ challengeId: challenge.id, stage, playing: playing && !suspended, held, tick: reel.tick, bar: reel.bar }); },
     [onCoachObservation, challenge.id, stage, playing, suspended, held, reel.tick, reel.bar]);
@@ -35,12 +40,12 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
   const resistanceLabels: Record<string, string> = { steady: "Ровная тяга", sprightly: "Юркая рыба", surging: "Рыба делает рывки", stubborn: "Тяжёлая тяга" };
   const resistanceLabel = challenge.resistance ? resistanceLabels[challenge.resistance] : undefined;
   const heading = playing && resistanceLabel ? resistanceLabel : status;
-  const feedback = boatReelFeedback(reel, challenge.zoneWidth);
+  const feedback = boatResistanceFeedback(resistancePhase, boatReelFeedback(reel, challenge.zoneWidth));
   const controlCoachText = feedback.inZone && !feedback.urgent ? coachText : null;
   const FeedbackIcon = feedback.inZone ? Check : feedback.direction === "lift" ? ArrowUp : ArrowDown;
   return <section className={styles.attempt} data-boat-reel={challenge.id} data-reel-status={stage}
     data-reel-tick={reel.tick} data-reel-progress={reel.progress} aria-label="Вываживание рыбы">
-    <div className={styles.attemptHeading}><strong role="status"><span className={styles.phaseMark} data-phase={stage} aria-hidden="true"><span /></span>{heading}</strong><span>{seconds} с</span></div>
+    <div className={styles.attemptHeading}><strong role="status"><span className={styles.phaseMark} data-phase={stage} aria-hidden="true"><span /></span>{heading}</strong><span className={resistanceStyles.clock}>{playing && feedback.phaseLabel && <span className={resistanceStyles.phase} data-resistance-phase={resistancePhase}>{feedback.phaseLabel}</span>}<span>{seconds} с</span></span></div>
     {!expired && castStage === "bite" && <div className={styles.progressRow} data-feedback={feedback.mood}><span>К лодке</span><BoatReelProgress value={reel.progress} danger={feedback.urgent} playing={playing && !suspended} /><span>{Math.floor(reel.progress / 100)}%</span></div>}
     {playing && !expired && <div className={styles.feedback} data-feedback={feedback.mood}>
       <FeedbackIcon size={19} aria-hidden="true" /><strong>{feedback.title}</strong><span className={`${coachStyles.promptHost} ${controlCoachText ? coachStyles.prompt : ""}`} key={controlCoachText ?? "normal-feedback"} data-fishing-coach={controlCoachText ? "control" : undefined}>{controlCoachText ?? feedback.instruction}{coachView?.justCompleted && <i className={coachStyles.mastered} aria-hidden="true">Отлично! Управление освоено.</i>}</span>

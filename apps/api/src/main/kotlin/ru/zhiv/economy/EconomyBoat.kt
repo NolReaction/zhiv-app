@@ -123,7 +123,7 @@ object EconomyBoats {
                 val biteAt = now.plusSeconds(4 + slot.challengeSeed % 4)
                 if (!biteAt.plusMillis(50).isBefore(expiry)) economyFailure("ECONOMY_BOAT_CAST_WAIT", "Для нового заброса не хватает времени. Пора возвращаться")
                 val rarity = checkNotNull(EconomyRules.catalog.fishing).fish.single { it.itemId == slot.fishId }.rarity
-                val challenge = EconomyBoatChallenge(id(), rulesVersion = 2, resistance = EconomyBoatReel.resistanceForClass(rarity, slot.challengeSeed), seed = slot.challengeSeed, zoneWidth = slot.zoneWidth, difficulty = slot.difficulty,
+                val challenge = EconomyBoatChallenge(id(), rulesVersion = 3, resistance = EconomyBoatReel.resistanceForClass(rarity, slot.challengeSeed), seed = slot.challengeSeed, zoneWidth = slot.zoneWidth, difficulty = slot.difficulty,
                     startedAt = now.toString(), expiresAt = expiry.toString(), biteAt = biteAt.toString(), fishRarity = rarity)
                 return state.copy(boat = b.copy(voyage = v.copy(castsUsed = v.castsUsed + 1, challenge = challenge))) to "Удочка заброшена. Ждём поклёвку"
             }

@@ -7,8 +7,9 @@ export function boatReelHash(seed: number, segment: number): number {
 }
 /** V1 integer physics is immutable: existing saved challenges retain these rules. */
 export function initialBoatReel(challenge: BoatChallenge): BoatReelState {
-  if (challenge.rulesVersion !== 1 && challenge.rulesVersion !== 2) throw new RangeError("Unsupported boat reel version");
-  if (challenge.rulesVersion === 2 && !challenge.resistance) throw new RangeError("Missing boat resistance profile");
+  if (![1, 2, 3].includes(challenge.rulesVersion)) throw new RangeError("Unsupported boat reel version");
+  if (challenge.rulesVersion >= 2 && !challenge.resistance) throw new RangeError("Missing boat resistance profile");
+  if (challenge.rulesVersion === 3 && !challenge.fishRarity) throw new RangeError("Missing public boat fish class");
   return { tick: 0, bar: 5000, velocity: 0, fish: 5000, progress: 2500, status: "active" };
 }
 /** A public class selects a motion profile, without disclosing species or weight. */
@@ -52,12 +53,62 @@ export function boatResistanceMotion(challenge: BoatChallenge, tick: number) {
   }
 }
 
+export type BoatResistancePhase = "cruising" | "preparing" | "surging" | "recovering";
+
+/** V3: class-scaled movement, readable preparation and at least one second of recovery. */
+export function boatResistanceMotionV3(challenge: BoatChallenge, tick: number) {
+  const difficulty = challenge.difficulty;
+  const rank = ["common", "uncommon", "rare", "epic", "legendary"].indexOf(challenge.fishRarity ?? "common") + 1;
+  switch (challenge.resistance) {
+    case "steady": {
+      const segment = Math.floor(tick / 96), resting = tick % 96 >= 64;
+      return { target: 1300 + boatReelHash(challenge.seed, segment) % 7401,
+        limit: resting ? 20 + 2 * difficulty : 32 + 4 * difficulty + 2 * rank,
+        divisor: resting ? 15 : 11, phase: resting ? "recovering" : "cruising" } as const;
+    }
+    case "sprightly": {
+      const segment = Math.floor(tick / 80), phase = tick % 80;
+      const base = 1300 + boatReelHash(challenge.seed, segment) % 7401;
+      if (phase >= 60) return { target: 4300 + boatReelHash(challenge.seed ^ 0xa341316c, segment) % 1401,
+        limit: 22 + 2 * difficulty, divisor: 15, phase: "recovering" } as const;
+      if (phase >= 42) return { target: 10000 - base, limit: 66 + 5 * difficulty + 7 * rank, divisor: 6, phase: "surging" } as const;
+      if (phase >= 30) return { target: base, limit: 20 + 2 * difficulty, divisor: 16, phase: "preparing" } as const;
+      return { target: base, limit: 44 + 3 * difficulty + 3 * rank, divisor: 9, phase: "cruising" } as const;
+    }
+    case "surging": {
+      const segment = Math.floor(tick / 100), phase = tick % 100;
+      const hash = boatReelHash(challenge.seed, segment), base = 1900 + hash % 6201;
+      if (phase >= 72) return { target: 4200 + boatReelHash(challenge.seed ^ 0xa341316c, segment) % 1601,
+        limit: 26 + 2 * difficulty, divisor: 14, phase: "recovering" } as const;
+      if (phase >= 38) return { target: clamp(base + ((hash & 1) ? 1 : -1) * (1700 + 200 * rank), 800, 9200),
+        limit: 76 + 5 * difficulty + 8 * rank, divisor: 6, phase: "surging" } as const;
+      if (phase >= 24) return { target: base, limit: 18 + 2 * difficulty, divisor: 16, phase: "preparing" } as const;
+      return { target: base, limit: 34 + 3 * difficulty + 3 * rank, divisor: 11, phase: "cruising" } as const;
+    }
+    case "stubborn": {
+      const segment = Math.floor(tick / 120), phase = tick % 120;
+      const hash = boatReelHash(challenge.seed, segment);
+      const target = ((hash & 1) ? 7100 : 1200) + hash % 1701;
+      if (phase >= 88) return { target: 3800 + boatReelHash(challenge.seed ^ 0xa341316c, segment) % 2401,
+        limit: 18 + 2 * difficulty, divisor: 16, phase: "recovering" } as const;
+      if (phase < 16) return { target, limit: 18 + 2 * difficulty, divisor: 16, phase: "preparing" } as const;
+      return { target, limit: 70 + 4 * difficulty + 9 * rank, divisor: 8, phase: "surging" } as const;
+    }
+    default: throw new RangeError("Unknown boat resistance profile");
+  }
+}
+
+/** Presentation can describe current public motion; it cannot advance or alter replay. */
+export function boatReelResistancePhase(challenge: BoatChallenge, tick: number): BoatResistancePhase {
+  return challenge.rulesVersion === 3 ? boatResistanceMotionV3(challenge, Math.max(0, Math.trunc(tick))).phase : "cruising";
+}
+
 export function stepBoatReel(challenge: BoatChallenge, state: BoatReelState, held: boolean): BoatReelState {
   if (state.status !== "active") return state;
   let velocity = clamp(Math.trunc(state.velocity * 94 / 100) + (held ? 26 : -20), -220, 220);
   const half = challenge.zoneWidth / 2, bar = clamp(state.bar + velocity, half, 10000 - half);
   if (bar !== state.bar + velocity) velocity = 0;
-  const motion = challenge.rulesVersion === 2 ? boatResistanceMotion(challenge, state.tick) : {
+  const motion = challenge.rulesVersion === 3 ? boatResistanceMotionV3(challenge, state.tick) : challenge.rulesVersion === 2 ? boatResistanceMotion(challenge, state.tick) : {
     target: 500 + boatReelHash(challenge.seed, Math.floor(state.tick / (60 - 6 * challenge.difficulty))) % 9001,
     limit: 35 + 7 * challenge.difficulty, divisor: 10,
   };

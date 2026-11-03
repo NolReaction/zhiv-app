@@ -1,0 +1,7 @@
+.phase { display: inline-flex; align-items: center; gap: 4px; color: #b9d0bd; font-size: 10px; font-weight: 500; white-space: nowrap; }
+.phase::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.phase[data-resistance-phase='preparing'] { color: #ebc985; }
+.phase[data-resistance-phase='surging'] { color: #efb88b; }
+.phase[data-resistance-phase='recovering'] { color: #a6d4b1; }
+.clock { display: flex; align-items: flex-end; flex-direction: column; gap: 2px; }
+@media (max-height: 500px) and (orientation: landscape) { .phase { font-size: 9px; }.clock { flex-direction: row; align-items: center; gap: 8px; } }

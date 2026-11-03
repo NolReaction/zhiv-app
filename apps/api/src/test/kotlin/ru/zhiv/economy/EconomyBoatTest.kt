@@ -140,7 +140,7 @@ class EconomyBoatTest {
         val bite = Instant.parse(challenge.biteAt)
         assertEquals(started.plusSeconds(4), bite)
         assertEquals("common", challenge.fishRarity)
-        assertEquals(2, challenge.rulesVersion); assertEquals("steady", challenge.resistance)
+        assertEquals(3, challenge.rulesVersion); assertEquals("steady", challenge.resistance)
         val public = economyJson.encodeToString(EconomyBoats.publicView(state.boat))
         assertTrue("biteAt" in public); assertTrue("fishRarity" in public)
         assertFalse("fishId" in public); assertFalse("weightGrams" in public); assertFalse("slots" in public)

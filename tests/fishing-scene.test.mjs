@@ -107,12 +107,14 @@ test("painting composes real hull modules around Mochlik and never substitutes a
   try {
     const images = new Map(["repair", "crate", "oars"].map(id => [BOAT_ART_PARTS[id].src, { id, naturalWidth: 1536, naturalHeight: 1024 }]));
     paintFishingScene(env.context, frame(), images, { width: 390, height: 844, dpr: 2 }, visual);
-    const draws = env.calls.filter(call => call.method === "drawImage");
+    const isActorOrBoat = call => call.method === "drawImage" &&
+      (call.args[0].id || call.args[0].width === 48 && call.args[0].height === 48);
+    const draws = env.calls.filter(isActorOrBoat);
     assert.deepEqual(draws.map(call => call.args[0].id ?? "mochlik"), ["repair", "crate", "mochlik", "repair", "oars"]);
     assert.deepEqual(draws[0].args.slice(1, 5), [...BOAT_ART_PARTS.repair.crop]);
     assert.ok(env.calls.some(call => call.method === "clip"), "front planks occlude the seated feet");
     env.calls.length = 0; paintFishingScene(env.context, frame(), new Map(), { width: 320, height: 568, dpr: 1 }, visual);
-    assert.equal(env.calls.some(call => call.method === "drawImage"), false, "missing hull art does not leave a floating actor or drawn replacement hull");
+    assert.equal(env.calls.some(isActorOrBoat), false, "missing hull art does not leave a floating actor or drawn replacement hull; cached scenery can still paint");
   } finally { env.restore(); }
 });
 
@@ -123,6 +125,22 @@ test("the visible surface zone matches domain membership even at both control li
     const inBand = g.fish.y >= g.zone.y - 1e-8 && g.fish.y <= g.zone.y + g.zone.height + 1e-8;
     assert.equal(inBand, g.aligned, `fish=${fish}, bar=${bar}`);
   }
+});
+
+test("portrait water retains native CSS texels instead of shrinking with the boat assembly view", () => {
+  const env = environment();
+  try {
+    paintFishingScene(env.context, frame(), new Map([[FISHING_WATER_TEXTURE, { naturalWidth: 256, naturalHeight: 192 }]]),
+      { width: 390, height: 844, dpr: 2 }, visual);
+    const tiles = env.calls.filter(call => call.method === "drawImage" && call.args.length === 9 &&
+      call.args[0].width === 512 && call.args[0].height === 384);
+    assert.ok(tiles.length > 0);
+    assert.equal(tiles.reduce((sum, call) => sum + call.args[7] * call.args[8], 0), 390 * 844);
+    for (const { args } of tiles) {
+      assert.equal(args[3], args[7]); assert.equal(args[4], args[8]);
+      assert.ok(args.slice(1).every(Number.isInteger));
+    }
+  } finally { env.restore(); }
 });
 
 test("canvas runtime caps DPR/frame rate, pauses offscreen and cleans up late image completions", () => {

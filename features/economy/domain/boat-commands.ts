@@ -84,7 +84,7 @@ function transition(state: EconomyState, command: EconomyCommand, now: number, i
     if (biteAt + 50 >= expiresAt) return fail("ECONOMY_BOAT_CAST_WAIT", "Для нового заброса не хватает времени. Пора возвращаться");
     const fishRarity = economyCatalog.fishing!.fish.find(fish => fish.itemId === slot.fishId)!.rarity;
     voyage.castsUsed++;
-    voyage.challenge = { id: id(), rulesVersion: 2, resistance: boatResistanceForClass(fishRarity, slot.challengeSeed), seed: slot.challengeSeed, tickMs: 50, maxTicks: 600,
+    voyage.challenge = { id: id(), rulesVersion: 3, resistance: boatResistanceForClass(fishRarity, slot.challengeSeed), seed: slot.challengeSeed, tickMs: 50, maxTicks: 600,
       zoneWidth: slot.zoneWidth, difficulty: slot.difficulty, startedAt: iso(now), expiresAt: iso(expiresAt), biteAt: iso(biteAt), fishRarity };
     state.boat = boat;
     return "Удочка заброшена. Ждём поклёвку";

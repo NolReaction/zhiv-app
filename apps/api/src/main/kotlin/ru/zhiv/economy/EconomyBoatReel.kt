@@ -36,7 +36,7 @@ object EconomyBoatReel {
         return value.toLong() and 0xffff_ffffL
     }
 
-    private data class Motion(val target: Int, val limit: Int, val divisor: Int)
+    private data class Motion(val target: Int, val limit: Int, val divisor: Int, val phase: String = "cruising")
     private fun motion(seed: Long, tick: Int, difficulty: Int, resistance: String): Motion = when (resistance) {
         "steady" -> Motion(1300 + (hash(seed, tick / 96) % 7401).toInt(), 26 + 3 * difficulty, 14)
         "sprightly" -> {
@@ -60,18 +60,68 @@ object EconomyBoatReel {
         else -> throw IllegalArgumentException("Unknown boat resistance profile")
     }
 
+    /** V3 uses only saved public class/profile inputs, with authored preparation and recovery. */
+    private fun motionV3(seed: Long, tick: Int, difficulty: Int, resistance: String, fishRarity: String): Motion {
+        val rank = listOf("common", "uncommon", "rare", "epic", "legendary").indexOf(fishRarity) + 1
+        return when (resistance) {
+            "steady" -> {
+                val resting = tick % 96 >= 64
+                Motion(1300 + (hash(seed, tick / 96) % 7401).toInt(),
+                    if (resting) 20 + 2 * difficulty else 32 + 4 * difficulty + 2 * rank,
+                    if (resting) 15 else 11, if (resting) "recovering" else "cruising")
+            }
+            "sprightly" -> {
+                val segment = tick / 80; val phase = tick % 80
+                val base = 1300 + (hash(seed, segment) % 7401).toInt()
+                when {
+                    phase >= 60 -> Motion(4300 + (hash(seed xor 0xa341316cL, segment) % 1401).toInt(), 22 + 2 * difficulty, 15, "recovering")
+                    phase >= 42 -> Motion(10000 - base, 66 + 5 * difficulty + 7 * rank, 6, "surging")
+                    phase >= 30 -> Motion(base, 20 + 2 * difficulty, 16, "preparing")
+                    else -> Motion(base, 44 + 3 * difficulty + 3 * rank, 9)
+                }
+            }
+            "surging" -> {
+                val segment = tick / 100; val phase = tick % 100
+                val value = hash(seed, segment); val base = 1900 + (value % 6201).toInt()
+                when {
+                    phase >= 72 -> Motion(4200 + (hash(seed xor 0xa341316cL, segment) % 1601).toInt(), 26 + 2 * difficulty, 14, "recovering")
+                    phase >= 38 -> Motion((base + (if ((value and 1L) == 1L) 1 else -1) * (1700 + 200 * rank)).coerceIn(800, 9200),
+                        76 + 5 * difficulty + 8 * rank, 6, "surging")
+                    phase >= 24 -> Motion(base, 18 + 2 * difficulty, 16, "preparing")
+                    else -> Motion(base, 34 + 3 * difficulty + 3 * rank, 11)
+                }
+            }
+            "stubborn" -> {
+                val segment = tick / 120; val phase = tick % 120
+                val value = hash(seed, segment)
+                val target = (if ((value and 1L) == 1L) 7100 else 1200) + (value % 1701).toInt()
+                when {
+                    phase >= 88 -> Motion(3800 + (hash(seed xor 0xa341316cL, segment) % 2401).toInt(), 18 + 2 * difficulty, 16, "recovering")
+                    phase < 16 -> Motion(target, 18 + 2 * difficulty, 16, "preparing")
+                    else -> Motion(target, 70 + 4 * difficulty + 9 * rank, 8, "surging")
+                }
+            }
+            else -> throw IllegalArgumentException("Unknown boat resistance profile")
+        }
+    }
+
+    fun resistancePhase(challenge: EconomyBoatChallenge, tick: Int): String = if (challenge.rulesVersion == 3)
+        motionV3(challenge.seed, tick.coerceAtLeast(0), challenge.difficulty, requireNotNull(challenge.resistance), requireNotNull(challenge.fishRarity)).phase
+        else "cruising"
+
     /** The old signature keeps V1 tools and vectors readable. New attempts dispatch through their saved version. */
     fun step(frame: Frame, held: Boolean, seed: Long, zoneWidth: Int, difficulty: Int,
-        rulesVersion: Int = 1, resistance: String? = null): Frame {
+        rulesVersion: Int = 1, resistance: String? = null, fishRarity: String? = null): Frame {
         require(seed in 0L..0xffff_ffffL && zoneWidth in setOf(3200, 4000) && difficulty in 1..5)
-        require(rulesVersion in setOf(1, 2))
+        require(rulesVersion in setOf(1, 2, 3))
         if (frame.status != "active") return frame
         val half = zoneWidth / 2
         var velocity = (frame.velocity * 94 / 100 + if (held) 26 else -20).coerceIn(-220, 220)
         val freeBar = frame.bar + velocity
         val bar = freeBar.coerceIn(half, 10000 - half)
         if (bar != freeBar) velocity = 0
-        val movement = if (rulesVersion == 2) motion(seed, frame.tick, difficulty, requireNotNull(resistance))
+        val movement = if (rulesVersion == 3) motionV3(seed, frame.tick, difficulty, requireNotNull(resistance), requireNotNull(fishRarity))
+            else if (rulesVersion == 2) motion(seed, frame.tick, difficulty, requireNotNull(resistance))
             else Motion(500 + (hash(seed, frame.tick / (60 - 6 * difficulty)) % 9001).toInt(), 35 + 7 * difficulty, 10)
         val fish = (frame.fish + ((movement.target - frame.fish) / movement.divisor).coerceIn(-movement.limit, movement.limit)).coerceIn(0, 10000)
         val progress = (frame.progress + if (abs(fish - bar) <= half) 32 else -45).coerceIn(0, 10000)
@@ -81,7 +131,7 @@ object EconomyBoatReel {
     }
 
     fun step(frame: Frame, held: Boolean, challenge: EconomyBoatChallenge): Frame =
-        step(frame, held, challenge.seed, challenge.zoneWidth, challenge.difficulty, challenge.rulesVersion, challenge.resistance)
+        step(frame, held, challenge.seed, challenge.zoneWidth, challenge.difficulty, challenge.rulesVersion, challenge.resistance, challenge.fishRarity)
 
     /** A prefix or a trace containing input after an earlier terminal frame is invalid. */
     fun replay(challenge: EconomyBoatChallenge, submission: EconomyBoatReelSubmission): Frame {

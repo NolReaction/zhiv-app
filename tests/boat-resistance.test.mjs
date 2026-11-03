@@ -64,7 +64,7 @@ test("new profile metadata validates strictly while immutable V1 can still omit 
   assert.equal(boatChallengeSchema.safeParse(sample).success, true);
   assert.equal(boatChallengeSchema.safeParse({ ...sample, resistance: undefined }).success, false);
   assert.equal(boatChallengeSchema.safeParse({ ...sample, resistance: "unbounded" }).success, false);
-  assert.equal(boatChallengeSchema.safeParse({ ...sample, rulesVersion: 3 }).success, false);
+  assert.equal(boatChallengeSchema.safeParse({ ...sample, rulesVersion: 4 }).success, false);
   const old = { ...sample, rulesVersion: 1, resistance: undefined };
   assert.equal(boatChallengeSchema.safeParse(old).success, true);
   const oldWithIgnoredHint = { ...old, resistance: "stubborn" };

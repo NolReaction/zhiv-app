@@ -4,7 +4,7 @@ import { fishingSceneAtmosphere, type FishingSceneAmbience } from "./fishing-sce
 
 export const FISHING_WATER_TEXTURE = "/world/boat/river-water.webp?v=1";
 const textureMosaics = new WeakMap<HTMLImageElement, HTMLCanvasElement>();
-const textureWidth = 768, textureHeight = 576;
+const textureWidth = 512, textureHeight = 384;
 const wrap = (value: number, period: number) => ((value % period) + period) % period;
 
 function mirroredTexture(image: HTMLImageElement): HTMLCanvasElement | null {
@@ -12,6 +12,8 @@ function mirroredTexture(image: HTMLImageElement): HTMLCanvasElement | null {
   if (typeof document === "undefined") return null;
   const canvas = document.createElement("canvas"); canvas.width = textureWidth; canvas.height = textureHeight;
   const context = canvas.getContext("2d"); if (!context) return null;
+  // Preserve the native 256×192 map patch. Upscaling it here used to filter every wave twice.
+  context.imageSmoothingEnabled = false;
   for (let row = 0; row < 2; row++) for (let column = 0; column < 2; column++) {
     context.save(); context.translate(column ? textureWidth : 0, row ? textureHeight : 0);
     context.scale(column ? -1 : 1, row ? -1 : 1);
@@ -20,29 +22,26 @@ function mirroredTexture(image: HTMLImageElement): HTMLCanvasElement | null {
   textureMosaics.set(image, canvas); return canvas;
 }
 
-/** Bounded strips refract the real map texture. The periodic mirrored source has no moving tile seams. */
+/** Integral sampling translates one continuous native-resolution field, without overlapping refracted bands. */
 export function fishingWaterStrip(y: number, time: number) {
   const clock = Number.isFinite(time) ? time : 0;
-  return { x: wrap(clock * 2.4 + Math.sin(y * .019 - clock * .75) * 3.2 + Math.sin(y * .044 + clock * .42) * 1.1, textureWidth),
-    y: wrap(y + clock * .8 + Math.sin(clock * .4 + y * .01) * 1.5, textureHeight) };
+  return { x: wrap(Math.floor(clock * 2.4), textureWidth),
+    y: wrap(Math.floor(y) + Math.floor(clock * .8), textureHeight) };
 }
 
 function paintMovingTexture(ctx: CanvasRenderingContext2D, image: HTMLImageElement, width: number, height: number, time: number) {
   const texture = mirroredTexture(image); if (!texture) return;
-  ctx.imageSmoothingEnabled = true;
-  for (let y = 0; y < height; y += 18) {
-    const source = fishingWaterStrip(y, time);
-    let rowOffset = 0;
-    const band = Math.min(19, height - y);
-    while (rowOffset < band) {
-      const sourceY = wrap(source.y + rowOffset, textureHeight), rowHeight = Math.min(band - rowOffset, textureHeight - sourceY);
-      let x = 0;
-      while (x < width) {
-        const sourceX = wrap(source.x + x, textureWidth), span = Math.min(width - x, textureWidth - sourceX);
-        ctx.drawImage(texture, sourceX, sourceY, span, rowHeight, x, y + rowOffset, span, rowHeight); x += span;
-      }
-      rowOffset += rowHeight;
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+  // Whole native tiles have the same source phase at every boundary. Each destination pixel is painted once.
+  let y = 0;
+  while (y < height) {
+    const source = fishingWaterStrip(y, time), rowHeight = Math.min(height - y, textureHeight - source.y);
+    let x = 0;
+    while (x < width) {
+      const sourceX = wrap(source.x + x, textureWidth), span = Math.min(width - x, textureWidth - sourceX);
+      ctx.drawImage(texture, sourceX, source.y, span, rowHeight, x, y, span, rowHeight); x += span;
     }
+    y += rowHeight;
   }
 }
 

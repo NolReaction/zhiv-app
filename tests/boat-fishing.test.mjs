@@ -197,7 +197,7 @@ test("a cast publishes only its actual rarity and waits 4–7 seconds before any
   const challenge = state.boat.voyage.challenge, bite = Date.parse(challenge.biteAt), played = play(challenge), reel = wireReel(played);
   assert.ok(bite - started >= 4000 && bite - started <= 7000);
   assert.equal(challenge.fishRarity, rarity);
-  assert.equal(challenge.rulesVersion, 2);
+  assert.equal(challenge.rulesVersion, 3);
   assert.equal(challenge.resistance, physics.boatResistanceForClass(rarity, challenge.seed));
   const publicChallenge = boats.publicBoatState(state.boat).voyage.challenge;
   assert.equal(publicChallenge.resistance, challenge.resistance);

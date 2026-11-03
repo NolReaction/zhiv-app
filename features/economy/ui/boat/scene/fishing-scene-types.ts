@@ -5,6 +5,8 @@ export type FishingSceneFrame = {
   /** Cosmetic composition stays stable for one saved voyage. */
   sceneKey?: string;
   resistance?: "steady" | "sprightly" | "surging" | "stubborn";
+  /** Public phase of the deterministic reel, never a second gameplay clock. */
+  resistancePhase?: "cruising" | "preparing" | "surging" | "recovering";
   fishRarity?: "common" | "uncommon" | "rare" | "epic" | "legendary";
   /** Exact species is supplied only for a confirmed catch. */
   fishId?: string;

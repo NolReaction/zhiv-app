@@ -35,12 +35,13 @@ private fun boatCost(value: EconomyCost) = require(value.coins in 0L..1_000_000_
     @EncodeDefault(EncodeDefault.Mode.NEVER) val fishRarity: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val resistance: String? = null) {
     init {
-        boatUuid(id); require(rulesVersion in setOf(1, 2) && seed in 0L..0xffff_ffffL && tickMs == 50 && maxTicks == 600)
+        boatUuid(id); require(rulesVersion in setOf(1, 2, 3) && seed in 0L..0xffff_ffffL && tickMs == 50 && maxTicks == 600)
         require(zoneWidth in setOf(3200, 4000) && difficulty in 1..5 && Instant.parse(expiresAt).isAfter(Instant.parse(startedAt)))
         require(biteAt == null || !Instant.parse(biteAt).isBefore(Instant.parse(startedAt)) && Instant.parse(biteAt).isBefore(Instant.parse(expiresAt)))
         require(fishRarity == null || fishRarity in fishingShopRarities)
         require(resistance == null || resistance in setOf("steady", "sprightly", "surging", "stubborn"))
         require(rulesVersion == 1 || resistance != null)
+        require(rulesVersion != 3 || fishRarity != null)
     }
 }
 @Serializable data class EconomyBoatSlot(val fishId: String, val weightGrams: Int, val challengeSeed: Long, val difficulty: Int, val zoneWidth: Int) {

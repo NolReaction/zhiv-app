@@ -1,6 +1,8 @@
 import { fishingBiteMotion } from "./fishing-scene-bite";
 import { paintFishingCatchEffects } from "./fishing-scene-catch-effects";
-import { paintFishingAtmosphere, paintFishingSceneTint } from "./fishing-scene-atmosphere";
+import { paintFishingAtmosphere, paintFishingSceneTint, type FishingSceneExclusion } from "./fishing-scene-atmosphere";
+import { fishingIslandLayout, paintFishingIslands } from "./fishing-scene-islands";
+import { paintFishingUnderwaterLife } from "./fishing-scene-schools";
 import { drawFishingRod } from "@/features/world/activities/fishing/fishing-rod-painter";
 import { BOAT_ASSEMBLY, boatArtworkLayers, type BoatArtLayer } from "@/features/world/objects/fishing-boat/fishing-boat-artwork";
 import { boatReelFeedback } from "../boat-reel-feedback";
@@ -72,6 +74,25 @@ export function fishingSceneGeometry(width: number, height: number, frame: Fishi
 
 type Geometry = ReturnType<typeof fishingSceneGeometry>;
 
+/** Stable envelopes keep land away from every animated hull pose, controls and the full fight corridor. */
+export function fishingSceneSceneryExclusions(geometry: Geometry) {
+  const { composition, scale, boat, width, height } = geometry;
+  const surface = composition.surface / scale;
+  const hullY = surface - BOAT_ASSEMBLY.waterline * boat.scale;
+  const boatBounds: FishingSceneExclusion = { x: boat.x - 42, y: hullY - 40,
+    width: BOAT_ASSEMBLY.width * boat.scale + 84, height: BOAT_ASSEMBLY.height * boat.scale + 80 };
+  const hud: FishingSceneExclusion[] = [
+    { x: 0, y: 0, width, height: composition.safeTop / scale },
+    { x: 0, y: composition.availableBottom / scale, width, height: Math.max(0, height - composition.availableBottom / scale) },
+  ];
+  const targetX = composition.floatX / scale, landingX = boat.x + boat.scale * 975 + 18;
+  const play: FishingSceneExclusion = { x: Math.min(targetX, landingX) - 100, y: geometry.waterTop - 50,
+    width: Math.abs(targetX - landingX) + 200, height: geometry.waterBottom - geometry.waterTop + 100 };
+  const dockWidth = Math.min(width, 548 / scale);
+  const lifeHud = [hud[0], { ...hud[1], x: (width - dockWidth) / 2, width: dockWidth }];
+  return { boat: boatBounds, hud, play, islands: [boatBounds, ...hud, play], life: [boatBounds, ...lifeHud] };
+}
+
 function paintPart(ctx: CanvasRenderingContext2D, layer: BoatArtLayer, images: ReadonlyMap<string, HTMLImageElement>) {
   const image = images.get(layer.src); if (!image) return;
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
@@ -111,6 +132,13 @@ function paintSurfaceGame(ctx: CanvasRenderingContext2D, geometry: Geometry, fra
   ctx.save();
   if (frame.stage === "escaped") ctx.globalAlpha *= visual.still ? 0 : 1 - clamp(visual.stageElapsed / 1.2, 0, 1);
   paintSceneFish(ctx, fish, frame, geometry.time, visual.still, visual.stageElapsed); ctx.restore();
+  if (frame.stage === "reeling" && frame.resistancePhase === "preparing") {
+    ctx.save(); ctx.strokeStyle = "rgba(242,210,144,.68)"; ctx.lineWidth = Math.max(1.5, 1 / geometry.scale);
+    const radius = 34 + (visual.still ? 0 : Math.sin(geometry.time * 6) * 2);
+    for (const side of [-1, 1]) { ctx.beginPath(); ctx.ellipse(fish.x + side * 13, fish.y, radius, 18, 0,
+      side < 0 ? Math.PI * .7 : -Math.PI * .3, side < 0 ? Math.PI * 1.3 : Math.PI * .3); ctx.stroke(); }
+    ctx.restore();
+  }
   paintFishingCatchEffects(ctx, fish, frame, visual.stageElapsed, visual.still);
   if (frame.stage === "reeling" || frame.stage === "paused") paintFishingRipples(ctx, fish, geometry.time * 1.25, geometry.aligned ? .9 : .5);
   if (geometry.actorRig.effort > .5 && !visual.still && (frame.stage === "reeling" || frame.stage === "paused")) {
@@ -122,11 +150,16 @@ function paintSurfaceGame(ctx: CanvasRenderingContext2D, geometry: Geometry, fra
 export function paintFishingScene(ctx: CanvasRenderingContext2D, frame: FishingSceneFrame, images: ReadonlyMap<string, HTMLImageElement>, viewport: FishingSceneViewport, visual: FishingSceneVisual) {
   const geometry = fishingSceneGeometry(viewport.width, viewport.height, frame, visual), { width, height, time } = geometry;
   ctx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0); ctx.clearRect(0, 0, viewport.width, viewport.height);
+  // Water texels stay at one CSS pixel on portrait too; the assembly view must not shrink the surface texture.
+  paintFishingLandscape(ctx, viewport.width, viewport.height, time + geometry.composition.variant.currentPhase, images.get(FISHING_WATER_TEXTURE), frame.ambience);
   ctx.save(); ctx.scale(geometry.scale, geometry.scale);
-  paintFishingLandscape(ctx, width, height, time + geometry.composition.variant.currentPhase, images.get(FISHING_WATER_TEXTURE), frame.ambience);
+  const exclusions = fishingSceneSceneryExclusions(geometry);
+  const islands = fishingIslandLayout(width, height, frame.sceneKey, exclusions.islands);
+  paintFishingIslands(ctx, width, height, time, frame.sceneKey, frame.ambience, exclusions.islands);
+  // The real hull painted above the approach supplies physical occlusion; the wider land-placement box must not hide a bite.
+  paintFishingUnderwaterLife(ctx, width, height, frame, visual, geometry, [...exclusions.life, ...islands], [...exclusions.hud, ...islands]);
   paintFishingAtmosphere(ctx, width, height, time, frame.ambience, [
-    { x: geometry.boat.x - 30, y: geometry.boat.y, width: 1000 * geometry.boat.scale + 60, height: 650 * geometry.boat.scale + 30 },
-    { x: geometry.float.x - 100, y: geometry.waterTop - 45, width: 200, height: geometry.waterBottom - geometry.waterTop + 90 },
+    ...exclusions.islands, ...islands,
   ]);
   paintSurfaceGame(ctx, geometry, frame, visual);
   paintFishingWake(ctx, { x: geometry.boat.x + geometry.boat.scale * 500, y: geometry.surface + 7 }, geometry.boat.scale * 970, time);

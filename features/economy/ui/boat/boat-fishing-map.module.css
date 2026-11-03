@@ -72,6 +72,8 @@
 .controls::before { left: 7px; } .controls::after { right: 7px; }
 .controls[data-control-stage='bite'] { border-top-color: #e6c988; }
 .controls[data-control-stage='landed'] { border-top-color: #afcb96; }
+.controls[data-fishing-finished] { border-top-color: #b9cb92; }
+.controls[data-fishing-finished] .primary { margin-bottom: 5px; }
 .phaseMark { position: relative; display: inline-grid; place-items: center; flex: 0 0 21px; width: 21px; height: 21px; border: 1px solid #9cb5a16b; border-radius: 50%; color: #d9c084; }
 .phaseMark > span { width: 3px; height: 11px; border-radius: 2px; background: currentColor; transform: rotate(14deg); }
 .phaseMark::after { content: ""; position: absolute; inset: 5px -3px -3px; border-bottom: 1px solid currentColor; border-radius: 50%; opacity: .5; }
@@ -131,6 +133,8 @@
   .bottomRow { margin-top: auto; padding-top: 3px; }
   .back { min-height: 30px; }
   .phaseMark { width: 18px; height: 18px; flex-basis: 18px; }
+  .controls[data-fishing-finished] .waiting { margin-bottom: 4px; }
+  .controls[data-fishing-finished] .bottomRow { padding-top: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .map *, .map *::before, .map *::after { animation: none !important; transition: none !important; } }
 @media (prefers-reduced-motion: reduce) { .viewport { animation: none !important; } }
