@@ -2,7 +2,7 @@ import type { AudioFrame, AudioRuntime } from "@/features/audio/domain/types";
 
 export type FishingAudioState = {
   sceneId: string; voyageId: string;
-  stage: "waiting" | "bite" | "reeling" | "paused" | "caught" | "escaped" | "expired" | "pending";
+  stage: "waiting" | "casting" | "soaking" | "landed" | "bite" | "reeling" | "paused" | "caught" | "escaped" | "expired" | "pending";
   castKey?: string; held: boolean; progress: number; inZone: boolean; caughtCount: number; suspended?: boolean;
 };
 export const FISHING_AUDIO_CUES = ["music.fishing", "fishing.cast", "fishing.bite", "fishing.reel", "fishing.escape", "fishing.catch", "action.fish.splash"] as const;
@@ -60,7 +60,7 @@ export function createFishingAudioController(runtime: AudioRuntime, ownerId: str
             if (active && active.castKey === castKey && !active.suspended && active.stage !== "paused") emit("action.fish.splash", "cast-splash", .5);
           }, 1200);
         }
-        if (next.stage === "reeling" && previous?.stage === "bite") emit("fishing.bite", "bite");
+        if (next.stage === "bite" && (previous?.stage === "casting" || previous?.stage === "soaking")) emit("fishing.bite", "bite");
         if (next.stage === "escaped" && previous?.stage !== "escaped") emit("fishing.escape", "escape");
         if (next.caughtCount > (previous?.caughtCount ?? next.caughtCount)) emit("fishing.catch", `confirmed-${next.caughtCount}`);
         const reached = Math.floor(next.progress / 1000);

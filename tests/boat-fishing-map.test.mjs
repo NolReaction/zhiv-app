@@ -176,7 +176,7 @@ function fixture({ outbound = false, dev = false } = {}) {
     advanceTo(next) { const elapsed = next - time; assert(elapsed >= 0); time = next; clock += elapsed; render(); },
     close() { open = false; render(); }, reopen() { open = true; render(); },
     cast() { click(byAction("cast")); flush(); frame(0); },
-    play() { click(byAction("play")); frame(0); },
+    play() { const biteAt = Date.parse(state.boat.voyage.challenge.biteAt ?? state.boat.voyage.challenge.startedAt); if (time < biteAt) frame(biteAt - time); click(byAction("play")); frame(0); },
     hold(value, input = "keyboard") { const button = byAction("hold"); assert(button); if (input === "pointer") button.props[value ? "onPointerDown" : "onPointerUp"](event(button));
       else button.props[value ? "onKeyDown" : "onKeyUp"](event(button)); render(); },
     playToResult() {
@@ -201,8 +201,15 @@ test("actual root changes from timed outbound to one separate river scene withou
   assert.equal(f.view().boat.voyage.catches.length, 0);
   assert.doesNotMatch(JSON.stringify(f.find(node => node.tag === "canvas").props.frame), /fishId|weightGrams|challengeSeed|slots/);
   f.cast(); assert.equal(f.state.boat.voyage.castsUsed, 1);
-  assert.equal(f.find(node => node.props["data-reel-status"] === "bite").props["data-reel-tick"], 0);
+  assert.equal(f.find(node => node.props["data-reel-status"] === "casting").props["data-reel-tick"], 0);
+  assert.equal(f.find(node => node.tag === "canvas").props.frame.stage, "casting");
+  assert.equal(f.byAction("play"), undefined);
+  f.frame(1200); assert.equal(f.find(node => node.tag === "canvas").props.frame.stage, "soaking");
+  assert.equal(f.byAction("play"), undefined);
+  f.frame(Date.parse(f.state.boat.voyage.challenge.biteAt) - Date.parse(f.view().serverTime));
   assert.equal(f.find(node => node.tag === "canvas").props.frame.stage, "bite");
+  assert(f.byAction("play"));
+  assert.equal(f.find(node => node.tag === "canvas").props.frame.fishRarity, economyCatalog.fishing.fish.find(fish => fish.itemId === f.state.boat.voyage.slots[0].fishId).rarity);
   assert.equal(f.view().boat.voyage.challenge.fishId, undefined);
   assert.equal(f.view().boat.voyage.challenge.weightGrams, undefined);
   assert.equal(f.commands.filter(request => request.action === "submit_boat_cast").length, 0);
@@ -261,7 +268,9 @@ test("caught UI explicitly submits one replay verified trace then credits invent
   assert.equal(f.pending.length, 1); assert.equal(f.state.boat.voyage.catches.length, 0);
   assert(f.find(node => node.props["data-reel-status"] === "pending"));
   const request = f.pending[0]; assert.deepEqual(replayBoatReel(challenge, request.reel.inputs, request.reel.endTick), result);
-  f.flush(); assert.equal(f.state.boat.voyage.catches.length, 1); assert.deepEqual(f.state.inventory, inventory);
+  f.flush(); assert.equal(f.state.boat.voyage.catches.length, 1);
+  assert.equal(f.find(node => node.tag === "canvas").props.frame.stage, "landed");
+  assert.equal(f.find(node => node.tag === "canvas").props.frame.fishId, f.state.boat.voyage.catches[0].fishId); assert.deepEqual(f.state.inventory, inventory);
   assert.equal(f.commands.filter(command => command.action === "submit_boat_cast").length, 1);
   f.click(f.byAction("return")); f.click(f.byAction("confirm-return")); assert.equal(f.pending.length, 1);
   f.flush(); const returns = Date.parse(f.state.boat.voyage.returnsAt);

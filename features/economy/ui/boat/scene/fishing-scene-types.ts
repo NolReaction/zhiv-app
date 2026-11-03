@@ -1,7 +1,10 @@
 /** Presentation-only input. Reel positions use the existing 0..10000 integer scale. */
 export type FishingSceneFrame = {
-  stage: "waiting" | "bite" | "reeling" | "paused" | "caught" | "escaped" | "expired" | "pending";
+  stage: "waiting" | "casting" | "soaking" | "landed" | "bite" | "reeling" | "paused" | "caught" | "escaped" | "expired" | "pending";
   castKey?: string;
+  fishRarity?: "common" | "uncommon" | "rare" | "epic" | "legendary";
+  /** Exact species is supplied only for a confirmed catch. */
+  fishId?: string;
   held: boolean;
   reel?: { bar: number; fish: number; progress: number; zoneWidth: number };
   boat: { repaired: boolean; upgrades: readonly string[] };

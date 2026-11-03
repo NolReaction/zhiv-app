@@ -20,7 +20,7 @@
     },
     {
       "path": "scripts/audio_originals/fishing_music.py",
-      "sha256": "eddf68174436e66076c5c462318f19dabd926bc84a8f97e64c90b279f08f4541"
+      "sha256": "bbfd7deb86be7fae1e67f79ee35f5089148c2c8847b14fef425f974b5b54ad5f"
     },
     {
       "path": "scripts/audio_originals/music.py",
@@ -28,7 +28,7 @@
     },
     {
       "path": "scripts/audio_originals/render.py",
-      "sha256": "4b01119b9902c69ac4c0a13df95e86eb2ee77afd17f4a6a6a77aa165de1a5515"
+      "sha256": "fac41df336c6b28bf87bb07b92acb269fb0ebb37bf0853e0c519a6a2417b21d5"
     },
     {
       "path": "scripts/audio_originals/steamship.py",
@@ -3367,39 +3367,47 @@
     {
       "id": "music.fishing.01",
       "kind": "music",
-      "title": "Тихий плёс",
-      "description": "Оригинальный речной вальс: деревянная арфа, флейта, мягкий бас и тёплые аккорды; 24 такта A–B–A′ с паузами между фразами.",
+      "title": "Лёгкий клёв",
+      "description": "Новая оригинальная речная тема: нейлоновые струны, маримба, округлый бас, тихие щётки и шейкер; 24 такта A–B–A′ с синкопированными ответами.",
       "sampleRate": 48000,
       "channels": 2,
-      "frames": 3840000,
-      "durationSeconds": 80.0,
-      "decodedBytes": 30720000,
-      "masterSha256": "85fa4ffd14fa324fe29a3dbf462b8fcb402bcbaabd606247a8a28f5f3a067ae9",
+      "frames": 3637895,
+      "durationSeconds": 75.789479,
+      "decodedBytes": 29103160,
+      "masterSha256": "5bcaab58e2bea6596f4dcb3e1ce3cb28367fcc5e8d683a89a6e60690625a50a1",
       "measurements": {
-        "peakDb": -7.5784,
-        "rmsDb": -20.0,
-        "dc": 1e-09,
-        "seamDelta": 0.000674085,
-        "maxAdjacentDelta": 0.051773697
+        "peakDb": -4.0658,
+        "rmsDb": -21.0,
+        "dc": 0.0,
+        "seamDelta": 2.5211e-05,
+        "maxAdjacentDelta": 0.05921907
       },
       "files": [
         {
-          "src": "/audio/originals-v1/music/music.fishing.01.opus",
-          "bytes": 1243971,
-          "sha256": "80d450c479fb4368caf74ef2f800f15c2fa0d288d80e338a28a4aca9ce5c34ed"
+          "src": "/audio/originals-v1/music/music.fishing.01.riverside-v2.opus",
+          "bytes": 1328938,
+          "sha256": "359d081afecde48b7f4bfea60e274bd9c97ab301b0dba72853de0ffda634168a"
         },
         {
-          "src": "/audio/originals-v1/music/music.fishing.01.m4a",
-          "bytes": 1482919,
-          "sha256": "1d6ebdcecfa2f2bfcecbeef0a9d9035455d2a41117bd234b91f1c18d0016a784"
+          "src": "/audio/originals-v1/music/music.fishing.01.riverside-v2.m4a",
+          "bytes": 1418775,
+          "sha256": "f83aa6f305d637c4b7b79a1bae5f2fae94b2a750a83d4bba6ae5660fd78dfabf"
         }
       ],
       "composition": {
-        "musicalKey": "F major",
-        "bpm": 54,
+        "musicalKey": "G major",
+        "bpm": 76,
         "bars": 24,
-        "meter": "3/4",
+        "meter": "4/4",
         "loop": true,
+        "revision": "riverside-v2",
+        "instruments": [
+          "nylon-string plucks",
+          "marimba",
+          "rounded bass",
+          "brushes",
+          "shaker"
+        ],
         "provenance": "Original coded score and deterministic mathematical synthesis; no external recordings or samples."
       }
     }

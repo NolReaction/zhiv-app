@@ -34,9 +34,9 @@ const wireReel = played => ({ challengeId: played.challengeId, inputs: played.in
 function catchOne(state, now) {
   const voyage = state.boat.voyage; run(state, "begin_boat_cast", voyage.id, now);
   const played = play(state.boat.voyage.challenge); assert.equal(played.result.status, "caught");
-  const reel = wireReel(played);
-  run(state, "submit_boat_cast", voyage.id, now + reel.endTick * 50, { reel });
-  return now + reel.endTick * 50;
+  const reel = wireReel(played), finishedAt = Date.parse(state.boat.voyage.challenge.biteAt) + reel.endTick * 50;
+  run(state, "submit_boat_cast", voyage.id, finishedAt, { reel });
+  return finishedAt;
 }
 
 test("shared integer vectors fix unsigned seeds, negative inertia, segment edges and terminal results", () => {
@@ -117,7 +117,7 @@ test("catch is sealed before bite, server verifies time and controls, no client 
   assert.equal(result.status, "caught");
   assert.throws(() => run(state, "submit_boat_cast", voyage.id, now, { reel }), { code: "ECONOMY_BOAT_TRACE" });
   assert.throws(() => command("submit_boat_cast", voyage.id, { reel: { ...reel, win: true } }));
-  run(state, "submit_boat_cast", voyage.id, now + reel.endTick * 50, { reel });
+  run(state, "submit_boat_cast", voyage.id, Date.parse(challenge.biteAt) + reel.endTick * 50, { reel });
   assert.equal(state.boat.voyage.catches[0].weightGrams, slot.weightGrams); assert.equal(state.boat.voyage.catches[0].fishId, slot.fishId);
   assert.deepEqual(state.fishing.catches, {}, "records and fish remain in the boat until claim");
   assert.throws(() => run(state, "submit_boat_cast", voyage.id, now + 30000, { reel }), { code: "ECONOMY_BOAT_CAST_GONE" });
@@ -187,4 +187,45 @@ test("full storage failure is atomic, then claim awards once including species, 
   assert.equal(state.progression.skills.fishingSeconds - skill, 600);
   for (const fish of delivery) assert.ok(state.boat.records[fish.fishId].weightGrams >= fish.weightGrams);
   const claimed = structuredClone(state); assert.throws(() => run(state, "claim_boat", voyage.id, now), { code: "ECONOMY_BOAT_VOYAGE_GONE" }); assert.deepEqual(state, claimed);
+});
+
+
+test("a cast publishes only its actual rarity and waits 4–7 seconds before any valid replay can finish", () => {
+  const state = ready(), voyage = depart(state), started = Date.parse(voyage.arrivesAt);
+  const rarity = model.economyCatalog.fishing.fish.find(fish => fish.itemId === voyage.slots[0].fishId).rarity;
+  run(state, "begin_boat_cast", voyage.id, started);
+  const challenge = state.boat.voyage.challenge, bite = Date.parse(challenge.biteAt), played = play(challenge), reel = wireReel(played);
+  assert.ok(bite - started >= 4000 && bite - started <= 7000);
+  assert.equal(challenge.fishRarity, rarity);
+  const publicChallenge = boats.publicBoatState(state.boat).voyage.challenge;
+  assert.equal(publicChallenge.biteAt, challenge.biteAt); assert.equal(publicChallenge.fishRarity, rarity);
+  assert.equal(publicChallenge.fishId, undefined); assert.equal(publicChallenge.weightGrams, undefined);
+  assert.equal(boats.publicBoatState(state.boat).voyage.slots, undefined);
+  const before = structuredClone(state), finish = bite + reel.endTick * 50;
+  assert.throws(() => run(state, "submit_boat_cast", voyage.id, started + reel.endTick * 50, { reel }), { code: "ECONOMY_BOAT_TRACE" });
+  assert.throws(() => run(state, "submit_boat_cast", voyage.id, finish - 1, { reel }), { code: "ECONOMY_BOAT_TRACE" });
+  assert.deepEqual(state, before);
+  const restored = schema.boatPrivateStateSchema.parse(JSON.parse(JSON.stringify(state.boat)));
+  assert.deepEqual(restored.voyage.challenge, challenge);
+  run(state, "submit_boat_cast", voyage.id, finish, { reel });
+  assert.equal(state.boat.voyage.catches[0].fishId, voyage.slots[0].fishId);
+});
+
+test("legacy attempts stay playable without bite metadata and a too-late new cast spends no attempt", () => {
+  const state = ready(), voyage = depart(state), started = Date.parse(voyage.arrivesAt);
+  run(state, "begin_boat_cast", voyage.id, started);
+  const challenge = state.boat.voyage.challenge;
+  delete challenge.biteAt; delete challenge.fishRarity;
+  assert.equal(schema.boatChallengeSchema.safeParse(challenge).success, true);
+  const reel = wireReel(play(challenge));
+  run(state, "submit_boat_cast", voyage.id, started + reel.endTick * 50, { reel });
+  const before = structuredClone(state), tooLate = Date.parse(voyage.fishingUntil) - 1000;
+  assert.throws(() => run(state, "begin_boat_cast", voyage.id, tooLate), { code: "ECONOMY_BOAT_CAST_WAIT" });
+  assert.deepEqual(state, before);
+  const nextWait = (4 + state.boat.voyage.slots[state.boat.voyage.castsUsed].challengeSeed % 4) * 1000;
+  const boundary = Date.parse(voyage.fishingUntil) - nextWait - 50;
+  assert.throws(() => run(state, "begin_boat_cast", voyage.id, boundary), { code: "ECONOMY_BOAT_CAST_WAIT" });
+  assert.deepEqual(state, before);
+  assert.equal(schema.boatChallengeSchema.safeParse({ ...challenge, biteAt: challenge.expiresAt }).success, false);
+  assert.equal(schema.boatChallengeSchema.safeParse({ ...challenge, fishRarity: "invented" }).success, false);
 });

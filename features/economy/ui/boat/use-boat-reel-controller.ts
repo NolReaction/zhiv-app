@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { BoatChallenge, BoatReelCommand, BoatReelInput } from "@/features/economy/domain/boat-model";
 import { initialBoatReel, stepBoatReel } from "@/features/economy/domain/boat-reel";
 import { boatReelCheckpointKey, boatReelSubmission, changeBoatReelInput, readBoatReelCheckpoint, retainBoatReelCheckpoint, writeBoatReelCheckpoint } from "./boat-reel-checkpoint";
+import { boatCastStage } from "./boat-cast-timing";
 
 export type BoatReelControllerProps = { owner: string; voyageId: string; challenge: BoatChallenge; now: number;
   disabled: boolean; uncertain?: boolean; onSubmit: (submission: BoatReelCommand) => boolean };
@@ -19,6 +20,7 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
   const [reel, setReel] = useState(() => initialBoatReel(challenge));
   const [playing, setPlaying] = useState(false), [held, setHeld] = useState(false), [ready, setReady] = useState(false);
   const [deadlineReached, setDeadlineReached] = useState(false), [submitted, setSubmitted] = useState(false);
+  const [castStage, setCastStage] = useState(() => boatCastStage(challenge, now));
   const runtime = useRef({ reel: initialBoatReel(challenge), inputs: [] as BoatReelInput[], held: false, playing: false, last: 0, remainder: 0, ready: false, expired: false });
   const current = useRef({ now, observedAt: 0 });
   const submission = useRef(false);
@@ -42,7 +44,7 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
     data.reel = restored.reel; data.inputs = restored.inputs; data.held = false; data.playing = false;
     data.last = 0; data.remainder = 0; data.ready = true; data.expired = false;
     if (data.reel.status === "active") changeBoatReelInput(data.inputs, data.reel.tick, false);
-    let frame = 0, publishedTick = -1;
+    let frame = 0, publishedTick = -1, publishedStage = boatCastStage(challenge, current.current.now);
     const save = () => writeBoatReelCheckpoint(storage(), key, challenge, data.reel, data.inputs);
     const pause = () => {
       data.playing = false; data.held = false; data.last = 0; data.remainder = 0;
@@ -54,6 +56,8 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
     const visibility = () => { if (document.hidden) pause(); };
     const update = (time: number) => {
       const currentTime = current.current.now + Math.max(0, time - current.current.observedAt);
+      const nextStage = boatCastStage(challenge, currentTime);
+      if (nextStage !== publishedStage) { publishedStage = nextStage; setCastStage(nextStage); }
       if (!data.expired && currentTime >= Date.parse(challenge.expiresAt)) {
         data.expired = true; setDeadlineReached(true); pause();
       }
@@ -89,7 +93,9 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
   };
   const togglePlay = () => {
     const data = runtime.current;
+    const currentTime = current.current.now + Math.max(0, performance.now() - current.current.observedAt);
     if (!ready || data.expired || expired || data.reel.status !== "active") return;
+    if (!data.playing && (disabled || uncertain || boatCastStage(challenge, currentTime) !== "bite")) return;
     if (focusFrame.current != null) cancelAnimationFrame(focusFrame.current);
     focusFrame.current = null;
     data.playing = !data.playing; data.last = 0; data.remainder = 0; data.held = false;
@@ -114,8 +120,8 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
       submission.current = false; throw error;
     }
   };
-  const status = waitingForConfirmation ? "Проверяем результат" : expired ? "Рыба ушла" : reel.status === "caught" ? "Рыба у борта!" : reel.status === "escaped" ? "Рыба сорвалась" : playing ? "Удерживайте рыбу в зелёной зоне" : reel.tick ? "Вываживание на паузе" : "Есть поклёвка!";
+  const status = waitingForConfirmation ? "Проверяем результат" : expired ? "Рыба ушла" : reel.status === "caught" ? "Рыба у борта!" : reel.status === "escaped" ? "Рыба сорвалась" : playing ? "Удерживайте рыбу в зелёной зоне" : reel.tick ? "Вываживание на паузе" : castStage === "casting" ? "Забрасываем удочку…" : castStage === "soaking" ? "Ждём поклёвку…" : "Есть поклёвка!";
   const seconds = expired ? 0 : Math.max(0, Math.ceil((Date.parse(challenge.expiresAt) - now) / 1000));
-  return { challenge, reel, playing, held, ready, expired, waitingForConfirmation, seconds, status,
+  return { challenge, reel, playing, held, ready, expired, waitingForConfirmation, seconds, status, castStage,
     holdButton, finishButton, changeHeld, togglePlay, submit };
 }

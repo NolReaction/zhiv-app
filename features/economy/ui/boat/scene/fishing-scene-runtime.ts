@@ -13,14 +13,14 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
   const ctx = context;
   let frame = initial, disposed = false, inView = true, contextLost = false;
   let raf = 0, lastClock: number | null = null, lastPaint: number | null = null;
-  let elapsed = 0, castElapsed = initial.castKey && initial.stage !== "paused" ? 0 : 2, stageElapsed = 0, dirty = true;
+  let elapsed = 0, castElapsed = initial.castKey && initial.stage === "casting" ? 0 : 2, stageElapsed = 0, dirty = true;
   let viewport: FishingSceneViewport = { width: 0, height: 0, dpr: 1 };
   const images = new Map<string, HTMLImageElement>(), pending = new Map<string, HTMLImageElement>();
   const failed = new Set<string>(), seenCasts = new Set(initial.castKey ? [initial.castKey] : []);
   const media = window.matchMedia?.("(prefers-reduced-motion: reduce)");
   const present = () => !disposed && !document.hidden && inView && !contextLost && viewport.width > 0 && viewport.height > 0;
-  const animated = () => present() && !media?.matches && (["waiting", "bite", "reeling"].includes(frame.stage)
-    || (["caught", "escaped"].includes(frame.stage) && stageElapsed < terminalSeconds));
+  const animated = () => present() && !media?.matches && (["waiting", "casting", "soaking", "bite", "reeling"].includes(frame.stage)
+    || (["caught", "landed", "escaped"].includes(frame.stage) && stageElapsed < terminalSeconds));
   function stop() { if (raf) cancelAnimationFrame(raf); raf = 0; lastClock = null; lastPaint = null; }
   function paint() {
     if (!present()) return;
@@ -104,7 +104,8 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
         if (seenCasts.size > 64) seenCasts.delete(seenCasts.values().next().value!);
       }
       // Restored or explicitly paused attempts already have their line in the water.
-      if (next.stage === "paused") castElapsed = Math.max(castElapsed, 2);
+      if (next.stage === "soaking") castElapsed = Math.max(castElapsed, 1.2);
+      if (next.stage === "paused" || next.stage === "bite") castElapsed = Math.max(castElapsed, 2);
       frame = next; loadParts(); redraw();
     },
     dispose() {

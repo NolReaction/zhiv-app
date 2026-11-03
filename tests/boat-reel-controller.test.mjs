@@ -213,3 +213,20 @@ test("unmount before the first frame and rapid start/pause/start both cancel eve
   assert.equal(frames.size, 2, "Only the active simulation frame and latest focus request may remain");
   hooks.unmount(); assert.equal(frames.size, 0);
 });
+
+
+test("new casts wait through flight and soaking without accepting input; saved waits follow the same server bite time", () => {
+  const attempt = { ...challenge(), biteAt: new Date(at + 4000).toISOString(), fishRarity: "rare" };
+  const f = fixture({ challenge: attempt }); f.frame(0);
+  assert.equal(f.value.castStage, "casting"); f.value.togglePlay(); f.frame(1199);
+  assert.equal(f.value.playing, false); assert.equal(f.value.reel.tick, 0);
+  f.frame(1); assert.equal(f.value.castStage, "soaking");
+  f.value.togglePlay(); f.frame(2799); assert.equal(f.value.playing, false);
+  assert.equal(f.value.reel.tick, 0); assert.equal(f.value.castStage, "soaking");
+  f.frame(1); assert.equal(f.value.castStage, "bite"); assert.equal(f.value.playing, false);
+  f.value.togglePlay(); f.frame(0); f.frame(50); assert.equal(f.value.reel.tick, 1);
+  hooks.unmount();
+  const reopened = fixture({ challenge: attempt, now: at + 4200 }); reopened.frame(0);
+  assert.equal(reopened.value.castStage, "bite"); assert.equal(reopened.value.playing, false);
+  assert.equal(reopened.value.reel.tick, 1);
+});

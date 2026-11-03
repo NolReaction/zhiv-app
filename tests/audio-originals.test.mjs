@@ -167,7 +167,7 @@ test("ambient bank leaves mobile buffer headroom and music has a Safari fallback
   assert.ok(loops.reduce((sum, item) => sum + item.decodedBytes, 0) < 24 * 1024 * 1024);
   for (const item of manifest.assets.filter(asset => asset.kind === "music")) {
     assert.equal(item.channels, 2);
-    assert.ok(item.durationSeconds >= (item.id === "music.fishing.01" ? 80 : 90) && item.durationSeconds <= 150);
+    assert.ok(item.durationSeconds >= (item.id === "music.fishing.01" ? 64 : 90) && item.durationSeconds <= 150);
     assert.match(item.files[0].src, /\.opus$/);
     assert.match(item.files[1].src, /\.m4a$/);
   }

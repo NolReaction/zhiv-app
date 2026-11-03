@@ -75,7 +75,7 @@ test("live and expired challenges preserve their identity and do not expose a pr
   const voyage = value.boat.voyage, arrival = Date.parse(voyage.arrivesAt); run(value, "begin_boat_cast", voyage.id, arrival);
   const before = structuredClone(value), live = render(value, arrival);
   assert.match(live, new RegExp(`data-boat-reel="${value.boat.voyage.challenge.id}"`));
-  assert.match(live, /Начать вываживание/); assert.doesNotMatch(live, /Забросить удочку|weightGrams|challengeSeed|slots/);
+  assert.match(live, /Забрасываем удочку/); assert.doesNotMatch(live, /Подсечь|Начать вываживание/); assert.doesNotMatch(live, /Забросить удочку|weightGrams|challengeSeed|slots/);
   const expired = render(value, arrival + 120000);
   assert.match(expired, /data-reel-status="expired"/); assert.match(expired, /Забросить удочку/);
   assert.deepEqual(value, before);

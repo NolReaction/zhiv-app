@@ -29,6 +29,7 @@ ASSET_REVISIONS = {
     "campfire.01": "calm-v4",
     "cooking.simmer.01": "bubbles-v2",
     "ship.arrival.01": "presence-v2",
+    "music.fishing.01": "riverside-v2",
 }
 
 

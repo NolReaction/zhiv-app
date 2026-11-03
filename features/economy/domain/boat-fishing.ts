@@ -38,7 +38,9 @@ export function publicBoatState(value?: BoatState | null): BoatState {
       catches: voyage.catches.map(caught => ({ castIndex: caught.castIndex, fishId: caught.fishId, weightGrams: caught.weightGrams, caughtAt: caught.caughtAt })),
       ...(voyage.challenge ? { challenge: { id: voyage.challenge.id, rulesVersion: voyage.challenge.rulesVersion, seed: voyage.challenge.seed,
         tickMs: voyage.challenge.tickMs, maxTicks: voyage.challenge.maxTicks, zoneWidth: voyage.challenge.zoneWidth, difficulty: voyage.challenge.difficulty,
-        startedAt: voyage.challenge.startedAt, expiresAt: voyage.challenge.expiresAt } } : {}) } } : {}) };
+        startedAt: voyage.challenge.startedAt, expiresAt: voyage.challenge.expiresAt,
+        ...(voyage.challenge.biteAt ? { biteAt: voyage.challenge.biteAt } : {}),
+        ...(voyage.challenge.fishRarity ? { fishRarity: voyage.challenge.fishRarity } : {}) } } : {}) } } : {}) };
 }
 type BoatSource = Pick<EconomyState, "buildings" | "jobs" | "inventory" | "wallet" | "fishing"> & { boat?: BoatState };
 export function boatUpgradeReason(state: BoatSource, upgradeId: BoatUpgradeId | string, now = Date.now()): string | null {

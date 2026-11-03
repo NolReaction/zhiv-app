@@ -12,8 +12,10 @@ export const boatReelInputSchema = z.object({ tick: count.max(599), held: z.bool
 export const boatReelCommandSchema = z.object({ challengeId: uuid, inputs: z.array(boatReelInputSchema).max(600), endTick: count.min(1).max(600) }).strict()
   .refine(value => value.inputs.every((input, index) => input.tick < value.endTick && (!index || input.tick > value.inputs[index - 1].tick)), "Inputs must be ordered within the attempt");
 export const boatChallengeSchema = z.object({ id: uuid, rulesVersion: z.literal(1), seed: count.max(0xffff_ffff), tickMs: z.literal(50),
-  maxTicks: z.literal(600), zoneWidth: z.union([z.literal(3200), z.literal(4000)]), difficulty: count.min(1).max(5), startedAt: instant, expiresAt: instant })
-  .refine(value => Date.parse(value.expiresAt) > Date.parse(value.startedAt), "Attempt expiry must follow its start");
+  maxTicks: z.literal(600), zoneWidth: z.union([z.literal(3200), z.literal(4000)]), difficulty: count.min(1).max(5), startedAt: instant, expiresAt: instant,
+  biteAt: instant.optional(), fishRarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).optional() })
+  .refine(value => Date.parse(value.expiresAt) > Date.parse(value.startedAt)
+    && (!value.biteAt || Date.parse(value.biteAt) >= Date.parse(value.startedAt) && Date.parse(value.biteAt) < Date.parse(value.expiresAt)), "Attempt bite must be within its lifetime");
 const boatCatchSchema = z.object({ castIndex: count.max(9), fishId: id, weightGrams: count.min(1).max(1_000_000), caughtAt: instant });
 const boatWorkSchema = z.object({ id: uuid, upgradeId: z.enum(boatUpgradeIds), startedAt: instant, finishesAt: instant, cost })
   .refine(value => Date.parse(value.finishesAt) > Date.parse(value.startedAt), "Boat work must take time");

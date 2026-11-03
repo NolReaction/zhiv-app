@@ -135,7 +135,7 @@ test("a successful control trace keeps the preselected grams and cannot credit i
   assert.equal(view.voyage.slots, undefined); assert.equal(view.voyage.challenge.weightGrams, undefined);
   const trace = play(challenge);
   assert.equal(trace.status, "caught", "the bounded reference controller can land the authored easy fixture");
-  const finished = arrives + trace.command.endTick * challenge.tickMs;
+  const finished = Date.parse(challenge.biteAt) + trace.command.endTick * challenge.tickMs;
   run("submit_boat_cast", id, finished, { reel: trace.command });
   assert.equal(current.boat.voyage.catches[0].weightGrams, chosen.weightGrams);
   assert.equal(current.boat.voyage.catches[0].fishId, chosen.fishId);

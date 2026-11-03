@@ -18,10 +18,10 @@ export function BoatReelGame(props: Props) {
 
 function BoatReelSession({ onVisualState, suspended = false, ...props }: Props) {
   const { reel, challenge, playing, held, ready, expired, waitingForConfirmation, togglePlay, changeHeld, submit,
-    holdButton, finishButton, status, seconds } = useBoatReelController(props);
+    holdButton, finishButton, status, seconds, castStage } = useBoatReelController(props);
   useEffect(() => { if (suspended && playing) togglePlay(); }, [suspended, playing, togglePlay]);
   const stage: FishingSceneFrame["stage"] = waitingForConfirmation ? "pending" : expired ? "expired"
-    : reel.status === "caught" ? "caught" : reel.status === "escaped" ? "escaped" : playing ? "reeling" : reel.tick ? "paused" : "bite";
+    : reel.status === "caught" ? "caught" : reel.status === "escaped" ? "escaped" : playing ? "reeling" : reel.tick ? "paused" : castStage;
   const visual = useMemo<BoatReelVisualState>(() => ({ challengeId: challenge.id, stage: waitingForConfirmation && reel.status !== "active" ? reel.status : stage, held,
     reel: { bar: reel.bar, fish: reel.fish, progress: reel.progress, zoneWidth: challenge.zoneWidth } }),
   [challenge.id, challenge.zoneWidth, stage, held, reel.status, waitingForConfirmation, reel.bar, reel.fish, reel.progress]);
@@ -31,11 +31,12 @@ function BoatReelSession({ onVisualState, suspended = false, ...props }: Props) 
   return <section className={styles.attempt} data-boat-reel={challenge.id} data-reel-status={stage}
     data-reel-tick={reel.tick} data-reel-progress={reel.progress} aria-label="Вываживание рыбы">
     <div className={styles.attemptHeading}><strong role="status">{status}</strong><span>{seconds} с</span></div>
-    {!expired && <div className={styles.progressRow} data-feedback={feedback.mood}><span>К лодке</span><progress value={reel.progress} max={10000} aria-label="Рыба на крючке" /><span>{Math.floor(reel.progress / 100)}%</span></div>}
+    {!expired && castStage === "bite" && <div className={styles.progressRow} data-feedback={feedback.mood}><span>К лодке</span><progress value={reel.progress} max={10000} aria-label="Рыба на крючке" /><span>{Math.floor(reel.progress / 100)}%</span></div>}
     {playing && !expired && <div className={styles.feedback} data-feedback={feedback.mood}>
       <FeedbackIcon size={19} aria-hidden="true" /><strong>{feedback.title}</strong><span>{feedback.instruction}</span>
     </div>}
     {waitingForConfirmation ? <p role="status">Проверяем улов. Рыба появится на борту после подтверждения.</p>
+      : !expired && reel.status === "active" && castStage !== "bite" ? <p className={styles.waitingBite} role="status">{castStage === "casting" ? "Поплавок летит к воде." : "Снасть в воде. Следите за поплавком — подсечка появится при поклёвке."}</p>
       : !expired && reel.status === "active" ? <>
         <div className={styles.reelControls}>{playing ? <>
           <button ref={holdButton} type="button" className={`${styles.primary} ${styles.hold}`} data-fishing-action="hold" aria-pressed={held} disabled={!ready || suspended}
@@ -48,7 +49,7 @@ function BoatReelSession({ onVisualState, suspended = false, ...props }: Props) 
             onKeyUp={event => { if ([" ", "ArrowUp", "Enter"].includes(event.key)) { event.preventDefault(); event.stopPropagation(); changeHeld(false); } }}
             onBlur={() => changeHeld(false)}><ArrowUp size={18} />{held ? "Тянем снасть" : "Удерживать"}</button>
           <button type="button" className={styles.secondary} data-fishing-action="pause" onClick={togglePlay} aria-label="Пауза"><Pause size={18} /></button>
-        </> : <button type="button" className={`${styles.primary} ${styles.hold}`} data-fishing-action="play" disabled={!ready || suspended} onClick={togglePlay}><Play size={17} />{reel.tick ? "Продолжить" : "Начать вываживание"}</button>}</div>
+        </> : <button type="button" className={`${styles.primary} ${styles.hold}`} data-fishing-action="play" disabled={!ready || suspended} onClick={togglePlay}><Play size={17} />{reel.tick ? "Продолжить" : challenge.biteAt ? "Подсечь" : "Начать вываживание"}</button>}</div>
         {!playing && <p className={styles.hint}>Зажмите мышь, экран или пробел, чтобы поднять снасть. Отпустите, чтобы опустить.</p>}
       </> : !expired ? <button ref={finishButton} type="button" className={styles.primary} data-fishing-action="submit" disabled={props.disabled} onClick={submit}><Send size={16} />{reel.status === "caught" ? "Поднять на борт" : "Продолжить рыбалку"}</button>
         : <p>Время этого заброса истекло. Оставшиеся забросы сохранены.</p>}

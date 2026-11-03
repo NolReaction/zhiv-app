@@ -32,7 +32,7 @@ test("entering a saved voyage and ordinary state updates preserve one music deck
 
 test("a new accepted cast has one launch and one delayed water contact; pause cancels contact instead of queuing it", () => {
   const f = fixture(); f.controller.update(base);
-  const cast = { ...base, castKey: "cast-1", stage: "bite" };
+  const cast = { ...base, castKey: "cast-1", stage: "casting" };
   f.controller.update(cast); f.controller.update(cast);
   assert.deepEqual(f.events.map(e => e.cueId), ["fishing.cast"]);
   f.advance(1199); assert.equal(f.events.length, 1); f.advance(1);
@@ -79,15 +79,38 @@ test("hidden updates consume transitions without replay, and closing releases on
   assert.equal(f.frame, forest); f.controller.update(base); assert.equal(f.frame, forest);
 });
 
-test("the river score is a distinct original 80-second stereo waltz with two browser codecs and gentle cue fades", () => {
+test("the new river score is an original acoustic groove with versioned browser codecs and gentle fades", () => {
   const manifest = JSON.parse(readFileSync(`${root}/art/audio/originals-v1/manifest.json`));
   const catalog = JSON.parse(readFileSync(`${root}/features/audio/catalog/audio-catalog.json`));
   const track = manifest.assets.find(item => item.id === "music.fishing.01");
-  assert.equal(track.durationSeconds, 80); assert.equal(track.channels, 2);
-  assert.equal(track.composition.meter, "3/4"); assert.equal(track.composition.bars, 24);
+  assert.ok(Math.abs(track.durationSeconds - 24 * 4 * 60 / 76) < .001); assert.equal(track.channels, 2);
+  assert.equal(track.composition.meter, "4/4"); assert.equal(track.composition.bars, 24);
+  assert.equal(track.composition.bpm, 76); assert.equal(track.composition.revision, "riverside-v2");
+  assert.deepEqual(track.composition.instruments, ["nylon-string plucks", "marimba", "rounded bass", "brushes", "shaker"]);
+  assert.ok(track.files.every(file => file.src.includes("riverside-v2")));
   assert.ok(track.measurements.peakDb <= -3 && track.measurements.rmsDb <= -20);
   assert.ok(track.measurements.seamDelta < Math.max(.003, track.measurements.maxAdjacentDelta * 2));
   assert.equal(track.files.length, 2); assert.ok(track.files.reduce((sum, file) => sum + file.bytes, 0) < 3 * 1024 ** 2);
   const cue = catalog.cues.find(item => item.id === "music.fishing"); assert.equal(cue.bus, "music"); assert.ok(cue.fadeMs >= 1500);
   for (const cue of catalog.cues.filter(item => item.id.startsWith("fishing."))) assert.equal(cue.bus, "world");
+});
+
+
+test("the bite is heard after soaking, not when reeling starts, and hidden transitions stay consumed", () => {
+  const f = fixture(); f.controller.update(base);
+  const cast = { ...base, castKey: "cast-1", stage: "casting" };
+  f.controller.update(cast); f.advance(1200);
+  f.controller.update({ ...cast, stage: "soaking" });
+  assert.equal(f.events.filter(event => event.cueId === "fishing.bite").length, 0);
+  f.controller.update({ ...cast, stage: "bite" }); f.controller.update({ ...cast, stage: "bite" });
+  assert.equal(f.events.filter(event => event.cueId === "fishing.bite").length, 1);
+  f.controller.update({ ...cast, stage: "reeling" });
+  assert.equal(f.events.filter(event => event.cueId === "fishing.bite").length, 1);
+  f.controller.update({ ...cast, castKey: "cast-2", stage: "casting" });
+  f.controller.update({ ...cast, castKey: "cast-2", stage: "soaking", suspended: true });
+  f.controller.update({ ...cast, castKey: "cast-2", stage: "bite", suspended: true });
+  f.controller.update({ ...cast, castKey: "cast-2", stage: "bite" }); f.advance(5000);
+  assert.equal(f.events.filter(event => event.cueId === "fishing.bite").length, 1);
+  assert.equal(f.events.filter(event => event.cueId === "fishing.cast").length, 2);
+  assert.equal(f.pending.size, 0); f.controller.dispose();
 });

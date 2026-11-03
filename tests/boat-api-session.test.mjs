@@ -53,7 +53,7 @@ test("API keeps all future fish private and does not regenerate a voyage on read
 test("a replayed reel command is idempotent and changed controls cannot reuse its receipt", () => {
   const p = player(), voyage = send(p, "depart_boat", "river_reach").state.boat.voyage;
   const arrived = Date.parse(voyage.arrivesAt), challenge = send(p, "begin_boat_cast", voyage.id, arrived).state.boat.voyage.challenge;
-  const reel = trace(challenge), finishedAt = arrived + reel.endTick * 50;
+  const reel = trace(challenge), finishedAt = Date.parse(challenge.biteAt) + reel.endTick * 50;
   const command = request(p, "submit_boat_cast", voyage.id, finishedAt, { reel });
   const first = api.commandDevEconomy(p.token, command, finishedAt);
   const replayed = api.commandDevEconomy(p.token, command, finishedAt + 1000);
@@ -77,7 +77,7 @@ test("delivered species and records survive repeated claim without duplicating i
   const p = player(), voyage = send(p, "depart_boat", "river_reach").state.boat.voyage;
   row(p).state.boat.voyage.slots[0].challengeSeed = 37;
   const arrived = Date.parse(voyage.arrivesAt), challenge = send(p, "begin_boat_cast", voyage.id, arrived).state.boat.voyage.challenge;
-  const reel = trace(challenge, true), done = arrived + reel.endTick * 50;
+  const reel = trace(challenge, true), done = Date.parse(challenge.biteAt) + reel.endTick * 50;
   const caught = send(p, "submit_boat_cast", voyage.id, done, { reel }).state.boat.voyage.catches[0];
   assert(caught);
   assert.deepEqual(read(p, done).inventory, {});

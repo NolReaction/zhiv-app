@@ -79,17 +79,21 @@ function transition(state: EconomyState, command: EconomyCommand, now: number, i
     if (voyage.castsUsed >= voyage.maxCasts || voyage.catches.length >= voyage.maxCatches) return fail("ECONOMY_BOAT_CAST_LIMIT", "Забросы закончились. Пора возвращаться");
     const slot = voyage.slots[voyage.castsUsed];
     if (!slot) throw new Error("Missing saved boat slot");
+    const biteAt = now + (4 + slot.challengeSeed % 4) * 1000;
+    const expiresAt = Math.min(now + config.castExpirySeconds * 1000, Date.parse(voyage.fishingUntil));
+    if (biteAt + 50 >= expiresAt) return fail("ECONOMY_BOAT_CAST_WAIT", "Для нового заброса не хватает времени. Пора возвращаться");
+    const fishRarity = economyCatalog.fishing!.fish.find(fish => fish.itemId === slot.fishId)!.rarity;
     voyage.castsUsed++;
     voyage.challenge = { id: id(), rulesVersion: 1, seed: slot.challengeSeed, tickMs: 50, maxTicks: 600,
-      zoneWidth: slot.zoneWidth, difficulty: slot.difficulty, startedAt: iso(now), expiresAt: iso(Math.min(now + config.castExpirySeconds * 1000, Date.parse(voyage.fishingUntil))) };
+      zoneWidth: slot.zoneWidth, difficulty: slot.difficulty, startedAt: iso(now), expiresAt: iso(expiresAt), biteAt: iso(biteAt), fishRarity };
     state.boat = boat;
-    return "Есть поклёвка!";
+    return "Удочка заброшена. Ждём поклёвку";
   }
   if (command.action === "submit_boat_cast") {
     const challenge = voyage.challenge, reel = command.reel;
     if (!challenge || !reel || challenge.id !== reel.challengeId) return fail("ECONOMY_BOAT_CAST_GONE", "Эта поклёвка уже закончилась");
     if (phase !== "fishing" || now >= Date.parse(challenge.expiresAt)) return fail("ECONOMY_BOAT_CAST_EXPIRED", "Рыба ушла. Можно сделать следующий заброс");
-    if (now - Date.parse(challenge.startedAt) < reel.endTick * challenge.tickMs) return fail("ECONOMY_BOAT_TRACE", "Попытка ещё не закончилась");
+    if (now - Date.parse(challenge.biteAt ?? challenge.startedAt) < reel.endTick * challenge.tickMs) return fail("ECONOMY_BOAT_TRACE", "Дождитесь поклёвки и завершите вываживание");
     let result;
     try { result = replayBoatReel(challenge, reel.inputs, reel.endTick); }
     catch { return fail("ECONOMY_BOAT_TRACE", "Не удалось проверить управление удочкой"); }

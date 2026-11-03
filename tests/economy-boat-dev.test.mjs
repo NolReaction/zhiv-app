@@ -181,7 +181,7 @@ test("DEV travel skips retain private draws and catches, leave full fishing time
   assert.deepEqual(api.commandDevEconomyCheat(p.token, outbound, now + 1000).state.boat, arrived.state.boat);
   assert.throws(() => cheat(p, "finish_boat_travel", initial.id), { code: "ECONOMY_BOAT_PHASE" });
   const challenge = normal(p, "begin_boat_cast", initial.id).state.boat.voyage.challenge;
-  const reel = caughtTrace(challenge), at = now + reel.endTick * 50;
+  const reel = caughtTrace(challenge), at = Date.parse(challenge.biteAt) + reel.endTick * 50;
   const caught = normal(p, "submit_boat_cast", initial.id, at, { reel }).state.boat.voyage.catches[0];
   assert.ok(caught);
   const returning = normal(p, "return_boat", initial.id, at).state;

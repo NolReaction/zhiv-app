@@ -33,7 +33,7 @@
     },
     {
       "id": "music.fishing.01",
-      "src": "/audio/originals-v1/music/music.fishing.01.opus",
+      "src": "/audio/originals-v1/music/music.fishing.01.riverside-v2.opus",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -41,10 +41,10 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-11-03",
-        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "changes": "Riverside-v2: original G-major 4/4 score at 76 BPM; nylon-string plucks, marimba, rounded bass, brushes and shaker. Deterministic synthesis, peak-safe mastering, versioned Opus/AAC files.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       },
-      "fallbackSrc": "/audio/originals-v1/music/music.fishing.01.m4a"
+      "fallbackSrc": "/audio/originals-v1/music/music.fishing.01.riverside-v2.m4a"
     },
     {
       "id": "forest.day.01",

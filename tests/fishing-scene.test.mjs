@@ -15,6 +15,8 @@ const vite = await createServer({ root, configFile: false, appType: "custom", op
 });
 after(() => vite.close());
 const { fishingSceneGeometry, paintFishingScene } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-painter.ts");
+const { fishingBoatActorRig } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-actor.ts");
+const { fishingSceneFishAppearance } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-fish.ts");
 const { mountFishingScene } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-runtime.ts");
 const { FishingSceneCanvas } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-canvas.tsx");
 const { BOAT_ART_PARTS } = await vite.ssrLoadModule("/features/world/objects/fishing-boat/fishing-boat-artwork.ts");
@@ -89,8 +91,8 @@ test("public reel controls move the surface float, fish shadow, pull and rod ten
   const stopped = fishingSceneGeometry(390, 844, value, { ...visual, still: true, elapsed: 1000 });
   assert.deepEqual([stopped.boat, stopped.tip, stopped.float, stopped.hook, stopped.fish, stopped.zone],
     [base.boat, base.tip, base.float, base.hook, base.fish, base.zone], "reduced motion retains a stable pose while controls remain public inputs");
-  const airborne = fishingSceneGeometry(390, 844, value, { ...visual, still: false, castElapsed: .6 });
-  const landed = fishingSceneGeometry(390, 844, value, { ...visual, still: false, castElapsed: 2 });
+  const airborne = fishingSceneGeometry(390, 844, { ...value, stage: "casting" }, { ...visual, still: false, castElapsed: .6 });
+  const landed = fishingSceneGeometry(390, 844, { ...value, stage: "soaking" }, { ...visual, still: false, castElapsed: 2 });
   assert.ok(airborne.casting); assert.ok(airborne.float.y < airborne.surface); assert.equal(landed.casting, false);
 });
 
@@ -157,5 +159,52 @@ test("a repeated cast key does not replay; pause, reduced motion and settled out
     const html = renderToStaticMarkup(createElement(FishingSceneCanvas, { frame: value, className: "fishingViewport" }));
     assert.match(html, /<canvas[^>]+class="fishingViewport"/); assert.match(html, /aria-hidden="true"/);
     assert.doesNotMatch(html, /<button|<img|<svg/);
+  } finally { runtime.dispose(); env.restore(); }
+});
+
+
+test("two compact arms remain below the face and share exact grip anchors through cast, wait and lift", () => {
+  const waiting = fishingBoatActorRig("soaking", 2, false, 3, false);
+  const pulling = fishingBoatActorRig("reeling", 2, true, 3, false);
+  assert.ok(waiting.tip.y > waiting.grip.y, "the cast rod points low over the surface while waiting");
+  assert.ok(pulling.tip.y < pulling.grip.y, "a real pull raises the same rod around its grip");
+  for (const stage of ["waiting", "casting", "soaking", "bite", "reeling", "caught", "landed"]) for (const elapsed of [.1, .4, .8, 1.2, 2]) {
+    const rig = fishingBoatActorRig(stage, elapsed, true, 3, false);
+    for (const arm of [rig.nearArm, rig.farArm]) {
+      assert.ok(arm.reachable, "hands never stretch a short arm beyond its two bones");
+      assert.ok(arm.hand.y > 430 && arm.elbow.y > 430, "visible forearms and palms stay below the face");
+      assert.ok(Math.hypot(arm.hand.x - arm.shoulder.x, arm.hand.y - arm.shoulder.y) < rig.actor.size * .33);
+    }
+    assert.deepEqual(rig.grip, rig.nearArm.hand);
+    assert.deepEqual(rig.grip, waiting.grip, "casting, winding and lifting keep the hand on the handle");
+  }
+});
+
+test("active fish reveal only the public class, while a confirmed landing uses its actual catalog species", () => {
+  const classes = ["common", "uncommon", "rare", "epic", "legendary"];
+  const appearances = classes.map(fishRarity => fishingSceneFishAppearance({ fishRarity, stage: "reeling", fishId: "fish_shark" }));
+  assert.equal(new Set(appearances.map(item => item.colors[0])).size, classes.length);
+  for (let index = 0; index < classes.length; index++) {
+    assert.equal(appearances[index].species, "fish"); assert.equal(appearances[index].revealed, false);
+    if (index) assert.ok(appearances[index].size > appearances[index - 1].size);
+  }
+  assert.equal(fishingSceneFishAppearance({ stage: "caught", fishId: "fish_shark" }).revealed, false);
+  const landed = fishingSceneFishAppearance({ stage: "landed", fishId: "fish_mooncarp", fishRarity: "rare" });
+  assert.equal(landed.species, "fish_mooncarp"); assert.equal(landed.revealed, true);
+});
+
+test("a restored waiting cast stays landed and server bite cannot restart its flight", () => {
+  const env = environment(), value = { ...frame(), stage: "soaking" }, runtime = mountFishingScene(env.canvas, value);
+  try {
+    env.step(34); assert.ok(env.paints.at(-1).visual.castElapsed >= 1.2);
+    runtime.update({ ...value, stage: "bite" }); env.step(34);
+    assert.ok(env.paints.at(-1).visual.castElapsed >= 1.2);
+    runtime.update({ ...value, stage: "casting", castKey: "new-flight" }); env.step(34);
+    assert.ok(env.paints.at(-1).visual.castElapsed < .1);
+    runtime.update({ ...value, castKey: "new-flight" }); env.step(34);
+    assert.ok(env.paints.at(-1).visual.castElapsed >= 1.2, "authoritative soaking lands even after a delayed response");
+    runtime.update({ ...value, stage: "landed", fishId: "fish_mooncarp" });
+    for (let i = 0; i < 25; i++) env.step(100);
+    assert.equal(env.frames.size, 0, "confirmed landing is a finite animation");
   } finally { runtime.dispose(); env.restore(); }
 });

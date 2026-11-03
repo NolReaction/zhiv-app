@@ -7,6 +7,9 @@ import { boatConfig, boatState } from "@/features/economy/domain/boat-fishing";
 import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { worldCountdown } from "@/features/economy/ui/shared/world-stations";
 import { BoatDevControls } from "@/features/economy/dev/boat-dev-controls";
+import { boatCastStage } from "./boat-cast-timing";
+import { boatFishWeightLabel } from "./boat-panels";
+import { itemName } from "@/features/economy/ui/shared/world-economy-parts";
 import { BoatCatchList } from "./boat-panels";
 import { BoatReelGame, type BoatReelVisualState } from "./boat-reel-game";
 import { FishingSceneCanvas } from "./scene/fishing-scene-canvas";
@@ -27,11 +30,15 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
   const publishVisual = useCallback((next: BoatReelVisualState) => setVisual(next), []);
   const remaining = Math.max(0, voyage.maxCasts - voyage.castsUsed);
   const expired = challenge && economy.now >= Date.parse(challenge.expiresAt);
+  const lastCatch = voyage.catches.at(-1);
+  const landed = !challenge && lastCatch && economy.now >= Date.parse(lastCatch.caughtAt) && economy.now - Date.parse(lastCatch.caughtAt) < 3500 ? lastCatch : undefined;
+  const fishRarity = challenge?.fishRarity ?? (landed ? state.catalog.fishing?.fish.find(fish => fish.itemId === landed.fishId)?.rarity : undefined);
   const activeVisual = visual?.challengeId === challenge?.id ? visual : null;
-  const frame = useMemo<FishingSceneFrame>(() => ({ stage: suspended ? "paused" : challenge ? activeVisual?.stage ?? (expired ? "expired" : "bite") : "waiting",
-    held: activeVisual?.held ?? false, castKey: challenge?.id, reel: activeVisual?.reel,
+  const hasBite = challenge && !["casting", "soaking"].includes(activeVisual?.stage ?? boatCastStage(challenge, economy.now));
+  const frame = useMemo<FishingSceneFrame>(() => ({ stage: suspended ? "paused" : challenge ? activeVisual?.stage ?? (expired ? "expired" : boatCastStage(challenge, economy.now)) : landed ? "landed" : "waiting",
+    fishRarity, fishId: landed?.fishId, held: activeVisual?.held ?? false, castKey: challenge?.id, reel: hasBite ? activeVisual?.reel : undefined,
     boat: { repaired: true, upgrades: boat.upgrades }, rodId: voyage.loadout.rodId, appearance }),
-  [suspended, challenge, activeVisual, expired, boat.upgrades, voyage.loadout.rodId, appearance]);
+  [suspended, challenge, economy.now, landed, fishRarity, hasBite, activeVisual, expired, boat.upgrades, voyage.loadout.rodId, appearance]);
   useFishingAudio({ ownerPublicId: state.ownerPublicId, voyageId: voyage.id, stage: frame.stage, castKey: frame.castKey,
     held: frame.held, progress: frame.reel?.progress ?? 0,
     inZone: Boolean(frame.reel && Math.abs(frame.reel.bar - frame.reel.fish) <= frame.reel.zoneWidth / 2),
@@ -52,7 +59,7 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
       <div className={styles.controls}>
         {challenge ? <BoatReelGame owner={state.ownerPublicId} voyageId={voyage.id} challenge={challenge} now={economy.now} disabled={disabled || suspended}
           uncertain={economy.uncertain} suspended={suspended || showCatch || showDev || confirmReturn} onVisualState={publishVisual} onSubmit={reel => send("submit_boat_cast", voyage.id, reel)} />
-          : <div className={styles.waiting}><span className={styles.eyebrow}><Sailboat size={15} />Мохлик на речном плёсе</span><h3>{remaining ? "Пора забросить удочку" : "Все забросы использованы"}</h3><p>{remaining ? "Забросьте удочку. Следите за поплавком и удерживайте рыбу в зоне снасти." : "Улов остаётся на борту. Можно возвращаться к причалу."}</p></div>}
+          : <div className={styles.waiting}><span className={styles.eyebrow}><Sailboat size={15} />Мохлик на речном плёсе</span><h3>{landed ? `${itemName(state, landed.fishId)} на борту!` : remaining ? "Пора забросить удочку" : "Все забросы использованы"}</h3><p>{landed ? `${boatFishWeightLabel(landed.weightGrams)} · Улов подтверждён.` : remaining ? "Забросьте удочку. Следите за поплавком и удерживайте рыбу в зоне снасти." : "Улов остаётся на борту. Можно возвращаться к причалу."}</p></div>}
         {(!challenge || expired) && remaining > 0 && <button type="button" className={styles.primary} data-fishing-action="cast" disabled={disabled || suspended} onClick={() => { if (!disabled) send("begin_boat_cast", voyage.id); }}><FishingRod size={18} />Забросить удочку</button>}
         <div className={styles.bottomRow}><button type="button" className={styles.back} onClick={onClose}><ArrowLeft size={15} />К поляне</button><button type="button" className={styles.back} data-fishing-action="return" disabled={disabled || suspended} onClick={() => { if (!disabled) setConfirmReturn(true); }}>Вернуться с уловом</button></div>
       </div>

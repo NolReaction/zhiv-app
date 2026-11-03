@@ -120,15 +120,19 @@ object EconomyBoats {
                 if (v.castsUsed >= v.maxCasts || v.catches.size >= v.maxCatches) economyFailure("ECONOMY_BOAT_CAST_LIMIT", "Забросы закончились. Пора возвращаться")
                 val slot = v.slots[v.castsUsed]
                 val expiry = minOf(now.plusSeconds(config.castExpirySeconds), Instant.parse(v.fishingUntil))
-                val challenge = EconomyBoatChallenge(id(), seed = slot.challengeSeed, zoneWidth = slot.zoneWidth, difficulty = slot.difficulty, startedAt = now.toString(), expiresAt = expiry.toString())
-                return state.copy(boat = b.copy(voyage = v.copy(castsUsed = v.castsUsed + 1, challenge = challenge))) to "Есть поклёвка!"
+                val biteAt = now.plusSeconds(4 + slot.challengeSeed % 4)
+                if (!biteAt.plusMillis(50).isBefore(expiry)) economyFailure("ECONOMY_BOAT_CAST_WAIT", "Для нового заброса не хватает времени. Пора возвращаться")
+                val rarity = checkNotNull(EconomyRules.catalog.fishing).fish.single { it.itemId == slot.fishId }.rarity
+                val challenge = EconomyBoatChallenge(id(), seed = slot.challengeSeed, zoneWidth = slot.zoneWidth, difficulty = slot.difficulty,
+                    startedAt = now.toString(), expiresAt = expiry.toString(), biteAt = biteAt.toString(), fishRarity = rarity)
+                return state.copy(boat = b.copy(voyage = v.copy(castsUsed = v.castsUsed + 1, challenge = challenge))) to "Удочка заброшена. Ждём поклёвку"
             }
             "submit_boat_cast" -> {
                 val reel = command.reel
                 val challenge = v.challenge?.takeIf { reel != null && it.id == reel.challengeId } ?: economyFailure("ECONOMY_BOAT_CAST_GONE", "Эта поклёвка уже закончилась")
                 if (phase != "fishing" || !now.isBefore(Instant.parse(challenge.expiresAt))) economyFailure("ECONOMY_BOAT_CAST_EXPIRED", "Рыба ушла. Можно сделать следующий заброс")
-                if (Duration.between(Instant.parse(challenge.startedAt), now).toMillis() < checkNotNull(reel).endTick * challenge.tickMs)
-                    economyFailure("ECONOMY_BOAT_TRACE", "Попытка ещё не закончилась")
+                if (Duration.between(Instant.parse(challenge.biteAt ?: challenge.startedAt), now).toMillis() < checkNotNull(reel).endTick * challenge.tickMs)
+                    economyFailure("ECONOMY_BOAT_TRACE", "Дождитесь поклёвки и завершите вываживание")
                 val result = try { EconomyBoatReel.replay(challenge, checkNotNull(reel)) }
                     catch (_: IllegalArgumentException) { economyFailure("ECONOMY_BOAT_TRACE", "Не удалось проверить управление удочкой") }
                     catch (_: AuthFailure) { economyFailure("ECONOMY_BOAT_TRACE", "Не удалось проверить управление удочкой") }
