@@ -61,7 +61,9 @@ test("outbound, fishing, automatic return and arrival have distinct controls wit
   const outward = render(value);
   assert.match(outward, /data-boat-phase="outbound"/); assert.doesNotMatch(outward, /Забросить удочку/);
   const arrived = render(value, arrival);
-  assert.match(arrived, /data-boat-phase="fishing"/); assert.match(arrived, /Забросить удочку/); assert.match(arrived, /Лодка отправится домой через/);
+  assert.match(arrived, /data-boat-phase="fishing"/); assert.match(arrived, /Забросить удочку/); assert.match(arrived, /До возвращения/);
+  assert.match(arrived, /data-boat-map-view="true"/); assert.match(arrived, /data-fishing-scene="waiting"/);
+  assert.doesNotMatch(arrived, /role="tab"|data-boat-module=/);
   const returning = render(value, Date.parse(voyage.fishingUntil));
   assert.match(returning, /data-boat-phase="returning"/); assert.doesNotMatch(returning, /Забросить удочку/);
   const ready = render(value, Date.parse(voyage.fishingUntil) + voyage.inboundSeconds * 1000);

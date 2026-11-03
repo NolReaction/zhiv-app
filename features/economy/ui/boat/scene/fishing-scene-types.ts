@@ -1,0 +1,27 @@
+/** Presentation-only input. Reel positions use the existing 0..10000 integer scale. */
+export type FishingSceneFrame = {
+  stage: "waiting" | "bite" | "reeling" | "paused" | "caught" | "escaped" | "expired" | "pending";
+  castKey?: string;
+  held: boolean;
+  reel?: { bar: number; fish: number; progress: number; zoneWidth: number };
+  boat: { repaired: boolean; upgrades: readonly string[] };
+  rodId?: string;
+  appearance?: { palette: string; head: string | null; neck: string | null };
+};
+
+export type FishingSceneViewport = { width: number; height: number; dpr: number };
+export type FishingSceneVisual = { elapsed: number; castElapsed: number; stageElapsed: number; still: boolean };
+export type FishingScenePoint = { x: number; y: number };
+
+/** Authored in the same 1000×650 assembly space as the replaceable boat parts. */
+export const FISHING_SCENE_RIG = {
+  reference: { width: 1600, height: 900 },
+  boat: { minimumWidth: 570, maximumWidth: 750, marginRatio: .035, surfaceRatio: .43 },
+  actor: { foot: { x: 435, y: 477 }, size: 216, pivot: { x: 24, y: 44 } },
+  hands: { grip: { x: 515, y: 382 }, reel: { x: 490, y: 408 },
+    nearShoulder: { x: 464, y: 396 }, nearElbow: { x: 489, y: 412 },
+    farShoulder: { x: 422, y: 402 }, farElbow: { x: 456, y: 425 } },
+  rod: { tip: { x: 850, y: 108 }, size: 285 },
+  cast: { flightSeconds: 1.2, splashSeconds: .65 },
+  layers: ["landscape", "underwater", "boat-back", "mochlik", "boat-front", "rod", "line", "float", "reeds"],
+} as const;

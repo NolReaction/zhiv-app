@@ -1,0 +1,165 @@
+import { pixelSprite } from "@/features/mochlik/pixel-sprite";
+import { mossPalette } from "@/features/mochlik/appearance-palette";
+import { drawFishingRod } from "@/features/world/activities/fishing/fishing-rod-painter";
+import { BOAT_ASSEMBLY, boatArtworkLayers, type BoatArtLayer } from "@/features/world/objects/fishing-boat/fishing-boat-artwork";
+import { paintFishingLandscape, paintFishingReeds, paintFishingRipples } from "./fishing-scene-background";
+import { FISHING_SCENE_RIG, type FishingSceneFrame, type FishingScenePoint, type FishingSceneViewport, type FishingSceneVisual } from "./fishing-scene-types";
+
+const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
+const finite = (value: number | undefined, fallback: number) => Number.isFinite(value) ? value! : fallback;
+const unit = (value: number | undefined, fallback = 5000) => clamp(finite(value, fallback) / 10000, 0, 1);
+const mix = (from: number, to: number, amount: number) => from + (to - from) * amount;
+const pointMix = (from: FishingScenePoint, to: FishingScenePoint, amount: number) => ({ x: mix(from.x, to.x, amount), y: mix(from.y, to.y, amount) });
+const settledStages = new Set<FishingSceneFrame["stage"]>(["caught", "escaped", "expired"]);
+
+/** Public controls alone determine these anchors. No species, weight or saved draw enters this scene. */
+export function fishingSceneGeometry(width: number, height: number, frame: FishingSceneFrame, visual: FishingSceneVisual) {
+  const cssWidth = Math.max(1, finite(width, 1600)), cssHeight = Math.max(1, finite(height, 900));
+  const viewWidth = clamp(cssWidth / cssHeight * 900, 1000, 1800), scale = cssWidth / viewWidth, viewHeight = cssHeight / scale;
+  const time = visual.still ? 0 : finite(visual.elapsed, 0), bob = visual.still || frame.stage === "paused" ? 0 : Math.sin(time * 1.5) * 2;
+  const portrait = cssWidth < 700, shortLandscape = cssHeight < 500 && cssWidth > cssHeight;
+  const hud = Math.min(portrait ? 280 : 220, cssHeight * (portrait ? .42 : .34));
+  const waterBottom = (cssHeight - hud - 24) / scale;
+  const baseSurface = Math.min(viewHeight * FISHING_SCENE_RIG.boat.surfaceRatio, waterBottom - (Math.min(140, cssHeight * .16) + 28) / scale);
+  const surface = shortLandscape ? Math.min(baseSurface + 20 / scale, waterBottom - 60 / scale) : baseSurface;
+  const boatScale = clamp(viewWidth * .46, FISHING_SCENE_RIG.boat.minimumWidth, FISHING_SCENE_RIG.boat.maximumWidth)
+    / BOAT_ASSEMBLY.width * (shortLandscape ? .77 : 1);
+  const boat = { x: viewWidth * FISHING_SCENE_RIG.boat.marginRatio, y: surface - BOAT_ASSEMBLY.waterline * boatScale + bob, scale: boatScale };
+  const onBoat = (point: FishingScenePoint) => ({ x: boat.x + point.x * boat.scale, y: boat.y + point.y * boat.scale });
+  const grip = onBoat(FISHING_SCENE_RIG.hands.grip), reel = onBoat(FISHING_SCENE_RIG.hands.reel);
+  const castElapsed = visual.still || !frame.castKey ? FISHING_SCENE_RIG.cast.flightSeconds + 1 : Math.max(0, finite(visual.castElapsed, 2));
+  const casting = castElapsed < FISHING_SCENE_RIG.cast.flightSeconds;
+  const windup = casting ? Math.sin(clamp(castElapsed / .45, 0, 1) * Math.PI) * -.82 : 0;
+  const aim = onBoat(FISHING_SCENE_RIG.rod.tip), dx = aim.x - grip.x, dy = aim.y - grip.y;
+  const tension = frame.stage === "reeling" || frame.stage === "bite" ? frame.held ? 1.15 : .3 : .12;
+  const tip = { x: grip.x + dx * Math.cos(windup) - dy * Math.sin(windup),
+    y: grip.y + dx * Math.sin(windup) + dy * Math.cos(windup) + tension * 18 * boat.scale };
+  const landing = { x: viewWidth * .76, y: surface + 8 + (visual.still ? 0 : Math.sin(time * 2.5) * 2) + (frame.held ? 3 : 0) };
+  const flight = clamp((castElapsed - .24) / (FISHING_SCENE_RIG.cast.flightSeconds - .24), 0, 1);
+  const float = pointMix(tip, landing, flight);
+  float.y -= Math.sin(flight * Math.PI) * 140 * boat.scale;
+  const waterTop = surface + Math.max(48, viewHeight * .055);
+  const depthRange = Math.max(80, waterBottom - waterTop), progress = unit(frame.reel?.progress, 2500);
+  const pull = frame.stage === "caught" ? 1 : progress * .66;
+  const hookX = mix(landing.x, boat.x + boat.scale * 920 + 40, pull);
+  const hook = { x: hookX, y: waterTop + (1 - unit(frame.reel?.bar)) * depthRange };
+  const fish = { x: hookX + 14 + (visual.still ? 0 : Math.sin(time * 2.3) * 12), y: waterTop + (1 - unit(frame.reel?.fish)) * depthRange };
+  if (frame.stage === "caught") {
+    const lift = visual.still ? 1 : 1 - Math.pow(1 - clamp(visual.stageElapsed / 1.25, 0, 1), 3);
+    Object.assign(fish, pointMix(fish, { x: boat.x + boat.scale * 975, y: surface - 74 * boat.scale }, lift));
+    Object.assign(hook, fish);
+  } else if (frame.stage === "escaped") {
+    const escape = visual.still ? 1 : clamp(visual.stageElapsed / 1.2, 0, 1);
+    fish.x += escape * 180; fish.y += escape * 55;
+  }
+  const zoneHeight = clamp(unit(frame.reel?.zoneWidth, 3200), .08, .8) * depthRange;
+  const zone = { x: hook.x, y: clamp(hook.y - zoneHeight / 2, waterTop, waterBottom - zoneHeight), height: zoneHeight };
+  const aligned = Math.abs(unit(frame.reel?.fish) - unit(frame.reel?.bar)) <= unit(frame.reel?.zoneWidth, 3200) / 2;
+  return { width: viewWidth, height: viewHeight, scale, surface, boat, onBoat, grip, reel, tip, float, landing, hook, fish, zone,
+    waterTop, waterBottom, aligned, tension, casting, castElapsed, time, actor: { foot: onBoat(FISHING_SCENE_RIG.actor.foot), size: FISHING_SCENE_RIG.actor.size * boat.scale } };
+}
+
+type Geometry = ReturnType<typeof fishingSceneGeometry>;
+
+function paintPart(ctx: CanvasRenderingContext2D, layer: BoatArtLayer, images: ReadonlyMap<string, HTMLImageElement>) {
+  const image = images.get(layer.src); if (!image) return;
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(image, ...layer.crop, ...layer.box);
+}
+
+function arm(ctx: CanvasRenderingContext2D, shoulder: FishingScenePoint, elbow: FishingScenePoint, hand: FishingScenePoint, width: number, palette: string | undefined) {
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  for (const [color, thickness] of [[mossPalette(palette).mossDark, width], ["#ddc691", width * .65]] as const) {
+    ctx.strokeStyle = color; ctx.lineWidth = thickness;
+    ctx.beginPath(); ctx.moveTo(shoulder.x, shoulder.y); ctx.lineTo(elbow.x, elbow.y); ctx.lineTo(hand.x, hand.y); ctx.stroke();
+  }
+}
+
+function paintBoat(ctx: CanvasRenderingContext2D, geometry: Geometry, frame: FishingSceneFrame, images: ReadonlyMap<string, HTMLImageElement>) {
+  const layers = boatArtworkLayers({ repaired: frame.boat.repaired, upgrades: frame.boat.upgrades.filter(id => id === "oars" || id === "crate") });
+  if (!images.has(layers[0].src)) return false;
+  ctx.save(); ctx.translate(geometry.boat.x, geometry.boat.y); ctx.scale(geometry.boat.scale, geometry.boat.scale);
+  layers.filter(layer => layer.id !== "oars").forEach(layer => paintPart(ctx, layer, images));
+  const rig = FISHING_SCENE_RIG, body = pixelSprite("fish", "right", 0, frame.appearance, { gardening: true, fishingStance: true, crouch: 2 });
+  arm(ctx, rig.hands.farShoulder, rig.hands.farElbow, rig.hands.reel, 13, frame.appearance?.palette);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(body, rig.actor.foot.x - rig.actor.size / 2, rig.actor.foot.y - rig.actor.pivot.y / 48 * rig.actor.size, rig.actor.size, rig.actor.size);
+  arm(ctx, rig.hands.nearShoulder, rig.hands.nearElbow, rig.hands.grip, 14, frame.appearance?.palette);
+  // Front planks cover the seated feet while preserving the original raster hull.
+  ctx.save(); ctx.beginPath(); ctx.rect(0, BOAT_ASSEMBLY.foredeck, BOAT_ASSEMBLY.width, BOAT_ASSEMBLY.height); ctx.clip();
+  paintPart(ctx, layers[0], images); ctx.restore();
+  layers.filter(layer => layer.id === "oars").forEach(layer => paintPart(ctx, layer, images));
+  ctx.restore(); return true;
+}
+
+function paintFish(ctx: CanvasRenderingContext2D, point: FishingScenePoint, time: number, aligned: boolean, caught: boolean) {
+  ctx.save(); ctx.translate(point.x, point.y); ctx.rotate(caught ? -.3 : Math.sin(time * 1.7) * .07);
+  ctx.fillStyle = caught ? "#8fae98" : aligned ? "rgba(163,189,163,.82)" : "rgba(11,42,48,.82)";
+  ctx.beginPath(); ctx.moveTo(-40, 0); ctx.bezierCurveTo(-23, -24, 19, -23, 39, -3);
+  ctx.bezierCurveTo(48, 1, 22, 23, -16, 15); ctx.closePath(); ctx.fill();
+  const tail = Math.sin(time * 7) * 6;
+  ctx.beginPath(); ctx.moveTo(-31, 0); ctx.lineTo(-61, -19 + tail); ctx.lineTo(-57, 20 + tail); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = caught || aligned ? "#254c4f" : "rgba(157,192,172,.75)";
+  ctx.beginPath(); ctx.arc(26, -4, 3, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+}
+
+function paintUnderwater(ctx: CanvasRenderingContext2D, geometry: Geometry, frame: FishingSceneFrame, visual: FishingSceneVisual) {
+  if (!frame.reel || !["bite", "reeling", "paused", "caught", "escaped", "pending"].includes(frame.stage)) return;
+  const { hook, zone, fish } = geometry;
+  if (frame.stage !== "caught" && frame.stage !== "escaped") {
+    const glow = ctx.createLinearGradient(zone.x - 45, 0, zone.x + 45, 0);
+    glow.addColorStop(0, "rgba(153,199,157,0)"); glow.addColorStop(.5, geometry.aligned ? "rgba(153,199,157,.18)" : "rgba(153,199,157,.09)"); glow.addColorStop(1, "rgba(153,199,157,0)");
+    ctx.fillStyle = glow; ctx.fillRect(zone.x - 45, zone.y, 90, zone.height);
+    ctx.strokeStyle = geometry.aligned ? "rgba(181,220,166,.7)" : "rgba(181,220,166,.35)"; ctx.lineWidth = 2;
+    for (const y of [zone.y, zone.y + zone.height]) { ctx.beginPath(); ctx.moveTo(zone.x - 22, y); ctx.quadraticCurveTo(zone.x, y - 4, zone.x + 22, y); ctx.stroke(); }
+  }
+  ctx.save();
+  if (frame.stage === "escaped") ctx.globalAlpha *= visual.still ? 0 : 1 - clamp(visual.stageElapsed / 1.2, 0, 1);
+  paintFish(ctx, fish, geometry.time, geometry.aligned, frame.stage === "caught"); ctx.restore();
+  ctx.strokeStyle = "rgba(213,227,202,.8)"; ctx.lineWidth = 2.2;
+  ctx.beginPath(); ctx.moveTo(hook.x, hook.y - 12); ctx.lineTo(hook.x, hook.y + 5);
+  ctx.bezierCurveTo(hook.x, hook.y + 16, hook.x + 14, hook.y + 15, hook.x + 12, hook.y + 4); ctx.stroke();
+  if (frame.held && !visual.still && frame.stage === "reeling") {
+    ctx.fillStyle = "rgba(201,225,211,.3)";
+    for (let i = 0; i < 3; i++) { const y = hook.y - ((geometry.time * 32 + i * 24) % 80); ctx.beginPath(); ctx.arc(hook.x + Math.sin(i * 3) * 16, y, 2 + i % 2, 0, Math.PI * 2); ctx.fill(); }
+  }
+}
+
+export function paintFishingScene(ctx: CanvasRenderingContext2D, frame: FishingSceneFrame, images: ReadonlyMap<string, HTMLImageElement>, viewport: FishingSceneViewport, visual: FishingSceneVisual) {
+  const geometry = fishingSceneGeometry(viewport.width, viewport.height, frame, visual), { width, height, time } = geometry;
+  ctx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0); ctx.clearRect(0, 0, viewport.width, viewport.height);
+  ctx.save(); ctx.scale(geometry.scale, geometry.scale);
+  paintFishingLandscape(ctx, width, height, geometry.surface, time);
+  paintUnderwater(ctx, geometry, frame, visual);
+  const boatReady = paintBoat(ctx, geometry, frame, images);
+  if (boatReady) {
+    drawFishingRod(ctx, { grip: geometry.grip, tip: geometry.tip, reel: geometry.reel, size: FISHING_SCENE_RIG.rod.size * geometry.boat.scale,
+      rodId: frame.rodId, tension: geometry.tension, side: 1, crank: frame.held ? time * 4 : .4, detailScale: .68 });
+    const caught = frame.stage === "caught", active = Boolean(frame.reel) && ["bite", "reeling", "paused", "pending"].includes(frame.stage);
+    const endpoint = caught ? geometry.hook : geometry.float;
+    ctx.strokeStyle = frame.held ? "rgba(231,227,186,.78)" : "rgba(220,225,202,.6)"; ctx.lineWidth = Math.max(frame.held ? 2 : 1.5, 1 / geometry.scale);
+    ctx.beginPath(); ctx.moveTo(geometry.tip.x, geometry.tip.y);
+    ctx.quadraticCurveTo(mix(geometry.tip.x, endpoint.x, .55), mix(geometry.tip.y, endpoint.y, .52) + (frame.held ? 4 : 34), endpoint.x, endpoint.y); ctx.stroke();
+    if (active && !geometry.casting) {
+      ctx.strokeStyle = "rgba(206,224,205,.42)"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(geometry.float.x, geometry.float.y); ctx.quadraticCurveTo(geometry.hook.x - (frame.held ? 0 : 24), geometry.hook.y - 24, geometry.hook.x, geometry.hook.y); ctx.stroke();
+    }
+    if (!settledStages.has(frame.stage)) {
+      const float = geometry.float, dipping = frame.stage === "bite" ? 4 + Math.sin(time * 12) * 4 : 0;
+      ctx.save(); ctx.translate(float.x, float.y + dipping); ctx.scale(Math.max(1, .8 / geometry.scale), Math.max(1, .8 / geometry.scale)); ctx.rotate(frame.held ? .13 : Math.sin(time * 2) * .08);
+      ctx.fillStyle = "#d1bc79"; ctx.fillRect(-3, -17, 6, 17); ctx.fillStyle = "#b65f47"; ctx.fillRect(-3, -9, 6, 9);
+      ctx.fillStyle = "#eee2b2"; ctx.beginPath(); ctx.ellipse(0, 2, 6, 8, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      if (!geometry.casting) paintFishingRipples(ctx, geometry.landing, time, frame.stage === "bite" ? 1.4 : .8);
+    }
+    const splashAge = geometry.castElapsed - FISHING_SCENE_RIG.cast.flightSeconds;
+    if (!visual.still && splashAge >= 0 && splashAge < FISHING_SCENE_RIG.cast.splashSeconds) {
+      const p = splashAge / FISHING_SCENE_RIG.cast.splashSeconds; ctx.strokeStyle = `rgba(220,239,216,${1 - p})`; ctx.lineWidth = 2;
+      for (let i = 0; i < 5; i++) { const x = geometry.landing.x + (i - 2) * 15 * p, y = geometry.landing.y - Math.sin(p * Math.PI) * (18 + i % 2 * 18); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (i - 2), y + 5); ctx.stroke(); }
+    }
+    // Paws share the exact rod grip/reel anchors; the shaft passes through them.
+    ctx.fillStyle = "#eed9a5";
+    for (const hand of [geometry.grip, geometry.reel]) { ctx.beginPath(); ctx.ellipse(hand.x, hand.y, 7 * geometry.boat.scale, 5 * geometry.boat.scale, -.4, 0, Math.PI * 2); ctx.fill(); }
+  }
+  paintFishingReeds(ctx, width, height, time);
+  ctx.restore();
+}

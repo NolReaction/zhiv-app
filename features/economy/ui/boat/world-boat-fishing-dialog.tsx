@@ -15,16 +15,19 @@ import { worldDuration } from "@/features/economy/ui/shared/world-stations";
 import { BoatRecords, BoatWork } from "./boat-panels";
 import { BoatGarage } from "./boat-garage";
 import { BoatVoyagePanel } from "./boat-voyage-panel";
+import { BoatFishingMap } from "./boat-fishing-map";
+import mapStyles from "./boat-fishing-map.module.css";
 import styles from "./boat-fishing.module.css";
 
 const tabs = [{ id: "boat", label: "Лодка", icon: Sailboat }, { id: "records", label: "Рекорды", icon: Trophy }] as const;
 type Tab = typeof tabs[number]["id"];
-type Props = { economy: ReadyEconomy; onClose: () => void; onOpenPantry?: () => void };
+type Props = { economy: ReadyEconomy; onClose: () => void; onOpenPantry?: () => void; appearance?: { palette: string; head: string | null; neck: string | null } };
 export type BoatSend = (action: EconomyCommand["action"], targetId: string, reel?: BoatReelCommand) => boolean;
 
 export function WorldBoatFishingDialog(props: Props) {
   if (!props.economy.snapshot.catalog.boat) return <BoatUnavailableDialog economy={props.economy} onClose={props.onClose} />;
-  return <BoatDialogSession key={props.economy.snapshot.ownerPublicId} {...props} />;
+  const view = boatPhase(boatState(props.economy.snapshot), props.economy.now) === "fishing" ? "river" : "dock";
+  return <BoatDialogSession key={`${props.economy.snapshot.ownerPublicId}.${view}`} {...props} />;
 }
 
 /** Cached catalogs and older API versions cannot quote the new boat's costs or actions. */
@@ -43,12 +46,13 @@ function BoatUnavailableDialog({ economy, onClose }: Pick<Props, "economy" | "on
   </Dialog.Root>;
 }
 
-function BoatDialogSession({ economy, onClose, onOpenPantry }: Props) {
+function BoatDialogSession({ economy, onClose, onOpenPantry, appearance }: Props) {
   const state = economy.snapshot, boat = boatState(state), config = boatConfig(state.catalog), phase = boatPhase(boat, economy.now);
   const [tab, setTab] = useState<Tab>("boat");
   const sent = useRef(false), content = useRef<HTMLDivElement>(null), id = useId();
   const disabled = locked(economy) || economy.snapshotConfirmed === false;
   const challenge = boat.voyage?.challenge;
+  const onRiver = phase === "fishing" && Boolean(boat.voyage);
   useEffect(() => { if (!economy.busy && !economy.uncertain) sent.current = false; }, [economy.busy, economy.uncertain, economy.error, state.revision, state.ownerPublicId]);
   useEffect(() => { if (challenge?.id) content.current?.scrollTo({ top: 0 }); }, [challenge?.id]);
   const send: BoatSend = (action, targetId, reel) => {
@@ -62,9 +66,14 @@ function BoatDialogSession({ economy, onClose, onOpenPantry }: Props) {
   const phaseName = { broken: "Нужен ремонт корпуса", repairing: "Работа в мастерской", docked: "У причала · готовимся к выходу", outbound: "Курс на речной плёс", fishing: "На рыбалке", returning: "Возвращение к причалу", ready: "Лодка вернулась" }[phase];
   return <Dialog.Root open onOpenChange={open => { if (!open) onClose(); }}>
     <Dialog.Overlay className={styles.overlay} onPointerDown={event => event.stopPropagation()} />
-    <Dialog.Content className={styles.dialog} aria-describedby={`${id}-description`} data-boat-dialog data-boat-phase={phase}
+    <Dialog.Content className={`${styles.dialog} ${onRiver ? mapStyles.viewport : ""}`} aria-describedby={`${id}-description`} data-boat-dialog data-boat-phase={phase} data-boat-map-view={onRiver || undefined}
       onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()}
       onPointerDownOutside={event => event.preventDefault()} onEscapeKeyDown={event => event.stopPropagation()}>
+      {onRiver && boat.voyage ? <>
+        <Dialog.Title className={styles.srOnly}>Лодочная рыбалка</Dialog.Title>
+        <Dialog.Description id={`${id}-description`} className={styles.srOnly}>Мохлик в лодке на речном плёсе. Забросьте удочку и удерживайте рыбу в зоне снасти.</Dialog.Description>
+        <BoatFishingMap key={`${state.ownerPublicId}.${boat.voyage.id}`} economy={economy} disabled={disabled} send={send} onClose={onClose} appearance={appearance} />
+      </> : <>
       <header className={styles.header}><Anchor size={25} strokeWidth={1.6} /><div><small>{phaseName}</small><Dialog.Title>{boat.voyage ? "Лодочная рыбалка" : "Лодочная мастерская"}</Dialog.Title></div><span className={styles.wallet} aria-label={`${number(state.wallet.coins)} монет`}><Coins size={17} /><strong>{number(state.wallet.coins)}</strong></span><button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть лодку"><X size={22} /></button></header>
       <Dialog.Description id={`${id}-description`} className={styles.srOnly}>Лодочная рыбалка, ремонт, улучшения и личные рекорды.</Dialog.Description>
       <nav className={styles.tabs} role="tablist" aria-label="Разделы лодки">{tabs.map((entry, index) => <button key={entry.id} id={`${id}-${entry.id}`} type="button" role="tab" className={styles.tab} aria-selected={tab === entry.id} aria-controls={`${id}-panel`} tabIndex={tab === entry.id ? 0 : -1} onClick={() => setTab(entry.id)} onKeyDown={event => {
@@ -81,6 +90,7 @@ function BoatDialogSession({ economy, onClose, onOpenPantry }: Props) {
           </>}
         {tab !== "boat" && <BoatWork boat={boat} config={config} now={economy.now} disabled={disabled} onClaim={workId => send("claim_boat_upgrade", workId)} />}
       </div>
+      </>}
     </Dialog.Content>
   </Dialog.Root>;
 }

@@ -805,7 +805,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
       </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>
-    {quickMenu === "boat" && economy.snapshot?.ownerPublicId === ownerPublicId && <WorldBoatFishingDialog economy={{ ...economy, snapshot: economy.snapshot }} onClose={closeQuick} onOpenPantry={() => openQuick("pantry")} />}
+    {quickMenu === "boat" && economy.snapshot?.ownerPublicId === ownerPublicId && <WorldBoatFishingDialog economy={{ ...economy, snapshot: economy.snapshot }} appearance={state.equipment} onClose={closeQuick} onOpenPantry={() => openQuick("pantry")} />}
     <ForestSessionNotice presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} onExit={onClose} />
     <MarketUnlockOnboarding open={marketGuide.open} worldElement={worldElement}
       onOpenMarket={() => { marketGuide.complete(); openEconomy("market"); }} onDismiss={marketGuide.dismiss} />

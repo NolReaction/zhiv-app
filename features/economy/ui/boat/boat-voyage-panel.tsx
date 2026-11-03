@@ -7,7 +7,6 @@ import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { worldCountdown } from "@/features/economy/ui/shared/world-stations";
 import { BoatArt } from "./boat-art";
 import { BoatCatchList } from "./boat-panels";
-import { BoatReelGame } from "./boat-reel-game";
 import type { BoatSend } from "./world-boat-fishing-dialog";
 import styles from "./boat-fishing.module.css";
 
@@ -18,11 +17,10 @@ export function BoatVoyagePanel({ economy, disabled, send, onOpenPantry }: Props
   const voyage = boat.voyage;
   if (!voyage) return null;
   const challenge = voyage.challenge, liveChallenge = challenge && economy.now < Date.parse(challenge.expiresAt);
-  const hasGame = Boolean(challenge && phase === "fishing"), remaining = Math.max(0, voyage.maxCasts - voyage.castsUsed);
+  const remaining = Math.max(0, voyage.maxCasts - voyage.castsUsed);
   const returnHome = () => { if (send("return_boat", voyage.id)) setConfirmReturn(null); };
   return <>
-    {challenge && phase === "fishing" && <BoatReelGame owner={state.ownerPublicId} voyageId={voyage.id} challenge={challenge} now={economy.now} disabled={disabled} uncertain={economy.uncertain} onSubmit={reel => send("submit_boat_cast", voyage.id, reel)} />}
-    <div className={`${styles.layout} ${hasGame ? styles.playingLayout : ""}`}>
+    <div className={styles.layout}>
       <div className={styles.boatView}><div className={styles.art}><BoatArt repaired={boat.level > 0} crate={boat.upgrades.includes("crate")} oars={boat.upgrades.includes("oars")} travelling={phase === "outbound" || phase === "returning"} /></div><div className={styles.caption}><span><Waves size={14} />{config.name}</span><span><Fish size={14} />{voyage.catches.length} на борту</span></div></div>
       <section className={styles.trip} aria-label="Состояние лодки">
         <span className={styles.eyebrow}><Anchor size={13} />{phase === "outbound" ? "Дорога к месту ловли" : phase === "returning" ? "Возвращение домой" : phase === "ready" ? "У причала" : "Речной плёс"}</span>
