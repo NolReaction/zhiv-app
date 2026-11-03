@@ -16,7 +16,7 @@
     },
     {
       "path": "scripts/audio_originals/effects.py",
-      "sha256": "0f336461c0a67b99359eaef1ab2566fe1e9f8b4d15f28476545220b23f782318"
+      "sha256": "47bdd2b8d0d6345860c800a6d2e60effc4a76d92d5b56967a4b403640a246372"
     },
     {
       "path": "scripts/audio_originals/fishing_music.py",
@@ -3410,7 +3410,34 @@
         ],
         "provenance": "Original coded score and deterministic mathematical synthesis; no external recordings or samples."
       }
+    },
+    {
+      "id": "fishing.hull.01",
+      "kind": "effect",
+      "title": "A quiet timber flex",
+      "description": "One soft rounded hull creak with a slow pressure envelope, made from oscillators and filtered noise; no recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 41280,
+      "durationSeconds": 0.86,
+      "decodedBytes": 165120,
+      "masterSha256": "4c50b335337a84365b77f16caf6c1801df002f1fc1c79c929622cf6cfb6802bb",
+      "measurements": {
+        "peakDb": -22.0,
+        "rmsDb": -34.4886,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.002730949
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/fishing.hull.01.wav",
+          "bytes": 82604,
+          "sha256": "4c50b335337a84365b77f16caf6c1801df002f1fc1c79c929622cf6cfb6802bb"
+        }
+      ],
+      "composition": {}
     }
   ],
-  "updatedAt": "2026-11-01"
+  "updatedAt": "2026-11-03"
 }

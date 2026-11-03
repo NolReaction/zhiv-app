@@ -148,3 +148,9 @@
 .albumBody { padding: 16px 20px 20px; overflow: auto; overscroll-behavior: contain; }
 @media (max-width: 640px) { .tools { gap: 6px; }.tool { padding: 7px 9px; font-size: 11px !important; }.albumHeader { padding: 15px 14px 11px; }.albumHeader h2 { font-size: 20px; }.albumBody { padding: 13px 14px 16px; } }
 @media (max-height: 500px) { .albumShortcut { display: inline-flex; }.albumHeader { padding: 10px 15px; }.albumHeader h2 { font-size: 18px; }.albumHeader p { margin-top: 3px; }.albumBody { padding: 10px 15px 15px; } }
+
+.coachShortcut { display: none; }
+@media (min-height: 501px) { .tools { flex-wrap: wrap; max-width: calc(100% - 40px); } }
+@media (max-height: 500px) { .coachShortcut { display: inline-flex; min-width: 30px; } .bottomRow { gap: 7px; } }
+@media (max-width: 640px) and (min-height: 501px) { .tools { max-width: calc(100% - 20px); gap: 4px; } }
+@media (max-height: 500px) and (max-width: 480px) { .bottomRow { gap: 5px; }.bottomRow .back { font-size: 10px !important; }.coachShortcut { min-width: 26px; } }

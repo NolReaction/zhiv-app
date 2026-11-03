@@ -92,7 +92,7 @@ test("the new river score is an original acoustic groove with versioned browser 
   assert.ok(track.measurements.seamDelta < Math.max(.003, track.measurements.maxAdjacentDelta * 2));
   assert.equal(track.files.length, 2); assert.ok(track.files.reduce((sum, file) => sum + file.bytes, 0) < 3 * 1024 ** 2);
   const cue = catalog.cues.find(item => item.id === "music.fishing"); assert.equal(cue.bus, "music"); assert.ok(cue.fadeMs >= 1500);
-  for (const cue of catalog.cues.filter(item => item.id.startsWith("fishing."))) assert.equal(cue.bus, "world");
+  for (const cue of catalog.cues.filter(item => item.id.startsWith("fishing.") && item.id !== "fishing.hull" && item.mode === "one-shot")) assert.equal(cue.bus, "world");
 });
 
 

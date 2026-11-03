@@ -30,7 +30,7 @@ class EconomyBoatTest {
         while (frame.status == "active") {
             val next = frame.bar + frame.velocity * 6 < frame.fish
             if (next != held) { held = next; inputs += EconomyBoatReelInput(frame.tick, held) }
-            frame = EconomyBoatReel.step(frame, held, challenge.seed, challenge.zoneWidth, challenge.difficulty)
+            frame = EconomyBoatReel.step(frame, held, challenge)
         }
         assertEquals("caught", frame.status)
         return EconomyBoatReelSubmission(challenge.id, inputs, frame.tick)
@@ -140,19 +140,23 @@ class EconomyBoatTest {
         val bite = Instant.parse(challenge.biteAt)
         assertEquals(started.plusSeconds(4), bite)
         assertEquals("common", challenge.fishRarity)
+        assertEquals(2, challenge.rulesVersion); assertEquals("steady", challenge.resistance)
         val public = economyJson.encodeToString(EconomyBoats.publicView(state.boat))
         assertTrue("biteAt" in public); assertTrue("fishRarity" in public)
         assertFalse("fishId" in public); assertFalse("weightGrams" in public); assertFalse("slots" in public)
         val reel = caughtTrace(challenge); val finished = bite.plusMillis(reel.endTick * 50L)
         failure("ECONOMY_BOAT_TRACE") { call(state, "submit_boat_cast", v.id, finished.minusMillis(1), reel) }
         assertEquals(1, call(state, "submit_boat_cast", v.id, finished, reel).boat!!.voyage!!.catches.size)
-        val old = challenge.copy(biteAt = null, fishRarity = null)
+        val old = challenge.copy(rulesVersion = 1, resistance = null, biteAt = null, fishRarity = null)
+        val oldReel = caughtTrace(old)
         val legacy = state.copy(boat = state.boat!!.copy(voyage = state.boat!!.voyage!!.copy(challenge = old)))
-        assertEquals(1, call(legacy, "submit_boat_cast", v.id, started.plusMillis(reel.endTick * 50L), reel).boat!!.voyage!!.catches.size)
+        assertEquals(1, call(legacy, "submit_boat_cast", v.id, started.plusMillis(oldReel.endTick * 50L), oldReel).boat!!.voyage!!.catches.size)
         failure("ECONOMY_BOAT_CAST_WAIT") { call(departed, "begin_boat_cast", v.id, Instant.parse(v.fishingUntil).minusSeconds(1)) }
         failure("ECONOMY_BOAT_CAST_WAIT") { call(departed, "begin_boat_cast", v.id, Instant.parse(v.fishingUntil).minusMillis(4050)) }
         assertFailsWith<IllegalArgumentException> { challenge.copy(biteAt = challenge.expiresAt) }
         assertFailsWith<IllegalArgumentException> { challenge.copy(fishRarity = "invented") }
+        assertFailsWith<IllegalArgumentException> { challenge.copy(resistance = null) }
+        assertFailsWith<IllegalArgumentException> { challenge.copy(resistance = "invented") }
     }
 
     @Test fun `claim delivers exact stock records progress and bounded practice without new blueprint pages`() {

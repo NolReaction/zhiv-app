@@ -281,10 +281,17 @@ test("caught UI explicitly submits one replay verified trace then credits invent
   f.flush(); const returns = Date.parse(f.state.boat.voyage.returnsAt);
   assert.equal(f.find(node => node.props["data-boat-map-view"]), undefined); assert.equal(frames.size, 0);
   assert.deepEqual(f.state.inventory, inventory);
-  f.advanceTo(returns); f.click(f.find(node => node.tag === "button" && text(node) === "Забрать улов")); f.flush();
+  f.advanceTo(returns);
+  assert(f.find(node => node.props["data-boat-trip-summary"] && node.props["data-delivered"] === false));
+  f.click(f.find(node => node.tag === "button" && text(node) === "Забрать улов"));
+  assert.equal(f.find(node => node.props["data-boat-trip-summary"] && node.props["data-delivered"] === true), undefined, "a pending claim cannot claim delivery");
+  f.flush();
+  assert(f.find(node => node.props["data-boat-trip-summary"] && node.props["data-delivered"] === true));
   assert.equal(f.state.boat.voyage, undefined);
   assert.equal(Object.values(f.state.fishing.stock).reduce((sum, count) => sum + count, 0), 1);
   assert.equal(f.commands.filter(command => command.action === "claim_boat").length, 1);
+  f.click(f.find(node => node.props["data-boat-trip-done"]));
+  assert.equal(flatten(f.tree).length, 0);
 });
 
 test("escaped or expired attempts never give local fish and the real cast budget survives scene remounts", () => {

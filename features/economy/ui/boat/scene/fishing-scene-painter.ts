@@ -8,6 +8,7 @@ import { FISHING_WATER_TEXTURE, paintFishingLandscape, paintFishingWake, paintFi
 import { fishingBoatActorRig, paintFishingBoatArms, paintFishingBoatBody, paintFishingBoatPaws } from "./fishing-scene-actor";
 import { paintSceneFish } from "./fishing-scene-fish";
 import { fishingBoatMotion, transformFishingBoatPoint, FISHING_BOAT_PIVOT } from "./fishing-scene-buoyancy";
+import { fishingSceneComposition } from "./fishing-scene-composition";
 import { FISHING_SCENE_RIG, type FishingSceneFrame, type FishingScenePoint, type FishingSceneViewport, type FishingSceneVisual } from "./fishing-scene-types";
 
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
@@ -23,15 +24,11 @@ export function fishingSceneGeometry(width: number, height: number, frame: Fishi
   const viewWidth = clamp(cssWidth / cssHeight * 900, 1000, 1800), scale = cssWidth / viewWidth, viewHeight = cssHeight / scale;
   const time = visual.still ? 0 : finite(visual.elapsed, 0);
   const motion = fishingBoatMotion(time, visual.still);
-  const portrait = cssWidth < 700, shortLandscape = cssHeight < 500 && cssWidth > cssHeight;
-  // Budget the largest active HUD, including feedback. A fractional height hid the low end on phones in landscape.
-  const hud = shortLandscape ? 185 : portrait ? 280 : 260;
-  const waterBottom = (cssHeight - hud - 24) / scale;
-  const surface = shortLandscape ? waterBottom - 40 / scale
-    : Math.min(viewHeight * FISHING_SCENE_RIG.boat.surfaceRatio, waterBottom - 56 / scale);
-  const boatScale = clamp(viewWidth * .46, FISHING_SCENE_RIG.boat.minimumWidth, FISHING_SCENE_RIG.boat.maximumWidth)
-    / BOAT_ASSEMBLY.width * (shortLandscape ? .65 : 1);
-  const boat = { x: viewWidth * FISHING_SCENE_RIG.boat.marginRatio, y: surface - BOAT_ASSEMBLY.waterline * boatScale + motion.bob, scale: boatScale, roll: motion.roll };
+  const composition = fishingSceneComposition(cssWidth, cssHeight, frame.sceneKey);
+  const waterTop = composition.waterTop / scale, waterBottom = composition.waterBottom / scale;
+  const surface = composition.surface / scale, boatScale = composition.boatWidth / scale / BOAT_ASSEMBLY.width;
+  const boat = { x: composition.boatX / scale, y: surface - BOAT_ASSEMBLY.waterline * boatScale + motion.bob,
+    scale: boatScale, roll: motion.roll + composition.variant.roll };
   const onBoat = (point: FishingScenePoint) => transformFishingBoatPoint(point, boat);
   const castElapsed = visual.still || !frame.castKey ? FISHING_SCENE_RIG.cast.flightSeconds + 1 : Math.max(0, finite(visual.castElapsed, 0));
   const casting = frame.stage === "casting" && castElapsed < FISHING_SCENE_RIG.cast.flightSeconds;
@@ -45,11 +42,9 @@ export function fishingSceneGeometry(width: number, height: number, frame: Fishi
   }
   const tension = visual.pose ? .3 + visual.pose.effort * .85
     : frame.stage === "reeling" || frame.stage === "bite" ? .3 + actorRig.effort * .85 : .12;
-  // Surface controls can sit alongside the boat on short screens; they are no longer an underwater cutaway below it.
-  const waterTop = Math.max(0, Math.min(Math.max(68 / scale, Math.min(surface + 32 / scale, waterBottom - 96 / scale)), waterBottom - 8 / scale));
   const depthRange = Math.max(1, waterBottom - waterTop), progress = unit(frame.reel?.progress, 2500);
   const pull = ["caught", "landed"].includes(frame.stage) ? 1 : progress * .66;
-  const hookX = mix(viewWidth * .76, boat.x + boat.scale * 920 + 40, pull);
+  const hookX = mix(composition.floatX / scale, boat.x + boat.scale * 975 + 18, pull);
   const hook = { x: hookX, y: waterTop + (1 - unit(frame.reel?.bar)) * depthRange };
   const fish = { x: hookX + 14 + (visual.still ? 0 : Math.sin(time * 2.3) * 12), y: waterTop + (1 - unit(frame.reel?.fish)) * depthRange };
   // The float itself occupies the controlled zone on the surface, not an unrelated fixed marker above a cutaway.
@@ -72,7 +67,7 @@ export function fishingSceneGeometry(width: number, height: number, frame: Fishi
   const zone = { x: hook.x, y: zoneTop, height: Math.max(0, Math.min(waterBottom, hook.y + zoneHeight / 2) - zoneTop) };
   const aligned = Math.abs(unit(frame.reel?.fish) - unit(frame.reel?.bar)) <= unit(frame.reel?.zoneWidth, 3200) / 2;
   return { width: viewWidth, height: viewHeight, scale, surface, boat, onBoat, grip, reel, tip, float, landing, hook, fish, zone,
-    waterTop, waterBottom, aligned, tension, casting, castElapsed, time, actorRig, actor: { foot: onBoat(FISHING_SCENE_RIG.actor.foot), size: FISHING_SCENE_RIG.actor.size * boat.scale } };
+    waterTop, waterBottom, aligned, tension, casting, castElapsed, time, composition, actorRig, actor: { foot: onBoat(FISHING_SCENE_RIG.actor.foot), size: FISHING_SCENE_RIG.actor.size * boat.scale } };
 }
 
 type Geometry = ReturnType<typeof fishingSceneGeometry>;
@@ -128,7 +123,7 @@ export function paintFishingScene(ctx: CanvasRenderingContext2D, frame: FishingS
   const geometry = fishingSceneGeometry(viewport.width, viewport.height, frame, visual), { width, height, time } = geometry;
   ctx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0); ctx.clearRect(0, 0, viewport.width, viewport.height);
   ctx.save(); ctx.scale(geometry.scale, geometry.scale);
-  paintFishingLandscape(ctx, width, height, time, images.get(FISHING_WATER_TEXTURE), frame.ambience);
+  paintFishingLandscape(ctx, width, height, time + geometry.composition.variant.currentPhase, images.get(FISHING_WATER_TEXTURE), frame.ambience);
   paintFishingAtmosphere(ctx, width, height, time, frame.ambience, [
     { x: geometry.boat.x - 30, y: geometry.boat.y, width: 1000 * geometry.boat.scale + 60, height: 650 * geometry.boat.scale + 30 },
     { x: geometry.float.x - 100, y: geometry.waterTop - 45, width: 200, height: geometry.waterBottom - geometry.waterTop + 90 },
@@ -151,7 +146,7 @@ export function paintFishingScene(ctx: CanvasRenderingContext2D, frame: FishingS
       const float = geometry.float;
       const bite = fishingBiteMotion(frame.stage, visual.stageElapsed, frame.biteLeadSeconds, visual.still);
       const dipping = geometry.casting ? 0 : bite.dip;
-      ctx.save(); ctx.translate(float.x, float.y + dipping); ctx.scale(Math.max(1, .8 / geometry.scale), Math.max(1, .8 / geometry.scale)); ctx.rotate(mix(Math.sin(time * 2) * .08, .13, effort) + bite.tilt);
+      ctx.save(); ctx.translate(float.x, float.y + dipping); ctx.scale(Math.max(1, 1 / geometry.scale), Math.max(1, 1 / geometry.scale)); ctx.rotate(mix(Math.sin(time * 2) * .08, .13, effort) + bite.tilt);
       ctx.globalAlpha *= 1 - Math.min(.25, dipping / 48);
       ctx.fillStyle = "#d1bc79"; ctx.fillRect(-3, -17, 6, 17); ctx.fillStyle = "#b65f47"; ctx.fillRect(-3, -9, 6, 9);
       ctx.fillStyle = "#eee2b2"; ctx.beginPath(); ctx.ellipse(0, 2, 6, 8, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();

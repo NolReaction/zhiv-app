@@ -1655,6 +1655,20 @@
         "changes": "Original compact padded felt signature for boost-full; deterministic additive synthesis, soft envelope, peak-safe mastering and TPDF PCM16. No external samples.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
+    },
+    {
+      "id": "fishing.hull.01",
+      "src": "/audio/originals-v1/effect/fishing.hull.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/0.7.2-fishing/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-11-03",
+        "changes": "Original rounded timber creak with a slow pressure envelope; oscillator/noise synthesis, quiet peak/RMS, deterministic PCM16 WAV. No external samples.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     }
   ],
   "cues": [
@@ -2647,6 +2661,34 @@
       "cooldownMs": 800,
       "pitchVariation": 0,
       "fadeMs": 20
+    },
+    {
+      "id": "fishing.hull",
+      "bus": "ambience",
+      "mode": "one-shot",
+      "assets": [
+        "fishing.hull.01"
+      ],
+      "gainDb": -4,
+      "priority": 18,
+      "maxInstances": 1,
+      "cooldownMs": 15000,
+      "pitchVariation": 0,
+      "fadeMs": 100
+    },
+    {
+      "id": "fishing.reeds",
+      "bus": "weather",
+      "mode": "loop",
+      "assets": [
+        "weather.wind.01"
+      ],
+      "gainDb": -8,
+      "priority": 18,
+      "maxInstances": 1,
+      "cooldownMs": 0,
+      "pitchVariation": 0,
+      "fadeMs": 1800
     }
   ],
   "profiles": [

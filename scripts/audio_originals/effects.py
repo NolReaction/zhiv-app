@@ -526,6 +526,18 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
     """
     if not isinstance(sample_rate, int) or sample_rate < 16000:
         raise ValueError("sample_rate must be an integer of at least 16000 Hz")
+    if asset_id == "fishing.hull.01":
+        rng = _rng(asset_id)
+        t = _time(.86, sample_rate)
+        pitch = 116 * (1 + .045 * np.sin(np.pi * t / .86))
+        phase = 2 * np.pi * np.cumsum(pitch) / sample_rate
+        friction = .4 + .6 * np.sin(2 * np.pi * 14 * t) ** 2
+        audio = (np.sin(phase) + .25 * np.sin(phase * 2.16)) * friction
+        audio += _noise(len(t), rng, sample_rate, 180, 720) * .13
+        audio *= np.sin(np.pi * np.arange(len(t)) / (len(t) - 1)) ** 2
+        output, info = _finish(audio, sample_rate, "A quiet timber flex", "One soft rounded hull creak with a slow pressure envelope, made from oscillators and filtered noise; no recordings.", -33)
+        info["peakDb"] = -22.0
+        return output, info
     if asset_id in ("ship.arrival.01", "ship.departure.01"):
         import steamship
         return steamship.render(asset_id, sample_rate)

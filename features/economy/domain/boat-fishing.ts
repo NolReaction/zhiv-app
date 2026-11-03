@@ -39,6 +39,7 @@ export function publicBoatState(value?: BoatState | null): BoatState {
       ...(voyage.challenge ? { challenge: { id: voyage.challenge.id, rulesVersion: voyage.challenge.rulesVersion, seed: voyage.challenge.seed,
         tickMs: voyage.challenge.tickMs, maxTicks: voyage.challenge.maxTicks, zoneWidth: voyage.challenge.zoneWidth, difficulty: voyage.challenge.difficulty,
         startedAt: voyage.challenge.startedAt, expiresAt: voyage.challenge.expiresAt,
+        ...(voyage.challenge.resistance ? { resistance: voyage.challenge.resistance } : {}),
         ...(voyage.challenge.biteAt ? { biteAt: voyage.challenge.biteAt } : {}),
         ...(voyage.challenge.fishRarity ? { fishRarity: voyage.challenge.fishRarity } : {}) } } : {}) } } : {}) };
 }

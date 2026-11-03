@@ -1,15 +1,25 @@
+import { fishingRiverNightBlend, type FishingRiverAmbience } from "./fishing-river-mix";
 import type { AudioFrame, AudioRuntime } from "@/features/audio/domain/types";
 
 export type FishingAudioState = {
   sceneId: string; voyageId: string;
   stage: "waiting" | "casting" | "soaking" | "landed" | "bite" | "reeling" | "paused" | "caught" | "escaped" | "expired" | "pending";
+  ambience?: FishingRiverAmbience;
   castKey?: string; held: boolean; progress: number; inZone: boolean; caughtCount: number; suspended?: boolean;
 };
-export const FISHING_AUDIO_CUES = ["music.fishing", "fishing.cast", "fishing.bite", "fishing.reel", "fishing.escape", "fishing.catch", "action.fish.splash"] as const;
+export const FISHING_AUDIO_CUES = ["music.fishing", "fishing.cast", "fishing.bite", "fishing.reel", "fishing.escape", "fishing.catch", "action.fish.splash", "river", "fishing.hull", "fishing.reeds", "forest.day", "forest.night"] as const;
 
 /** Same account/world scene keeps the outdoor music position across the handoff. */
 export function fishingAudioFrame(ownerId: string, state: FishingAudioState): AudioFrame {
-  const loops = [{ id: "music-fishing:music.fishing", cueId: "music.fishing", gain: .65, pan: 0 }];
+  const quiet = state.stage === "paused" ? .55 : 1;
+  const night = fishingRiverNightBlend(state.ambience);
+  const loops = [
+    { id: "music-fishing:music.fishing", cueId: "music.fishing", gain: .65, pan: 0 },
+    { id: "fishing-river", cueId: "river", gain: .12 * quiet, pan: .04 },
+    { id: "fishing-reeds", cueId: "fishing.reeds", gain: .36 * quiet, pan: .18 },
+    { id: "fishing-day-birds", cueId: "forest.day", gain: .65 * (1 - night) * quiet, pan: -.22 },
+    { id: "fishing-night-insects", cueId: "forest.night", gain: .28 * night * quiet, pan: .12 },
+  ].filter(loop => loop.gain > .0001);
   return { ownerId, sceneId: state.sceneId, soundscape: true,
     listener: { position: { x: 0, y: 0 }, viewportWidth: 1, zoom: 1, detail: 1 },
     loops, musicDuck: state.stage === "paused" ? .55 : 1,
@@ -22,7 +32,8 @@ export function createFishingAudioController(runtime: AudioRuntime, ownerId: str
   cancel: (timer: ReturnType<typeof setTimeout>) => clearTimeout(timer),
 }) {
   let previous: FishingAudioState | null = null, current: FishingAudioState | null = null;
-  let retained = false, disposed = false, lastDuck = -1, lastScene = "", milestone = 0;
+  let retained = false, disposed = false, lastDuck = -1, lastScene = "", lastMix = "", milestone = 0;
+  let nextCreakAt = Infinity, lastAmbientAt = 0, creakSequence = 0;
   let lastReelAt = -Infinity, splashTimer: ReturnType<typeof setTimeout> | undefined;
   const cancelSplash = () => { if (splashTimer !== undefined) clock.cancel(splashTimer); splashTimer = undefined; };
   const emit = (cueId: string, suffix: string, gain = 1) => {
@@ -39,13 +50,15 @@ export function createFishingAudioController(runtime: AudioRuntime, ownerId: str
       const resumed = Boolean(previous?.suspended && !next.suspended);
       if (replaced || previous?.castKey !== next.castKey || next.suspended || next.stage === "paused") cancelSplash();
       if (next.suspended) {
+        nextCreakAt = Infinity; lastAmbientAt = clock.now();
         if (retained) runtime.clearFrame(ownerId);
         retained = false; previous = { ...next }; milestone = Math.floor(next.progress / 1000);
         return;
       }
       const frame = fishingAudioFrame(ownerId, next);
-      if (!retained || lastDuck !== frame.musicDuck || lastScene !== next.sceneId) {
-        runtime.updateFrame(frame); retained = true; lastDuck = frame.musicDuck; lastScene = next.sceneId;
+      const mix = frame.loops.map(loop => `${loop.id}:${loop.gain}`).join("|");
+      if (!retained || lastDuck !== frame.musicDuck || lastScene !== next.sceneId || lastMix !== mix) {
+        runtime.updateFrame(frame); retained = true; lastDuck = frame.musicDuck; lastScene = next.sceneId; lastMix = mix;
       }
       if (replaced || resumed) {
         milestone = Math.floor(next.progress / 1000);
@@ -71,6 +84,18 @@ export function createFishingAudioController(runtime: AudioRuntime, ownerId: str
           milestone = reached;
         }
       }
+      const ambienceNow = clock.now();
+      if (next.stage === "paused") nextCreakAt = Infinity;
+      else {
+        // Poll-driven sparse contacts need no timer and never backfill after a stall/background.
+        const wait = () => 18000 + (next.voyageId.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0) * 37 + creakSequence * 5171) % 12000;
+        if (replaced || resumed || !Number.isFinite(nextCreakAt) || ambienceNow - lastAmbientAt > 2500 || ambienceNow < lastAmbientAt) nextCreakAt = ambienceNow + wait();
+        else if (ambienceNow >= nextCreakAt) {
+          emit("fishing.hull", `hull-${creakSequence++}`, .55);
+          nextCreakAt = ambienceNow + wait();
+        }
+      }
+      lastAmbientAt = ambienceNow;
       previous = { ...next };
     },
     dispose() {

@@ -15,7 +15,7 @@ const subscribeVisibility = (notify: () => void) => {
 type Options = Omit<FishingAudioState, "sceneId"> & { ownerPublicId: string };
 
 /** A temporary owner of the shared audio graph; never allocates another player/context. */
-export function useFishingAudio({ ownerPublicId, voyageId, stage, castKey, held, progress, inZone, caughtCount, suspended = false }: Options) {
+export function useFishingAudio({ ownerPublicId, voyageId, stage, castKey, held, progress, inZone, caughtCount, suspended = false, ambience }: Options) {
   const ownerId = `fishing-audio-${useId()}`;
   const controller = useRef<ReturnType<typeof createFishingAudioController> | null>(null);
   const visible = useSyncExternalStore(subscribeVisibility, visibleSnapshot, serverVisibleSnapshot);
@@ -27,7 +27,7 @@ export function useFishingAudio({ ownerPublicId, voyageId, stage, castKey, held,
     void runtime.prepare(FISHING_AUDIO_CUES, { signal: preparation.signal }).catch(() => {});
     return () => { preparation.abort(); current.dispose(); if (controller.current === current) controller.current = null; };
   }, [ownerId]);
-  useEffect(() => { controller.current?.update({ sceneId, voyageId, stage, castKey, held, progress, inZone, caughtCount,
+  useEffect(() => { controller.current?.update({ sceneId, voyageId, stage, castKey, held, progress, inZone, caughtCount, ambience,
     suspended: suspended || !visible || document.hidden }); },
-  [ownerId, sceneId, voyageId, stage, castKey, held, progress, inZone, caughtCount, suspended, visible]);
+  [ownerId, sceneId, voyageId, stage, castKey, held, progress, inZone, caughtCount, suspended, visible, ambience]);
 }

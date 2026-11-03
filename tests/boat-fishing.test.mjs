@@ -197,7 +197,10 @@ test("a cast publishes only its actual rarity and waits 4–7 seconds before any
   const challenge = state.boat.voyage.challenge, bite = Date.parse(challenge.biteAt), played = play(challenge), reel = wireReel(played);
   assert.ok(bite - started >= 4000 && bite - started <= 7000);
   assert.equal(challenge.fishRarity, rarity);
+  assert.equal(challenge.rulesVersion, 2);
+  assert.equal(challenge.resistance, physics.boatResistanceForClass(rarity, challenge.seed));
   const publicChallenge = boats.publicBoatState(state.boat).voyage.challenge;
+  assert.equal(publicChallenge.resistance, challenge.resistance);
   assert.equal(publicChallenge.biteAt, challenge.biteAt); assert.equal(publicChallenge.fishRarity, rarity);
   assert.equal(publicChallenge.fishId, undefined); assert.equal(publicChallenge.weightGrams, undefined);
   assert.equal(boats.publicBoatState(state.boat).voyage.slots, undefined);
@@ -215,7 +218,7 @@ test("legacy attempts stay playable without bite metadata and a too-late new cas
   const state = ready(), voyage = depart(state), started = Date.parse(voyage.arrivesAt);
   run(state, "begin_boat_cast", voyage.id, started);
   const challenge = state.boat.voyage.challenge;
-  delete challenge.biteAt; delete challenge.fishRarity;
+  challenge.rulesVersion = 1; delete challenge.resistance; delete challenge.biteAt; delete challenge.fishRarity;
   assert.equal(schema.boatChallengeSchema.safeParse(challenge).success, true);
   const reel = wireReel(play(challenge));
   run(state, "submit_boat_cast", voyage.id, started + reel.endTick * 50, { reel });

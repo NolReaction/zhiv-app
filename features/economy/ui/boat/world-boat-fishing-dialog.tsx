@@ -15,6 +15,8 @@ import { worldDuration } from "@/features/economy/ui/shared/world-stations";
 import { BoatRecords, BoatWork } from "./boat-panels";
 import { BoatFishingAlbum } from "./boat-fishing-album";
 import { BoatGarage } from "./boat-garage";
+import { BoatTripSummary } from "./boat-trip-summary";
+import { createBoatTripReceipt, type BoatTripReceipt } from "./boat-trip-summary-data";
 import { BoatVoyagePanel } from "./boat-voyage-panel";
 import { BoatFishingMap } from "./boat-fishing-map";
 import mapStyles from "./boat-fishing-map.module.css";
@@ -50,6 +52,9 @@ function BoatUnavailableDialog({ economy, onClose }: Pick<Props, "economy" | "on
 function BoatDialogSession({ economy, onClose, onOpenPantry, appearance, suspended = false, timeZone = "UTC" }: Props) {
   const state = economy.snapshot, boat = boatState(state), config = boatConfig(state.catalog), phase = boatPhase(boat, economy.now);
   const [tab, setTab] = useState<Tab>("boat");
+  const [claimedTrip, setClaimedTrip] = useState<{ receipt: BoatTripReceipt; completedBefore: number; revisionBefore: number } | null>(null);
+  const deliveredTrip = claimedTrip && !boat.voyage && !economy.busy && !economy.uncertain && economy.snapshotConfirmed !== false
+    && state.revision > claimedTrip.revisionBefore && boat.completedVoyages === claimedTrip.completedBefore + 1 ? claimedTrip.receipt : null;
   const sent = useRef(false), content = useRef<HTMLDivElement>(null), id = useId();
   const disabled = locked(economy) || economy.snapshotConfirmed === false;
   const challenge = boat.voyage?.challenge;
@@ -65,10 +70,16 @@ function BoatDialogSession({ economy, onClose, onOpenPantry, appearance, suspend
   };
   useEffect(() => { if (!economy.busy && !economy.uncertain) sent.current = false; }, [economy.busy, economy.uncertain, economy.error, state.revision, state.ownerPublicId]);
   useEffect(() => { if (challenge?.id) content.current?.scrollTo({ top: 0 }); }, [challenge?.id]);
+  useEffect(() => { if (deliveredTrip) content.current?.scrollTo({ top: 0 }); }, [deliveredTrip]);
   const send: BoatSend = (action, targetId, reel) => {
     if (disabled || sent.current) return false;
     sent.current = true;
-    const accepted = economy.act(action, targetId, 1, 0, undefined, undefined, reel);
+    const receipt = action === "claim_boat" && boat.voyage?.id === targetId
+      ? { receipt: createBoatTripReceipt(state, boat.voyage), completedBefore: boat.completedVoyages, revisionBefore: state.revision } : null;
+    let accepted;
+    try { accepted = economy.act(action, targetId, 1, 0, undefined, undefined, reel); }
+    catch (error) { sent.current = false; throw error; }
+    if (accepted !== false && receipt) setClaimedTrip(receipt);
     if (accepted === false) sent.current = false;
     return accepted !== false;
   };
@@ -94,7 +105,7 @@ function BoatDialogSession({ economy, onClose, onOpenPantry, appearance, suspend
       {economy.uncertain && <div className={styles.recovery}><span>Проверим, сохранилось ли последнее действие.</span><button type="button" className={styles.secondary} disabled={economy.busy} onClick={() => economy.retry()}>Проверить</button></div>}
       <div ref={content} className={styles.body} id={`${id}-panel`} role="tabpanel" tabIndex={0} aria-labelledby={`${id}-${tab}`}>
         <BoatDevControls economy={economy} compact />
-        {tab === "album" ? <BoatFishingAlbum state={state} /> : tab === "records" ? <BoatRecords state={state} boat={boat} /> : boat.voyage ? <BoatVoyagePanel economy={economy} disabled={disabled} send={send} onOpenPantry={onOpenPantry} /> : <>
+        {tab === "album" ? <BoatFishingAlbum state={state} /> : tab === "records" ? <BoatRecords state={state} boat={boat} /> : deliveredTrip ? <><BoatTripSummary receipt={deliveredTrip} delivered /><button type="button" className={styles.primary} data-boat-trip-done onClick={() => { setClaimedTrip(null); onClose(); }}>Готово</button></> : boat.voyage ? <BoatVoyagePanel economy={economy} disabled={disabled} send={send} onOpenPantry={onOpenPantry} /> : <>
             <BoatGarage state={state} boat={boat} config={config} now={economy.now} disabled={disabled} onUpgrade={upgrade} onClaim={workId => send("claim_boat_upgrade", workId)} />
             {boat.level > 0 ? <BoatDockDeparture economy={economy} disabled={disabled} send={send} /> : <p className={styles.dockNote}>Береговая рыбалка на пирсе остаётся доступной во время ремонта.</p>}
           </>}

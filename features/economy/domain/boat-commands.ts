@@ -1,6 +1,6 @@
 import { ECONOMY_MAX_ITEMS, economyCatalog, type EconomyCommand, type EconomyCost, type EconomyState } from "./model";
 import { boatConfig, newBoatState, boatDepartureReason, boatUpgradeReason, boatPhase, boatFishWeight } from "./boat-fishing";
-import { replayBoatReel } from "./boat-reel";
+import { boatResistanceForClass, replayBoatReel } from "./boat-reel";
 import { fishingState, selectFishingCatch } from "./fishing";
 import { creditFishStock } from "./fish-stock";
 import type { RareRandomInteger } from "./rare-drops";
@@ -84,7 +84,7 @@ function transition(state: EconomyState, command: EconomyCommand, now: number, i
     if (biteAt + 50 >= expiresAt) return fail("ECONOMY_BOAT_CAST_WAIT", "Для нового заброса не хватает времени. Пора возвращаться");
     const fishRarity = economyCatalog.fishing!.fish.find(fish => fish.itemId === slot.fishId)!.rarity;
     voyage.castsUsed++;
-    voyage.challenge = { id: id(), rulesVersion: 1, seed: slot.challengeSeed, tickMs: 50, maxTicks: 600,
+    voyage.challenge = { id: id(), rulesVersion: 2, resistance: boatResistanceForClass(fishRarity, slot.challengeSeed), seed: slot.challengeSeed, tickMs: 50, maxTicks: 600,
       zoneWidth: slot.zoneWidth, difficulty: slot.difficulty, startedAt: iso(now), expiresAt: iso(expiresAt), biteAt: iso(biteAt), fishRarity };
     state.boat = boat;
     return "Удочка заброшена. Ждём поклёвку";

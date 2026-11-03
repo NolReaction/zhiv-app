@@ -2,6 +2,9 @@
 export type FishingSceneFrame = {
   stage: "waiting" | "casting" | "soaking" | "landed" | "bite" | "reeling" | "paused" | "caught" | "escaped" | "expired" | "pending";
   castKey?: string;
+  /** Cosmetic composition stays stable for one saved voyage. */
+  sceneKey?: string;
+  resistance?: "steady" | "sprightly" | "surging" | "stubborn";
   fishRarity?: "common" | "uncommon" | "rare" | "epic" | "legendary";
   /** Exact species is supplied only for a confirmed catch. */
   fishId?: string;
