@@ -13,7 +13,8 @@ export type FishingSceneFrame = {
 };
 
 export type FishingSceneViewport = { width: number; height: number; dpr: number };
-export type FishingSceneVisual = { elapsed: number; castElapsed: number; stageElapsed: number; still: boolean };
+export type FishingActorPose = { angle: number; effort: number; lean: number };
+export type FishingSceneVisual = { elapsed: number; castElapsed: number; stageElapsed: number; still: boolean; pose?: FishingActorPose };
 export type FishingScenePoint = { x: number; y: number };
 
 /** Authored in the same 1000×650 assembly space as the replaceable boat parts. */

@@ -30,7 +30,7 @@ function BoatReelSession({ onVisualState, suspended = false, ...props }: Props) 
   const FeedbackIcon = feedback.inZone ? Check : feedback.direction === "lift" ? ArrowUp : ArrowDown;
   return <section className={styles.attempt} data-boat-reel={challenge.id} data-reel-status={stage}
     data-reel-tick={reel.tick} data-reel-progress={reel.progress} aria-label="Вываживание рыбы">
-    <div className={styles.attemptHeading}><strong role="status">{status}</strong><span>{seconds} с</span></div>
+    <div className={styles.attemptHeading}><strong role="status"><span className={styles.phaseMark} data-phase={stage} aria-hidden="true"><span /></span>{status}</strong><span>{seconds} с</span></div>
     {!expired && castStage === "bite" && <div className={styles.progressRow} data-feedback={feedback.mood}><span>К лодке</span><progress value={reel.progress} max={10000} aria-label="Рыба на крючке" /><span>{Math.floor(reel.progress / 100)}%</span></div>}
     {playing && !expired && <div className={styles.feedback} data-feedback={feedback.mood}>
       <FeedbackIcon size={19} aria-hidden="true" /><strong>{feedback.title}</strong><span>{feedback.instruction}</span>
@@ -47,7 +47,7 @@ function BoatReelSession({ onVisualState, suspended = false, ...props }: Props) 
             onKeyDown={event => { if (event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing) return;
               if ([" ", "ArrowUp", "Enter"].includes(event.key)) { event.preventDefault(); event.stopPropagation(); if (!event.repeat) changeHeld(true); } }}
             onKeyUp={event => { if ([" ", "ArrowUp", "Enter"].includes(event.key)) { event.preventDefault(); event.stopPropagation(); changeHeld(false); } }}
-            onBlur={() => changeHeld(false)}><ArrowUp size={18} />{held ? "Тянем снасть" : "Удерживать"}</button>
+            onBlur={() => changeHeld(false)}><span className={styles.holdGlyph} aria-hidden="true"><ArrowUp size={18} /></span><span>{held ? "Тянем снасть" : "Удерживать"}</span><span className={styles.holdTrail} aria-hidden="true"><i /><i /><i /></span></button>
           <button type="button" className={styles.secondary} data-fishing-action="pause" onClick={togglePlay} aria-label="Пауза"><Pause size={18} /></button>
         </> : <button type="button" className={`${styles.primary} ${styles.hold}`} data-fishing-action="play" disabled={!ready || suspended} onClick={togglePlay}><Play size={17} />{reel.tick ? "Продолжить" : challenge.biteAt ? "Подсечь" : "Начать вываживание"}</button>}</div>
         {!playing && <p className={styles.hint}>Зажмите мышь, экран или пробел, чтобы поднять снасть. Отпустите, чтобы опустить.</p>}

@@ -1,10 +1,10 @@
 import { boatArtworkLayers } from "@/features/world/objects/fishing-boat/fishing-boat-artwork";
 import { paintFishingScene } from "./fishing-scene-painter";
+import { fishingBoatActorPose } from "./fishing-scene-actor";
 import { FISHING_WATER_TEXTURE } from "./fishing-scene-background";
 import type { FishingSceneFrame, FishingSceneViewport } from "./fishing-scene-types";
 
 const frameInterval = 1000 / 30;
-const terminalSeconds = 1.6;
 
 /** Owns presentation clocks and resources only. It cannot submit input or award a catch. */
 export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSceneFrame): { update(frame: FishingSceneFrame): void; dispose(): void } {
@@ -13,19 +13,20 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
   const ctx = context;
   let frame = initial, disposed = false, inView = true, contextLost = false;
   let raf = 0, lastClock: number | null = null, lastPaint: number | null = null;
-  let elapsed = 0, castElapsed = initial.castKey && initial.stage === "casting" ? 0 : 2, stageElapsed = 0, dirty = true;
+  let elapsed = 0, castElapsed = initial.castKey && initial.stage === "casting" ? 0 : 2, stageElapsed = initial.stage === "casting" ? 0 : 2, dirty = true;
+  let pose = fishingBoatActorPose(initial.stage, castElapsed, initial.held, elapsed, false, stageElapsed);
   let viewport: FishingSceneViewport = { width: 0, height: 0, dpr: 1 };
   const images = new Map<string, HTMLImageElement>(), pending = new Map<string, HTMLImageElement>();
   const failed = new Set<string>(), seenCasts = new Set(initial.castKey ? [initial.castKey] : []);
   const media = window.matchMedia?.("(prefers-reduced-motion: reduce)");
   const present = () => !disposed && !document.hidden && inView && !contextLost && viewport.width > 0 && viewport.height > 0;
-  const animated = () => present() && !media?.matches && (["waiting", "casting", "soaking", "bite", "reeling"].includes(frame.stage)
-    || (["caught", "landed", "escaped"].includes(frame.stage) && stageElapsed < terminalSeconds));
+  const animated = () => present() && !media?.matches && frame.stage !== "paused";
   function stop() { if (raf) cancelAnimationFrame(raf); raf = 0; lastClock = null; lastPaint = null; }
   function paint() {
     if (!present()) return;
     paintFishingScene(ctx, frame, images, viewport, { elapsed, castElapsed, stageElapsed,
-      still: Boolean(media?.matches) || frame.stage === "paused" });
+      still: Boolean(media?.matches),
+      pose: media?.matches ? fishingBoatActorPose(frame.stage, castElapsed, frame.held, 0, true, stageElapsed) : { ...pose } });
     dirty = false;
   }
   function tick(time: number) {
@@ -34,6 +35,10 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
     // Hidden tabs and a resumed event loop never invent missed visual motion.
     const dt = lastClock === null ? 0 : Math.min(.1, Math.max(0, (time - lastClock) / 1000));
     lastClock = time; elapsed += dt; castElapsed += dt; stageElapsed += dt;
+    const target = fishingBoatActorPose(frame.stage, castElapsed, frame.held, elapsed, false, stageElapsed);
+    const blend = 1 - Math.exp(-dt / .12);
+    pose = { angle: pose.angle + (target.angle - pose.angle) * blend,
+      effort: pose.effort + (target.effort - pose.effort) * blend, lean: pose.lean + (target.lean - pose.lean) * blend };
     const continuing = animated();
     if (lastPaint === null || time - lastPaint >= frameInterval || !continuing) {
       paint();
@@ -98,7 +103,8 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
   return {
     update(next: FishingSceneFrame) {
       if (disposed) return;
-      if (next.stage !== frame.stage) stageElapsed = 0;
+      // Pausing freezes an existing beat; resuming must not play another strike.
+      if (next.stage !== frame.stage && next.stage !== "paused" && frame.stage !== "paused") stageElapsed = 0;
       if (next.castKey && !seenCasts.has(next.castKey)) {
         seenCasts.add(next.castKey); castElapsed = 0;
         if (seenCasts.size > 64) seenCasts.delete(seenCasts.values().next().value!);

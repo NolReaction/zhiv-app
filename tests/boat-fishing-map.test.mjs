@@ -264,13 +264,17 @@ test("caught UI explicitly submits one replay verified trace then credits invent
   const result = f.playToResult(); assert.equal(result.status, "caught");
   assert.equal(f.find(node => node.tag === "canvas").props.frame.stage, "caught");
   assert.deepEqual(f.state.inventory, inventory); assert.equal(f.state.boat.voyage.catches.length, 0);
+  assert.equal(f.find(node => node.props["data-confirmed-catch"]), undefined);
   const staleSubmit = f.byAction("submit"); f.click(staleSubmit); staleSubmit.props.onClick(event(staleSubmit));
   assert.equal(f.pending.length, 1); assert.equal(f.state.boat.voyage.catches.length, 0);
   assert(f.find(node => node.props["data-reel-status"] === "pending"));
   const request = f.pending[0]; assert.deepEqual(replayBoatReel(challenge, request.reel.inputs, request.reel.endTick), result);
   f.flush(); assert.equal(f.state.boat.voyage.catches.length, 1);
   assert.equal(f.find(node => node.tag === "canvas").props.frame.stage, "landed");
-  assert.equal(f.find(node => node.tag === "canvas").props.frame.fishId, f.state.boat.voyage.catches[0].fishId); assert.deepEqual(f.state.inventory, inventory);
+  assert.equal(f.find(node => node.tag === "canvas").props.frame.fishId, f.state.boat.voyage.catches[0].fishId);
+  const receipt = f.find(node => node.props["data-confirmed-catch"]);
+  assert.equal(receipt.props["data-confirmed-catch"], f.state.boat.voyage.catches[0].fishId);
+  assert.match(text(receipt), /Улов подтверждён/); assert.deepEqual(f.state.inventory, inventory);
   assert.equal(f.commands.filter(command => command.action === "submit_boat_cast").length, 1);
   f.click(f.byAction("return")); f.click(f.byAction("confirm-return")); assert.equal(f.pending.length, 1);
   f.flush(); const returns = Date.parse(f.state.boat.voyage.returnsAt);

@@ -15,8 +15,8 @@ const vite = await createServer({ root, configFile: false, appType: "custom", op
 });
 after(() => vite.close());
 const { fishingSceneGeometry, paintFishingScene } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-painter.ts");
-const { fishingBoatActorRig } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-actor.ts");
-const { fishingSceneFishAppearance } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-fish.ts");
+const { fishingBoatActorRig, fishingBoatActorPose } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-actor.ts");
+const { fishingSceneFishAppearance, fishingSceneFishMotion } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-fish.ts");
 const { mountFishingScene } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-runtime.ts");
 const { FishingSceneCanvas } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-canvas.tsx");
 const { BOAT_ART_PARTS } = await vite.ssrLoadModule("/features/world/objects/fishing-boat/fishing-boat-artwork.ts");
@@ -84,10 +84,15 @@ test("public reel controls move the surface float, fish shadow, pull and rod ten
   const value = frame(), base = fishingSceneGeometry(390, 844, value, visual);
   const raised = fishingSceneGeometry(390, 844, { ...value, held: true, reel: { ...value.reel, bar: 9000, fish: 1000, progress: 8500 } }, visual);
   assert.ok(raised.hook.y < base.hook.y); assert.ok(raised.fish.y > base.fish.y);
-  assert.ok(raised.hook.x < base.hook.x); assert.ok(raised.tension > base.tension); assert.notDeepEqual(raised.tip, base.tip);
+  assert.ok(raised.hook.x < base.hook.x);
+  const live = { ...visual, still: false };
+  const relaxed = fishingSceneGeometry(390, 844, value, live);
+  const pulling = fishingSceneGeometry(390, 844, { ...value, held: true }, live);
+  assert.ok(pulling.tension > relaxed.tension); assert.notDeepEqual(pulling.tip, relaxed.tip);
   assert.deepEqual(base.float, base.hook, "the landed float is the controlled position, not a detached decoration");
   assert.deepEqual(raised.float, raised.hook);
-  assert.deepEqual(raised.grip, base.grip, "the hand is the rod pivot, not a floating independent prop");
+  assert.ok(Math.hypot(raised.grip.x - base.grip.x, raised.grip.y - base.grip.y) < 2, "the handle follows bounded torso effort, not an independent prop");
+  assert.deepEqual(raised.grip, raised.onBoat(raised.actorRig.nearArm.hand), "rod pivot remains the exact gripping hand");
   const stopped = fishingSceneGeometry(390, 844, value, { ...visual, still: true, elapsed: 1000 });
   assert.deepEqual([stopped.boat, stopped.tip, stopped.float, stopped.hook, stopped.fish, stopped.zone],
     [base.boat, base.tip, base.float, base.hook, base.fish, base.zone], "reduced motion retains a stable pose while controls remain public inputs");
@@ -143,7 +148,7 @@ test("canvas runtime caps DPR/frame rate, pauses offscreen and cleans up late im
   } finally { runtime.dispose(); env.restore(); }
 });
 
-test("a repeated cast key does not replay; pause, reduced motion and settled outcomes have no endless RAF", () => {
+test("a repeated cast key does not replay; paused motion stops while completed outcomes retain living water", () => {
   const env = environment(), value = frame(), runtime = mountFishingScene(env.canvas, value);
   try {
     for (let i = 0; i < 12; i++) env.step(100);
@@ -153,9 +158,12 @@ test("a repeated cast key does not replay; pause, reduced motion and settled out
     env.step(3000); runtime.update(value); env.step(); assert.equal(env.paints.at(-1).visual.castElapsed, pausedAge);
     runtime.update({ ...value, castKey: "cast-two" }); env.step(34); assert.ok(env.paints.at(-1).visual.castElapsed < .1);
     runtime.update({ ...value, castKey: "cast-one" }); env.step(34); assert.ok(env.paints.at(-1).visual.castElapsed > 0, "an old key remains seen");
-    runtime.update({ ...value, stage: "caught" }); for (let i = 0; i < 25; i++) env.step(100); assert.equal(env.frames.size, 0);
-    runtime.update({ ...value, stage: "pending" }); assert.equal(env.frames.size, 0);
-    runtime.update({ ...value, stage: "expired" }); assert.equal(env.frames.size, 0);
+    runtime.update({ ...value, stage: "caught" }); for (let i = 0; i < 25; i++) env.step(100); assert.equal(env.frames.size, 1);
+    const afterCatch = env.paints.at(-1).visual.elapsed;
+    runtime.update({ ...value, stage: "pending" }); env.step(100); assert.equal(env.frames.size, 1);
+    runtime.update({ ...value, stage: "expired" }); env.step(100); assert.equal(env.frames.size, 1);
+    assert.ok(env.paints.at(-1).visual.elapsed > afterCatch, "the water clock continues after the finite catch effect");
+    env.reduced(true); assert.equal(env.frames.size, 0);
     const html = renderToStaticMarkup(createElement(FishingSceneCanvas, { frame: value, className: "fishingViewport" }));
     assert.match(html, /<canvas[^>]+class="fishingViewport"/); assert.match(html, /aria-hidden="true"/);
     assert.doesNotMatch(html, /<button|<img|<svg/);
@@ -176,7 +184,7 @@ test("two compact arms remain below the face and share exact grip anchors throug
       assert.ok(Math.hypot(arm.hand.x - arm.shoulder.x, arm.hand.y - arm.shoulder.y) < rig.actor.size * .33);
     }
     assert.deepEqual(rig.grip, rig.nearArm.hand);
-    assert.deepEqual(rig.grip, waiting.grip, "casting, winding and lifting keep the hand on the handle");
+    assert.ok(Math.hypot(rig.grip.x - waiting.grip.x, rig.grip.y - waiting.grip.y) < 4, "breathing and effort move the same handle only within the compact torso");
   }
 });
 
@@ -205,6 +213,75 @@ test("a restored waiting cast stays landed and server bite cannot restart its fl
     assert.ok(env.paints.at(-1).visual.castElapsed >= 1.2, "authoritative soaking lands even after a delayed response");
     runtime.update({ ...value, stage: "landed", fishId: "fish_mooncarp" });
     for (let i = 0; i < 25; i++) env.step(100);
-    assert.equal(env.frames.size, 0, "confirmed landing is a finite animation");
+    assert.equal(env.frames.size, 1, "finite landing effects leave water and buoyancy alive");
+    assert.ok(env.paints.at(-1).visual.stageElapsed >= 1.6);
   } finally { runtime.dispose(); env.restore(); }
+});
+
+test("pose changes ease through a pull without moving public game coordinates or catching up hidden time", () => {
+  const env = environment(), value = { ...frame(), stage: "soaking" }, runtime = mountFishingScene(env.canvas, value);
+  try {
+    for (let index = 0; index < 12; index++) env.step(34);
+    const before = env.paints.at(-1).visual.pose.angle;
+    const pulling = { ...value, stage: "reeling", held: true };
+    runtime.update(pulling); env.step(34);
+    const first = env.paints.at(-1).visual.pose.angle;
+    assert.ok(Math.abs(first - before) < .22, "the first pull frame cannot snap the rod to its full raised pose");
+    for (let index = 0; index < 14; index++) env.step(34);
+    const settled = env.paints.at(-1);
+    assert.ok(settled.visual.pose.angle < before - .3, "the pose actually follows through into the pull");
+    assert.deepEqual(settled.frame.reel, pulling.reel, "presentation easing cannot alter the hit zone or replay state");
+    const previous = settled.visual.pose.angle;
+    runtime.update({ ...pulling, stage: "paused", held: false });
+    assert.equal(env.frames.size, 0);
+    assert.deepEqual(env.paints.at(-1).visual.pose, settled.visual.pose, "pause freezes the visible rig instead of lowering it");
+    const pausedClock = env.paints.at(-1).visual.elapsed;
+    const pausedBeat = env.paints.at(-1).visual.stageElapsed;
+    env.step(1000); runtime.update(pulling); env.step(34);
+    assert.equal(env.paints.at(-1).visual.elapsed, pausedClock);
+    assert.equal(env.paints.at(-1).visual.stageElapsed, pausedBeat, "resume cannot trigger another strike animation");
+    assert.equal(env.paints.at(-1).visual.pose.angle, previous);
+    env.visibility(true); env.step(10000); env.visibility(false); env.step(34);
+    assert.ok(Math.abs(env.paints.at(-1).visual.pose.angle - previous) < .05, "resuming cannot replay ten seconds of hidden movement");
+    env.reduced(true); assert.equal(env.frames.size, 0);
+  } finally { runtime.dispose(); env.restore(); }
+});
+
+
+test("authored cast has preparation, forward release and calm followthrough with bounded compact poses", () => {
+  const start = fishingBoatActorPose("casting", 0, false, 0, false);
+  const backswing = fishingBoatActorPose("casting", .25, false, .25, false);
+  const release = fishingBoatActorPose("casting", .73, false, .73, false);
+  const settled = fishingBoatActorPose("casting", 1.2, false, 1.2, false);
+  assert.ok(backswing.angle < start.angle - 1.5);
+  assert.ok(release.angle > backswing.angle + 1.5);
+  assert.ok(Math.abs(settled.angle - fishingBoatActorPose("soaking", 2, false, 2, false).angle) < .03);
+  for (const stage of ["casting", "soaking", "bite", "reeling", "caught", "landed"]) for (let index = 0; index <= 30; index++) {
+    const age = index / 10, pose = fishingBoatActorPose(stage, age, index % 2 === 0, age, false, age);
+    const rig = fishingBoatActorRig(stage, age, index % 2 === 0, age, false, pose, age);
+    assert.ok(Number.isFinite(pose.angle) && Math.abs(pose.angle) < 2);
+    assert.ok(rig.nearArm.reachable && rig.farArm.reachable);
+    for (const arm of [rig.nearArm, rig.farArm]) assert.ok(arm.hand.y > 430 && arm.elbow.y > 430);
+  }
+});
+
+test("strike and landing reactions finish while the fish tail rests under reduced motion", () => {
+  const strike = fishingBoatActorPose("reeling", 2, false, 0, false, .275);
+  const settled = fishingBoatActorPose("reeling", 2, false, 0, false, 2);
+  assert.ok(strike.angle < settled.angle - .3);
+  assert.deepEqual(fishingBoatActorPose("landed", 2, false, 2, false, 2), fishingBoatActorPose("landed", 2, false, 2, false, 3));
+  assert.equal(fishingSceneFishMotion("landed", 4, false, 2).tail, 0);
+  assert.equal(fishingSceneFishMotion("reeling", 4, true).tail, 0);
+  assert.deepEqual(fishingBoatActorPose("reeling", 2, true, 4, true), fishingBoatActorPose("reeling", 2, true, 40, true));
+  assert.ok(fishingBoatActorPose("reeling", 2, true, 4, true).effort > fishingBoatActorPose("reeling", 2, false, 4, true).effort);
+});
+
+
+test("the casting arc keeps its float inside the viewport on medium and short screens", () => {
+  for (const [width, height] of [[960,540],[1280,720],[390,844],[820,390]]) for (let tick = 0; tick <= 60; tick++) {
+    const age = tick / 50;
+    const geometry = fishingSceneGeometry(width, height, { ...frame(), stage: "casting" },
+      { elapsed: age, castElapsed: age, stageElapsed: age, still: false });
+    assert.ok(geometry.float.y * geometry.scale >= 20, "float glyph clears the top edge throughout the flight");
+  }
 });

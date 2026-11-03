@@ -8,7 +8,7 @@ const vite = await createServer({ root, configFile: false, appType: "custom", re
   server: { middlewareMode: true, hmr: false, ws: false }, optimizeDeps: { noDiscovery: true, include: [] } });
 after(() => vite.close());
 const { fishingBoatMotion, transformFishingBoatPoint, FISHING_BOAT_PIVOT } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-buoyancy.ts");
-const { paintFishingLandscape, paintFishingWake, paintFishingHullContact } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-background.ts");
+const { paintFishingLandscape, paintFishingWake, paintFishingRipples, paintFishingHullContact } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-background.ts");
 
 test("the entire boat rig shares a bounded smooth buoyancy transform, with a stable reduced-motion pivot", () => {
   for (let time = 0; time < 100; time += .05) {
@@ -59,4 +59,25 @@ test("water contact uses attached contours and open ripples without the detached
   assert.ok(calls.some(call => call.key === "bezierCurveTo"), "the water lip follows the authored hull rather than an ellipse below it");
   assert.equal(calls.some(call => call.key === "fill"), false);
   assert.ok(calls.filter(call => call.key === "stroke").length >= 5);
+});
+
+test("surface wavelets fade on both sides of their cycle instead of flashing a new full-opacity ring", () => {
+  const opacity = (paint, time) => {
+    const styles = [], context = new Proxy({}, { get(target, key) {
+      if (key in target) return target[key];
+      if (key === "stroke") return () => styles.push(context.strokeStyle);
+      return () => {};
+    } });
+    paint(context, time);
+    return styles.map(style => Number(style.match(/,([^,]+)\)$/)[1]));
+  };
+  for (const [paint, speed] of [
+    [(context, time) => paintFishingRipples(context, { x: 20, y: 30 }, time), .7],
+    [(context, time) => paintFishingWake(context, { x: 500, y: 535 }, 970, time), .19],
+  ]) {
+    assert.equal(opacity(paint, 0)[0], 0);
+    assert.ok(opacity(paint, .5 / speed)[0] > .1, "the middle of the cycle stays visible");
+    assert.ok(opacity(paint, (1 - 1e-5) / speed)[0] < .001, "a ring disappears continuously before wrapping");
+    assert.ok(opacity(paint, .3 / speed).every(alpha => Number.isFinite(alpha) && alpha >= 0 && alpha <= .3));
+  }
 });

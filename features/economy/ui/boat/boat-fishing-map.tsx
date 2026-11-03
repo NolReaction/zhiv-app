@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { ItemIcon } from "@/features/items/item-icon";
 import { AlertDialog } from "radix-ui";
 import { ArrowLeft, Clock3, Fish, FishingRod, Sailboat, X } from "lucide-react";
 import { boatConfig, boatState } from "@/features/economy/domain/boat-fishing";
@@ -56,10 +57,15 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
     {economy.error && <p className={styles.error} role="alert">{economy.error}</p>}
     {economy.uncertain && <div className={styles.recovery}><span>Проверяем последнее действие.</span><button type="button" disabled={economy.busy} onClick={() => economy.retry()}>Проверить результат</button></div>}
     <div className={styles.bottom}>
-      <div className={styles.controls}>
+      <div className={styles.controls} data-control-stage={frame.stage}>
         {challenge ? <BoatReelGame owner={state.ownerPublicId} voyageId={voyage.id} challenge={challenge} now={economy.now} disabled={disabled || suspended}
           uncertain={economy.uncertain} suspended={suspended || showCatch || showDev || confirmReturn} onVisualState={publishVisual} onSubmit={reel => send("submit_boat_cast", voyage.id, reel)} />
-          : <div className={styles.waiting}><span className={styles.eyebrow}><Sailboat size={15} />Мохлик на речном плёсе</span><h3>{landed ? `${itemName(state, landed.fishId)} на борту!` : remaining ? "Пора забросить удочку" : "Все забросы использованы"}</h3><p>{landed ? `${boatFishWeightLabel(landed.weightGrams)} · Улов подтверждён.` : remaining ? "Забросьте удочку. Следите за поплавком и удерживайте рыбу в зоне снасти." : "Улов остаётся на борту. Можно возвращаться к причалу."}</p></div>}
+          : <div className={styles.waiting} key={landed ? `landed-${landed.castIndex}` : "ready"}>
+            {landed ? <div className={styles.catchReceipt} data-confirmed-catch={landed.fishId} role="status">
+              <span className={styles.catchPortrait}><ItemIcon itemId={landed.fishId} size={46} /></span>
+              <div><span className={styles.eyebrow}>Улов на борту</span><h3>{itemName(state, landed.fishId)} на борту!</h3><p><strong>{boatFishWeightLabel(landed.weightGrams)}</strong><span className={styles.receiptMark}>Улов подтверждён</span></p></div>
+            </div> : <><span className={styles.eyebrow}><Sailboat size={15} />Мохлик на речном плёсе</span><h3>{remaining ? "Пора забросить удочку" : "Все забросы использованы"}</h3><p>{remaining ? "Забросьте удочку. Следите за поплавком и удерживайте рыбу в зоне снасти." : "Улов остаётся на борту. Можно возвращаться к причалу."}</p></>}
+          </div>}
         {(!challenge || expired) && remaining > 0 && <button type="button" className={styles.primary} data-fishing-action="cast" disabled={disabled || suspended} onClick={() => { if (!disabled) send("begin_boat_cast", voyage.id); }}><FishingRod size={18} />Забросить удочку</button>}
         <div className={styles.bottomRow}><button type="button" className={styles.back} onClick={onClose}><ArrowLeft size={15} />К поляне</button><button type="button" className={styles.back} data-fishing-action="return" disabled={disabled || suspended} onClick={() => { if (!disabled) setConfirmReturn(true); }}>Вернуться с уловом</button></div>
       </div>
