@@ -1,8 +1,7 @@
 import { fishingSceneAtmosphere, type FishingSceneExclusion } from "./fishing-scene-atmosphere";
-import { paintSceneFish } from "./fishing-scene-fish";
 import type { FishingSceneFrame, FishingScenePoint, FishingSceneVisual } from "./fishing-scene-types";
 
-type SchoolFrame = Pick<FishingSceneFrame, "stage" | "castKey" | "sceneKey" | "fishRarity" | "biteLeadSeconds" | "ambience">;
+type SchoolFrame = Pick<FishingSceneFrame, "stage" | "castKey" | "sceneKey" | "biteLeadSeconds" | "ambience">;
 type SchoolGeometry = { fish: FishingScenePoint; hook: FishingScenePoint; waterTop: number; waterBottom: number;
   composition?: { floatX: number }; scale?: number; boat?: { x: number; scale: number } };
 type SchoolVisual = Pick<FishingSceneVisual, "elapsed" | "stageElapsed" | "still">;
@@ -31,14 +30,16 @@ function visibility(point: FishingScenePoint, extent: number, exclusions: readon
   return alpha;
 }
 
-type SchoolAnchor = { x: number; y: number; scale: number; key: number; school: number; count: number };
+type SchoolAnchor = { x: number; y: number; key: number; school: number; count: number;
+  sizeLow: number; sizeHigh: number; gap: number; stagger: number; motionX: number; motionY: number };
 let anchorCache: { key: string; anchors: readonly SchoolAnchor[] } | undefined;
 const overlaps = (a: FishingSceneExclusion, b: FishingSceneExclusion) =>
   a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 
 /** Fit a whole moving group into visible water. Hull/HUD envelopes can leave only narrow side channels. */
-function schoolAnchors(width: number, height: number, hash: number, exclusions: readonly FishingSceneExclusion[]): readonly SchoolAnchor[] {
-  const cacheKey = `${width}:${height}:${hash}:${exclusions.map(rect => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(";")}`;
+function schoolAnchors(width: number, height: number, hash: number, pixelScale: number,
+  exclusions: readonly FishingSceneExclusion[]): readonly SchoolAnchor[] {
+  const cacheKey = `${width}:${height}:${hash}:${pixelScale}:${exclusions.map(rect => `${rect.x},${rect.y},${rect.width},${rect.height}`).join(";")}`;
   if (anchorCache?.key === cacheKey) return anchorCache.anchors;
   const anchors: SchoolAnchor[] = [], occupied: FishingSceneExclusion[] = [];
   const candidates = [[.12, .60], [.87, .7], [.25, .84], [.75, .84], [.12, .32], [.88, .37], [.5, .7]];
@@ -50,24 +51,35 @@ function schoolAnchors(width: number, height: number, hash: number, exclusions: 
     .map(value => clamp(value, 26, height - 26)))].sort((a, b) => a - b);
   for (let row = 1; row < yEdges.length; row++) for (let column = 1; column < xEdges.length; column++)
     candidates.push([(xEdges[column - 1] + xEdges[column]) / (width * 2), (yEdges[row - 1] + yEdges[row]) / (height * 2)]);
+  const portrait = width * pixelScale < 700;
   for (let school = 0; school < 3; school++) {
     let selected: SchoolAnchor | undefined;
-    for (const scale of [1, .85, .7, .55, .5]) {
-      const halfWidth = 90 * scale, halfHeight = 68 * scale;
+    for (const scale of [1, .85, .7, .55, .45]) {
+      // Body size has a CSS-pixel floor, independent of how tightly the group must fit a narrow channel.
+      const minimum = portrait ? 6.5 : 11.25;
+      const sizeLow = Math.max(minimum, (portrait ? 8.5 : 14) * scale) / pixelScale;
+      const sizeHigh = Math.max(minimum, (portrait ? 12.5 : 19) * scale) / pixelScale;
+      const gap = (portrait ? 13 : 18) * scale / pixelScale;
+      const stagger = (portrait ? 6 : 8) * scale / pixelScale;
+      const motionX = (portrait ? 28 : 42) * scale / pixelScale;
+      const motionY = (portrait ? 6 : 10) * scale / pixelScale;
+      const padding = 2.5 / pixelScale;
+      const halfWidth = motionX + gap * 1.5 + sizeHigh * .82 + padding;
+      const halfHeight = motionY + stagger + sizeHigh * .82 + padding;
       const edgeX = [halfWidth + 18, width - halfWidth - 18,
-        ...exclusions.flatMap(rect => [rect.x - halfWidth - 7, rect.x + rect.width + halfWidth + 7])];
+        ...exclusions.flatMap(rect => [rect.x - halfWidth - .5, rect.x + rect.width + halfWidth + .5])];
       const edgeY = [halfHeight + 32, height - halfHeight - 32,
-        ...exclusions.flatMap(rect => [rect.y - halfHeight - 7, rect.y + rect.height + halfHeight + 7])];
+        ...exclusions.flatMap(rect => [rect.y - halfHeight - .5, rect.y + rect.height + halfHeight + .5])];
       const fittedCandidates = [...candidates];
       for (const y of edgeY) for (const x of edgeX) fittedCandidates.push([x / width, y / height]);
       for (let attempt = 0; attempt < fittedCandidates.length; attempt++) {
         const index = (attempt + hash % fittedCandidates.length + school * 17) % fittedCandidates.length, candidate = fittedCandidates[index];
         const x = clamp(width * candidate[0], halfWidth + 12, width - halfWidth - 12);
         const y = clamp(height * candidate[1], halfHeight + 26, height - halfHeight - 26);
-        const bounds = { x: x - halfWidth - 6, y: y - halfHeight - 6, width: halfWidth * 2 + 12, height: halfHeight * 2 + 12 };
+        const bounds = { x: x - halfWidth, y: y - halfHeight, width: halfWidth * 2, height: halfHeight * 2 };
         if (exclusions.some(rect => overlaps(bounds, rect)) || occupied.some(rect => overlaps(bounds, rect))) continue;
         const key = hash + school * 71;
-        selected = { x, y, scale, key, school, count: 4 + Math.floor(random(key + 7) * 2) }; occupied.push(bounds); break;
+        selected = { x, y, key, school, count: 4, sizeLow, sizeHigh, gap, stagger, motionX, motionY }; occupied.push(bounds); break;
       }
       if (selected) break;
     }
@@ -85,6 +97,7 @@ export function fishingUnderwaterLife(width: number, height: number, frame: Scho
   const top = Math.max(26, geometry.waterTop), bottom = Math.min(height - 30, geometry.waterBottom);
   if (!(bottom > top)) return { schools, approach: null };
   const time = visual.still || !Number.isFinite(visual.elapsed) ? 0 : Math.max(0, visual.elapsed);
+  const pixelScale = Number.isFinite(geometry.scale) && geometry.scale! > 0 ? geometry.scale! : 1;
   const mood = fishingSceneAtmosphere(frame.ambience), hash = sceneHash(frame.sceneKey);
   // Reserve the full future target path in a real scene, so progress cannot relocate a shoal during the fight.
   const castX = geometry.composition && geometry.scale ? geometry.composition.floatX / geometry.scale : geometry.hook.x;
@@ -92,25 +105,33 @@ export function fishingUnderwaterLife(width: number, height: number, frame: Scho
   const protectedWater = [...exclusions, { x: Math.min(castX, landingX) - 86, y: top - 60,
     width: Math.abs(castX - landingX) + 172, height: bottom - top + 120 }];
   // Decorative schools use all visible water, independently of the shallow vertical fight lane.
-  for (const anchor of schoolAnchors(width, height, hash, protectedWater)) {
-    const { key, school, count, scale } = anchor;
-    const schoolOpacity = school === 2 ? mood.sunset * .8 + mood.dawn * .45 + mood.night * .15 : 1;
-    const phase = random(key + 3) * Math.PI * 2, clock = time * (.085 + random(key + 5) * .025) + phase;
-    const centerX = anchor.x + Math.sin(clock) * 24 * scale, centerY = anchor.y + Math.cos(clock) * 9 * scale;
-    const angle = Math.atan2(-Math.sin(clock) * 9, Math.cos(clock) * 24);
+  for (const anchor of schoolAnchors(width, height, hash, pixelScale, protectedWater)) {
+    const { key, school, count } = anchor;
+    const schoolOpacity = school === 2 ? mood.sunset * .85 + mood.dawn * .55 + mood.night * .45 : 1;
+    const phase = random(key + 3) * Math.PI * 2, clock = time * (.27 + random(key + 5) * .065) + phase;
+    const centerX = anchor.x + Math.sin(clock) * anchor.motionX, centerY = anchor.y + Math.cos(clock) * anchor.motionY;
+    const angle = Math.atan2(-Math.sin(clock) * anchor.motionY, Math.cos(clock) * anchor.motionX);
     for (let member = 0; member < count; member++) {
-      const stagger = member === 0 ? 0 : (member % 2 ? -1 : 1) * (11 + Math.floor((member + 1) / 2) * 7);
-      const lag = 28 - Math.floor((member + 1) / 2) * 28;
-      const sway = visual.still ? 0 : Math.sin(time * 1.4 + member * .7 + phase) * 2.6;
+      const stagger = (member % 2 ? -1 : 1) * anchor.stagger;
+      const lag = (member - 1.5) * anchor.gap;
+      const sway = visual.still ? 0 : Math.sin(time * 1.8 + member * .7 + phase) * anchor.stagger * .12;
       // The loose staggered formation stays inside its fitted envelope even while the bodies turn together.
-      const x = centerX + lag * scale, y = centerY + (stagger + sway) * scale;
-      const size = (21 + random(key + member * 13 + 11) * 11) * scale;
-      const opacity = (.105 + mood.daylight * .075 + mood.sunset * .08) * schoolOpacity * visibility({ x, y }, size * .82, protectedWater);
+      const x = centerX + lag, y = centerY + stagger + sway;
+      const size = mix(anchor.sizeLow, anchor.sizeHigh, random(key + member * 13 + 11));
+      const clearance = visibility({ x, y }, size * .82, protectedWater);
+      // The complete fitted path already avoids land: keep a readable underwater silhouette even in a narrow safe channel.
+      const opacity = (.32 + mood.daylight * .15 + mood.sunset * .1) * schoolOpacity * (clearance > 0 ? .72 + clearance * .28 : 0);
       if (opacity > .003) schools.push({ school, member, x, y, size, angle: angle + (visual.still ? 0 : Math.sin(time * 1.4 + member * .7) * .025),
         tail: visual.still ? 0 : Math.sin(time * 6.2 + member * .65 + phase) * .42, opacity });
     }
   }
   const lead = frame.biteLeadSeconds;
+  if (frame.stage === "bite" && frame.castKey && !visual.still && visual.stageElapsed >= 0 && visual.stageElapsed < .45) {
+    const depth = smooth(visual.stageElapsed / .45);
+    const point = { x: geometry.fish.x, y: geometry.fish.y + depth * 22 / pixelScale };
+    const opacity = (1 - depth) * visibility(point, 13 / pixelScale, approachExclusions);
+    return { schools, approach: opacity > .003 ? { point, opacity, progress: 1 } : null };
+  }
   if (frame.stage !== "soaking" || !frame.castKey || lead === undefined || !Number.isFinite(lead) || lead < 0 || lead > 4.8)
     return { schools, approach: null };
   const progress = smooth(1 - lead / 4.8), point = { ...geometry.fish };
@@ -127,9 +148,10 @@ export function fishingUnderwaterLife(width: number, height: number, frame: Scho
 
 function paintSchoolShadow(ctx: CanvasRenderingContext2D, fish: FishingSchoolShadow) {
   ctx.save(); ctx.translate(fish.x, fish.y); ctx.rotate(fish.angle); ctx.scale(fish.size, fish.size); ctx.globalAlpha *= fish.opacity;
-  ctx.fillStyle = "#123f50"; ctx.beginPath(); ctx.ellipse(0, 0, .52, .14, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#204b56"; ctx.strokeStyle = "rgba(168,205,177,.62)"; ctx.lineWidth = .04;
+  ctx.beginPath(); ctx.ellipse(0, 0, .52, .14, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(-.38, 0); ctx.lineTo(-.76, -.16 + fish.tail * .09); ctx.lineTo(-.65, fish.tail * .09); ctx.lineTo(-.76, .16 + fish.tail * .09); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = "rgba(156,207,204,.18)"; ctx.beginPath(); ctx.ellipse(.06, -.035, .29, .025, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(191,214,174,.58)"; ctx.beginPath(); ctx.ellipse(.06, -.035, .29, .028, 0, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 }
 
@@ -140,10 +162,9 @@ export function paintFishingUnderwaterLife(ctx: CanvasRenderingContext2D, width:
   const life = fishingUnderwaterLife(width, height, frame, visual, geometry, exclusions, approachExclusions);
   for (const fish of life.schools) paintSchoolShadow(ctx, fish);
   if (life.approach) {
-    ctx.save(); ctx.globalAlpha *= life.approach.opacity;
-    // Construct only public appearance fields; injected species/weight never enter the approach artwork.
-    paintSceneFish(ctx, life.approach.point, { stage: "soaking", castKey: frame.castKey, fishRarity: frame.fishRarity,
-      held: false, boat: { repaired: true, upgrades: [] } }, visual.still ? 0 : visual.elapsed, visual.still, visual.stageElapsed);
-    ctx.restore();
+    const pixelScale = Number.isFinite(geometry.scale) && geometry.scale! > 0 ? geometry.scale! : 1;
+    // Only a quiet anonymous underwater shadow approaches; class/species artwork is reserved for the confirmed catch.
+    paintSchoolShadow(ctx, { school: -1, member: 0, ...life.approach.point, size: 13 / pixelScale,
+      angle: -.09, tail: visual.still ? 0 : Math.sin(visual.elapsed * 6) * .3, opacity: life.approach.opacity * .4 });
   }
 }

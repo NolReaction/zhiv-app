@@ -7,9 +7,9 @@ export function boatReelHash(seed: number, segment: number): number {
 }
 /** V1 integer physics is immutable: existing saved challenges retain these rules. */
 export function initialBoatReel(challenge: BoatChallenge): BoatReelState {
-  if (![1, 2, 3].includes(challenge.rulesVersion)) throw new RangeError("Unsupported boat reel version");
+  if (![1, 2, 3, 4].includes(challenge.rulesVersion)) throw new RangeError("Unsupported boat reel version");
   if (challenge.rulesVersion >= 2 && !challenge.resistance) throw new RangeError("Missing boat resistance profile");
-  if (challenge.rulesVersion === 3 && !challenge.fishRarity) throw new RangeError("Missing public boat fish class");
+  if (challenge.rulesVersion >= 3 && !challenge.fishRarity) throw new RangeError("Missing public boat fish class");
   return { tick: 0, bar: 5000, velocity: 0, fish: 5000, progress: 2500, status: "active" };
 }
 /** A public class selects a motion profile, without disclosing species or weight. */
@@ -100,15 +100,18 @@ export function boatResistanceMotionV3(challenge: BoatChallenge, tick: number) {
 
 /** Presentation can describe current public motion; it cannot advance or alter replay. */
 export function boatReelResistancePhase(challenge: BoatChallenge, tick: number): BoatResistancePhase {
-  return challenge.rulesVersion === 3 ? boatResistanceMotionV3(challenge, Math.max(0, Math.trunc(tick))).phase : "cruising";
+  return challenge.rulesVersion >= 3 ? boatResistanceMotionV3(challenge, Math.max(0, Math.trunc(tick))).phase : "cruising";
 }
 
 export function stepBoatReel(challenge: BoatChallenge, state: BoatReelState, held: boolean): BoatReelState {
   if (state.status !== "active") return state;
-  let velocity = clamp(Math.trunc(state.velocity * 94 / 100) + (held ? 26 : -20), -220, 220);
-  const half = challenge.zoneWidth / 2, bar = clamp(state.bar + velocity, half, 10000 - half);
-  if (bar !== state.bar + velocity) velocity = 0;
-  const motion = challenge.rulesVersion === 3 ? boatResistanceMotionV3(challenge, state.tick) : challenge.rulesVersion === 2 ? boatResistanceMotion(challenge, state.tick) : {
+  const modernControl = challenge.rulesVersion === 4;
+  let velocity = clamp(Math.trunc(state.velocity * (modernControl ? 96 : 94) / 100)
+    + (held ? modernControl ? 22 : 26 : modernControl ? -18 : -20), -220, 220);
+  const half = challenge.zoneWidth / 2, freeBar = state.bar + velocity, bar = clamp(freeBar, half, 10000 - half);
+  // A dropped V4 zone rebounds gently from the bottom. Slow contacts settle; the upper stop never bounces.
+  if (bar !== freeBar) velocity = modernControl && freeBar < half && velocity < -40 ? Math.trunc(-velocity * 40 / 100) : 0;
+  const motion = challenge.rulesVersion >= 3 ? boatResistanceMotionV3(challenge, state.tick) : challenge.rulesVersion === 2 ? boatResistanceMotion(challenge, state.tick) : {
     target: 500 + boatReelHash(challenge.seed, Math.floor(state.tick / (60 - 6 * challenge.difficulty))) % 9001,
     limit: 35 + 7 * challenge.difficulty, divisor: 10,
   };

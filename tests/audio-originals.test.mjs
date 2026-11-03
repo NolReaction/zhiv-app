@@ -34,7 +34,7 @@ function pcmWave(bytes) {
 
 test("original pack fills the catalog, documents source and verifies every shipped byte", () => {
   assert.deepEqual(inspectAudioCatalog(catalog, { root, requireReady: true }).errors, []);
-  assert.equal(manifest.assets.length, 119);
+  assert.equal(manifest.assets.length, 121);
   assert.deepEqual(new Set(manifest.assets.map(item => item.id)), new Set(catalog.assets.map(item => item.id)));
   const hashes = new Set();
   for (const source of manifest.sources) assert.equal(sha(readFileSync(path.join(root, source.path))), source.sha256, source.path);
@@ -163,7 +163,7 @@ test("decoded WAV effects are non-silent, unclipped and match their declared dur
 
 test("ambient bank leaves mobile buffer headroom and music has a Safari fallback", () => {
   const loops = manifest.assets.filter(item => item.kind === "loop");
-  assert.equal(loops.length, 11);
+  assert.equal(loops.length, 13);
   assert.ok(loops.reduce((sum, item) => sum + item.decodedBytes, 0) < 24 * 1024 * 1024);
   for (const item of manifest.assets.filter(asset => asset.kind === "music")) {
     assert.equal(item.channels, 2);

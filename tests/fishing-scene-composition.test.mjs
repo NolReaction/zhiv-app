@@ -23,7 +23,7 @@ test("voyage framing is deterministic and changes restrained composition rather 
   assert.deepEqual(fishingCompositionVariant(), fishingCompositionVariant(""));
   const before = structuredClone(frame), first = fishingSceneGeometry(1280, 720, frame, visual);
   const nextCast = fishingSceneGeometry(1280, 720, { ...frame, castKey: "cast-two" }, visual);
-  assert.deepEqual(first.boat, nextCast.boat); assert.deepEqual(first.zone, nextCast.zone);
+  assert.deepEqual(first.boat, nextCast.boat); assert.deepEqual(first.float, nextCast.float);
   assert.deepEqual(frame, before);
 });
 
@@ -44,13 +44,13 @@ test("boat and float form one close legible group within the viewport and fixed 
   }
 });
 
-test("all voyage variants preserve exact hit-zone membership and safe cast framing", () => {
+test("all voyage variants keep meter movement separate from the river and preserve safe cast framing", () => {
   for (const [width, height] of [[320,568],[390,844],[820,375],[960,540],[1280,720],[1600,900]]) for (let variant = 0; variant < 6; variant++) {
     for (const bar of [0, 5000, 10000]) for (const fish of [0, 1000, 5000, 9000, 10000]) {
       const value = { ...frame, sceneKey: `voyage-${variant}`, reel: { ...frame.reel, bar, fish } };
       const geometry = fishingSceneGeometry(width, height, value, visual);
-      const painted = geometry.fish.y >= geometry.zone.y - 1e-8 && geometry.fish.y <= geometry.zone.y + geometry.zone.height + 1e-8;
-      assert.equal(painted, Math.abs(fish - bar) <= value.reel.zoneWidth / 2);
+      const stable = fishingSceneGeometry(width, height, { ...frame, sceneKey: `voyage-${variant}` }, visual);
+      assert.deepEqual(geometry.float, stable.float, "meter input must not teleport the river float");
     }
     for (let tick = 0; tick <= 60; tick++) {
       const age = tick / 50;

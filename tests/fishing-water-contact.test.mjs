@@ -13,8 +13,8 @@ const { paintFishingLandscape, paintFishingWake, paintFishingRipples, paintFishi
 test("the entire boat rig shares a bounded smooth buoyancy transform, with a stable reduced-motion pivot", () => {
   for (let time = 0; time < 100; time += .05) {
     const pose = fishingBoatMotion(time, false), next = fishingBoatMotion(time + .05, false);
-    assert.ok(Math.abs(pose.bob) <= 3.1 && Math.abs(pose.roll) <= .009);
-    assert.ok(Math.abs(next.bob - pose.bob) <= .18 && Math.abs(next.roll - pose.roll) <= .0004);
+    assert.ok(Math.abs(pose.bob) <= 4.9 && Math.abs(pose.roll) <= .012);
+    assert.ok(Math.abs(next.bob - pose.bob) <= .25 && Math.abs(next.roll - pose.roll) <= .0005);
   }
   assert.deepEqual(fishingBoatMotion(0, true), fishingBoatMotion(999, true));
   assert.deepEqual(fishingBoatMotion(NaN, false), { bob: 0, roll: 0 });

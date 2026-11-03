@@ -7,6 +7,6 @@ export function boatReelFeedback(reel: Pick<BoatReelState, "bar" | "fish" | "pro
   const urgent = !inZone && reel.progress <= 1500;
   const mood = inZone ? "steady" : urgent ? "danger" : "chase";
   const title = inZone ? reel.progress >= 8000 ? "Почти у борта" : "Рыба в зоне" : urgent ? "Рыба уходит!" : "Рыба тянет в сторону";
-  const instruction = inZone ? "Чередуйте удержание и отпускание" : direction === "lift" ? "Удерживайте — поднимите снасть" : "Отпустите — опустите снасть";
+  const instruction = inZone ? "Чередуйте удержание и отпускание" : direction === "lift" ? "Удерживайте — поднимите зелёную зону" : "Отпустите — опустите зелёную зону";
   return { inZone, direction, urgent, mood, title, instruction } as const;
 }

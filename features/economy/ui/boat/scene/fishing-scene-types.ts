@@ -16,7 +16,7 @@ export type FishingSceneFrame = {
   biteLeadSeconds?: number;
   ambience?: { now: number; timeZone: string };
   held: boolean;
-  reel?: { bar: number; fish: number; progress: number; zoneWidth: number };
+  reel?: { bar: number; fish: number; progress: number; zoneWidth: number; velocity?: number };
   boat: { repaired: boolean; upgrades: readonly string[] };
   rodId?: string;
   appearance?: { palette: string; head: string | null; neck: string | null };
@@ -37,5 +37,5 @@ export const FISHING_SCENE_RIG = {
     farShoulder: { x: 422, y: 402 }, farElbow: { x: 456, y: 425 } },
   rod: { tip: { x: 850, y: 108 }, size: 285 },
   cast: { flightSeconds: 1.2, splashSeconds: .65 },
-  layers: ["map-water", "surface-game", "wake", "boat-back", "mochlik", "boat-front", "rod", "line", "float"],
+  layers: ["map-water", "water-life", "water-events", "confirmed-catch", "displacement", "boat-back", "mochlik", "boat-front", "rod", "line", "float"],
 } as const;

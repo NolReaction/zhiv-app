@@ -1,0 +1,16 @@
+.meter { position: relative; box-sizing: border-box; width: 76px; height: 146px; flex: 0 0 auto; padding: 6px 15px 6px 20px; border: 1px solid #b59d64; border-radius: 9px; background: linear-gradient(90deg, #4f513b, #263e39 17%, #24413f 80%, #514d35); box-shadow: inset 0 1px #ead89930, inset 0 -2px #102927a0, 0 3px 9px #071f2870; }
+.railLabel { position: absolute; left: 4px; top: 50%; writing-mode: vertical-rl; transform: translateY(-50%) rotate(180deg); color: #b7c5a7; font-size: 8px; letter-spacing: .13em; }
+.track { box-sizing: border-box; position: relative; height: 100%; border: 1px solid #9fb6a94d; border-radius: 4px; background: linear-gradient(90deg, #0c252b, #173a3d 60%, #102b30); box-shadow: inset 0 0 8px #001a26c9; }
+.ticks { position: absolute; inset: 0; border-radius: inherit; background: repeating-linear-gradient(to top, transparent 0, transparent calc(25% - 1px), #c4d6ba2e calc(25% - 1px), #c4d6ba2e 25%); }
+.zone { box-sizing: border-box; position: absolute; left: 1px; right: 1px; display: flex; flex-direction: column; justify-content: space-evenly; align-items: center; min-height: 0; border: 1px solid #bbdf92; border-radius: 4px; background: linear-gradient(90deg, #6f9a56c7, #9fbd70b8, #6d9853c7); box-shadow: inset 0 1px #e5f2ad6b, 0 0 8px #9cc56d30; transition: background-color 100ms linear, border-color 100ms linear; }
+.zone i { width: 8px; height: 1px; flex: 0 0 auto; background: #d8e6a85e; }
+.target { position: absolute; left: -7px; right: -7px; display: flex; align-items: center; gap: 1px; transform: translateY(-50%); filter: drop-shadow(0 1px 2px #001a27); }
+.target > span { display: grid; place-items: center; width: 23px; height: 23px; flex: 0 0 23px; border: 2px solid #e7e0ba; border-radius: 50%; color: #f1e7bb; background: #365659; font-size: 14px; line-height: 1; font-weight: 700; }
+.target > i { display: block; height: 2px; flex: 1; background: #e7e0ba; }
+.meter[data-in-zone='true'] .target > span { background: #416b42; border-color: #d7eeaf; }
+.meter[data-held] .zone { background: linear-gradient(90deg, #83ae61db, #b4d385c9, #7da95edb); border-color: #ddeda9; }
+.meter[data-danger] .target > span { background: #794e3f; border-color: #f3bb93; }
+.meter[data-paused] { filter: saturate(.6); }
+@media (max-width: 360px) { .meter { width: 68px; padding-right: 12px; padding-left: 19px; } }
+@media (max-height: 500px) { .meter { height: 98px; width: 62px; padding: 5px 11px 5px 17px; }.railLabel { font-size: 7px; left: 3px; }.target > span { width: 19px; height: 19px; flex-basis: 19px; font-size: 11px; } }
+@media (prefers-reduced-motion: reduce) { .zone { transition: none; } }

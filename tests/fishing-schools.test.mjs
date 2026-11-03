@@ -26,7 +26,7 @@ test("underwater shoals remain bounded, deterministic and tied to the voyage rat
   for (const fish of original.schools) {
     assert.ok(Object.values(fish).every(Number.isFinite));
     assert.ok(fish.x > 0 && fish.x < 1600 && fish.y > 26 && fish.y < 874);
-    assert.ok(fish.size >= 21 * .5 && fish.size <= 32 && fish.opacity > 0 && fish.opacity < .3);
+    assert.ok(fish.size >= 11.25 && fish.size <= 19 && fish.opacity > 0 && fish.opacity <= .5);
     assert.ok(Math.abs(fish.tail) <= .42);
   }
 });
@@ -85,6 +85,22 @@ test("painting decorative life preserves inputs and never reads a hidden exact s
   assert.deepEqual({ input, visual, geometry }, before);
   assert.ok(calls.some(call => call.key === "ellipse"));
   for (const call of calls) for (const arg of call.args) if (typeof arg === "number") assert.ok(Number.isFinite(arg));
+  const paint = fishRarity => {
+    const output = [], ctx = new Proxy({ globalAlpha: 1 }, { get(value, key) { return key in value ? value[key] : (...args) => output.push({ key, args }); } });
+    paintFishingUnderwaterLife(ctx, 1600, 900, { ...input, fishRarity }, visual, geometry);
+    return output;
+  };
+  assert.deepEqual(paint("common"), paint("legendary"), "neither the school nor approaching shadow can disclose the hooked class");
+});
+
+test("the anonymous approach dives briefly at the bite and is hidden for the whole reel", () => {
+  const first = life({ stage: "bite" }, { ...visual, stageElapsed: 0 }).approach;
+  const sinking = life({ stage: "bite" }, { ...visual, stageElapsed: .25 }).approach;
+  assert.ok(first && sinking); assert.deepEqual(first.point, geometry.fish);
+  assert.ok(sinking.point.y > first.point.y); assert.ok(sinking.opacity < first.opacity);
+  assert.equal(life({ stage: "bite" }, { ...visual, stageElapsed: .45 }).approach, null);
+  assert.equal(life({ stage: "reeling" }, { ...visual, stageElapsed: .1 }).approach, null);
+  assert.equal(life({ stage: "bite" }, { ...visual, stageElapsed: .1, still: true }).approach, null);
 });
 
 
@@ -100,6 +116,9 @@ test("the real voyage layouts keep the approach visible beside the hull across p
       assert.equal(life.approach.opacity, 1, `the hull's padded envelope cannot fade the endpoint at ${width}x${height}, voyage ${voyage}`);
       assert.deepEqual(life.approach.point, g.fish);
       assert.ok(life.schools.length >= 4, `a complete visible shoal remains at ${width}x${height}, voyage ${voyage}`);
+      const minimumBodyWidth = width >= 700 ? 14 : 8;
+      const readable = life.schools.filter(shadow => shadow.opacity >= .22 && shadow.size * g.scale * 1.28 >= minimumBodyWidth);
+      assert.ok(readable.length >= 4, `at least one shoal is readable in CSS pixels at ${width}x${height}, voyage ${voyage}`);
       for (const shadow of life.schools) {
         const rect = excluded.boat, extent = shadow.size * .82;
         assert.ok(shadow.x < rect.x - extent || shadow.x > rect.x + rect.width + extent || shadow.y < rect.y - extent || shadow.y > rect.y + rect.height + extent);
@@ -135,5 +154,20 @@ test("actual poster compositions preserve a visible complete shoal throughout it
         assert.ok(result.schools.length <= 15);
       }
     }
+  }
+});
+
+test("actual scene shoals travel visibly at CSS scale rather than appearing stationary between casts", () => {
+  for (const [width, height] of [[320, 568], [390, 844], [1280, 720], [1920, 1080]]) {
+    const value = { ...frame, stage: "waiting", sceneKey: "visible-swim", biteLeadSeconds: undefined };
+    const g = fishingSceneGeometry(width, height, value, visual), excluded = fishingSceneSceneryExclusions(g);
+    const islands = fishingIslandLayout(g.width, g.height, value.sceneKey, excluded.islands), positions = [];
+    for (const elapsed of [0, 2, 4, 6, 8, 10]) {
+      const result = fishingUnderwaterLife(g.width, g.height, value, { ...visual, elapsed }, g,
+        [...excluded.life, ...islands], [...excluded.hud, ...islands]);
+      const fish = result.schools.find(shadow => shadow.school === 0 && shadow.member === 0);
+      assert.ok(fish); positions.push(fish.x * g.scale);
+    }
+    assert.ok(Math.max(...positions) - Math.min(...positions) >= 8, `a shoal crosses a visible body length at ${width}x${height}`);
   }
 });

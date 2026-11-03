@@ -68,13 +68,13 @@ test("repeated frames never flood contacts, and stalls, pause and hidden resume 
   time += 60000; update(); assert.equal(events.length, count); assert.equal(timers.size, 0);
 });
 
-test("the new timber contact is a quiet short mono original and leaves the ambient bank budget unchanged", () => {
+test("the new timber contact is a quiet short mono original and retains the mobile ambient bank budget", () => {
   const manifest = JSON.parse(readFileSync(`${root}/art/audio/originals-v1/manifest.json`));
   const item = manifest.assets.find(asset => asset.id === "fishing.hull.01");
   assert.equal(item.kind, "effect"); assert.equal(item.channels, 1); assert.equal(item.durationSeconds, .86);
   assert.ok(item.measurements.peakDb <= -22 && item.measurements.rmsDb < -32);
   assert.ok(item.files[0].bytes < 90000);
   const loops = manifest.assets.filter(asset => asset.kind === "loop");
-  assert.equal(loops.length, 11);
+  assert.equal(loops.length, 13);
   assert.ok(loops.reduce((sum, loop) => sum + loop.decodedBytes, 0) < 24 * 1024 ** 2);
 });

@@ -45,7 +45,7 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
   const lastCatch = voyage.catches.at(-1);
   const lastPresentation = lastCatch ? boatCatchPresentation(state, lastCatch) : undefined;
   const landed = !challenge && lastCatch && economy.now >= Date.parse(lastCatch.caughtAt) && economy.now - Date.parse(lastCatch.caughtAt) < (lastPresentation?.revealMs ?? 3500) ? lastCatch : undefined;
-  const fishRarity = challenge?.fishRarity ?? (landed ? state.catalog.fishing?.fish.find(fish => fish.itemId === landed.fishId)?.rarity : undefined);
+  const fishRarity = landed ? state.catalog.fishing?.fish.find(fish => fish.itemId === landed.fishId)?.rarity : undefined;
   const activeVisual = visual?.challengeId === challenge?.id ? visual : null;
   const hasBite = challenge && !expired && !["casting", "soaking"].includes(activeVisual?.stage ?? boatCastStage(challenge, economy.now));
   const frame = useMemo<FishingSceneFrame>(() => ({ stage: suspended ? "paused" : challenge ? expired ? "expired" : activeVisual?.stage ?? boatCastStage(challenge, economy.now) : landed ? "landed" : "waiting",

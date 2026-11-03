@@ -92,7 +92,7 @@ test("V3 validates its public class and restores checkpoints only for the same v
   assert.equal(boatChallengeSchema.safeParse({ ...sample, fishRarity: undefined }).success, false);
   assert.equal(boatChallengeSchema.safeParse({ ...sample, fishRarity: "invented" }).success, false);
   assert.equal(boatChallengeSchema.safeParse({ ...sample, resistance: undefined }).success, false);
-  assert.equal(boatChallengeSchema.safeParse({ ...sample, rulesVersion: 4 }).success, false);
+  assert.equal(boatChallengeSchema.safeParse({ ...sample, rulesVersion: 5 }).success, false);
   for (const rulesVersion of [1, 2]) assert.equal(boatChallengeSchema.safeParse({ ...sample, rulesVersion, fishRarity: undefined }).success, true);
   assert.throws(() => physics.initialBoatReel({ ...sample, fishRarity: undefined }), /public boat fish class/);
   const values = new Map(), storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };

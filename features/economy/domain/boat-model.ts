@@ -13,13 +13,13 @@ export const boatReelCommandSchema = z.object({ challengeId: uuid, inputs: z.arr
   .refine(value => value.inputs.every((input, index) => input.tick < value.endTick && (!index || input.tick > value.inputs[index - 1].tick)), "Inputs must be ordered within the attempt");
 export const boatResistanceIds = ["steady", "sprightly", "surging", "stubborn"] as const;
 export type BoatResistance = typeof boatResistanceIds[number];
-export const boatChallengeSchema = z.object({ id: uuid, rulesVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]), seed: count.max(0xffff_ffff), tickMs: z.literal(50),
+export const boatChallengeSchema = z.object({ id: uuid, rulesVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), seed: count.max(0xffff_ffff), tickMs: z.literal(50),
   maxTicks: z.literal(600), zoneWidth: z.union([z.literal(3200), z.literal(4000)]), difficulty: count.min(1).max(5), startedAt: instant, expiresAt: instant,
   resistance: z.enum(boatResistanceIds).optional(), biteAt: instant.optional(), fishRarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).optional() })
   .refine(value => Date.parse(value.expiresAt) > Date.parse(value.startedAt)
     && (!value.biteAt || Date.parse(value.biteAt) >= Date.parse(value.startedAt) && Date.parse(value.biteAt) < Date.parse(value.expiresAt)), "Attempt bite must be within its lifetime")
   .refine(value => value.rulesVersion === 1 || value.resistance !== undefined, "Versioned attempts require their saved resistance profile")
-  .refine(value => value.rulesVersion !== 3 || value.fishRarity !== undefined, "V3 attempts require their public fish class");
+  .refine(value => value.rulesVersion < 3 || value.fishRarity !== undefined, "V3/V4 attempts require their public fish class");
 const boatCatchSchema = z.object({ castIndex: count.max(9), fishId: id, weightGrams: count.min(1).max(1_000_000), caughtAt: instant });
 const boatWorkSchema = z.object({ id: uuid, upgradeId: z.enum(boatUpgradeIds), startedAt: instant, finishesAt: instant, cost })
   .refine(value => Date.parse(value.finishesAt) > Date.parse(value.startedAt), "Boat work must take time");

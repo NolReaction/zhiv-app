@@ -105,7 +105,7 @@ object EconomyBoatReel {
         }
     }
 
-    fun resistancePhase(challenge: EconomyBoatChallenge, tick: Int): String = if (challenge.rulesVersion == 3)
+    fun resistancePhase(challenge: EconomyBoatChallenge, tick: Int): String = if (challenge.rulesVersion >= 3)
         motionV3(challenge.seed, tick.coerceAtLeast(0), challenge.difficulty, requireNotNull(challenge.resistance), requireNotNull(challenge.fishRarity)).phase
         else "cruising"
 
@@ -113,14 +113,17 @@ object EconomyBoatReel {
     fun step(frame: Frame, held: Boolean, seed: Long, zoneWidth: Int, difficulty: Int,
         rulesVersion: Int = 1, resistance: String? = null, fishRarity: String? = null): Frame {
         require(seed in 0L..0xffff_ffffL && zoneWidth in setOf(3200, 4000) && difficulty in 1..5)
-        require(rulesVersion in setOf(1, 2, 3))
+        require(rulesVersion in setOf(1, 2, 3, 4))
         if (frame.status != "active") return frame
         val half = zoneWidth / 2
-        var velocity = (frame.velocity * 94 / 100 + if (held) 26 else -20).coerceIn(-220, 220)
+        val modernControl = rulesVersion == 4
+        var velocity = (frame.velocity * (if (modernControl) 96 else 94) / 100 +
+            if (held) { if (modernControl) 22 else 26 } else { if (modernControl) -18 else -20 }).coerceIn(-220, 220)
         val freeBar = frame.bar + velocity
         val bar = freeBar.coerceIn(half, 10000 - half)
-        if (bar != freeBar) velocity = 0
-        val movement = if (rulesVersion == 3) motionV3(seed, frame.tick, difficulty, requireNotNull(resistance), requireNotNull(fishRarity))
+        // V4 has a damped bottom rebound; slow contacts settle and the upper stop clamps.
+        if (bar != freeBar) velocity = if (modernControl && freeBar < half && velocity < -40) -velocity * 40 / 100 else 0
+        val movement = if (rulesVersion >= 3) motionV3(seed, frame.tick, difficulty, requireNotNull(resistance), requireNotNull(fishRarity))
             else if (rulesVersion == 2) motion(seed, frame.tick, difficulty, requireNotNull(resistance))
             else Motion(500 + (hash(seed, frame.tick / (60 - 6 * difficulty)) % 9001).toInt(), 35 + 7 * difficulty, 10)
         val fish = (frame.fish + ((movement.target - frame.fish) / movement.divisor).coerceIn(-movement.limit, movement.limit)).coerceIn(0, 10000)

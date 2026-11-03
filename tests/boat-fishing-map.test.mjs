@@ -209,7 +209,7 @@ test("actual root changes from timed outbound to one separate river scene withou
   f.frame(Date.parse(f.state.boat.voyage.challenge.biteAt) - Date.parse(f.view().serverTime));
   assert.equal(f.find(node => node.tag === "canvas").props.frame.stage, "bite");
   assert(f.byAction("play"));
-  assert.equal(f.find(node => node.tag === "canvas").props.frame.fishRarity, economyCatalog.fishing.fish.find(fish => fish.itemId === f.state.boat.voyage.slots[0].fishId).rarity);
+  assert.equal(f.find(node => node.tag === "canvas").props.frame.fishRarity, undefined, "the water scene cannot show the upcoming catch class");
   assert.equal(f.view().boat.voyage.challenge.fishId, undefined);
   assert.equal(f.view().boat.voyage.challenge.weightGrams, undefined);
   assert.equal(f.commands.filter(request => request.action === "submit_boat_cast").length, 0);

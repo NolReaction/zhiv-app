@@ -1669,6 +1669,38 @@
         "changes": "Original rounded timber creak with a slow pressure envelope; oscillator/noise synthesis, quiet peak/RMS, deterministic PCM16 WAV. No external samples.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
+    },
+    {
+      "id": "fishing.reel.wind.01",
+      "src": "/audio/originals-v1/loop/fishing.reel.wind.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/0.7.2-fishing/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-11-04",
+        "changes": "Original seamless rising/falling reel bed; overlapping windowed oscillator glides and periodic filtered friction noise; quiet mono PCM16. No external samples.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      },
+      "loopStart": 0,
+      "loopEnd": 1
+    },
+    {
+      "id": "fishing.reel.slack.01",
+      "src": "/audio/originals-v1/loop/fishing.reel.slack.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/0.7.2-fishing/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-11-04",
+        "changes": "Original seamless rising/falling reel bed; overlapping windowed oscillator glides and periodic filtered friction noise; quiet mono PCM16. No external samples.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      },
+      "loopStart": 0,
+      "loopEnd": 1
     }
   ],
   "cues": [
@@ -2689,6 +2721,34 @@
       "cooldownMs": 0,
       "pitchVariation": 0,
       "fadeMs": 1800
+    },
+    {
+      "id": "fishing.reel.wind",
+      "bus": "world",
+      "mode": "loop",
+      "assets": [
+        "fishing.reel.wind.01"
+      ],
+      "gainDb": -4,
+      "priority": 58,
+      "maxInstances": 1,
+      "cooldownMs": 0,
+      "pitchVariation": 0,
+      "fadeMs": 100
+    },
+    {
+      "id": "fishing.reel.slack",
+      "bus": "world",
+      "mode": "loop",
+      "assets": [
+        "fishing.reel.slack.01"
+      ],
+      "gainDb": -4,
+      "priority": 58,
+      "maxInstances": 1,
+      "cooldownMs": 0,
+      "pitchVariation": 0,
+      "fadeMs": 100
     }
   ],
   "profiles": [

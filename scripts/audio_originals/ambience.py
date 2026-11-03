@@ -26,6 +26,8 @@ _SPECS = {
     "workshop.kiln.01": (8.0, "Warm Kiln", "Enclosed low fire, two soft bellows breaths and light fuel movement.", -23.0),
     "quarry.working.01": (10.0, "Stone by Stone", "Low mineral knocks, small falling fragments and short gravel scrapes.", -22.0),
     "construction.working.01": (10.0, "A Home Taking Shape", "Grouped wooden hammering, a timber scrape and scattered saw strokes.", -22.0),
+    "fishing.reel.wind.01": (1.0, "The line winds in", "A soft rising reel texture from overlapping octave glides and rounded periodic gear friction; no recordings.", -28.0),
+    "fishing.reel.slack.01": (1.0, "The line eases out", "A lower falling line texture from overlapping downward glides and soft periodic friction; no recordings.", -30.0),
 }
 
 
@@ -236,7 +238,24 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
     rng = np.random.default_rng(seed)
     count = int(round(duration * sample_rate))
 
-    if asset_id == "forest.day.01":
+    if asset_id.startswith("fishing.reel."):
+        # Overlapped, windowed glides reset silently at different phases, so the
+        # texture keeps its rise/fall through the loop join rather than clicking.
+        upward = asset_id == "fishing.reel.wind.01"
+        unit = np.arange(count) / count
+        output = np.zeros(count)
+        fundamental = 165 if upward else 120
+        for offset in (0.0, 1 / 3, 2 / 3):
+            position = (unit + offset) % 1
+            pitch_position = position if upward else 1 - position
+            phase = (1 if upward else -1) * 2 * np.pi * fundamental * duration * (2 ** pitch_position - 1) / np.log(2)
+            envelope = np.sin(np.pi * position) ** 2
+            output += (np.sin(phase) + .11 * np.sin(2 * phase)) * envelope * .17
+        gear = _noise(count, sample_rate, rng, 190 if upward else 105, 1200 if upward else 690, -.35)
+        teeth = .58 + .42 * np.sin(2 * np.pi * (18 if upward else 12) * unit) ** 2
+        output += gear * teeth * (.1 if upward else .075)
+
+    elif asset_id == "forest.day.01":
         output = np.zeros(count)
         for index, start in enumerate((2.6, 13.6)):
             for syllable in range(2):
@@ -343,4 +362,6 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
         metadata["peakDb"] = -25.0
     if asset_id == "cooking.simmer.01":
         metadata["peakDb"] = -24.0
+    if asset_id.startswith("fishing.reel."):
+        metadata["peakDb"] = -18.0
     return output.astype(np.float32), metadata

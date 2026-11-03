@@ -48,8 +48,8 @@ test("local success is silent until the confirmed catch count increases, and sna
   const f = fixture(); f.controller.update(base);
   const played = { ...base, castKey: "cast", stage: "reeling" };
   f.controller.update(played); f.advance(1200); f.events.length = 0;
-  f.controller.update({ ...played, progress: 10000, stage: "caught" });
-  f.controller.update({ ...played, progress: 10000, stage: "pending" });
+  f.controller.update({ ...played, progress: 25000, stage: "caught" });
+  f.controller.update({ ...played, progress: 25000, stage: "pending" });
   assert.equal(f.events.length, 0);
   f.controller.update({ ...base, caughtCount: 1 }); f.controller.update({ ...base, caughtCount: 1 });
   assert.deepEqual(f.events.map(e => e.cueId), ["fishing.catch"]);
@@ -61,10 +61,10 @@ test("reel accents reward new progress only, with a time cap and no repeated thr
   const f = fixture(); f.controller.update(base);
   const playing = { ...base, castKey: "cast", stage: "reeling", held: true, inZone: true };
   f.controller.update(playing); f.advance(1200); f.events.length = 0;
-  f.controller.update({ ...playing, progress: 1000 });
-  f.controller.update({ ...playing, progress: 2000 });
-  f.advance(500); f.controller.update({ ...playing, progress: 3000 });
-  f.controller.update({ ...playing, progress: 2000 }); f.advance(500); f.controller.update({ ...playing, progress: 3000 });
+  f.controller.update({ ...playing, progress: 2500 });
+  f.controller.update({ ...playing, progress: 5000 });
+  f.advance(500); f.controller.update({ ...playing, progress: 7500 });
+  f.controller.update({ ...playing, progress: 5000 }); f.advance(500); f.controller.update({ ...playing, progress: 7500 });
   assert.deepEqual(f.events.map(e => e.cueId), ["fishing.reel", "fishing.reel"]);
   f.controller.dispose();
 });

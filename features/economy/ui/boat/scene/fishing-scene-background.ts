@@ -1,6 +1,8 @@
 import { drawWaterCurrent, drawWaterGlint, waterSurfaceFrame, type WaterSurfaceLayout } from "@/features/world/environment/water/forest-water-surface";
 import type { FishingScenePoint } from "./fishing-scene-types";
 import { fishingSceneAtmosphere, type FishingSceneAmbience } from "./fishing-scene-atmosphere";
+import { fishingHullContactPoint, traceFishingHullContact } from "./fishing-scene-hull-water";
+export { paintFishingBoatDisplacement } from "./fishing-scene-hull-water";
 
 export const FISHING_WATER_TEXTURE = "/world/boat/river-water.webp?v=1";
 const textureMosaics = new WeakMap<HTMLImageElement, HTMLCanvasElement>();
@@ -127,22 +129,19 @@ export function paintFishingWake(ctx: CanvasRenderingContext2D, point: FishingSc
 
 /** Authored lower hull contour in 1000×650 assembly space; draw in the boat's complete local transform. */
 export function paintFishingHullContact(ctx: CanvasRenderingContext2D, time: number) {
-  const swell = Math.sin(time * 1.25) * 1.7;
   ctx.save(); ctx.lineCap = "round";
   // A short translucent wetted lip joins wood and water without hiding the supplied hull artwork.
-  ctx.beginPath(); ctx.moveTo(124, 555 + swell);
-  ctx.bezierCurveTo(330, 567 + swell, 654, 513 + swell, 834, 438 + swell);
-  ctx.bezierCurveTo(877, 415 + swell, 920, 383 + swell, 946, 350 + swell);
-  ctx.strokeStyle = "rgba(4,73,88,.3)"; ctx.lineWidth = 10; ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(127, 560 + swell);
-  ctx.bezierCurveTo(338, 572 + swell, 650, 519 + swell, 832, 444 + swell);
-  ctx.strokeStyle = `rgba(164,219,211,${.21 + Math.sin(time * .72) * .035})`; ctx.lineWidth = 1.7; ctx.stroke();
-  // Small uneven reflections adhere to the contact line instead of producing a second solid hull.
-  for (let index = 0; index < 7; index++) {
-    const t = (index + .4) / 7, x = 140 + t * 650;
-    const y = 570 - t * t * 118 + swell + 8 + Math.sin(time * .9 + index) * 2;
-    ctx.strokeStyle = `rgba(94,80,45,${.055 + (index % 3) * .018 + Math.sin(time * .8 + index) * .012})`; ctx.lineWidth = 3.5;
-    ctx.beginPath(); ctx.moveTo(x - 18, y); ctx.quadraticCurveTo(x, y + 2, x + 22, y - 1); ctx.stroke();
+  traceFishingHullContact(ctx, time);
+  ctx.strokeStyle = "rgba(4,73,88,.3)"; ctx.lineWidth = 7; ctx.stroke();
+  traceFishingHullContact(ctx, time, 2.5);
+  ctx.strokeStyle = `rgba(164,219,211,${.25 + Math.sin(time * .72) * .035})`; ctx.lineWidth = 1.9; ctx.stroke();
+  // Broken light on the wetted edge follows the same slope as the hull, including the lifted bow.
+  for (let index = 0; index < 8; index++) {
+    const t = .045 + index * .125, from = fishingHullContactPoint(t, time), to = fishingHullContactPoint(t + .047, time);
+    const pulse = .09 + (Math.sin(time * .88 + index * 1.7) + 1) * .045;
+    ctx.strokeStyle = `rgba(202,233,211,${pulse})`; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.moveTo(from.x, from.y + 2.5);
+    ctx.quadraticCurveTo((from.x + to.x) / 2, (from.y + to.y) / 2 + 3.5, to.x, to.y + 2.5); ctx.stroke();
   }
   ctx.restore();
 }

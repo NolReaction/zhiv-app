@@ -9,6 +9,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ root, configFile: false, appType: "custom", optimizeDeps: { noDiscovery: true, include: [] },
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
   plugins: [{ name: "scene-lifecycle-painter-probe", enforce: "pre", transform(code, id) {
+    if (id.endsWith("/fishing-scene-fish.ts")) return code.slice(0, code.indexOf("export function paintSceneFish(")) +
+      'export function paintSceneFish(ctx,point,frame){globalThis.__fishingFishPaints?.push({point:{...point},frame:{...frame}})}';
     if (id.endsWith("/fishing-scene-runtime.ts")) return code.replace('import { paintFishingScene } from "./fishing-scene-painter";',
       'function paintFishingScene(ctx,frame,images,viewport,visual){globalThis.__fishingScenePaints.push({frame,images:[...images.keys()],viewport:{...viewport},visual:{...visual}})}');
   } }],
@@ -28,6 +30,7 @@ const visual = { elapsed: 2, castElapsed: 2, stageElapsed: 2, still: true };
 
 function environment() {
   const saved = new Map(), frames = new Map(), requests = [], observers = [], paints = [];
+  const fishPaints = [];
   let serial = 0, now = 0, rect = { width: 390, height: 844 };
   function install(key, value) { saved.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { configurable: true, writable: true, value }); }
   function target() {
@@ -43,7 +46,7 @@ function environment() {
   const media = { ...target(), matches: false };
   const window = { ...target(), devicePixelRatio: 3, matchMedia: () => media };
   const canvas = { ...target(), width: 0, height: 0, getContext: () => context, getBoundingClientRect: () => rect };
-  install("document", document); install("window", window); install("__fishingScenePaints", paints);
+  install("document", document); install("window", window); install("__fishingScenePaints", paints); install("__fishingFishPaints", fishPaints);
   install("requestAnimationFrame", callback => { frames.set(++serial, callback); return serial; });
   install("cancelAnimationFrame", id => frames.delete(id));
   install("Image", class { naturalWidth = 1536; naturalHeight = 1024; set src(value) { this.path = value; if (value) requests.push(this); } get src() { return this.path; } });
@@ -51,7 +54,7 @@ function environment() {
     constructor(callback) { this.callback = callback; this.name = name; this.disconnected = false; observers.push(this); }
     observe() {} disconnect() { this.disconnected = true; }
   });
-  return { canvas, context, calls, frames, requests, paints, observers, window, document, media,
+  return { canvas, context, calls, frames, requests, paints, fishPaints, observers, window, document, media,
     step(milliseconds = 34) { now += milliseconds; const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(fn => fn(now)); },
     visibility(hidden) { document.hidden = hidden; document.dispatch("visibilitychange"); },
     intersect(visible) { observers.find(item => item.name === "IntersectionObserver").callback([{ target: canvas, isIntersecting: visible }]); },
@@ -81,22 +84,22 @@ test("authored boat, hands and surface controls fit portrait and landscape above
   }
 });
 
-test("public reel controls move the surface float, fish shadow, pull and rod tension without inventing a catch", () => {
+test("the surface bobber reacts to tension and catch distance while tracking stays inside the separate meter", () => {
   const value = frame(), base = fishingSceneGeometry(390, 844, value, visual);
   const raised = fishingSceneGeometry(390, 844, { ...value, held: true, reel: { ...value.reel, bar: 9000, fish: 1000, progress: 8500 } }, visual);
-  assert.ok(raised.hook.y < base.hook.y); assert.ok(raised.fish.y > base.fish.y);
+  assert.ok(Math.abs(raised.hook.y - base.hook.y) * base.scale <= 3, "the control zone does not drag the float through an imaginary water column");
   assert.ok(raised.hook.x < base.hook.x);
   const live = { ...visual, still: false };
   const relaxed = fishingSceneGeometry(390, 844, value, live);
   const pulling = fishingSceneGeometry(390, 844, { ...value, held: true }, live);
   assert.ok(pulling.tension > relaxed.tension); assert.notDeepEqual(pulling.tip, relaxed.tip);
-  assert.deepEqual(base.float, base.hook, "the landed float is the controlled position, not a detached decoration");
+  assert.deepEqual(base.float, base.hook, "the line and float share the same water endpoint");
   assert.deepEqual(raised.float, raised.hook);
   assert.ok(Math.hypot(raised.grip.x - base.grip.x, raised.grip.y - base.grip.y) < 2, "the handle follows bounded torso effort, not an independent prop");
   assert.deepEqual(raised.grip, raised.onBoat(raised.actorRig.nearArm.hand), "rod pivot remains the exact gripping hand");
   const stopped = fishingSceneGeometry(390, 844, value, { ...visual, still: true, elapsed: 1000 });
-  assert.deepEqual([stopped.boat, stopped.tip, stopped.float, stopped.hook, stopped.fish, stopped.zone],
-    [base.boat, base.tip, base.float, base.hook, base.fish, base.zone], "reduced motion retains a stable pose while controls remain public inputs");
+  assert.deepEqual([stopped.boat, stopped.tip, stopped.float, stopped.hook, stopped.fish],
+    [base.boat, base.tip, base.float, base.hook, base.fish], "reduced motion retains a stable pose while controls remain public inputs");
   const airborne = fishingSceneGeometry(390, 844, { ...value, stage: "casting" }, { ...visual, still: false, castElapsed: .6 });
   const landed = fishingSceneGeometry(390, 844, { ...value, stage: "soaking" }, { ...visual, still: false, castElapsed: 2 });
   assert.ok(airborne.casting); assert.ok(airborne.float.y < airborne.surface); assert.equal(landed.casting, false);
@@ -118,13 +121,40 @@ test("painting composes real hull modules around Mochlik and never substitutes a
   } finally { env.restore(); }
 });
 
-test("the visible surface zone matches domain membership even at both control limits", () => {
+test("the water float stays near its cast point rather than following vertical meter limits", () => {
+  const base = fishingSceneGeometry(390, 844, frame(), visual);
   for (const bar of [0, 700, 5000, 9400, 10000]) for (const fish of [0, 1000, 2000, 5000, 8000, 9000, 10000]) {
     const value = frame(); value.reel.bar = bar; value.reel.fish = fish;
     const g = fishingSceneGeometry(390, 844, value, visual);
-    const inBand = g.fish.y >= g.zone.y - 1e-8 && g.fish.y <= g.zone.y + g.zone.height + 1e-8;
-    assert.equal(inBand, g.aligned, `fish=${fish}, bar=${bar}`);
+    assert.deepEqual(g.float, base.float); assert.deepEqual(g.fish, base.fish);
   }
+});
+
+test("the hooked fish remains hidden through the local result and is revealed only for a confirmed landing", () => {
+  const env = environment();
+  try {
+    for (const stage of ["waiting", "casting", "bite", "reeling", "paused", "caught", "pending", "escaped", "expired"]) {
+      paintFishingScene(env.context, { ...frame(), stage, fishId: "fish_mooncarp" }, new Map(), { width: 1280, height: 720, dpr: 1 }, visual);
+    }
+    assert.equal(env.fishPaints.length, 0);
+    paintFishingScene(env.context, { ...frame(), stage: "landed" }, new Map(), { width: 1280, height: 720, dpr: 1 }, visual);
+    assert.equal(env.fishPaints.length, 0);
+    paintFishingScene(env.context, { ...frame(), stage: "landed", fishId: "fish_mooncarp" }, new Map(), { width: 1280, height: 720, dpr: 1 }, visual);
+    assert.equal(env.fishPaints.length, 1); assert.equal(env.fishPaints[0].frame.fishId, "fish_mooncarp");
+  } finally { env.restore(); }
+});
+
+test("a confirmed fish lift keeps its line connected after the completed challenge has been removed", () => {
+  const env = environment();
+  try {
+    const value = { ...frame(), stage: "landed", castKey: undefined, catchKey: "confirmed:0", fishId: "fish_mooncarp" };
+    const view = { width: 1280, height: 720, dpr: 1 }, clock = { ...visual, still: false, stageElapsed: .5 };
+    const geometry = fishingSceneGeometry(view.width, view.height, value, clock);
+    const images = new Map([[BOAT_ART_PARTS.repair.src, { id: "repair", naturalWidth: 1536, naturalHeight: 1024 }]]);
+    paintFishingScene(env.context, value, images, view, clock);
+    assert.ok(env.calls.some(call => call.method === "quadraticCurveTo" && call.args.at(-2) === geometry.hook.x && call.args.at(-1) === geometry.hook.y));
+    assert.equal(env.fishPaints.length, 1);
+  } finally { env.restore(); }
 });
 
 test("portrait water retains native CSS texels instead of shrinking with the boat assembly view", () => {

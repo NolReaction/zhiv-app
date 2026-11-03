@@ -12,7 +12,7 @@
   "sources": [
     {
       "path": "scripts/audio_originals/ambience.py",
-      "sha256": "01538c41b9c33a071393511901128c2180f6c43b4cc0a1ec7b17d139919d4efa"
+      "sha256": "4eb1bd029e3e2275ad2b815cf6aa4cd17b27f8b75bed16b0efc2515f73a8928e"
     },
     {
       "path": "scripts/audio_originals/effects.py",
@@ -3434,6 +3434,60 @@
           "src": "/audio/originals-v1/effect/fishing.hull.01.wav",
           "bytes": 82604,
           "sha256": "4c50b335337a84365b77f16caf6c1801df002f1fc1c79c929622cf6cfb6802bb"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "fishing.reel.wind.01",
+      "kind": "loop",
+      "title": "The line winds in",
+      "description": "A soft rising reel texture from overlapping octave glides and rounded periodic gear friction; no recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 48000,
+      "durationSeconds": 1.0,
+      "decodedBytes": 192000,
+      "masterSha256": "7f45e180752cde8b0962ed758380c7ee0cb702c7ab5c28948810320b6803a1cd",
+      "measurements": {
+        "peakDb": -18.0,
+        "rmsDb": -28.1371,
+        "dc": 0.0,
+        "seamDelta": 0.002298791,
+        "maxAdjacentDelta": 0.008888181
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/fishing.reel.wind.01.wav",
+          "bytes": 96044,
+          "sha256": "7f45e180752cde8b0962ed758380c7ee0cb702c7ab5c28948810320b6803a1cd"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "fishing.reel.slack.01",
+      "kind": "loop",
+      "title": "The line eases out",
+      "description": "A lower falling line texture from overlapping downward glides and soft periodic friction; no recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 48000,
+      "durationSeconds": 1.0,
+      "decodedBytes": 192000,
+      "masterSha256": "e0acafacf3933f01608f034ec9a46d860206340718ff4ad03e2ea80095febcc9",
+      "measurements": {
+        "peakDb": -20.2325,
+        "rmsDb": -30.0,
+        "dc": 0.0,
+        "seamDelta": 8.3979e-05,
+        "maxAdjacentDelta": 0.003793802
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/fishing.reel.slack.01.wav",
+          "bytes": 96044,
+          "sha256": "e0acafacf3933f01608f034ec9a46d860206340718ff4ad03e2ea80095febcc9"
         }
       ],
       "composition": {}
