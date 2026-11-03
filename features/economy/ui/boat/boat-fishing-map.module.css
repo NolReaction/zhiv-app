@@ -90,13 +90,6 @@
 .hold[aria-pressed='true'] .holdTrail i { background: #46572a; }
 .hold[aria-pressed='true'] .holdTrail i:nth-child(1) { height: 13px; }.hold[aria-pressed='true'] .holdTrail i:nth-child(3) { height: 5px; }
 .waitingBite { padding: 8px 0; max-width: 370px; }
-.catchReceipt { display: flex; align-items: center; gap: 13px; min-width: 0; animation: catchArrive 360ms cubic-bezier(.2,.7,.25,1) both; }
-.catchReceipt > div { min-width: 0; }
-.catchReceipt h3 { font-size: 17px; }
-.catchReceipt p { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 9px; margin-top: 5px; }
-.catchReceipt p strong { color: #e9d29a; font-size: 13px; font-variant-numeric: tabular-nums; }
-.catchPortrait { display: grid; place-items: center; flex: 0 0 54px; width: 54px; height: 54px; border: 1px solid #c6b27470; border-radius: 11px; background: radial-gradient(circle at 45% 35%, #d0d99a25, #16383a70); box-shadow: inset 0 1px #e8ddb52b; }
-.receiptMark { color: #acc99b; font-size: 10px; }
 @keyframes hudSettle { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes trayReveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes dockReveal { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
@@ -137,15 +130,21 @@
   .hold, .primary { min-height: 40px; }
   .bottomRow { margin-top: auto; padding-top: 3px; }
   .back { min-height: 30px; }
-  .catchPortrait { width: 36px; height: 36px; flex-basis: 36px; }
-  .catchPortrait svg { width: 34px; height: 34px; }
-  .catchReceipt { gap: 9px; }
-  .catchReceipt .eyebrow { display: none; }
-  .waiting .catchReceipt p { display: block; font-size: 10px; }
-  .receiptMark { margin-left: 8px; }
   .phaseMark { width: 18px; height: 18px; flex-basis: 18px; }
 }
 @media (prefers-reduced-motion: reduce) { .map *, .map *::before, .map *::after { animation: none !important; transition: none !important; } }
 @media (prefers-reduced-motion: reduce) { .viewport { animation: none !important; } }
 
 @media (max-width: 360px) { .returnLabel { display: none; } .attemptHeading strong { font-size: 12px; gap: 6px; } }
+
+.albumShortcut { display: none; }
+.albumOverlay { position: fixed; inset: 0; z-index: 148; background: #061e2bd6; }
+.albumDialog { position: fixed; z-index: 149; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(820px, calc(100vw - max(28px, env(safe-area-inset-left)) - max(28px, env(safe-area-inset-right)))); max-height: calc(100dvh - max(28px, env(safe-area-inset-top)) - max(28px, env(safe-area-inset-bottom))); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #c4ac75b3; border-top: 3px solid #c0a46c; border-radius: 8px 8px 15px 15px; background: linear-gradient(115deg, #16353a, #10282d); color: #eee4c1; box-shadow: 0 18px 85px #001521bb; }
+.albumHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; padding: 18px 20px 13px; border-bottom: 1px solid #bfa16b35; }
+.albumHeader h2 { margin: 0; font-size: 23px; color: #f0e5bf; }
+.albumHeader p { margin: 5px 0 0; font-size: 11px; color: #aebfad; }
+.albumHeader button { font: inherit; cursor: pointer; }
+.albumHeader button:focus-visible { outline: 3px solid #e8c77a; outline-offset: 3px; }
+.albumBody { padding: 16px 20px 20px; overflow: auto; overscroll-behavior: contain; }
+@media (max-width: 640px) { .tools { gap: 6px; }.tool { padding: 7px 9px; font-size: 11px !important; }.albumHeader { padding: 15px 14px 11px; }.albumHeader h2 { font-size: 20px; }.albumBody { padding: 13px 14px 16px; } }
+@media (max-height: 500px) { .albumShortcut { display: inline-flex; }.albumHeader { padding: 10px 15px; }.albumHeader h2 { font-size: 18px; }.albumHeader p { margin-top: 3px; }.albumBody { padding: 10px 15px 15px; } }

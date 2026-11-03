@@ -14,19 +14,22 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
   let frame = initial, disposed = false, inView = true, contextLost = false;
   let raf = 0, lastClock: number | null = null, lastPaint: number | null = null;
   let elapsed = 0, castElapsed = initial.castKey && initial.stage === "casting" ? 0 : 2, stageElapsed = initial.stage === "casting" ? 0 : 2, dirty = true;
-  let pose = fishingBoatActorPose(initial.stage, castElapsed, initial.held, elapsed, false, stageElapsed);
+  let pose = fishingBoatActorPose(initial.stage, castElapsed, initial.held, elapsed, false, stageElapsed, initial.biteLeadSeconds);
+  let biteLead = initial.biteLeadSeconds, biteLeadClock = elapsed;
+  const currentBiteLead = () => biteLead === undefined ? undefined : Math.max(0, biteLead - (elapsed - biteLeadClock));
   let viewport: FishingSceneViewport = { width: 0, height: 0, dpr: 1 };
   const images = new Map<string, HTMLImageElement>(), pending = new Map<string, HTMLImageElement>();
   const failed = new Set<string>(), seenCasts = new Set(initial.castKey ? [initial.castKey] : []);
+  const seenCatches = new Set(initial.catchKey ? [initial.catchKey] : []);
   const media = window.matchMedia?.("(prefers-reduced-motion: reduce)");
   const present = () => !disposed && !document.hidden && inView && !contextLost && viewport.width > 0 && viewport.height > 0;
   const animated = () => present() && !media?.matches && frame.stage !== "paused";
   function stop() { if (raf) cancelAnimationFrame(raf); raf = 0; lastClock = null; lastPaint = null; }
   function paint() {
     if (!present()) return;
-    paintFishingScene(ctx, frame, images, viewport, { elapsed, castElapsed, stageElapsed,
+    paintFishingScene(ctx, frame.stage === "soaking" ? { ...frame, biteLeadSeconds: currentBiteLead() } : frame, images, viewport, { elapsed, castElapsed, stageElapsed,
       still: Boolean(media?.matches),
-      pose: media?.matches ? fishingBoatActorPose(frame.stage, castElapsed, frame.held, 0, true, stageElapsed) : { ...pose } });
+      pose: media?.matches ? fishingBoatActorPose(frame.stage, castElapsed, frame.held, 0, true, stageElapsed, currentBiteLead()) : { ...pose } });
     dirty = false;
   }
   function tick(time: number) {
@@ -35,7 +38,7 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
     // Hidden tabs and a resumed event loop never invent missed visual motion.
     const dt = lastClock === null ? 0 : Math.min(.1, Math.max(0, (time - lastClock) / 1000));
     lastClock = time; elapsed += dt; castElapsed += dt; stageElapsed += dt;
-    const target = fishingBoatActorPose(frame.stage, castElapsed, frame.held, elapsed, false, stageElapsed);
+    const target = fishingBoatActorPose(frame.stage, castElapsed, frame.held, elapsed, false, stageElapsed, currentBiteLead());
     const blend = 1 - Math.exp(-dt / .12);
     pose = { angle: pose.angle + (target.angle - pose.angle) * blend,
       effort: pose.effort + (target.effort - pose.effort) * blend, lean: pose.lean + (target.lean - pose.lean) * blend };
@@ -103,8 +106,18 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
   return {
     update(next: FishingSceneFrame) {
       if (disposed) return;
+      // Bridge coarse server-clock renders for the visual nibble without advancing the actual bite stage.
+      if (next.biteLeadSeconds !== frame.biteLeadSeconds || next.castKey !== frame.castKey) {
+        biteLead = next.biteLeadSeconds; biteLeadClock = elapsed;
+      }
       // Pausing freezes an existing beat; resuming must not play another strike.
-      if (next.stage !== frame.stage && next.stage !== "paused" && frame.stage !== "paused") stageElapsed = 0;
+      if (next.stage !== frame.stage && next.stage !== "paused" && frame.stage !== "paused")
+        stageElapsed = next.stage === "landed" && next.catchKey && seenCatches.has(next.catchKey) ? 2 : 0;
+      if (next.catchKey && !seenCatches.has(next.catchKey)) {
+        seenCatches.add(next.catchKey);
+        if (next.stage === "landed") stageElapsed = 0;
+        if (seenCatches.size > 64) seenCatches.delete(seenCatches.values().next().value!);
+      }
       if (next.castKey && !seenCasts.has(next.castKey)) {
         seenCasts.add(next.castKey); castElapsed = 0;
         if (seenCasts.size > 64) seenCasts.delete(seenCasts.values().next().value!);
@@ -122,7 +135,7 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
       media?.removeEventListener?.("change", motionChanged);
       canvas.removeEventListener("contextlost", lost); canvas.removeEventListener("contextrestored", restored);
       for (const image of pending.values()) { image.onload = null; image.onerror = null; image.src = ""; }
-      pending.clear(); images.clear(); failed.clear(); seenCasts.clear();
+      pending.clear(); images.clear(); failed.clear(); seenCasts.clear(); seenCatches.clear();
     },
   };
 }

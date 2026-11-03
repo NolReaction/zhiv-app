@@ -14,6 +14,7 @@ const vite = await createServer({ root, configFile: false, appType: "custom", op
   } }],
 });
 after(() => vite.close());
+const { fishingBiteMotion } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-bite.ts");
 const { fishingSceneGeometry, paintFishingScene } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-painter.ts");
 const { fishingBoatActorRig, fishingBoatActorPose } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-actor.ts");
 const { fishingSceneFishAppearance, fishingSceneFishMotion } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-fish.ts");
@@ -284,4 +285,43 @@ test("the casting arc keeps its float inside the viewport on medium and short sc
       { elapsed: age, castElapsed: age, stageElapsed: age, still: false });
     assert.ok(geometry.float.y * geometry.scale >= 20, "float glyph clears the top edge throughout the flight");
   }
+});
+
+test("confirmed catch identities never replay the finite reveal through polling, reopening or old-key transitions", () => {
+  const env = environment(), value = frame(), runtime = mountFishingScene(env.canvas, value);
+  const catchFrame = { ...value, stage: "landed", catchKey: "voyage:1", fishId: "fish_mooncarp" };
+  try {
+    runtime.update(catchFrame); env.step(34);
+    assert.ok(env.paints.at(-1).visual.stageElapsed < .1);
+    for (let index = 0; index < 18; index++) env.step(100);
+    const age = env.paints.at(-1).visual.stageElapsed;
+    runtime.update({ ...catchFrame }); env.step(34);
+    assert.ok(env.paints.at(-1).visual.stageElapsed >= age);
+    runtime.update({ ...value, stage: "waiting" }); env.step(34);
+    runtime.update(catchFrame); env.step(34);
+    assert.ok(env.paints.at(-1).visual.stageElapsed >= 2, "an already seen receipt has no second glow/droplet flourish");
+    runtime.dispose();
+    const reopened = mountFishingScene(env.canvas, catchFrame);
+    env.step(34); assert.ok(env.paints.at(-1).visual.stageElapsed >= 2);
+    reopened.dispose();
+  } finally { runtime.dispose(); env.restore(); }
+});
+
+
+test("coarse server-clock updates still show a pre-bite nibble without starting the actual bite", () => {
+  const env = environment(), value = { ...frame(), stage: "soaking", biteLeadSeconds: 1 }, runtime = mountFishingScene(env.canvas, value);
+  try {
+    for (let index = 0; index < 16; index++) env.step(50);
+    const paint = env.paints.at(-1);
+    assert.equal(paint.frame.stage, "soaking");
+    assert.ok(paint.frame.biteLeadSeconds > .1 && paint.frame.biteLeadSeconds < .4);
+    assert.ok(paint.visual.pose.lean > 0, "Mochlik can notice the visual nibble between clock updates");
+    assert.deepEqual(paint.frame.reel, value.reel);
+    assert.ok(fishingBiteMotion(paint.frame.stage, paint.visual.stageElapsed, paint.frame.biteLeadSeconds, false).dip > 1);
+    runtime.update({ ...value }); env.step(50);
+    assert.ok(env.paints.at(-1).frame.biteLeadSeconds < paint.frame.biteLeadSeconds, "an unchanged parent poll cannot restart the visible nibble clock");
+    const lead = env.paints.at(-1).frame.biteLeadSeconds;
+    env.visibility(true); env.step(5000); env.visibility(false); env.step(34);
+    assert.ok(Math.abs(env.paints.at(-1).frame.biteLeadSeconds - lead) < .05, "hidden time is not replayed as a missed nibble");
+  } finally { runtime.dispose(); env.restore(); }
 });

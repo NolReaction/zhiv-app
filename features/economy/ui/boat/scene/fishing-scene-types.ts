@@ -5,6 +5,11 @@ export type FishingSceneFrame = {
   fishRarity?: "common" | "uncommon" | "rare" | "epic" | "legendary";
   /** Exact species is supplied only for a confirmed catch. */
   fishId?: string;
+  /** Derived from the confirmed catch's actual weight; never sent for a hidden fish. */
+  fishSizeScale?: number;
+  catchKey?: string;
+  biteLeadSeconds?: number;
+  ambience?: { now: number; timeZone: string };
   held: boolean;
   reel?: { bar: number; fish: number; progress: number; zoneWidth: number };
   boat: { repaired: boolean; upgrades: readonly string[] };

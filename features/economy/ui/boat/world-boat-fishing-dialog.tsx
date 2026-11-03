@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Dialog } from "radix-ui";
-import { Anchor, ArrowRight, Clock3, Coins, Fish, FishingRod, Sailboat, Trophy, X } from "lucide-react";
+import { Anchor, ArrowRight, BookOpen, Clock3, Coins, Fish, FishingRod, Sailboat, Trophy, X } from "lucide-react";
 import { boatConfig, boatDepartureReason, boatPhase, boatState } from "@/features/economy/domain/boat-fishing";
 import type { BoatReelCommand, BoatUpgradeId } from "@/features/economy/domain/boat-model";
 import type { EconomyCommand } from "@/features/economy/domain/model";
@@ -13,15 +13,16 @@ import { WorldTacklePicker } from "@/features/economy/ui/fishing/world-tackle-pi
 import { number } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldDuration } from "@/features/economy/ui/shared/world-stations";
 import { BoatRecords, BoatWork } from "./boat-panels";
+import { BoatFishingAlbum } from "./boat-fishing-album";
 import { BoatGarage } from "./boat-garage";
 import { BoatVoyagePanel } from "./boat-voyage-panel";
 import { BoatFishingMap } from "./boat-fishing-map";
 import mapStyles from "./boat-fishing-map.module.css";
 import styles from "./boat-fishing.module.css";
 
-const tabs = [{ id: "boat", label: "Лодка", icon: Sailboat }, { id: "records", label: "Рекорды", icon: Trophy }] as const;
+const tabs = [{ id: "boat", label: "Лодка", icon: Sailboat }, { id: "records", label: "Рекорды", icon: Trophy }, { id: "album", label: "Альбом", icon: BookOpen }] as const;
 type Tab = typeof tabs[number]["id"];
-type Props = { economy: ReadyEconomy; onClose: () => void; onOpenPantry?: () => void; suspended?: boolean; appearance?: { palette: string; head: string | null; neck: string | null } };
+type Props = { economy: ReadyEconomy; onClose: () => void; onOpenPantry?: () => void; suspended?: boolean; timeZone?: string; appearance?: { palette: string; head: string | null; neck: string | null } };
 export type BoatSend = (action: EconomyCommand["action"], targetId: string, reel?: BoatReelCommand) => boolean;
 
 export function WorldBoatFishingDialog(props: Props) {
@@ -46,7 +47,7 @@ function BoatUnavailableDialog({ economy, onClose }: Pick<Props, "economy" | "on
   </Dialog.Root>;
 }
 
-function BoatDialogSession({ economy, onClose, onOpenPantry, appearance, suspended = false }: Props) {
+function BoatDialogSession({ economy, onClose, onOpenPantry, appearance, suspended = false, timeZone = "UTC" }: Props) {
   const state = economy.snapshot, boat = boatState(state), config = boatConfig(state.catalog), phase = boatPhase(boat, economy.now);
   const [tab, setTab] = useState<Tab>("boat");
   const sent = useRef(false), content = useRef<HTMLDivElement>(null), id = useId();
@@ -81,7 +82,7 @@ function BoatDialogSession({ economy, onClose, onOpenPantry, appearance, suspend
       {onRiver && boat.voyage ? <>
         <Dialog.Title className={styles.srOnly}>Лодочная рыбалка</Dialog.Title>
         <Dialog.Description id={`${id}-description`} className={styles.srOnly}>Мохлик в лодке на речном плёсе. Забросьте удочку и удерживайте рыбу в зоне снасти.</Dialog.Description>
-        <BoatFishingMap key={`${state.ownerPublicId}.${boat.voyage.id}`} economy={economy} disabled={disabled} send={send} onClose={requestClose} appearance={appearance} suspended={suspended || leaving} />
+        <BoatFishingMap key={`${state.ownerPublicId}.${boat.voyage.id}`} economy={economy} disabled={disabled} send={send} onClose={requestClose} appearance={appearance} suspended={suspended || leaving} timeZone={timeZone} />
       </> : <>
       <header className={styles.header}><Anchor size={25} strokeWidth={1.6} /><div><small>{phaseName}</small><Dialog.Title>{boat.voyage ? "Лодочная рыбалка" : "Лодочная мастерская"}</Dialog.Title></div><span className={styles.wallet} aria-label={`${number(state.wallet.coins)} монет`}><Coins size={17} /><strong>{number(state.wallet.coins)}</strong></span><button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть лодку"><X size={22} /></button></header>
       <Dialog.Description id={`${id}-description`} className={styles.srOnly}>Лодочная рыбалка, ремонт, улучшения и личные рекорды.</Dialog.Description>
@@ -93,7 +94,7 @@ function BoatDialogSession({ economy, onClose, onOpenPantry, appearance, suspend
       {economy.uncertain && <div className={styles.recovery}><span>Проверим, сохранилось ли последнее действие.</span><button type="button" className={styles.secondary} disabled={economy.busy} onClick={() => economy.retry()}>Проверить</button></div>}
       <div ref={content} className={styles.body} id={`${id}-panel`} role="tabpanel" tabIndex={0} aria-labelledby={`${id}-${tab}`}>
         <BoatDevControls economy={economy} compact />
-        {tab === "records" ? <BoatRecords state={state} boat={boat} /> : boat.voyage ? <BoatVoyagePanel economy={economy} disabled={disabled} send={send} onOpenPantry={onOpenPantry} /> : <>
+        {tab === "album" ? <BoatFishingAlbum state={state} /> : tab === "records" ? <BoatRecords state={state} boat={boat} /> : boat.voyage ? <BoatVoyagePanel economy={economy} disabled={disabled} send={send} onOpenPantry={onOpenPantry} /> : <>
             <BoatGarage state={state} boat={boat} config={config} now={economy.now} disabled={disabled} onUpgrade={upgrade} onClaim={workId => send("claim_boat_upgrade", workId)} />
             {boat.level > 0 ? <BoatDockDeparture economy={economy} disabled={disabled} send={send} /> : <p className={styles.dockNote}>Береговая рыбалка на пирсе остаётся доступной во время ремонта.</p>}
           </>}

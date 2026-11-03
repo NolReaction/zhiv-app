@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, Check, Pause, Play, Send } from "lucide-react";
 import type { FishingSceneFrame } from "./scene/fishing-scene-types";
 import { useBoatReelController, type BoatReelControllerProps } from "./use-boat-reel-controller";
 import { boatReelFeedback } from "./boat-reel-feedback";
+import { BoatReelProgress } from "./boat-reel-progress";
 import styles from "./boat-fishing-map.module.css";
 
 export type BoatReelVisualState = { challengeId: string; stage: FishingSceneFrame["stage"]; held: boolean;
@@ -31,7 +32,7 @@ function BoatReelSession({ onVisualState, suspended = false, ...props }: Props) 
   return <section className={styles.attempt} data-boat-reel={challenge.id} data-reel-status={stage}
     data-reel-tick={reel.tick} data-reel-progress={reel.progress} aria-label="Вываживание рыбы">
     <div className={styles.attemptHeading}><strong role="status"><span className={styles.phaseMark} data-phase={stage} aria-hidden="true"><span /></span>{status}</strong><span>{seconds} с</span></div>
-    {!expired && castStage === "bite" && <div className={styles.progressRow} data-feedback={feedback.mood}><span>К лодке</span><progress value={reel.progress} max={10000} aria-label="Рыба на крючке" /><span>{Math.floor(reel.progress / 100)}%</span></div>}
+    {!expired && castStage === "bite" && <div className={styles.progressRow} data-feedback={feedback.mood}><span>К лодке</span><BoatReelProgress value={reel.progress} danger={feedback.urgent} playing={playing && !suspended} /><span>{Math.floor(reel.progress / 100)}%</span></div>}
     {playing && !expired && <div className={styles.feedback} data-feedback={feedback.mood}>
       <FeedbackIcon size={19} aria-hidden="true" /><strong>{feedback.title}</strong><span>{feedback.instruction}</span>
     </div>}

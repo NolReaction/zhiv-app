@@ -20,7 +20,7 @@ const vite = await createServer({ configFile: false, appType: "custom", root, ca
         FishingSceneCanvas.__qaBoatComponent = true;`;
       if (id === `\0${shellId}`) return `
         const shell = kind => Object.assign(function Shell() {}, { __qaRadix: kind });
-        export const Dialog = { Root: shell("root"), Overlay: shell("overlay"), Content: shell("content"), Title: shell("title"), Description: shell("description") };
+        export const Dialog = { Root: shell("root"), Portal: shell("portal"), Overlay: shell("overlay"), Content: shell("content"), Title: shell("title"), Description: shell("description") };
         export const AlertDialog = { Root: shell("alert-root"), Portal: shell("portal"), Overlay: shell("overlay"), Content: shell("alert-content"), Title: shell("title"), Description: shell("description"), Cancel: shell("cancel"), Action: shell("action") };`;
       if (id === `\0${hookId}`) return `
         let instances = new Map(), current, cursor = 0, effects = [], dirty = false, id = 0, visited = new Set();
@@ -215,13 +215,13 @@ test("actual root changes from timed outbound to one separate river scene withou
   assert.equal(f.commands.filter(request => request.action === "submit_boat_cast").length, 0);
 });
 
-test("real play and input handlers pause for catch DEV and return overlays without spending a return or generating fish", () => {
+test("real play and input handlers pause for catch album DEV and return overlays without spending a return or generating fish", () => {
   const f = fixture({ dev: true }); f.cast(); f.play();
   f.hold(true, "pointer"); assert.equal(f.byAction("hold").props["aria-pressed"], true);
   f.frame(50); f.hold(false, "pointer"); assert.equal(f.byAction("hold").props["aria-pressed"], false);
   f.hold(true); f.frame(50); f.hold(false); const initialInventory = structuredClone(f.state.inventory);
   const overlays = [() => f.find(node => node.tag === "button" && text(node).startsWith("Улов ·")),
-    () => f.find(node => node.tag === "button" && text(node) === "DEV"), () => f.byAction("return")];
+    () => f.find(node => node.tag === "button" && text(node) === "DEV"), () => f.byAction("return"), () => f.byAction("album")];
   for (let index = 0; index < overlays.length; index++) {
     if (f.byAction("play")) f.play();
     f.frame(50); const tick = hooks.inspectReel().tick;
@@ -230,7 +230,8 @@ test("real play and input handlers pause for catch DEV and return overlays witho
     assert.equal(f.commands.filter(request => request.action === "return_boat").length, 0);
     if (index === 0) f.click(f.find(node => node.props["aria-label"] === "Закрыть улов"));
     else if (index === 1) f.click(overlays[index]());
-    else f.click(f.find(node => node.tag === "button" && text(node) === "Остаться"));
+    else if (index === 2) f.click(f.find(node => node.tag === "button" && text(node) === "Остаться"));
+    else f.click(f.find(node => node.props["aria-label"] === "Закрыть альбом рыбака"));
     assert(f.byAction("play"), "Dismissing a tray keeps manual play paused");
   }
   assert.deepEqual(f.state.inventory, initialInventory);
@@ -298,4 +299,45 @@ test("escaped or expired attempts never give local fish and the real cast budget
   f.close(); f.reopen(); f.frame(0);
   assert.equal(f.state.boat.voyage.challenge.id, id); assert.equal(f.state.boat.voyage.castsUsed, 2);
   assert.equal(f.state.boat.voyage.catches.length, 0);
+});
+
+
+test("the fishing album shows confirmed species and permanent records without turning purchased stock into discoveries", () => {
+  const f = fixture(), known = economyCatalog.fishing.fish[0], unknown = economyCatalog.fishing.fish[1];
+  f.state.fishing.catches[known.itemId] = 3;
+  f.state.boat.records[known.itemId] = { weightGrams: 1234, caughtAt: new Date(at).toISOString() };
+  f.state.fishing.stock = { [unknown.itemId]: 12 };
+  f.render(); f.click(f.byAction("album"));
+  assert(f.find(node => node.props["data-boat-album-dialog"]));
+  const discovered = f.find(node => node.props["data-album-fish"] === known.itemId);
+  const locked = f.find(node => node.props["data-album-fish"] === unknown.itemId);
+  assert.equal(discovered.props["data-discovered"], true); assert.match(text(discovered), /Поймано: 3/);
+  assert.equal(locked.props["data-discovered"], false); assert.match(text(locked), /Неизвестная рыба/);
+  assert.equal(text(locked).includes(unknown.description), false);
+  const commands = f.commands.length;
+  f.click(f.find(node => node.tag === "button" && text(node) === "Найденные"));
+  assert.equal(f.find(node => node.props["data-album-fish"] === unknown.itemId), undefined);
+  f.click(f.find(node => node.props["aria-label"] === "Закрыть альбом рыбака"));
+  assert.equal(f.commands.length, commands); assert.equal(f.state.fishing.stock[unknown.itemId], 12);
+  f.close(); f.reopen(); f.frame(0); f.click(f.byAction("album-shortcut"));
+  assert.equal(f.find(node => node.props["data-album-fish"] === known.itemId).props["data-discovered"], true);
+});
+
+test("confirmed catch presentation celebrates a real weight record and never leaks its size before confirmation", () => {
+  const f = fixture(); f.cast();
+  const savedFish = f.state.boat.voyage.slots[0].fishId;
+  f.state.boat.records[savedFish] = { weightGrams: 1, caughtAt: new Date(at).toISOString() };
+  f.state.fishing.catches[savedFish] = 1; f.render();
+  assert.equal(f.find(node => node.tag === "canvas").props.frame.fishSizeScale, undefined);
+  f.play(); const result = f.playToResult(); assert.equal(result.status, "caught");
+  assert.equal(f.find(node => node.props["data-confirmed-catch"]), undefined);
+  f.click(f.byAction("submit")); f.flush();
+  const receipt = f.find(node => node.props["data-confirmed-catch"]);
+  assert.match(text(receipt), /Личный рекорд!/); assert.match(text(receipt), /Прежний: 1 г/);
+  assert.doesNotMatch(text(receipt), /Новый вид/);
+  const scene = f.find(node => node.tag === "canvas").props.frame;
+  assert.equal(scene.fishId, savedFish); assert.ok(scene.fishSizeScale >= .78 && scene.fishSizeScale <= 1.3);
+  assert.ok(scene.catchKey.endsWith(".0"));
+  f.frame(4000); assert(f.find(node => node.props["data-confirmed-catch"]), "a record remains visible longer than an ordinary catch");
+  f.frame(2001); assert.equal(f.find(node => node.props["data-confirmed-catch"]), undefined);
 });

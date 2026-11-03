@@ -1,12 +1,13 @@
 import { pixelSprite } from "@/features/mochlik/pixel-sprite";
 import { mossPalette } from "@/features/mochlik/appearance-palette";
+import { fishingBiteMotion } from "./fishing-scene-bite";
 import { fishingArm } from "@/features/world/activities/fishing/fishing-shore-rig";
 import { FISHING_SCENE_RIG, type FishingSceneFrame, type FishingScenePoint, type FishingActorPose } from "./fishing-scene-types";
 
 const smooth = (value: number) => { const t = Math.max(0, Math.min(1, value)); return t * t * (3 - 2 * t); };
 
 /** Authored beats use bounded phase time. Runtime eases these targets without changing game coordinates. */
-export function fishingBoatActorPose(stage: FishingSceneFrame["stage"], castElapsed: number, held: boolean, time: number, still: boolean, stageElapsed = 0): FishingActorPose {
+export function fishingBoatActorPose(stage: FishingSceneFrame["stage"], castElapsed: number, held: boolean, time: number, still: boolean, stageElapsed = 0, biteLeadSeconds?: number): FishingActorPose {
   if (still) return { angle: stage === "reeling" ? held ? -.64 : -.4 : stage === "caught" || stage === "landed" ? -.5 : .075,
     effort: stage === "reeling" ? held ? 1 : .15 : 0, lean: 0 };
   const age = Math.max(0, stageElapsed);
@@ -16,9 +17,10 @@ export function fishingBoatActorPose(stage: FishingSceneFrame["stage"], castElap
       effort: Math.sin(Math.PI * Math.max(0, Math.min(1, castElapsed / 1.2))) * .7,
       lean: -.45 * backswing + .75 * release - .3 * follow };
   }
-  if (stage === "bite") {
-    const notice = age < .5 ? Math.sin(Math.PI * age / .5) : 0;
-    return { angle: -.11 - notice * .12, effort: .18, lean: notice * .22 };
+  if (stage === "soaking" || stage === "bite") {
+    const bite = fishingBiteMotion(stage, age, biteLeadSeconds, false);
+    return { angle: stage === "bite" ? -.11 - bite.notice * .15 : .075 - bite.notice * .04,
+      effort: stage === "bite" ? .18 : .03, lean: bite.notice * .24 };
   }
   if (stage === "reeling") {
     const strike = age < .55 ? Math.sin(Math.PI * age / .55) : 0;
@@ -33,9 +35,9 @@ export function fishingBoatActorPose(stage: FishingSceneFrame["stage"], castElap
 }
 
 /** All anchors live in the hull assembly, below the face. Both hands are the rod's real pivots. */
-export function fishingBoatActorRig(stage: FishingSceneFrame["stage"], castElapsed: number, held: boolean, time: number, still: boolean, pose?: FishingActorPose, stageElapsed = 0) {
+export function fishingBoatActorRig(stage: FishingSceneFrame["stage"], castElapsed: number, held: boolean, time: number, still: boolean, pose?: FishingActorPose, stageElapsed = 0, biteLeadSeconds?: number) {
   const base = FISHING_SCENE_RIG.actor, size = base.size;
-  const motion = pose ?? fishingBoatActorPose(stage, castElapsed, held, time, still, stageElapsed);
+  const motion = pose ?? fishingBoatActorPose(stage, castElapsed, held, time, still, stageElapsed, biteLeadSeconds);
   const breath = still ? 0 : Math.sin(time * 1.7) * 1.35;
   const actor = { ...base, foot: { x: base.foot.x + motion.lean * 3, y: base.foot.y + breath + motion.effort * .7 } };
   const bodyAngle = motion.lean * .035;

@@ -85,7 +85,7 @@ test("boat menus show only physical upgrades and preserve legacy fragments and p
   const value = state(); value.boat.level = 1;
   value.boat.blueprints = { landing_net: 3, telescope: 2 }; value.boat.artifacts = ["landing_net"];
   const before = structuredClone(value), html = render(value);
-  assert.equal([...html.matchAll(/role="tab"/g)].length, 2);
+  assert.equal([...html.matchAll(/role="tab"/g)].length, 3);
   assert.doesNotMatch(html, /Чертежи|Фрагменты схемы|Изготовить|data-boat-module="(?:landing_net|telescope)"/);
   assert.match(html, /data-boat-module="repair"/); assert.match(html, /data-boat-module="oars"/); assert.match(html, /data-boat-module="crate"/);
   assert.deepEqual(value, before);

@@ -1,5 +1,6 @@
 import { drawWaterCurrent, drawWaterGlint, waterSurfaceFrame, type WaterSurfaceLayout } from "@/features/world/environment/water/forest-water-surface";
 import type { FishingScenePoint } from "./fishing-scene-types";
+import { fishingSceneAtmosphere, type FishingSceneAmbience } from "./fishing-scene-atmosphere";
 
 export const FISHING_WATER_TEXTURE = "/world/boat/river-water.webp?v=1";
 const textureMosaics = new WeakMap<HTMLImageElement, HTMLCanvasElement>();
@@ -78,11 +79,18 @@ function paintSurfaceLight(ctx: CanvasRenderingContext2D, width: number, height:
 
 /** Actual painted map water, mirrored at tile boundaries; the map's own current/glint painters sit above it. */
 export function paintFishingLandscape(ctx: CanvasRenderingContext2D, width: number, height: number, time: number,
-  image?: HTMLImageElement) {
+  image?: HTMLImageElement, ambience?: FishingSceneAmbience) {
   ctx.fillStyle = "#087fa5"; ctx.fillRect(0, 0, width, height);
   if (image) paintMovingTexture(ctx, image, width, height, time);
   paintSurfaceLight(ctx, width, height, time);
-  const surface = waterSurfaceFrame(surfaceLayout(width, height), { elapsed: time, rain: 0, dusk: 0, wind: .28 + Math.sin(time * .037) * .055 });
+  const mood = fishingSceneAtmosphere(ambience);
+  if (mood.night > .01) { ctx.fillStyle = `rgba(8,24,57,${mood.night * .46})`; ctx.fillRect(0, 0, width, height); }
+  if (mood.sunset > .01) {
+    const sunset = ctx.createLinearGradient(width, 0, width * .1, height);
+    sunset.addColorStop(0, `rgba(240,167,91,${mood.sunset * .19})`); sunset.addColorStop(.5, `rgba(170,117,111,${mood.sunset * .075})`);
+    sunset.addColorStop(1, "rgba(63,89,113,0)"); ctx.fillStyle = sunset; ctx.fillRect(0, 0, width, height);
+  }
+  const surface = waterSurfaceFrame(surfaceLayout(width, height), { elapsed: time, rain: 0, dusk: mood.night * .8 + mood.sunset * .3, wind: .28 + Math.sin(time * .037) * .055 });
   surface.currents.forEach(current => drawWaterCurrent(ctx, current));
   surface.glints.forEach(glint => drawWaterGlint(ctx, glint));
   const vignette = ctx.createRadialGradient(width * .55, height * .4, width * .12, width * .5, height * .5, Math.max(width, height) * .75);

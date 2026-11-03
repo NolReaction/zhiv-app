@@ -1,3 +1,6 @@
+import { fishingBiteMotion } from "./fishing-scene-bite";
+import { paintFishingCatchEffects } from "./fishing-scene-catch-effects";
+import { paintFishingAtmosphere, paintFishingSceneTint } from "./fishing-scene-atmosphere";
 import { drawFishingRod } from "@/features/world/activities/fishing/fishing-rod-painter";
 import { BOAT_ASSEMBLY, boatArtworkLayers, type BoatArtLayer } from "@/features/world/objects/fishing-boat/fishing-boat-artwork";
 import { boatReelFeedback } from "../boat-reel-feedback";
@@ -32,7 +35,7 @@ export function fishingSceneGeometry(width: number, height: number, frame: Fishi
   const onBoat = (point: FishingScenePoint) => transformFishingBoatPoint(point, boat);
   const castElapsed = visual.still || !frame.castKey ? FISHING_SCENE_RIG.cast.flightSeconds + 1 : Math.max(0, finite(visual.castElapsed, 0));
   const casting = frame.stage === "casting" && castElapsed < FISHING_SCENE_RIG.cast.flightSeconds;
-  const actorRig = fishingBoatActorRig(frame.stage, castElapsed, frame.held, time, visual.still, visual.pose, visual.stageElapsed);
+  const actorRig = fishingBoatActorRig(frame.stage, castElapsed, frame.held, time, visual.still, visual.pose, visual.stageElapsed, frame.biteLeadSeconds);
   const grip = onBoat(actorRig.grip), reel = onBoat(actorRig.reel), tip = onBoat(actorRig.tip);
   // A backswing projects slightly into depth on low viewports rather than clipping its rod/float at the top edge.
   const tipLift = grip.y - tip.y, availableLift = Math.max(1, grip.y - 22 / scale);
@@ -113,6 +116,7 @@ function paintSurfaceGame(ctx: CanvasRenderingContext2D, geometry: Geometry, fra
   ctx.save();
   if (frame.stage === "escaped") ctx.globalAlpha *= visual.still ? 0 : 1 - clamp(visual.stageElapsed / 1.2, 0, 1);
   paintSceneFish(ctx, fish, frame, geometry.time, visual.still, visual.stageElapsed); ctx.restore();
+  paintFishingCatchEffects(ctx, fish, frame, visual.stageElapsed, visual.still);
   if (frame.stage === "reeling" || frame.stage === "paused") paintFishingRipples(ctx, fish, geometry.time * 1.25, geometry.aligned ? .9 : .5);
   if (geometry.actorRig.effort > .5 && !visual.still && (frame.stage === "reeling" || frame.stage === "paused")) {
     ctx.strokeStyle = "rgba(213,236,226,.45)"; ctx.lineWidth = 1.8;
@@ -124,7 +128,11 @@ export function paintFishingScene(ctx: CanvasRenderingContext2D, frame: FishingS
   const geometry = fishingSceneGeometry(viewport.width, viewport.height, frame, visual), { width, height, time } = geometry;
   ctx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0); ctx.clearRect(0, 0, viewport.width, viewport.height);
   ctx.save(); ctx.scale(geometry.scale, geometry.scale);
-  paintFishingLandscape(ctx, width, height, time, images.get(FISHING_WATER_TEXTURE));
+  paintFishingLandscape(ctx, width, height, time, images.get(FISHING_WATER_TEXTURE), frame.ambience);
+  paintFishingAtmosphere(ctx, width, height, time, frame.ambience, [
+    { x: geometry.boat.x - 30, y: geometry.boat.y, width: 1000 * geometry.boat.scale + 60, height: 650 * geometry.boat.scale + 30 },
+    { x: geometry.float.x - 100, y: geometry.waterTop - 45, width: 200, height: geometry.waterBottom - geometry.waterTop + 90 },
+  ]);
   paintSurfaceGame(ctx, geometry, frame, visual);
   paintFishingWake(ctx, { x: geometry.boat.x + geometry.boat.scale * 500, y: geometry.surface + 7 }, geometry.boat.scale * 970, time);
   const boatReady = paintBoat(ctx, geometry, frame, images);
@@ -140,11 +148,14 @@ export function paintFishingScene(ctx: CanvasRenderingContext2D, frame: FishingS
       ctx.quadraticCurveTo(mix(geometry.tip.x, endpoint.x, .55), mix(geometry.tip.y, endpoint.y, .52) + (34 - effort * 30), endpoint.x, endpoint.y); ctx.stroke();
     }
     if (frame.castKey && !settledStages.has(frame.stage)) {
-      const float = geometry.float, dipping = frame.stage === "bite" && !geometry.casting ? 4 + Math.sin(time * 12) * 4 : 0;
-      ctx.save(); ctx.translate(float.x, float.y + dipping); ctx.scale(Math.max(1, .8 / geometry.scale), Math.max(1, .8 / geometry.scale)); ctx.rotate(mix(Math.sin(time * 2) * .08, .13, effort));
+      const float = geometry.float;
+      const bite = fishingBiteMotion(frame.stage, visual.stageElapsed, frame.biteLeadSeconds, visual.still);
+      const dipping = geometry.casting ? 0 : bite.dip;
+      ctx.save(); ctx.translate(float.x, float.y + dipping); ctx.scale(Math.max(1, .8 / geometry.scale), Math.max(1, .8 / geometry.scale)); ctx.rotate(mix(Math.sin(time * 2) * .08, .13, effort) + bite.tilt);
+      ctx.globalAlpha *= 1 - Math.min(.25, dipping / 48);
       ctx.fillStyle = "#d1bc79"; ctx.fillRect(-3, -17, 6, 17); ctx.fillStyle = "#b65f47"; ctx.fillRect(-3, -9, 6, 9);
       ctx.fillStyle = "#eee2b2"; ctx.beginPath(); ctx.ellipse(0, 2, 6, 8, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-      if (!geometry.casting) paintFishingRipples(ctx, geometry.landing, time, frame.stage === "bite" ? 1.4 : .8);
+      if (!geometry.casting) paintFishingRipples(ctx, geometry.landing, time, bite.ripple);
     }
     const splashAge = geometry.castElapsed - FISHING_SCENE_RIG.cast.flightSeconds;
     if (!visual.still && splashAge >= 0 && splashAge < FISHING_SCENE_RIG.cast.splashSeconds) {
@@ -156,5 +167,6 @@ export function paintFishingScene(ctx: CanvasRenderingContext2D, frame: FishingS
     ctx.translate(FISHING_BOAT_PIVOT.x, FISHING_BOAT_PIVOT.y); ctx.rotate(geometry.boat.roll); ctx.translate(-FISHING_BOAT_PIVOT.x, -FISHING_BOAT_PIVOT.y);
     paintFishingBoatPaws(ctx, geometry.actorRig); ctx.restore();
   }
+  paintFishingSceneTint(ctx, width, height, frame.ambience);
   ctx.restore();
 }
