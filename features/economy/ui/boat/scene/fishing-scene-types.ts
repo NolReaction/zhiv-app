@@ -23,5 +23,5 @@ export const FISHING_SCENE_RIG = {
     farShoulder: { x: 422, y: 402 }, farElbow: { x: 456, y: 425 } },
   rod: { tip: { x: 850, y: 108 }, size: 285 },
   cast: { flightSeconds: 1.2, splashSeconds: .65 },
-  layers: ["landscape", "underwater", "boat-back", "mochlik", "boat-front", "rod", "line", "float", "reeds"],
+  layers: ["map-water", "surface-game", "wake", "boat-back", "mochlik", "boat-front", "rod", "line", "float"],
 } as const;

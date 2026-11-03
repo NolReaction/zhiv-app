@@ -1,6 +1,7 @@
 "use client";
 
 import { WorldBoatFishingDialog } from "@/features/economy/ui/boat/world-boat-fishing-dialog";
+import { boatPhase, boatState } from "@/features/economy/domain/boat-fishing";
 import { shipOrdersState } from "@/features/economy/domain/ship-orders";
 import { WorldDevEntry } from "./dev/world-dev-entry";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
@@ -121,6 +122,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const [openObjectRequest, setOpenObjectRequest] = useState<{ id: number; place: WorldPlace }>();
   const objectRequestSequence = useRef(0);
   const [quickMenu, setQuickMenu] = useState<QuickMenu | null>(null);
+  const riverOpen = quickMenu === "boat" && economy.snapshot?.ownerPublicId === ownerPublicId && Boolean(economy.snapshot?.catalog.boat) && boatPhase(boatState(economy.snapshot!), economy.now) === "fishing";
   const [pantryFishSale, setPantryFishSale] = useState<{ owner: string; open: boolean } | null>(null);
   const pantryFishSaleOpen = quickMenu === "pantry" && pantryFishSale?.owner === ownerPublicId && pantryFishSale.open;
   const onFishSaleOpenChange = useCallback((value: boolean) => {
@@ -598,7 +600,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const QuickIcon = quickMenu === "profile" ? Leaf : quickMenu === "pantry" ? Package : quickMenu === "expeditions" ? Compass : quickMenu === "ship" ? Anchor : MoreHorizontal;
   const SheetIcon = panel === "help" ? Info : panel === "orders" ? BookOpenCheck : panel === "economy" ? economyTab === "market" ? Store : Package : panel === "shop" ? ShoppingBag : panel === "wardrobe" ? Shirt : panel === "collection" ? BookOpen : panel === "customize" ? Leaf : Compass;
   return <section ref={worldElement} className={styles.world} aria-label="Лес Мохлика" data-quick-open={quickMenu ?? undefined} style={{ "--quick-top": `${menuBounds.top + 6}px`, "--quick-bottom": `${menuBounds.bottom + 6}px` } as CSSProperties}>
-    <WorldScene economyBoatFishing={economy.snapshot?.catalog.boat && economy.snapshot.ownerPublicId === ownerPublicId ? economy.snapshot.boat : null} economyShip={economy.snapshot?.ownerPublicId === ownerPublicId ? shipOrdersState(economy.snapshot, economy.now) : null} tradeShipArrivalEnabled={shipArrivalEnabled} tutorialActive={Boolean(open && !suspended && mainCourseActive && onboarding.progress?.status === "started" && observation?.memory.sync?.mode !== "other-device")} suspended={!open || suspended} audioSuppressed={marketOpen} onReady={onSceneReady} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyResidents={economicResidents} lopukhArrival={lopukhPresentation} residentArrival={minerPresentation} merchantArrival={merchantPresentation} economyProduction={economicProduction} economyConstruction={economicConstruction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
+    <WorldScene economyBoatFishing={economy.snapshot?.catalog.boat && economy.snapshot.ownerPublicId === ownerPublicId ? economy.snapshot.boat : null} economyShip={economy.snapshot?.ownerPublicId === ownerPublicId ? shipOrdersState(economy.snapshot, economy.now) : null} tradeShipArrivalEnabled={shipArrivalEnabled} tutorialActive={Boolean(open && !suspended && mainCourseActive && onboarding.progress?.status === "started" && observation?.memory.sync?.mode !== "other-device")} suspended={!open || suspended} audioSuppressed={marketOpen || riverOpen} onReady={onSceneReady} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyResidents={economicResidents} lopukhArrival={lopukhPresentation} residentArrival={minerPresentation} merchantArrival={merchantPresentation} economyProduction={economicProduction} economyConstruction={economicConstruction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
       hideJourneyStatus onPlace={onPlace} onResident={openResident} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest} guidePlace={guidePlace}
       constructionEconomy={economy} hideConstructionStatus={quickMenu !== null || panel !== null || selection !== null || quickUpgrade !== null || residentOpen || charactersOpen || dailyOpen}
       onOpenConstruction={stationId => { clearObject(); setPanel(null); setQuickMenu(null); openUpgrade(stationId); }}
@@ -805,7 +807,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
       </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>
-    {quickMenu === "boat" && economy.snapshot?.ownerPublicId === ownerPublicId && <WorldBoatFishingDialog economy={{ ...economy, snapshot: economy.snapshot }} appearance={state.equipment} onClose={closeQuick} onOpenPantry={() => openQuick("pantry")} />}
+    {quickMenu === "boat" && economy.snapshot?.ownerPublicId === ownerPublicId && <WorldBoatFishingDialog economy={{ ...economy, snapshot: economy.snapshot }} appearance={state.equipment} suspended={!open || suspended} onClose={closeQuick} onOpenPantry={() => openQuick("pantry")} />}
     <ForestSessionNotice presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} onExit={onClose} />
     <MarketUnlockOnboarding open={marketGuide.open} worldElement={worldElement}
       onOpenMarket={() => { marketGuide.complete(); openEconomy("market"); }} onDismiss={marketGuide.dismiss} />

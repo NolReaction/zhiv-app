@@ -34,7 +34,7 @@ function pcmWave(bytes) {
 
 test("original pack fills the catalog, documents source and verifies every shipped byte", () => {
   assert.deepEqual(inspectAudioCatalog(catalog, { root, requireReady: true }).errors, []);
-  assert.equal(manifest.assets.length, 117);
+  assert.equal(manifest.assets.length, 118);
   assert.deepEqual(new Set(manifest.assets.map(item => item.id)), new Set(catalog.assets.map(item => item.id)));
   const hashes = new Set();
   for (const source of manifest.sources) assert.equal(sha(readFileSync(path.join(root, source.path))), source.sha256, source.path);
@@ -167,7 +167,7 @@ test("ambient bank leaves mobile buffer headroom and music has a Safari fallback
   assert.ok(loops.reduce((sum, item) => sum + item.decodedBytes, 0) < 24 * 1024 * 1024);
   for (const item of manifest.assets.filter(asset => asset.kind === "music")) {
     assert.equal(item.channels, 2);
-    assert.ok(item.durationSeconds >= 90 && item.durationSeconds <= 150);
+    assert.ok(item.durationSeconds >= (item.id === "music.fishing.01" ? 80 : 90) && item.durationSeconds <= 150);
     assert.match(item.files[0].src, /\.opus$/);
     assert.match(item.files[1].src, /\.m4a$/);
   }

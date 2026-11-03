@@ -18,6 +18,7 @@ const { fishingSceneGeometry, paintFishingScene } = await vite.ssrLoadModule("/f
 const { mountFishingScene } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-runtime.ts");
 const { FishingSceneCanvas } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-canvas.tsx");
 const { BOAT_ART_PARTS } = await vite.ssrLoadModule("/features/world/objects/fishing-boat/fishing-boat-artwork.ts");
+const { FISHING_WATER_TEXTURE } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-background.ts");
 const frame = () => ({ stage: "reeling", castKey: "cast-one", held: false, reel: { bar: 5000, fish: 5500, progress: 2500, zoneWidth: 3200 },
   boat: { repaired: true, upgrades: ["crate", "oars"] }, rodId: "brook_rod" });
 const visual = { elapsed: 2, castElapsed: 2, stageElapsed: 2, still: true };
@@ -58,25 +59,32 @@ function environment() {
   };
 }
 
-test("authored boat, hands and depth anchors fit portrait and landscape above the control HUD", () => {
-  for (const [width, height] of [[320, 568], [390, 844], [820, 390], [1280, 720], [1600, 900]]) {
+test("authored boat, hands and surface controls fit portrait and landscape above the control HUD", () => {
+  for (const [width, height] of [[320, 568], [390, 844], [820, 375], [820, 390], [1280, 720], [1600, 900]]) {
     const value = frame(), before = structuredClone(value), g = fishingSceneGeometry(width, height, value, visual);
     assert.deepEqual(value, before);
     assert.ok(g.boat.x >= 0 && g.boat.x + 1000 * g.boat.scale <= g.width);
     assert.ok(920 * g.boat.scale * g.scale >= Math.min(width * .26, 170), "the modular boat remains legible at 320px");
-    assert.ok(g.hook.y > g.surface && g.hook.y <= g.waterBottom);
-    assert.ok(g.fish.y > g.surface && g.fish.y <= g.waterBottom);
-    const hud = Math.min(width < 700 ? 280 : 220, height * (width < 700 ? .42 : .34));
+    assert.ok(g.hook.y >= g.waterTop && g.hook.y <= g.waterBottom);
+    assert.ok(g.fish.y >= g.waterTop && g.fish.y <= g.waterBottom);
+    const hud = height < 500 && width > height ? 185 : width < 700 ? 280 : 260;
     assert.ok(g.waterBottom * g.scale <= height - hud, "the depth range stays above the floating controls");
     assert.ok(g.actor.foot.y > g.actor.size && g.actor.foot.x < g.grip.x);
+    for (const end of [0, 10000]) {
+      const endpoint = fishingSceneGeometry(width, height, { ...value, reel: { ...value.reel, bar: end, fish: end } }, visual);
+      assert.ok(endpoint.float.y * endpoint.scale <= height - hud - 24 + 1e-8, "low float endpoint clears the full feedback HUD");
+      assert.ok(endpoint.fish.y * endpoint.scale >= 68 - 1e-8, "high fish endpoint clears the landscape header");
+    }
   }
 });
 
-test("public reel controls change hook depth, fish depth, pull and rod tension without inventing a catch", () => {
+test("public reel controls move the surface float, fish shadow, pull and rod tension without inventing a catch", () => {
   const value = frame(), base = fishingSceneGeometry(390, 844, value, visual);
   const raised = fishingSceneGeometry(390, 844, { ...value, held: true, reel: { ...value.reel, bar: 9000, fish: 1000, progress: 8500 } }, visual);
   assert.ok(raised.hook.y < base.hook.y); assert.ok(raised.fish.y > base.fish.y);
   assert.ok(raised.hook.x < base.hook.x); assert.ok(raised.tension > base.tension); assert.notDeepEqual(raised.tip, base.tip);
+  assert.deepEqual(base.float, base.hook, "the landed float is the controlled position, not a detached decoration");
+  assert.deepEqual(raised.float, raised.hook);
   assert.deepEqual(raised.grip, base.grip, "the hand is the rod pivot, not a floating independent prop");
   const stopped = fishingSceneGeometry(390, 844, value, { ...visual, still: true, elapsed: 1000 });
   assert.deepEqual([stopped.boat, stopped.tip, stopped.float, stopped.hook, stopped.fish, stopped.zone],
@@ -100,11 +108,20 @@ test("painting composes real hull modules around Mochlik and never substitutes a
   } finally { env.restore(); }
 });
 
+test("the visible surface zone matches domain membership even at both control limits", () => {
+  for (const bar of [0, 700, 5000, 9400, 10000]) for (const fish of [0, 1000, 2000, 5000, 8000, 9000, 10000]) {
+    const value = frame(); value.reel.bar = bar; value.reel.fish = fish;
+    const g = fishingSceneGeometry(390, 844, value, visual);
+    const inBand = g.fish.y >= g.zone.y - 1e-8 && g.fish.y <= g.zone.y + g.zone.height + 1e-8;
+    assert.equal(inBand, g.aligned, `fish=${fish}, bar=${bar}`);
+  }
+});
+
 test("canvas runtime caps DPR/frame rate, pauses offscreen and cleans up late image completions", () => {
   const env = environment(), value = { ...frame(), stage: "waiting" }, runtime = mountFishingScene(env.canvas, value);
   try {
     assert.equal(env.canvas.width, 780); assert.equal(env.canvas.height, 1688);
-    assert.deepEqual(env.requests.map(image => image.path).sort(), ["hull.webp", "module-crate.webp", "module-oars.webp"].map(name => "/world/boat/" + name).sort());
+    assert.deepEqual(env.requests.map(image => image.path).sort(), [...["hull.webp", "module-crate.webp", "module-oars.webp"].map(name => "/world/boat/" + name), FISHING_WATER_TEXTURE].sort());
     for (let i = 0; i < 61; i++) env.step(1000 / 60);
     assert.ok(env.paints.length >= 28 && env.paints.length <= 32, "visible painting averages at most 30fps rather than following every RAF");
     const age = env.paints.at(-1).visual.castElapsed, count = env.paints.length;

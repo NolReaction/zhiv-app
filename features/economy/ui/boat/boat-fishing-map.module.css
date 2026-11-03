@@ -22,6 +22,22 @@
 .bottom { position: absolute; z-index: 4; left: 0; right: 0; bottom: max(14px, env(safe-area-inset-bottom)); display: flex; justify-content: center; pointer-events: none; }
 .controls { width: min(540px, calc(100% - 32px)); padding: 16px 18px 10px; background: #102725f2; border: 1px solid #acb99175; border-radius: 16px; box-shadow: 0 12px 40px #06181d70; pointer-events: auto; }
 .attempt { display: grid; gap: 11px; }
+.feedback { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 2px 7px; min-height: 42px; padding: 5px 9px; border-left: 2px solid #94c9a5; border-radius: 5px; background: #91b68613; color: #c7e5bd; }
+.feedback svg { grid-row: span 2; }
+.feedback strong { font-size: 12px; }
+.feedback span { font-size: 10px; color: #c1d4c4; }
+.feedback[data-feedback='chase'] { border-color: #e2bc77; color: #f0cd90; background: #bd955315; }
+.feedback[data-feedback='danger'] { border-color: #f4a88b; color: #ffd2b9; background: #b65c391f; }
+.progressRow[data-feedback='danger'] progress { accent-color: #f4a88b; }
+.progressRow[data-feedback='danger'] progress::-webkit-progress-value { background: #f4a88b; }
+.viewport { animation: riverEnter 420ms ease-out both; }
+.viewport[data-leaving] { animation: riverLeave 260ms ease-in both; pointer-events: none; }
+.canvas { animation: waterReveal 650ms ease-out both; }
+.controls { transition: border-color 180ms ease, background-color 180ms ease; }
+.primary, .secondary, .tool { transition: background-color 120ms ease, box-shadow 120ms ease; }
+@keyframes riverEnter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes riverLeave { from { opacity: 1; } to { opacity: 0; } }
+@keyframes waterReveal { from { opacity: .45; } to { opacity: 1; } }
 .attemptHeading { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
 .attemptHeading strong { font-size: 15px; }
 .attemptHeading > span { flex: 0 0 auto; font-size: 11px; color: #bcc9a4; font-variant-numeric: tabular-nums; }
@@ -77,10 +93,14 @@
   .controls { width: min(500px, calc(100% - 20px)); padding: 10px 12px 4px; }
   .bottom { bottom: 6px; }
   .attempt { gap: 6px; }
+  .feedback { min-height: 29px; grid-template-columns: 18px auto minmax(0, 1fr); padding: 3px 7px; }
+  .feedback svg { grid-row: auto; width: 16px; }
+  .feedback span { text-align: right; font-size: 9px; }
   .hold, .primary { min-height: 40px; }
   .bottomRow { margin-top: 5px; padding-top: 3px; }
   .back { min-height: 30px; }
 }
 @media (prefers-reduced-motion: reduce) { .map *, .map *::before, .map *::after { animation: none !important; transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .viewport { animation: none !important; } }
 
 @media (max-width: 360px) { .returnLabel { display: none; } }

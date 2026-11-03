@@ -8,12 +8,13 @@ import { createServer } from "vite";
 // feature components, hook and domain execute; Radix shells and the decorative
 // Canvas have adapters. Renderer/lifecycle tests cover the Canvas separately.
 const root = fileURLToPath(new URL("..", import.meta.url));
-const hookId = "virtual:boat-map-hooks", shellId = "virtual:boat-map-shell", canvasId = "virtual:boat-map-canvas";
+const hookId = "virtual:boat-map-hooks", shellId = "virtual:boat-map-shell", canvasId = "virtual:boat-map-canvas", audioId = "virtual:boat-map-audio";
 const vite = await createServer({ configFile: false, appType: "custom", root, cacheDir: `/tmp/boat-map-integration-${process.pid}`,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
   plugins: [{ name: "boat-map-component-integration", enforce: "pre",
-    resolveId(id) { if ([hookId, shellId, canvasId].includes(id)) return `\0${id}`; },
+    resolveId(id) { if ([hookId, shellId, canvasId, audioId].includes(id)) return `\0${id}`; },
     load(id) {
+      if (id === `\0${audioId}`) return `export function useFishingAudio() {}`;
       if (id === `\0${canvasId}`) return `import { createElement } from "react";
         export function FishingSceneCanvas(props) { return createElement("canvas", { "data-fishing-scene": props.frame.stage, frame: props.frame }); }
         FishingSceneCanvas.__qaBoatComponent = true;`;
@@ -70,7 +71,8 @@ const vite = await createServer({ configFile: false, appType: "custom", root, ca
     transform(source, id) {
       if (!id.includes("/features/economy/ui/boat/") || !/\.(?:tsx|ts)$/.test(id)) return;
       let result = source.replaceAll('from "react";', `from "${hookId}";`).replaceAll('from "radix-ui";', `from "${shellId}";`)
-        .replace('from "./scene/fishing-scene-canvas";', `from "${canvasId}";`);
+        .replace('from "./scene/fishing-scene-canvas";', `from "${canvasId}";`)
+        .replace('from "./use-fishing-audio";', `from "${audioId}";`);
       const components = [...source.matchAll(/^(?:export\s+)?function\s+([A-Z]\w*)\s*\(/gm)].map(match => match[1]);
       result += components.map(name => `\n${name}.__qaBoatComponent = true;`).join("");
       return result;
@@ -227,10 +229,14 @@ test("real play and input handlers pause for catch DEV and return overlays witho
   assert.deepEqual(f.state.inventory, initialInventory);
 });
 
-test("close reopen and hidden events preserve the same tab checkpoint paused without duplicate frames or commands", () => {
+test("close reopen and hidden events preserve the same tab checkpoint paused without duplicate frames or commands", t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const f = fixture(); f.cast(); f.play(); f.hold(true); f.frame(100);
   const voyageId = f.state.boat.voyage.id, challenge = f.state.boat.voyage.challenge, tick = hooks.inspectReel().tick;
   f.click(f.find(node => node.tag === "button" && text(node) === "К поляне"));
+  assert(f.find(node => node.props["data-leaving"]));
+  assert.equal(hooks.inspectReel().tick, tick);
+  t.mock.timers.tick(260); f.render();
   assert.equal(frames.size, 0); assert.equal(window.count(), 0); assert.equal(document.count(), 0);
   const key = boatReelCheckpointKey("0000-0000-0000", voyageId, challenge.id);
   assert.equal(JSON.parse(storage.get(key)).endTick, tick);

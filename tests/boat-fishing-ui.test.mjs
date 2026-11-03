@@ -141,3 +141,22 @@ test("same-tick input events collapse to one legal state and a pause does not ad
   assert.deepEqual(replayBoatReel(attempt, submission.inputs, submission.endTick), reel);
   assert.deepEqual(Object.keys(submission).sort(), ["challengeId", "endTick", "inputs"]);
 });
+
+
+test("directional feedback agrees with replay progress at both zone edges", async () => {
+  const { boatReelFeedback } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-reel-feedback.ts");
+  const attempt = challenge();
+  let current = initialBoatReel(attempt);
+  for (let tick = 0; tick < 90 && current.status === "active"; tick++) {
+    const next = stepBoatReel(attempt, current, tick % 40 < 20);
+    const feedback = boatReelFeedback(next, attempt.zoneWidth);
+    assert.equal(feedback.inZone, next.progress > current.progress);
+    if (!feedback.inZone) assert.equal(feedback.direction, next.fish > next.bar ? "lift" : "ease");
+    current = next;
+  }
+  const center = { bar: 5000, fish: 5000, progress: 1000 };
+  assert.equal(boatReelFeedback(center, 2000).urgent, false);
+  assert.equal(boatReelFeedback({ ...center, fish: 6000 }, 2000).inZone, true);
+  assert.equal(boatReelFeedback({ ...center, fish: 6001 }, 2000).urgent, true);
+  assert.equal(boatReelFeedback({ ...center, fish: 3999 }, 2000).direction, "ease");
+});

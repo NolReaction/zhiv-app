@@ -1,5 +1,6 @@
 import { boatArtworkLayers } from "@/features/world/objects/fishing-boat/fishing-boat-artwork";
 import { paintFishingScene } from "./fishing-scene-painter";
+import { FISHING_WATER_TEXTURE } from "./fishing-scene-background";
 import type { FishingSceneFrame, FishingSceneViewport } from "./fishing-scene-types";
 
 const frameInterval = 1000 / 30;
@@ -51,7 +52,7 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
     if (disposed) return;
     const parts = boatArtworkLayers({ repaired: frame.boat.repaired,
       upgrades: frame.boat.upgrades.filter(id => id === "oars" || id === "crate") });
-    for (const { src } of parts) {
+    for (const src of [FISHING_WATER_TEXTURE, ...parts.map(part => part.src)]) {
       if (images.has(src) || pending.has(src) || failed.has(src)) continue;
       const image = new Image(); pending.set(src, image); image.decoding = "async";
       const complete = (ok: boolean) => {

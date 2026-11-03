@@ -10,15 +10,16 @@ import { BoatDevControls } from "@/features/economy/dev/boat-dev-controls";
 import { BoatCatchList } from "./boat-panels";
 import { BoatReelGame, type BoatReelVisualState } from "./boat-reel-game";
 import { FishingSceneCanvas } from "./scene/fishing-scene-canvas";
+import { useFishingAudio } from "./use-fishing-audio";
 import type { FishingSceneFrame } from "./scene/fishing-scene-types";
 import type { BoatSend } from "./world-boat-fishing-dialog";
 import styles from "./boat-fishing-map.module.css";
 
 type Props = { economy: ReadyEconomy; disabled: boolean; send: BoatSend; onClose: () => void;
-  appearance?: FishingSceneFrame["appearance"] };
+  suspended?: boolean; appearance?: FishingSceneFrame["appearance"] };
 
 /** A separate river view shares the saved voyage, never a second source of rewards. */
-export function BoatFishingMap({ economy, disabled, send, onClose, appearance }: Props) {
+export function BoatFishingMap({ economy, disabled, send, onClose, appearance, suspended = false }: Props) {
   const state = economy.snapshot, boat = boatState(state), config = boatConfig(state.catalog), voyage = boat.voyage!;
   const challenge = voyage.challenge;
   const [visual, setVisual] = useState<BoatReelVisualState | null>(null);
@@ -27,10 +28,14 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance }:
   const remaining = Math.max(0, voyage.maxCasts - voyage.castsUsed);
   const expired = challenge && economy.now >= Date.parse(challenge.expiresAt);
   const activeVisual = visual?.challengeId === challenge?.id ? visual : null;
-  const frame = useMemo<FishingSceneFrame>(() => ({ stage: challenge ? activeVisual?.stage ?? (expired ? "expired" : "bite") : "waiting",
+  const frame = useMemo<FishingSceneFrame>(() => ({ stage: suspended ? "paused" : challenge ? activeVisual?.stage ?? (expired ? "expired" : "bite") : "waiting",
     held: activeVisual?.held ?? false, castKey: challenge?.id, reel: activeVisual?.reel,
     boat: { repaired: true, upgrades: boat.upgrades }, rodId: voyage.loadout.rodId, appearance }),
-  [challenge, activeVisual, expired, boat.upgrades, voyage.loadout.rodId, appearance]);
+  [suspended, challenge, activeVisual, expired, boat.upgrades, voyage.loadout.rodId, appearance]);
+  useFishingAudio({ ownerPublicId: state.ownerPublicId, voyageId: voyage.id, stage: frame.stage, castKey: frame.castKey,
+    held: frame.held, progress: frame.reel?.progress ?? 0,
+    inZone: Boolean(frame.reel && Math.abs(frame.reel.bar - frame.reel.fish) <= frame.reel.zoneWidth / 2),
+    caughtCount: voyage.catches.length, suspended });
   const finishReturn = () => { if (!disabled && send("return_boat", voyage.id)) setConfirmReturn(false); };
   return <section className={styles.map} data-boat-map data-fishing-stage={frame.stage} aria-label="Карта речной рыбалки">
     <FishingSceneCanvas frame={frame} className={styles.canvas} />
@@ -45,18 +50,18 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance }:
     {economy.uncertain && <div className={styles.recovery}><span>Проверяем последнее действие.</span><button type="button" disabled={economy.busy} onClick={() => economy.retry()}>Проверить результат</button></div>}
     <div className={styles.bottom}>
       <div className={styles.controls}>
-        {challenge ? <BoatReelGame owner={state.ownerPublicId} voyageId={voyage.id} challenge={challenge} now={economy.now} disabled={disabled}
-          uncertain={economy.uncertain} suspended={showCatch || showDev || confirmReturn} onVisualState={publishVisual} onSubmit={reel => send("submit_boat_cast", voyage.id, reel)} />
+        {challenge ? <BoatReelGame owner={state.ownerPublicId} voyageId={voyage.id} challenge={challenge} now={economy.now} disabled={disabled || suspended}
+          uncertain={economy.uncertain} suspended={suspended || showCatch || showDev || confirmReturn} onVisualState={publishVisual} onSubmit={reel => send("submit_boat_cast", voyage.id, reel)} />
           : <div className={styles.waiting}><span className={styles.eyebrow}><Sailboat size={15} />Мохлик на речном плёсе</span><h3>{remaining ? "Пора забросить удочку" : "Все забросы использованы"}</h3><p>{remaining ? "Забросьте удочку. Следите за поплавком и удерживайте рыбу в зоне снасти." : "Улов остаётся на борту. Можно возвращаться к причалу."}</p></div>}
-        {(!challenge || expired) && remaining > 0 && <button type="button" className={styles.primary} data-fishing-action="cast" disabled={disabled} onClick={() => { if (!disabled) send("begin_boat_cast", voyage.id); }}><FishingRod size={18} />Забросить удочку</button>}
-        <div className={styles.bottomRow}><button type="button" className={styles.back} onClick={onClose}><ArrowLeft size={15} />К поляне</button><button type="button" className={styles.back} data-fishing-action="return" disabled={disabled} onClick={() => { if (!disabled) setConfirmReturn(true); }}>Вернуться с уловом</button></div>
+        {(!challenge || expired) && remaining > 0 && <button type="button" className={styles.primary} data-fishing-action="cast" disabled={disabled || suspended} onClick={() => { if (!disabled) send("begin_boat_cast", voyage.id); }}><FishingRod size={18} />Забросить удочку</button>}
+        <div className={styles.bottomRow}><button type="button" className={styles.back} onClick={onClose}><ArrowLeft size={15} />К поляне</button><button type="button" className={styles.back} data-fishing-action="return" disabled={disabled || suspended} onClick={() => { if (!disabled) setConfirmReturn(true); }}>Вернуться с уловом</button></div>
       </div>
     </div>
     <AlertDialog.Root open={confirmReturn} onOpenChange={setConfirmReturn}><AlertDialog.Portal>
       <AlertDialog.Overlay className={styles.confirmationOverlay} />
       <AlertDialog.Content className={styles.confirmation}>
         <AlertDialog.Title>Вернуться к причалу?</AlertDialog.Title><AlertDialog.Description>{challenge && !expired ? "Текущая рыба уйдёт. " : ""}Оставшиеся забросы закончатся. Пойманная рыба останется на борту.</AlertDialog.Description>
-        <div><AlertDialog.Cancel asChild><button type="button" className={styles.secondary}>Остаться</button></AlertDialog.Cancel><AlertDialog.Action asChild><button type="button" className={styles.primary} data-fishing-action="confirm-return" disabled={disabled} onClick={event => { event.preventDefault(); finishReturn(); }}>Вернуться</button></AlertDialog.Action></div>
+        <div><AlertDialog.Cancel asChild><button type="button" className={styles.secondary}>Остаться</button></AlertDialog.Cancel><AlertDialog.Action asChild><button type="button" className={styles.primary} data-fishing-action="confirm-return" disabled={disabled || suspended} onClick={event => { event.preventDefault(); finishReturn(); }}>Вернуться</button></AlertDialog.Action></div>
       </AlertDialog.Content>
     </AlertDialog.Portal></AlertDialog.Root>
   </section>;

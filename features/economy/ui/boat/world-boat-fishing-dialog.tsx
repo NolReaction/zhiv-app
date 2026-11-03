@@ -21,7 +21,7 @@ import styles from "./boat-fishing.module.css";
 
 const tabs = [{ id: "boat", label: "Лодка", icon: Sailboat }, { id: "records", label: "Рекорды", icon: Trophy }] as const;
 type Tab = typeof tabs[number]["id"];
-type Props = { economy: ReadyEconomy; onClose: () => void; onOpenPantry?: () => void; appearance?: { palette: string; head: string | null; neck: string | null } };
+type Props = { economy: ReadyEconomy; onClose: () => void; onOpenPantry?: () => void; suspended?: boolean; appearance?: { palette: string; head: string | null; neck: string | null } };
 export type BoatSend = (action: EconomyCommand["action"], targetId: string, reel?: BoatReelCommand) => boolean;
 
 export function WorldBoatFishingDialog(props: Props) {
@@ -46,13 +46,22 @@ function BoatUnavailableDialog({ economy, onClose }: Pick<Props, "economy" | "on
   </Dialog.Root>;
 }
 
-function BoatDialogSession({ economy, onClose, onOpenPantry, appearance }: Props) {
+function BoatDialogSession({ economy, onClose, onOpenPantry, appearance, suspended = false }: Props) {
   const state = economy.snapshot, boat = boatState(state), config = boatConfig(state.catalog), phase = boatPhase(boat, economy.now);
   const [tab, setTab] = useState<Tab>("boat");
   const sent = useRef(false), content = useRef<HTMLDivElement>(null), id = useId();
   const disabled = locked(economy) || economy.snapshotConfirmed === false;
   const challenge = boat.voyage?.challenge;
   const onRiver = phase === "fishing" && Boolean(boat.voyage);
+  const [leaving, setLeaving] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (closeTimer.current !== null) clearTimeout(closeTimer.current); }, []);
+  const requestClose = () => {
+    if (closeTimer.current !== null) return;
+    if (!onRiver || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { onClose(); return; }
+    setLeaving(true);
+    closeTimer.current = setTimeout(onClose, 260);
+  };
   useEffect(() => { if (!economy.busy && !economy.uncertain) sent.current = false; }, [economy.busy, economy.uncertain, economy.error, state.revision, state.ownerPublicId]);
   useEffect(() => { if (challenge?.id) content.current?.scrollTo({ top: 0 }); }, [challenge?.id]);
   const send: BoatSend = (action, targetId, reel) => {
@@ -64,15 +73,15 @@ function BoatDialogSession({ economy, onClose, onOpenPantry, appearance }: Props
   };
   const upgrade = (upgradeId: BoatUpgradeId) => { send("start_boat_upgrade", upgradeId); };
   const phaseName = { broken: "Нужен ремонт корпуса", repairing: "Работа в мастерской", docked: "У причала · готовимся к выходу", outbound: "Курс на речной плёс", fishing: "На рыбалке", returning: "Возвращение к причалу", ready: "Лодка вернулась" }[phase];
-  return <Dialog.Root open onOpenChange={open => { if (!open) onClose(); }}>
+  return <Dialog.Root open onOpenChange={open => { if (!open) requestClose(); }}>
     <Dialog.Overlay className={styles.overlay} onPointerDown={event => event.stopPropagation()} />
-    <Dialog.Content className={`${styles.dialog} ${onRiver ? mapStyles.viewport : ""}`} aria-describedby={`${id}-description`} data-boat-dialog data-boat-phase={phase} data-boat-map-view={onRiver || undefined}
+    <Dialog.Content className={`${styles.dialog} ${onRiver ? mapStyles.viewport : ""}`} aria-describedby={`${id}-description`} data-boat-dialog data-boat-phase={phase} data-boat-map-view={onRiver || undefined} data-leaving={leaving || undefined}
       onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()}
-      onPointerDownOutside={event => event.preventDefault()} onEscapeKeyDown={event => event.stopPropagation()}>
+      onPointerDownOutside={event => event.preventDefault()} onEscapeKeyDown={event => { event.stopPropagation(); event.preventDefault(); requestClose(); }}>
       {onRiver && boat.voyage ? <>
         <Dialog.Title className={styles.srOnly}>Лодочная рыбалка</Dialog.Title>
         <Dialog.Description id={`${id}-description`} className={styles.srOnly}>Мохлик в лодке на речном плёсе. Забросьте удочку и удерживайте рыбу в зоне снасти.</Dialog.Description>
-        <BoatFishingMap key={`${state.ownerPublicId}.${boat.voyage.id}`} economy={economy} disabled={disabled} send={send} onClose={onClose} appearance={appearance} />
+        <BoatFishingMap key={`${state.ownerPublicId}.${boat.voyage.id}`} economy={economy} disabled={disabled} send={send} onClose={requestClose} appearance={appearance} suspended={suspended || leaving} />
       </> : <>
       <header className={styles.header}><Anchor size={25} strokeWidth={1.6} /><div><small>{phaseName}</small><Dialog.Title>{boat.voyage ? "Лодочная рыбалка" : "Лодочная мастерская"}</Dialog.Title></div><span className={styles.wallet} aria-label={`${number(state.wallet.coins)} монет`}><Coins size={17} /><strong>{number(state.wallet.coins)}</strong></span><button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть лодку"><X size={22} /></button></header>
       <Dialog.Description id={`${id}-description`} className={styles.srOnly}>Лодочная рыбалка, ремонт, улучшения и личные рекорды.</Dialog.Description>
