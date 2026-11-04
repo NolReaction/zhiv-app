@@ -127,8 +127,9 @@ test("every account/game API entrypoint still rejects production except the exac
       const body = await response.json();
       const retired = path.includes("/account-recovery/"), admin = path.includes("/admin/"), studio = path === "app/api/dev/world-studio/route.ts";
       const earthModels = path === "app/api/dev/earth-models/route.ts";
-      assert.equal(response.status, studio || earthModels ? 404 : retired ? 410 : 503, `${method} ${path}`);
-      assert.equal(body.code, earthModels ? "EARTH_MODELS_UNAVAILABLE" : studio ? "STUDIO_PROJECT_UNAVAILABLE" : retired ? "RECOVERY_RETIRED" : admin ? "ADMIN_UNAVAILABLE" : "DEV_API_DISABLED", `${method} ${path}`);
+      const boatGarage = path === "app/api/dev/boat-garage/route.ts";
+      assert.equal(response.status, studio || earthModels || boatGarage ? 404 : retired ? 410 : 503, `${method} ${path}`);
+      assert.equal(body.code, boatGarage ? "GARAGE_PROJECT_UNAVAILABLE" : earthModels ? "EARTH_MODELS_UNAVAILABLE" : studio ? "STUDIO_PROJECT_UNAVAILABLE" : retired ? "RECOVERY_RETIRED" : admin ? "ADMIN_UNAVAILABLE" : "DEV_API_DISABLED", `${method} ${path}`);
       if (studio) assert.equal(body.available, false, `${method} ${path}`);
       assert.equal(response.headers.get("Cache-Control"), "no-store", `${method} ${path}`);
       checked++;
