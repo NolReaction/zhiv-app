@@ -61,7 +61,8 @@ jobs:
         run: |
           # The Azure mirror has throttled downloads to ~50 kB/s on some runners.
           # Keep Ubuntu's signed packages, using its main archive instead.
-          for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; do
+          # Hosted images may resolve mirror+file: through apt-mirrors.txt.
+          for source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; do
             if [ -f "$source" ]; then
               sudo sed -i -E 's@https?://azure\.archive\.ubuntu\.com/ubuntu/?@https://archive.ubuntu.com/ubuntu/@g' "$source"
             fi
