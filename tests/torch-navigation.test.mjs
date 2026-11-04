@@ -61,7 +61,7 @@ test("moving a torch gets new geometry and memory identity while light styling i
     forestTorchGeometryKey([torch({ id: "second" }), torch()]));
 });
 
-test("all nine authored path torch feet stay blocked without disconnecting travel markers at any building tier", () => {
+test("all nine authored path torch feet stay blocked without disconnecting accepted travel markers at any building tier", () => {
   assert.equal(TILED_WORLD.lights.filter(light => light.kind === "torch" && light.enabled !== false).length, 9);
   for (let level = 0; level <= 5; level++) {
     const scene = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), home: Math.max(1, level), workshop: level, quarry: level });
@@ -71,10 +71,16 @@ test("all nine authored path torch feet stay blocked without disconnecting trave
     const destinations = forestDestinations(scene);
     const privateRabbit = target => /^(lopukh-work|lopukh-delivery|lopukh-rest)(-|$)/.test(target.id);
     const rabbit = forestVillagerPlaces(scene, "lopukh");
+    const workerStops = [...rabbit.woodcutting.work, ...rabbit.woodcutting.delivery, ...rabbit.woodcutting.rest];
     for (const target of scene.destinations.filter(privateRabbit)) {
       // Workers retain their own physical clearance; the larger hero need not
       // fit a rabbit's private stop next to a tree.
       const path = findWorldPath(rabbit.navigation, rabbit.home.position, target.position);
+      if (!isWalkable(rabbit.navigation, target.position)) {
+        assert.equal(path, null, `${target.id} cannot route through blocked ground`);
+        assert.equal(workerStops.some(stop => stop.id === target.id), false, `${target.id} is excluded from the work plan`);
+        continue;
+      }
       assert.ok(path, `${target.id} stays connected for its owner at tier ${level}`);
       assert.deepEqual(path.at(-1), target.position);
       for (let index = 1; index < path.length; index++) assert.ok(canTraverse(rabbit.navigation, path[index - 1], path[index]));

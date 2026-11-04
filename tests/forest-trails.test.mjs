@@ -40,7 +40,7 @@ test("runtime destination bounds accept all 32 markers and reject 33 without a p
   }
 });
 
-test("all authored travel destinations connect through WalkAreas at every building level", () => {
+test("accepted authored travel destinations connect through WalkAreas at every building level and blocked worker markers stay excluded", () => {
   for (let level = 0; level <= 5; level++) {
     const scene = world(level), nav = createWorldNavigation(scene), destinations = forestDestinations(scene);
     assert.ok(destinations.size >= 4); assert.strictEqual(forestDestinations(scene), destinations, "immutable scene compiles once");
@@ -51,8 +51,14 @@ test("all authored travel destinations connect through WalkAreas at every buildi
     const privateRabbit = point => /^(lopukh-work|lopukh-delivery|lopukh-rest)(-|$)/.test(point.id);
     const rabbit = forestVillagerPlaces(scene, "lopukh");
     assert.ok(rabbit?.woodcutting);
+    const workerStops = [...rabbit.woodcutting.work, ...rabbit.woodcutting.delivery, ...rabbit.woodcutting.rest];
     for (const target of scene.destinations.filter(privateRabbit)) {
       const path = findWorldPath(rabbit.navigation, rabbit.home.position, target.position);
+      if (!isWalkable(rabbit.navigation, target.position)) {
+        assert.equal(path, null, `${target.id} must not route through blocked ground`);
+        assert.equal(workerStops.some(stop => stop.id === target.id), false, `${target.id} must not enter the worker's plan`);
+        continue;
+      }
       assert.ok(path, `${target.id} connected with its owner's footprint at level ${level}`);
       assert.deepEqual(path.at(-1), target.position);
       for (let index = 1; index < path.length; index++) assert.ok(canTraverse(rabbit.navigation, path[index - 1], path[index]));

@@ -113,7 +113,7 @@ function walk(state: LeaftailBoatArrivalState, dt: number, navigation: WorldNavi
   state.blockedSeconds = 0; state.reason = null; face(state, pointAt(path, Math.min(path.length, at + 7)));
   state.walked += Math.hypot(position.x - state.position.x, position.y - state.position.y);
   state.position = position; state.distance = at; state.speed = nextSpeed;
-  if (path.length - at > .001) return;
+  if (at < path.length) return;
   if (state.phase === "sailing") transition(state, "landing", state.route!.landing);
   else if (state.phase === "landing") transition(state, "walking", state.route!.walk);
   else { state.direction = "front"; transition(state, "greeting"); }
