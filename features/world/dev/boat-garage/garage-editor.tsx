@@ -11,6 +11,9 @@ import type { GarageAsset, GarageNode, GarageScene } from "./garage-scene-types"
 import { GarageInspector, GarageNumber } from "./garage-inspector";
 import { GARAGE_DEVICES, GarageStage, type GarageTool } from "./garage-stage";
 import { fitGarageEditorView, frameGarageEditorBounds, garageEditorNodeBounds, garageEditorWorldPoint, zoomGarageEditorView } from "./garage-editor-view.mjs";
+import { garageWaterSetup } from "./garage-water-setup.mjs";
+import { GarageWaterControls } from "./garage-water-controls";
+import { attachGarageWaterParts } from "./garage-water-assembly.mjs";
 import styles from "./garage-editor.module.css";
 
 const DRAFT_KEY = "zhiv:boat-garage:scene:v1";
@@ -31,6 +34,8 @@ export function GarageEditor() {
   const [ready, setReady] = useState(false), [busy, setBusy] = useState(false), [draftAvailable, setDraftAvailable] = useState(false);
   const [previewScale, setPreviewScale] = useState(.65);
   const [mode, setMode] = useState<"assembly" | "devices">("assembly"), [focused, setFocused] = useState(false);
+  const [environment, setEnvironment] = useState<"garage" | "water">("garage");
+  const [waterRunning, setWaterRunning] = useState(false);
   const [surface, setSurface] = useState({ width: 800, height: 600 });
   const [editorView, setEditorView] = useState({ x: 0, y: 0, scale: 1 });
   const autoFit = useRef(true), previousSurface = useRef({ width: 800, height: 600 });
@@ -41,6 +46,7 @@ export function GarageEditor() {
   const cameraMode = device.width > device.height || device.width >= 700 ? "landscape" : "portrait";
   const camera = scene.cameras[cameraMode];
   const dirty = JSON.stringify(scene) !== saved;
+  const waterSetup = garageWaterSetup(scene);
   const canvasWidth = scene.canvas.width, canvasHeight = scene.canvas.height;
   const placementCenter = mode === "assembly" ? garageEditorWorldPoint(editorView, { x: surface.width / 2, y: surface.height / 2 }) : camera;
 
@@ -124,6 +130,7 @@ export function GarageEditor() {
   }
 
   function change(next: GarageScene, record = true) {
+    setWaterRunning(false);
     try {
       const validated = validateGarageScene(next);
       setHistory(current => changeGarageHistory(current, validated, record));
@@ -162,7 +169,7 @@ export function GarageEditor() {
   }
   async function save() {
     if (!revision) return;
-    setBusy(true);
+    setBusy(true); setNotice("Сохраняем сборку в проект…");
     try {
       const validated = validateGarageScene(scene);
       const response = await fetch(ENDPOINT, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scene: validated, expectedRevision: revision }) });
@@ -207,6 +214,7 @@ export function GarageEditor() {
       if (busy || !ready) return;
       const action = getGarageShortcut(event);
       if (!action) return;
+      if (action !== "save") setWaterRunning(false);
       if (action === "save") { event.preventDefault(); if (!event.repeat && revision && dirty) void save(); return; }
       if (action === "undo" || action === "redo") { event.preventDefault(); if (action === "undo") undo(); else redo(); return; }
       if (action === "escape") { event.preventDefault(); setFocused(false); setTool("move"); setClean(false); return; }
@@ -259,6 +267,10 @@ export function GarageEditor() {
         <div className={styles.modeToolbar}>
           <div className={styles.modeTabs}><button type="button" aria-pressed={mode === "assembly"} onClick={() => setMode("assembly")}>Сборка</button>
             <button type="button" aria-pressed={mode === "devices"} onClick={() => setMode("devices")}>Устройства</button></div>
+          <div className={styles.modeTabs} aria-label="Окружение сборки">
+            <button type="button" aria-pressed={environment === "garage"} onClick={() => { setEnvironment("garage"); setWaterRunning(false); }}>Мастерская</button>
+            <button type="button" aria-pressed={environment === "water"} onClick={() => { setEnvironment("water"); setWaterRunning(false); }}>На воде</button>
+          </div>
           <button type="button" disabled={busy || !ready} title="Загрузить пример одним отменяемым действием; текущую сборку можно вернуть Ctrl/⌘ Z" onClick={() => {
             change(assemblyExample); setSelectedId("starter-hull"); setNotice("Пример посадки загружен. Ctrl/⌘ Z вернёт вашу сборку; файл проекта не изменён.");
           }}>Пример посадки</button>
@@ -268,8 +280,12 @@ export function GarageEditor() {
         {mode === "devices" && <div className={styles.deviceToolbar}>{GARAGE_DEVICES.map(item => <button type="button" key={item.id} aria-pressed={deviceId === item.id} onClick={() => setDeviceId(item.id)}>{item.name}</button>)}</div>}
         <div className={styles.tools}>{([
           ["move", MousePointer2, "Двигать"], ["camera", Hand, mode === "assembly" ? "Холст" : "Камера"], ["pivot", Crosshair, "Опора"], ["socket", Crosshair, "Крепление"],
-        ] as const).map(([value, Icon, label]) => <button key={value} type="button" disabled={busy || clean} aria-pressed={tool === value} onClick={() => setTool(value)}><Icon size={15} />{label}</button>)}
+        ] as const).map(([value, Icon, label]) => <button key={value} type="button" disabled={busy || clean} aria-pressed={tool === value} onClick={() => { setWaterRunning(false); setTool(value); }}><Icon size={15} />{label}</button>)}
           <button type="button" aria-pressed={clean} onClick={() => setClean(value => !value)}><Eye size={15} />Без разметки</button></div>
+        {environment === "water" && <GarageWaterControls key={waterSetup.config.rootId} scene={scene} config={waterSetup.config} running={waterRunning} hasArtwork={waterSetup.hasArtwork}
+          onRunningChange={setWaterRunning} onChange={waterPreview => change({ ...scene, waterPreview })}
+          onAttachParts={partIds => { try { change(attachGarageWaterParts(scene, waterSetup.config.rootId, partIds)); }
+            catch (error) { setNotice(error instanceof Error ? error.message : "Не удалось добавить детали в сборку."); } }} />}
         {mode === "assembly" && <div className={styles.zoomToolbar} aria-label="Масштаб холста">
           <button type="button" title="Уменьшить" aria-label="Уменьшить холст" onClick={() => zoomView(editorView.scale / 1.25)}><Minus size={15} /></button>
           <span>{Math.round(editorView.scale * 100)}%</span>
@@ -278,12 +294,14 @@ export function GarageEditor() {
           <button type="button" disabled={!selected} onClick={frameSelected}>К детали</button>
         </div>}
         <div className={`${styles.preview} ${mode === "assembly" ? styles.assemblyPreview : ""}`} ref={preview} data-testid="garage-preview" data-mode={mode}>
-          {mode === "assembly" ? <GarageStage key="assembly" scene={scene} device={device} selectedId={selectedId} tool={tool} guides={guides} clean={clean}
+          {mode === "assembly" ? <GarageStage key="assembly" scene={scene} device={device} selectedId={selectedId} tool={tool} guides={guides} clean={clean || (environment === "water" && waterRunning)}
+            waterPreview={environment === "water" ? { config: waterSetup.config, running: waterRunning } : undefined}
             editingView={{ ...editorView, width: surface.width, height: surface.height }} onViewChange={view => { autoFit.current = false; setEditorView(view); }}
             onSelect={setSelectedId} onChange={change} onGestureEnd={before => setHistory(current => finishGarageHistoryGesture(current, before))} />
             : <div className={styles.deviceFrame} style={{ width: device.width * previewScale, height: device.height * previewScale }}>
               <div style={{ transform: `scale(${previewScale})`, transformOrigin: "top left" }}>
-                <GarageStage key="device" scene={scene} device={device} selectedId={selectedId} tool={tool} guides={guides} clean={clean} onSelect={setSelectedId}
+                <GarageStage key="device" scene={scene} device={device} selectedId={selectedId} tool={tool} guides={guides} clean={clean || (environment === "water" && waterRunning)}
+                  waterPreview={environment === "water" ? { config: waterSetup.config, running: waterRunning } : undefined} onSelect={setSelectedId}
                   onChange={change} onGestureEnd={before => setHistory(current => finishGarageHistoryGesture(current, before))} />
               </div>
             </div>}
@@ -296,7 +314,7 @@ export function GarageEditor() {
             <dt>Ctrl/⌘ D</dt><dd>Дубликат детали</dd><dt>Ctrl/⌘ S</dt><dd>Сохранить в проект</dd>
             <dt>← ↑ ↓ → · Shift</dt><dd>Сдвиг на 1 · на 10</dd><dt>Delete · Backspace</dt><dd>Удалить деталь</dd>
             <dt>V · H · P · A</dt><dd>Двигать · камера · опора · крепление</dd><dt>Esc</dt><dd>Вернуться к перемещению</dd></dl>
-          <p>В сборке: колесо — зум к курсору; пробел + перетаскивание или средняя кнопка — перемещение холста. Зум не изменяет кадры устройств. Работают и в русской раскладке. В полях ввода остаются обычные команды редактирования текста.</p>
+          <p>Рамка двигает выбранный слой, даже если он за другим предметом. Alt + клик — выбрать другой слой. Ручки растягивают свободно, Shift сохраняет пропорции; ручка поворота с Shift даёт шаг 15°. Колесо — зум; пробел + перетаскивание или средняя кнопка — холст. В полях ввода остаются обычные команды редактирования текста.</p>
         </details>
         {mode === "devices" && <details className={styles.camera}><summary>Кадр {cameraMode === "portrait" ? "телефона / планшета" : "альбомного экрана"}</summary><div className={styles.fields}>
           {(["x", "y", "width"] as const).map(key => <GarageNumber key={key} label={key === "width" ? "Ширина кадра" : key.toUpperCase()} value={camera[key]} step={10} min={key === "width" ? 300 : -10000}

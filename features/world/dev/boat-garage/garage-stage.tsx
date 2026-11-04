@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useRef, type PointerEvent } from "react";
+import { useEffect, useId, useRef, useState, type PointerEvent } from "react";
 import { Anchor, Box, Fuel, Settings2, Ship, X } from "lucide-react";
 import { getGarageNodeMatrix, getGarageParentMatrix, getGarageViewport, inverseGaragePoint, moveGaragePivot } from "./garage-scene-model.mjs";
 import { getGarageShortcut } from "./garage-editor-shortcuts.mjs";
 import { panGarageEditorView } from "./garage-editor-view.mjs";
-import type { GarageNode, GaragePoint, GarageScene, GarageViewportMode } from "./garage-scene-types";
+import { garageTransformHandles, pointInsideGarageNode, resizeGarageNode, rotateGarageNode } from "./garage-transform.mjs";
+import type { GarageNode, GaragePoint, GarageScene, GarageViewportMode, GarageWaterPreviewConfig } from "./garage-scene-types";
+import { GarageWaterBackground, GarageWaterContact, GarageWaterRig } from "./garage-water";
+import { garageWaterSetup } from "./garage-water-setup.mjs";
 import styles from "./garage-editor.module.css";
 
 export type GarageTool = "move" | "camera" | "pivot" | "socket";
@@ -23,6 +26,8 @@ function visibleNode(scene: GarageScene, node: GarageNode): boolean {
   return !parent || visibleNode(scene, parent);
 }
 
+type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
+
 export type GarageEditingView = { width: number; height: number; x: number; y: number; scale: number };
 
 type Props = {
@@ -30,27 +35,36 @@ type Props = {
   guides: boolean; clean: boolean; onSelect: (id: string) => void;
   onChange: (scene: GarageScene, record?: boolean) => void;
   onGestureEnd: (before: GarageScene) => void;
+  waterPreview?: { config: GarageWaterPreviewConfig; running: boolean };
   editingView?: GarageEditingView; onViewChange?: (view: { x: number; y: number; scale: number }) => void;
 };
 
-export function GarageStage({ scene, device, selectedId, tool, guides, clean, onSelect, onChange, onGestureEnd, editingView, onViewChange }: Props) {
+export function GarageStage({ scene, device, selectedId, tool, guides, clean, onSelect, onChange, onGestureEnd, editingView, onViewChange, waterPreview }: Props) {
   const landscape = device.width > device.height;
   const width = editingView?.width ?? (landscape ? device.width - 280 : device.width);
   const height = editingView?.height ?? (landscape ? device.height - 60 - device.safeBottom : Math.round(width * (device.width >= 700 ? 941 / 1672 : .73)));
   const mode: GarageViewportMode = landscape || device.width >= 700 ? "landscape" : "portrait";
   const viewport = editingView ?? getGarageViewport(scene, width, height, mode);
   const svg = useRef<SVGSVGElement>(null);
-  const drag = useRef<{ before: GarageScene; point: GaragePoint; nodeId: string | null; pointerId: number; viewport: {x: number; y: number; scale: number}; panView?: GarageEditingView } | null>(null);
+  const drag = useRef<{ before: GarageScene; point: GaragePoint; nodeId: string | null; pointerId: number; viewport: {x: number; y: number; scale: number}; panView?: GarageEditingView; action?: "resize" | "rotate"; handle?: ResizeHandle } | null>(null);
   const spaceHeld = useRef(false);
+  const [selectionBypass, setSelectionBypass] = useState(false);
   useEffect(() => {
-    const release = () => { spaceHeld.current = false; };
-    const keyRelease = (event: globalThis.KeyboardEvent) => { if (event.code === "Space") release(); };
-    window.addEventListener("keyup", keyRelease); window.addEventListener("blur", release);
-    return () => { window.removeEventListener("keyup", keyRelease); window.removeEventListener("blur", release); };
+    const release = () => { spaceHeld.current = false; setSelectionBypass(false); };
+    const keyPress = (event: globalThis.KeyboardEvent) => { if (event.key === "Alt") setSelectionBypass(true); };
+    const keyRelease = (event: globalThis.KeyboardEvent) => {
+      if (event.code === "Space") spaceHeld.current = false;
+      if (event.key === "Alt" || !event.altKey) setSelectionBypass(false);
+    };
+    window.addEventListener("keydown", keyPress); window.addEventListener("keyup", keyRelease); window.addEventListener("blur", release);
+    return () => { window.removeEventListener("keydown", keyPress); window.removeEventListener("keyup", keyRelease); window.removeEventListener("blur", release); };
   }, []);
+  const water = waterPreview ? garageWaterSetup({ ...scene, waterPreview: waterPreview.config }) : null;
+  const waterId = useId().replace(/:/g, "");
   const selected = scene.nodes.find(node => node.id === selectedId);
   const selectedMatrix = selected ? getGarageNodeMatrix(scene, selected.id) : null;
   const ordered = [...scene.nodes].sort((a, b) => a.zIndex - b.zIndex);
+  const transformHandles = selected ? garageTransformHandles(scene, selected.id, viewport.scale) : null;
 
   function point(event: PointerEvent<SVGSVGElement | SVGGElement>, view = viewport): GaragePoint {
     const rect = svg.current!.getBoundingClientRect();
@@ -88,6 +102,31 @@ export function GarageStage({ scene, device, selectedId, tool, guides, clean, on
     event.preventDefault();
   }
 
+  function startTransform(event: PointerEvent<SVGElement>, action: "resize" | "rotate", handle?: ResizeHandle) {
+    event.stopPropagation();
+    if (!selected || selected.locked || clean || drag.current || event.button !== 0 || event.altKey) return;
+    svg.current?.focus();
+    drag.current = { before: scene, point: point(event as unknown as PointerEvent<SVGSVGElement>), nodeId: selected.id,
+      pointerId: event.pointerId, viewport, action, handle };
+    svg.current?.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+  function dragSelection(event: PointerEvent<SVGRectElement>) {
+    event.stopPropagation();
+    if (event.altKey) {
+      const world = point(event as unknown as PointerEvent<SVGSVGElement>);
+      const candidate = [...ordered].reverse().find(node => node.assetId && visibleNode(scene, node) && (!water || water.ids.has(node.id)) && pointInsideGarageNode(scene, node.id, world));
+      if (candidate) down(event as unknown as PointerEvent<SVGSVGElement>, candidate);
+      return;
+    }
+    down(event as unknown as PointerEvent<SVGSVGElement>, selected);
+  }
+  function resizeCursor(handle: { x: number; y: number }) {
+    if (!transformHandles) return "move";
+    const angle = Math.atan2(handle.y - transformHandles.center.y, handle.x - transformHandles.center.x);
+    return ["ew-resize", "nwse-resize", "ns-resize", "nesw-resize"][((Math.round(angle / (Math.PI / 4)) % 4) + 4) % 4];
+  }
+
   function move(event: PointerEvent<SVGSVGElement>) {
     const gesture = drag.current;
     if (!gesture || event.pointerId !== gesture.pointerId) return;
@@ -96,7 +135,16 @@ export function GarageStage({ scene, device, selectedId, tool, guides, clean, on
     const now = { x: ((event.clientX - rect.left) * width / rect.width - originalView.x) / originalView.scale,
       y: ((event.clientY - rect.top) * height / rect.height - originalView.y) / originalView.scale };
     const dx = now.x - gesture.point.x, dy = now.y - gesture.point.y;
-    if (gesture.panView) {
+    if (gesture.action && gesture.nodeId) {
+      try {
+        if (gesture.action === "rotate") onChange(rotateGarageNode(gesture.before, gesture.nodeId, gesture.point, now, { snap: event.shiftKey }), false);
+        else if (gesture.handle) {
+          const original = garageTransformHandles(gesture.before, gesture.nodeId)?.handles.find(item => item.id === gesture.handle);
+          if (original) onChange(resizeGarageNode(gesture.before, gesture.nodeId, gesture.handle,
+            { x: original.x + dx, y: original.y + dy }, { proportional: event.shiftKey }), false);
+        }
+      } catch { /* Keep the last valid pose when a drag reaches the import geometry limits. */ }
+    } else if (gesture.panView) {
       onViewChange?.(panGarageEditorView(gesture.panView, dx * originalView.scale, dy * originalView.scale));
     } else if (!gesture.nodeId) {
       const camera = gesture.before.cameras[mode];
@@ -121,15 +169,8 @@ export function GarageStage({ scene, device, selectedId, tool, guides, clean, on
     if (event.pointerId === drag.current?.pointerId) finishGesture();
   }
 
-  const stage = (<svg ref={svg} className={`${styles.stage} ${editingView ? styles.assemblyStage : ""}`} width={width} height={height} viewBox={`0 0 ${width} ${height}`}
-        aria-label="Сцена гаража" tabIndex={0} data-testid="garage-stage" style={{ touchAction: clean ? "auto" : "none" }}
-        onKeyDown={event => { if (editingView && event.code === "Space") { event.preventDefault(); spaceHeld.current = true; finishGesture(); } else if (getGarageShortcut(event)) finishGesture(); }}
-        onPointerDown={event => down(event)} onPointerMove={move} onPointerUp={finish}
-        onPointerCancel={finish} onLostPointerCapture={finish} onWheel={finishGesture}>
-        <rect width={width} height={height} fill={editingView ? "#101b16" : "#3d2c20"} />
-        <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
-          {editingView && <rect width={scene.canvas.width} height={scene.canvas.height} fill="#3d2c20" stroke="#758568" strokeWidth="1" vectorEffect="non-scaling-stroke" pointerEvents="none" />}
-          {ordered.filter(node => visibleNode(scene, node)).map(node => {
+  const artwork = (<>
+          {ordered.filter(node => visibleNode(scene, node) && (!water || water.ids.has(node.id))).map(node => {
             const asset = scene.assets.find(item => item.id === node.assetId);
             const matrix = getGarageNodeMatrix(scene, node.id);
             return <g key={node.id} data-node-id={node.id} transform={`matrix(${matrix.join(" ")})`}
@@ -140,10 +181,28 @@ export function GarageStage({ scene, device, selectedId, tool, guides, clean, on
                 stroke={selectedId === node.id ? "#dcb56c" : "#dcb56c55"} strokeDasharray="10 8" vectorEffect="non-scaling-stroke" />}
             </g>;
           })}
-          {!clean && guides && <rect x="280" y="180" width="1112" height="620" fill="none" stroke="#b7e4c0"
-            strokeWidth="1" strokeDasharray="7 7" vectorEffect="non-scaling-stroke" pointerEvents="none" />}
-          {!clean && selected && selectedMatrix && visibleNode(scene, selected) && <g pointerEvents="none" data-testid="garage-selection">
+  </>);
+  const selection = (<>
+          {!clean && selected && selectedMatrix && visibleNode(scene, selected) && (!water || water.ids.has(selected.id)) && <g pointerEvents="none" data-testid="garage-selection">
+            {tool === "move" && !selected.locked && !selectionBypass && <rect transform={`matrix(${selectedMatrix.join(" ")})`}
+              data-testid="garage-selection-drag" width={selected.width} height={selected.height} fill="transparent" pointerEvents="all"
+              style={{ cursor: "move" }} onPointerDown={dragSelection}><title>Перетащить выбранный слой · Alt + клик — выбрать другой</title></rect>}
             <rect transform={`matrix(${selectedMatrix.join(" ")})`} width={selected.width} height={selected.height} fill="none" stroke="#ffe1a0" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+            {tool === "move" && !selected.locked && !selectionBypass && transformHandles && <>
+              <line x1={transformHandles.top.x} y1={transformHandles.top.y} x2={transformHandles.rotation.x} y2={transformHandles.rotation.y}
+                stroke="#ffe1a0" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+              {transformHandles.handles.map(handle => <g key={handle.id} transform={`translate(${handle.x} ${handle.y}) scale(${1 / viewport.scale})`}
+                pointerEvents="all" data-testid={`garage-resize-${handle.id}`} style={{ cursor: resizeCursor(handle) }}
+                onPointerDown={event => startTransform(event, "resize", handle.id)}>
+                <title>Растянуть · Shift — сохранить пропорции</title><circle r="12" fill="transparent" />
+                <rect x="-4.5" y="-4.5" width="9" height="9" rx="1" fill="#fff0b8" stroke="#17382a" strokeWidth="1.5" />
+              </g>)}
+              <g transform={`translate(${transformHandles.rotation.x} ${transformHandles.rotation.y}) scale(${1 / viewport.scale})`}
+                data-testid="garage-rotate" pointerEvents="all" style={{ cursor: "grab" }} onPointerDown={event => startTransform(event, "rotate")}>
+                <title>Повернуть · Shift — шаг 15°</title><circle r="14" fill="transparent" />
+                <circle r="8" fill="#ffe1a0" stroke="#17382a" strokeWidth="1.5" /><path d="M-4 1a4 4 0 1 1 6 2M-4-3v4h4" fill="none" stroke="#17382a" strokeWidth="1.3" />
+              </g>
+            </>}
             <circle cx={selectedMatrix[0] * selected.pivotX * selected.width + selectedMatrix[2] * selected.pivotY * selected.height + selectedMatrix[4]}
               cy={selectedMatrix[1] * selected.pivotX * selected.width + selectedMatrix[3] * selected.pivotY * selected.height + selectedMatrix[5]}
               r={5 / viewport.scale} fill="#ffe1a0" stroke="#18372c" strokeWidth="1" vectorEffect="non-scaling-stroke" />
@@ -154,6 +213,36 @@ export function GarageStage({ scene, device, selectedId, tool, guides, clean, on
               <text x="8" y={-14 - index * 18} fill="#d9fff8" fontSize="11" paintOrder="stroke" stroke="#15392d" strokeWidth="3">{socket.name}</text>
             </g>)}
           </g>}
+  </>);
+
+  const stage = (<svg ref={svg} className={`${styles.stage} ${editingView ? styles.assemblyStage : ""}`} width={width} height={height} viewBox={`0 0 ${width} ${height}`}
+        aria-label="Сцена гаража" tabIndex={0} data-testid="garage-stage" style={{ touchAction: clean ? "auto" : "none" }}
+        onKeyDown={event => { if (editingView && event.code === "Space") { event.preventDefault(); spaceHeld.current = true; finishGesture(); } else if (getGarageShortcut(event)) finishGesture(); }}
+        onPointerDown={event => down(event)} onPointerMove={move} onPointerUp={finish}
+        onPointerCancel={finish} onLostPointerCapture={finish} onWheel={finishGesture}>
+        <rect width={width} height={height} fill={editingView ? "#101b16" : "#3d2c20"} />
+        <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
+          {editingView && <rect width={scene.canvas.width} height={scene.canvas.height} fill="#3d2c20" stroke="#758568" strokeWidth="1" vectorEffect="non-scaling-stroke" pointerEvents="none" />}
+          {water && waterPreview ? <>
+            <GarageWaterBackground width={scene.canvas.width} height={scene.canvas.height} running={waterPreview.running} />
+            <GarageWaterContact center={water.center} beam={water.config.beam} running={waterPreview.running} layer="shadow" />
+            <defs>
+              <linearGradient id={`${waterId}-immersion`} gradientUnits="userSpaceOnUse" x1="0" x2="0" y1={water.config.waterlineY - 12} y2={water.config.waterlineY + 60}>
+                <stop offset="0" stopColor="white" /><stop offset="1" stopColor="#777" />
+              </linearGradient>
+              <mask id={`${waterId}-submerged`} maskUnits="userSpaceOnUse" x="0" y="0" width={scene.canvas.width} height={scene.canvas.height}>
+                <rect width={scene.canvas.width} height={scene.canvas.height} fill={`url(#${waterId}-immersion)`} />
+              </mask>
+            </defs>
+            <g mask={`url(#${waterId}-submerged)`}>
+              <GarageWaterRig center={water.center} beam={water.config.beam} amplitude={water.config.amplitude} running={waterPreview.running}>{artwork}</GarageWaterRig>
+            </g>
+            <GarageWaterContact center={water.center} beam={water.config.beam} running={waterPreview.running} layer="surface" />
+          </> : artwork}
+          {!clean && guides && <rect x="280" y="180" width="1112" height="620" fill="none" stroke="#b7e4c0"
+            strokeWidth="1" strokeDasharray="7 7" vectorEffect="non-scaling-stroke" pointerEvents="none" />}
+          {selection}
+
         </g>
       </svg>);
   if (editingView) return stage;

@@ -1,0 +1,5 @@
+.water{pointer-events:none}.flow{animation:garage-water-flow 70s linear infinite}.surface{fill:#156c7c;opacity:.19}.shadow{fill:#082c36;opacity:.38}.foam{fill:none;stroke:#9dded3;stroke-width:2;stroke-linecap:round;opacity:.43;stroke-dasharray:38 11 12 17;animation:garage-water-foam 8s linear infinite}.ripple{fill:none;stroke:#72c9c4;stroke-width:1.6;opacity:.24;transform-box:fill-box;transform-origin:center;animation:garage-water-ripple 5s ease-out infinite}.rippleLate{animation-delay:-2.5s}.water[data-active=false] .flow,.water[data-active=false] .foam,.water[data-active=false] .ripple{animation-play-state:paused}
+@keyframes garage-water-flow{from{transform:translate(0,0)}to{transform:translate(256px,192px)}}
+@keyframes garage-water-foam{from{stroke-dashoffset:0}to{stroke-dashoffset:-156}}
+@keyframes garage-water-ripple{0%{transform:scale(.9,.85);opacity:.30}100%{transform:scale(1.16,1.8);opacity:0}}
+@media(prefers-reduced-motion:reduce){.flow,.foam,.ripple{animation:none!important}}

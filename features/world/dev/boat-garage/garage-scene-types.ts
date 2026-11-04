@@ -14,6 +14,14 @@ export type GarageAsset = {
 
 export type GarageSocket = GaragePoint & { id: string; name: string };
 
+/** Authored water setup; animation time, pose and editor mode stay transient. */
+export type GarageWaterPreviewConfig = {
+  rootId: string;
+  waterlineY: number;
+  beam: number;
+  amplitude: number;
+};
+
 /** x/y place the normalized pivot in the parent's image coordinates.
  * With a socket, x/y become offsets from that socket. Dimensions precede scale. */
 export type GarageNode = {
@@ -48,4 +56,5 @@ export type GarageScene = {
   cameras: Record<GarageViewportMode, GarageCamera>;
   assets: GarageAsset[];
   nodes: GarageNode[];
+  waterPreview?: GarageWaterPreviewConfig;
 };

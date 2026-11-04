@@ -114,8 +114,17 @@ export function validateGarageScene(input) {
     }
     if (worldScale < 1e-6 || worldScale > 1e6) throw new Error("Суммарный масштаб вложенных слоёв выходит за допустимые пределы.");
   }
+  let waterPreview;
+  if (scene.waterPreview !== undefined) {
+    const value = record(scene.waterPreview, "Предпросмотр воды");
+    const rootId = id(value.rootId, "Группа лодки на воде");
+    if (!byId.has(rootId)) throw new Error("Группа лодки на воде не найдена.");
+    waterPreview = { rootId, waterlineY: number(value.waterlineY, "Линия воды", -200_000, 200_000),
+      beam: number(value.beam, "Длина опоры на воде", 1, 40_000), amplitude: number(value.amplitude, "Высота волн", 0, 30) };
+  }
   const result = { schemaVersion: 1, canvas: { width: number(canvas.width, "Ширина холста", 1, 20_000),
-    height: number(canvas.height, "Высота холста", 1, 20_000) }, cameras: { portrait: camera("portrait"), landscape: camera("landscape") }, assets, nodes };
+    height: number(canvas.height, "Высота холста", 1, 20_000) }, cameras: { portrait: camera("portrait"), landscape: camera("landscape") }, assets, nodes,
+    ...(waterPreview ? { waterPreview } : {}) };
   for (const node of nodes) {
     const [a, b, c, d] = getGarageNodeMatrix(result, node.id);
     const maximum = (Math.hypot(a + d, b - c) + Math.hypot(a - d, b + c)) / 2;
@@ -212,7 +221,9 @@ export function removeGarageNode(scene, id) {
     previous = removed.size;
     for (const node of scene.nodes) if (node.parentId && removed.has(node.parentId)) removed.add(node.id);
   }
-  return { ...scene, nodes: scene.nodes.filter(node => !removed.has(node.id)) };
+  const result = { ...scene, nodes: scene.nodes.filter(node => !removed.has(node.id)) };
+  if (result.waterPreview && removed.has(result.waterPreview.rootId)) delete result.waterPreview;
+  return result;
 }
 
 /** Reparent without jumping: express the original world transform in the new parent space.
@@ -242,6 +253,24 @@ function nodeWithLocalMatrix(node, matrix) {
     rotation: Math.atan2(b, a) * 180 / Math.PI,
     x: e + a * node.pivotX * node.width + c * node.pivotY * node.height,
     y: f + b * node.pivotX * node.width + d * node.pivotY * node.height };
+}
+
+/** Apply an authored world transform without losing the node's parent, socket,
+ * pivot or children. Resize/rotation handles may operate in world coordinates
+ * even when an ancestor has a nonuniform scale, reflection or shear.
+ * @param {GarageScene} scene @param {string} id @param {GarageMatrix} matrix
+ * @returns {GarageScene} */
+export function setGarageNodeWorldMatrix(scene, id, matrix) {
+  const node = scene.nodes.find(candidate => candidate.id === id);
+  if (!node) throw new Error("Слой не найден.");
+  if (node.locked) throw new Error("Сначала открепите слой.");
+  if (!Array.isArray(matrix) || matrix.length !== 6 || matrix.some(value => typeof value !== "number" || !Number.isFinite(value)))
+    throw new Error("Преобразование слоя должно содержать шесть конечных чисел.");
+  const previous = getGarageNodeMatrix(scene, id);
+  if (matrix.every((value, index) => value === previous[index])) return scene;
+  const local = multiply(inverseMatrix(getGarageParentMatrix(scene, node)), matrix);
+  const changed = nodeWithLocalMatrix(node, local);
+  return validateGarageScene({ ...scene, nodes: scene.nodes.map(item => item.id === id ? changed : item) });
 }
 
 /** Change the normalized pivot while preserving the complete image and children.
