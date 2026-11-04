@@ -14,6 +14,14 @@ export type GarageAsset = {
 
 export type GarageSocket = GaragePoint & { id: string; name: string };
 
+/** Non-destructive foreground cutout, in normalized owner image coordinates. */
+export type GarageOcclusion = {
+  enabled: boolean;
+  points: GaragePoint[];
+  /** A selected group also masks all its descendants. */
+  targetIds: string[];
+};
+
 /** Authored water setup; animation time, pose and editor mode stay transient. */
 export type GarageWaterPreviewConfig = {
   rootId: string;
@@ -48,6 +56,7 @@ export type GarageNode = {
   visible: boolean;
   locked: boolean;
   sockets: GarageSocket[];
+  occlusion?: GarageOcclusion;
 };
 
 export type GarageScene = {

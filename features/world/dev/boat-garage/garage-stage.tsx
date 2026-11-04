@@ -9,9 +9,11 @@ import { garageTransformHandles, pointInsideGarageNode, resizeGarageNode, rotate
 import type { GarageNode, GaragePoint, GarageScene, GarageViewportMode, GarageWaterPreviewConfig } from "./garage-scene-types";
 import { GarageWaterBackground, GarageWaterContact, GarageWaterRig } from "./garage-water";
 import { garageWaterSetup } from "./garage-water-setup.mjs";
+import { GarageArtwork } from "./garage-artwork";
+import { GarageOcclusionOverlay } from "./garage-occlusion-overlay";
 import styles from "./garage-editor.module.css";
 
-export type GarageTool = "move" | "camera" | "pivot" | "socket";
+export type GarageTool = "move" | "camera" | "pivot" | "socket" | "occlusion";
 export type GarageDevice = { id: string; name: string; width: number; height: number; safeTop: number; safeBottom: number };
 export const GARAGE_DEVICES: GarageDevice[] = [
   { id: "phone", name: "Телефон", width: 390, height: 844, safeTop: 24, safeBottom: 24 },
@@ -35,11 +37,12 @@ type Props = {
   guides: boolean; clean: boolean; onSelect: (id: string) => void;
   onChange: (scene: GarageScene, record?: boolean) => void;
   onGestureEnd: (before: GarageScene) => void;
+  occlusionEdit?: { session: number; redraw: boolean; onExit: () => void; onDraftChange?: (active: boolean) => void };
   waterPreview?: { config: GarageWaterPreviewConfig; running: boolean };
   editingView?: GarageEditingView; onViewChange?: (view: { x: number; y: number; scale: number }) => void;
 };
 
-export function GarageStage({ scene, device, selectedId, tool, guides, clean, onSelect, onChange, onGestureEnd, editingView, onViewChange, waterPreview }: Props) {
+export function GarageStage({ scene, device, selectedId, tool, guides, clean, onSelect, onChange, onGestureEnd, editingView, onViewChange, waterPreview, occlusionEdit }: Props) {
   const landscape = device.width > device.height;
   const width = editingView?.width ?? (landscape ? device.width - 280 : device.width);
   const height = editingView?.height ?? (landscape ? device.height - 60 - device.safeBottom : Math.round(width * (device.width >= 700 ? 941 / 1672 : .73)));
@@ -92,6 +95,8 @@ export function GarageStage({ scene, device, selectedId, tool, guides, clean, on
         return;
       }
       onChange({ ...scene, nodes: scene.nodes.map(item => item.id === selected.id ? next : item) });
+      return;
+    } else if (tool === "occlusion") {
       return;
     } else if (node) {
       onSelect(node.id);
@@ -169,19 +174,8 @@ export function GarageStage({ scene, device, selectedId, tool, guides, clean, on
     if (event.pointerId === drag.current?.pointerId) finishGesture();
   }
 
-  const artwork = (<>
-          {ordered.filter(node => visibleNode(scene, node) && (!water || water.ids.has(node.id))).map(node => {
-            const asset = scene.assets.find(item => item.id === node.assetId);
-            const matrix = getGarageNodeMatrix(scene, node.id);
-            return <g key={node.id} data-node-id={node.id} transform={`matrix(${matrix.join(" ")})`}
-              onPointerDown={event => { event.stopPropagation(); down(event as unknown as PointerEvent<SVGSVGElement>, node); }}>
-              {asset && <image href={asset.src} width={node.width} height={node.height} preserveAspectRatio="none"
-                style={{ cursor: clean ? "default" : node.locked ? "default" : "move" }} />}
-              {!asset && !clean && <rect width={node.width} height={node.height} fill="transparent" pointerEvents={selectedId === node.id ? "all" : "none"}
-                stroke={selectedId === node.id ? "#dcb56c" : "#dcb56c55"} strokeDasharray="10 8" vectorEffect="non-scaling-stroke" />}
-            </g>;
-          })}
-  </>);
+  const artwork = <GarageArtwork scene={scene} selectedId={selectedId} clean={clean} visibleIds={water?.ids}
+    onNodePointerDown={(event, node) => { event.stopPropagation(); down(event as unknown as PointerEvent<SVGSVGElement>, node); }} />;
   const selection = (<>
           {!clean && selected && selectedMatrix && visibleNode(scene, selected) && (!water || water.ids.has(selected.id)) && <g pointerEvents="none" data-testid="garage-selection">
             {tool === "move" && !selected.locked && !selectionBypass && <rect transform={`matrix(${selectedMatrix.join(" ")})`}
@@ -242,6 +236,11 @@ export function GarageStage({ scene, device, selectedId, tool, guides, clean, on
           {!clean && guides && <rect x="280" y="180" width="1112" height="620" fill="none" stroke="#b7e4c0"
             strokeWidth="1" strokeDasharray="7 7" vectorEffect="non-scaling-stroke" pointerEvents="none" />}
           {selection}
+          {!clean && tool === "occlusion" && selected?.assetId && selected.occlusion && !selected.locked && visibleNode(scene, selected)
+            && (!water || water.ids.has(selected.id)) && <GarageOcclusionOverlay key={`${selected.id}:${occlusionEdit?.session ?? 0}`}
+              scene={scene} node={selected} scale={viewport.scale} redraw={occlusionEdit?.redraw ?? false}
+              toWorld={event => point(event as unknown as PointerEvent<SVGSVGElement>)} onChange={onChange} onGestureEnd={onGestureEnd}
+              onExit={() => occlusionEdit?.onExit()} onDraftChange={occlusionEdit?.onDraftChange} />}
 
         </g>
       </svg>);

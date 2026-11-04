@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Crosshair, Download, Expand, Eye, FolderPlus, Hand, ImagePlus, Layers, Maximize2, Minimize2, Minus, MousePointer2, Plus, Redo2, Save, Undo2, Upload } from "lucide-react";
+import { ArrowLeft, Crosshair, Download, Expand, Eye, FolderPlus, Hand, ImagePlus, Layers, Maximize2, Minimize2, Minus, MousePointer2, Plus, Redo2, Save, Scissors, Undo2, Upload } from "lucide-react";
 import defaultScene from "./garage-scene-default.json";
 import exampleScene from "./garage-scene-example.json";
 import { duplicateGarageNode, removeGarageNode, validateGarageScene } from "./garage-scene-model.mjs";
@@ -14,6 +14,7 @@ import { fitGarageEditorView, frameGarageEditorBounds, garageEditorNodeBounds, g
 import { garageWaterSetup } from "./garage-water-setup.mjs";
 import { GarageWaterControls } from "./garage-water-controls";
 import { attachGarageWaterParts } from "./garage-water-assembly.mjs";
+import { defaultGarageOcclusion } from "./garage-occlusion.mjs";
 import styles from "./garage-editor.module.css";
 
 const DRAFT_KEY = "zhiv:boat-garage:scene:v1";
@@ -28,6 +29,8 @@ export function GarageEditor() {
   const [selectedId, setSelectedId] = useState<string | null>("stand-left");
   const [deviceId, setDeviceId] = useState("phone");
   const [tool, setTool] = useState<GarageTool>("move");
+  const [occlusionEdit, setOcclusionEdit] = useState({ session: 0, redraw: false });
+  const [occlusionDraft, setOcclusionDraft] = useState(false);
   const [guides, setGuides] = useState(true), [clean, setClean] = useState(false);
   const [notice, setNotice] = useState("Загружаем сцену проекта…");
   const [revision, setRevision] = useState<string | null>(null), [saved, setSaved] = useState(JSON.stringify(initialScene));
@@ -128,6 +131,16 @@ export function GarageEditor() {
     autoFit.current = false;
     setEditorView(frameGarageEditorBounds(bounds, surface.width, surface.height, 60));
   }
+  function editOcclusion(redraw = false) {
+    setWaterRunning(false); setClean(false); setTool("occlusion");
+    setOcclusionEdit(current => ({ session: current.session + 1, redraw }));
+    setNotice(redraw ? "Новый контур: ставьте точки по борту; Enter — применить, Escape — отменить. Пока рисунок не закончен, сохранённый контур остаётся прежним."
+      : "Тяните точки борта; нажмите на ребро, чтобы добавить точку. Отметьте справа детали, которые надо спрятать за бортом.");
+  }
+  function selectNode(id: string) {
+    setSelectedId(id);
+    if (id !== selectedId && tool === "occlusion") setTool("move");
+  }
 
   function change(next: GarageScene, record = true) {
     setWaterRunning(false);
@@ -168,6 +181,7 @@ export function GarageEditor() {
     finally { setBusy(false); }
   }
   async function save() {
+    if (occlusionDraft) { setNotice("Завершите контур Enter или отмените Escape перед сохранением."); return; }
     if (!revision) return;
     setBusy(true); setNotice("Сохраняем сборку в проект…");
     try {
@@ -182,6 +196,7 @@ export function GarageEditor() {
     finally { setBusy(false); }
   }
   function exportScene() {
+    if (occlusionDraft) { setNotice("Завершите контур Enter или отмените Escape перед экспортом."); return; }
     try {
       const json = JSON.stringify(validateGarageScene(scene), null, 2);
       const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
@@ -221,7 +236,7 @@ export function GarageEditor() {
       if (clean) return;
       event.preventDefault();
       if (action === "duplicate") { if (!event.repeat) duplicate(); return; }
-      if (action === "remove") { if (!event.repeat) remove(); return; }
+      if (action === "remove") { if (tool !== "occlusion" && !event.repeat) remove(); return; }
       if (["move", "camera", "pivot", "socket"].includes(action)) { setTool(action as GarageTool); return; }
       const step = event.shiftKey ? 10 : 1;
       const dx = action === "left" ? -step : action === "right" ? step : 0;
@@ -241,12 +256,12 @@ export function GarageEditor() {
     <header className={styles.header}><Link href="/" aria-label="Вернуться в игру"><ArrowLeft size={19} /></Link>
       <div className={styles.heading}><small>МОХЛИК · ИНСТРУМЕНТЫ РАЗРАБОТКИ</small><h1>Сборщик лодки</h1></div>
       <span className={styles.saveState}>{dirty ? "Есть изменения" : revision ? "Сцена сохранена" : "Шаблон сцены"}</span>
-      <div className={styles.row}><button type="button" onClick={undo} disabled={!history.past.length || busy} aria-label="Отменить (Ctrl/⌘ Z)" title="Отменить · Ctrl/⌘ Z"><Undo2 size={17} /></button>
-        <button type="button" onClick={redo} disabled={!history.future.length || busy} aria-label="Повторить (Ctrl/⌘ Shift Z или Ctrl/⌘ Y)" title="Повторить · Ctrl/⌘ Shift Z или Ctrl/⌘ Y"><Redo2 size={17} /></button>
-        <button type="button" onClick={exportScene} disabled={!ready || busy}><Download size={16} />JSON</button>
-        <button className={styles.primary} type="button" onClick={save} title="Сохранить в проект · Ctrl/⌘ S" disabled={!revision || busy || !dirty}><Save size={16} />В проект</button></div>
+      <div className={styles.row}><button type="button" onClick={undo} disabled={!history.past.length || busy || occlusionDraft} aria-label="Отменить (Ctrl/⌘ Z)" title={occlusionDraft ? "Ctrl/⌘ Z отменяет точку нового контура" : "Отменить · Ctrl/⌘ Z"}><Undo2 size={17} /></button>
+        <button type="button" onClick={redo} disabled={!history.future.length || busy || occlusionDraft} aria-label="Повторить (Ctrl/⌘ Shift Z или Ctrl/⌘ Y)" title="Повторить · Ctrl/⌘ Shift Z или Ctrl/⌘ Y"><Redo2 size={17} /></button>
+        <button type="button" onClick={exportScene} disabled={!ready || busy || occlusionDraft}><Download size={16} />JSON</button>
+        <button className={styles.primary} type="button" onClick={save} title={occlusionDraft ? "Сначала завершите контур Enter или отмените Escape" : "Сохранить в проект · Ctrl/⌘ S"} disabled={!revision || busy || !dirty || occlusionDraft}><Save size={16} />В проект</button></div>
     </header>
-    <div className={styles.status} role="status">{notice}{draftAvailable && <span><button type="button" disabled={busy} onClick={restoreDraft}>Восстановить черновик</button><button type="button" disabled={busy} onClick={() => { try { localStorage.removeItem(DRAFT_KEY); } catch {} setDraftAvailable(false); }}>Пропустить</button></span>}</div>
+    <div className={styles.status} role="status">{occlusionDraft ? "Рисуем новый контур: Enter — применить, Escape — отменить. До завершения рисунка JSON и сохранение недоступны." : notice}{draftAvailable && <span><button type="button" disabled={busy} onClick={restoreDraft}>Восстановить черновик</button><button type="button" disabled={busy} onClick={() => { try { localStorage.removeItem(DRAFT_KEY); } catch {} setDraftAvailable(false); }}>Пропустить</button></span>}</div>
     <div className={styles.workspace} inert={busy || !ready}>
       <aside className={styles.library}>
         <div className={styles.sectionHead}><h2>Изображения</h2><button title="Импортировать сборку JSON" type="button" disabled={busy} onClick={() => jsonInput.current?.click()}><Upload size={15} /></button></div>
@@ -259,9 +274,9 @@ export function GarageEditor() {
           <img src={asset.src} alt="" /><span>{asset.name}</span><small>{asset.width} × {asset.height}</small></button>)}</div>
         <div className={styles.sectionHead}><h2><Layers size={16} />Слои</h2><button type="button" title="Добавить группу" onClick={() => add()} disabled={busy}><FolderPlus size={16} /></button></div>
         <div className={styles.layers}>{[...scene.nodes].sort((a, b) => b.zIndex - a.zIndex).map(node => <button type="button" key={node.id}
-          aria-pressed={selectedId === node.id} onClick={() => setSelectedId(node.id)} className={selectedId === node.id ? styles.selected : ""}>
+          aria-pressed={selectedId === node.id} onClick={() => selectNode(node.id)} className={selectedId === node.id ? styles.selected : ""}>
           <span>{node.parentId ? "↳ " : ""}{node.name}</span><small>{node.locked ? "🔒" : node.visible ? node.zIndex : "скрыт"}</small></button>)}</div>
-        <p className={styles.hint}>Корпус, мотор и снаряжение загружайте отдельными изображениями. Для Мохлика понадобятся задняя часть корпуса и передний борт.</p>
+        <p className={styles.hint}>Загружайте целые корпус, мотор и снаряжение. Инструмент «Борт / маска» скроет детали внутри лодки без обрезания PNG.</p>
       </aside>
       <section className={styles.center} aria-label={mode === "assembly" ? "Холст сборки" : "Предпросмотр устройств"}>
         <div className={styles.modeToolbar}>
@@ -281,6 +296,11 @@ export function GarageEditor() {
         <div className={styles.tools}>{([
           ["move", MousePointer2, "Двигать"], ["camera", Hand, mode === "assembly" ? "Холст" : "Камера"], ["pivot", Crosshair, "Опора"], ["socket", Crosshair, "Крепление"],
         ] as const).map(([value, Icon, label]) => <button key={value} type="button" disabled={busy || clean} aria-pressed={tool === value} onClick={() => { setWaterRunning(false); setTool(value); }}><Icon size={15} />{label}</button>)}
+          <button type="button" disabled={busy || clean || !selected?.assetId || selected.locked} aria-pressed={tool === "occlusion"} onClick={() => {
+            if (!selected?.assetId) return;
+            if (!selected.occlusion) change({ ...scene, nodes: scene.nodes.map(node => node.id === selected.id ? { ...node, occlusion: defaultGarageOcclusion() } : node) });
+            editOcclusion();
+          }}><Scissors size={15} />Борт / маска</button>
           <button type="button" aria-pressed={clean} onClick={() => setClean(value => !value)}><Eye size={15} />Без разметки</button></div>
         {environment === "water" && <GarageWaterControls key={waterSetup.config.rootId} scene={scene} config={waterSetup.config} running={waterRunning} hasArtwork={waterSetup.hasArtwork}
           onRunningChange={setWaterRunning} onChange={waterPreview => change({ ...scene, waterPreview })}
@@ -295,13 +315,15 @@ export function GarageEditor() {
         </div>}
         <div className={`${styles.preview} ${mode === "assembly" ? styles.assemblyPreview : ""}`} ref={preview} data-testid="garage-preview" data-mode={mode}>
           {mode === "assembly" ? <GarageStage key="assembly" scene={scene} device={device} selectedId={selectedId} tool={tool} guides={guides} clean={clean || (environment === "water" && waterRunning)}
+            occlusionEdit={{ ...occlusionEdit, onExit: () => setTool("move"), onDraftChange: setOcclusionDraft }}
             waterPreview={environment === "water" ? { config: waterSetup.config, running: waterRunning } : undefined}
             editingView={{ ...editorView, width: surface.width, height: surface.height }} onViewChange={view => { autoFit.current = false; setEditorView(view); }}
-            onSelect={setSelectedId} onChange={change} onGestureEnd={before => setHistory(current => finishGarageHistoryGesture(current, before))} />
+            onSelect={selectNode} onChange={change} onGestureEnd={before => setHistory(current => finishGarageHistoryGesture(current, before))} />
             : <div className={styles.deviceFrame} style={{ width: device.width * previewScale, height: device.height * previewScale }}>
               <div style={{ transform: `scale(${previewScale})`, transformOrigin: "top left" }}>
                 <GarageStage key="device" scene={scene} device={device} selectedId={selectedId} tool={tool} guides={guides} clean={clean || (environment === "water" && waterRunning)}
-                  waterPreview={environment === "water" ? { config: waterSetup.config, running: waterRunning } : undefined} onSelect={setSelectedId}
+                  occlusionEdit={{ ...occlusionEdit, onExit: () => setTool("move"), onDraftChange: setOcclusionDraft }}
+                  waterPreview={environment === "water" ? { config: waterSetup.config, running: waterRunning } : undefined} onSelect={selectNode}
                   onChange={change} onGestureEnd={before => setHistory(current => finishGarageHistoryGesture(current, before))} />
               </div>
             </div>}
@@ -314,7 +336,7 @@ export function GarageEditor() {
             <dt>Ctrl/⌘ D</dt><dd>Дубликат детали</dd><dt>Ctrl/⌘ S</dt><dd>Сохранить в проект</dd>
             <dt>← ↑ ↓ → · Shift</dt><dd>Сдвиг на 1 · на 10</dd><dt>Delete · Backspace</dt><dd>Удалить деталь</dd>
             <dt>V · H · P · A</dt><dd>Двигать · камера · опора · крепление</dd><dt>Esc</dt><dd>Вернуться к перемещению</dd></dl>
-          <p>Рамка двигает выбранный слой, даже если он за другим предметом. Alt + клик — выбрать другой слой. Ручки растягивают свободно, Shift сохраняет пропорции; ручка поворота с Shift даёт шаг 15°. Колесо — зум; пробел + перетаскивание или средняя кнопка — холст. В полях ввода остаются обычные команды редактирования текста.</p>
+          <p>Рамка двигает выбранный слой, даже если он за другим предметом. Alt + клик — выбрать другой слой. Ручки растягивают свободно, Shift сохраняет пропорции; ручка поворота с Shift даёт шаг 15°. В «Борт / маска» Delete удаляет точку, нажатие на ребро добавляет её; Enter завершает новый контур, Escape отменяет. Колесо — зум; пробел + перетаскивание или средняя кнопка — холст. В полях ввода остаются обычные команды редактирования текста.</p>
         </details>
         {mode === "devices" && <details className={styles.camera}><summary>Кадр {cameraMode === "portrait" ? "телефона / планшета" : "альбомного экрана"}</summary><div className={styles.fields}>
           {(["x", "y", "width"] as const).map(key => <GarageNumber key={key} label={key === "width" ? "Ширина кадра" : key.toUpperCase()} value={camera[key]} step={10} min={key === "width" ? 300 : -10000}
@@ -322,7 +344,8 @@ export function GarageEditor() {
           <button type="button" onClick={() => change({ ...scene, cameras: { ...scene.cameras, [cameraMode]: { x: scene.canvas.width / 2, y: scene.canvas.height / 2, width: cameraMode === "portrait" ? 1280 : scene.canvas.width } } })}>Сбросить кадр</button>
         </div></details>}
       </section>
-      <GarageInspector scene={scene} node={selected} onChange={change} onDuplicate={duplicate} onRemove={remove} onError={setNotice} />
+      <GarageInspector scene={scene} node={selected} onChange={change} onDuplicate={duplicate} onRemove={remove} onError={setNotice}
+        onEditOcclusion={() => editOcclusion()} onRedrawOcclusion={() => editOcclusion(true)} />
     </div>
   </main>;
 }

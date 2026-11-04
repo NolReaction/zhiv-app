@@ -4,6 +4,7 @@ import { Copy, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { alignGarageNodeToPoints, alignGarageNodeToSocket, garageNodeContactPoint, getGarageNodeMatrix, reparentGarageNode, transformGaragePoint } from "./garage-scene-model.mjs";
 import type { GarageNode, GarageScene } from "./garage-scene-types";
+import { GarageOcclusionControls } from "./garage-occlusion-controls";
 import styles from "./garage-editor.module.css";
 
 export function GarageNumber({ label, value, onChange, step = 1, min, max }: {
@@ -16,9 +17,10 @@ export function GarageNumber({ label, value, onChange, step = 1, min, max }: {
     }} /></label>;
 }
 
-export function GarageInspector({ scene, node, onChange, onDuplicate, onRemove, onError }: {
+export function GarageInspector({ scene, node, onChange, onDuplicate, onRemove, onError, onEditOcclusion, onRedrawOcclusion }: {
   scene: GarageScene; node: GarageNode | undefined; onChange: (scene: GarageScene) => void;
   onDuplicate: () => void; onRemove: () => void; onError: (message: string) => void;
+  onEditOcclusion: () => void; onRedrawOcclusion: () => void;
 }) {
   if (!node) return <aside className={styles.inspector}><h2>Свойства детали</h2><p className={styles.hint}>Выберите деталь на сцене или в списке слоёв.</p></aside>;
   const patch = (changes: Partial<GarageNode>) => onChange({ ...scene, nodes: scene.nodes.map(item => item.id === node.id ? { ...item, ...changes } : item) });
@@ -36,6 +38,7 @@ export function GarageInspector({ scene, node, onChange, onDuplicate, onRemove, 
       <label><input type="checkbox" checked={node.visible} onChange={event => patch({ visible: event.target.checked })} />Видимость</label>
       <label><input type="checkbox" checked={node.locked} onChange={event => patch({ locked: event.target.checked })} />Закрепить</label>
     </div>
+    <GarageOcclusionControls scene={scene} node={node} onChange={onChange} onEdit={onEditOcclusion} onRedraw={onRedrawOcclusion} />
     <fieldset disabled={node.locked} className={styles.fieldset}>
       <div className={styles.fields}>{number("x", "X")}{number("y", "Y")}{number("scale", "Масштаб", .01, .001, 100)}
         {number("rotation", "Поворот °", 1, -3600, 3600)}{number("zIndex", "Слой", 1, -10000, 10000)}</div>
@@ -55,7 +58,7 @@ export function GarageInspector({ scene, node, onChange, onDuplicate, onRemove, 
       </details>
       <label className={styles.field}><span>Изображение</span><select aria-label="Изображение" value={node.assetId ?? ""} onChange={event => {
         const asset = scene.assets.find(item => item.id === event.target.value);
-        patch(asset ? { assetId: asset.id, width: asset.width, height: asset.height, scale: node.width * node.scale / asset.width } : { assetId: null });
+        patch(asset ? { assetId: asset.id, width: asset.width, height: asset.height, scale: node.width * node.scale / asset.width } : { assetId: null, occlusion: undefined });
       }}><option value="">Группа без изображения</option>{scene.assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
       <h3>Крепление</h3>
       <label className={styles.field}><span>Родитель</span><select aria-label="Родитель" value={node.parentId ?? ""} onChange={event => attach(event.target.value || null, null)}>

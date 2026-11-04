@@ -4,6 +4,8 @@
 /** @typedef {import('./garage-scene-types').GaragePoint} GaragePoint */
 /** @typedef {import('./garage-scene-types').GarageViewportMode} GarageViewportMode */
 
+import { garageOcclusionPolygonProblem, garageOcclusionTargetIds } from "./garage-occlusion.mjs";
+
 /** @type {GarageMatrix} */
 const IDENTITY = [1, 0, 0, 1, 0, 0];
 const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/;
@@ -83,6 +85,19 @@ export function validateGarageScene(input) {
     unique(sockets, "Крепления слоя");
     const zIndex = number(node.zIndex, "Порядок слоя", -100_000, 100_000);
     if (!Number.isInteger(zIndex)) throw new Error("Порядок слоя должен быть целым числом.");
+    let occlusion;
+    if (node.occlusion !== undefined) {
+      const value = record(node.occlusion, "Перекрытие бортом");
+      const points = list(value.points, "Точки контура борта", 64).map(value => {
+        const point = record(value, "Точка контура борта");
+        return { x: number(point.x, "Контур борта X", 0, 1), y: number(point.y, "Контур борта Y", 0, 1) };
+      });
+      const problem = garageOcclusionPolygonProblem(points);
+      if (problem) throw new Error(problem);
+      const targetIds = list(value.targetIds, "Предметы за бортом", 128).map(value => id(value, "Предмет за бортом"));
+      if (new Set(targetIds).size !== targetIds.length) throw new Error("Предметы за бортом не должны повторяться.");
+      occlusion = { enabled: boolean(value.enabled, "Видимость перекрытия бортом"), points, targetIds };
+    }
     return { id: id(node.id, "ID слоя"), name: text(node.name, "Название слоя"), assetId: nullableId(node.assetId, "Изображение слоя"),
       parentId: nullableId(node.parentId, "Родитель слоя"), socketId: nullableId(node.socketId, "Крепление слоя"),
       x: number(node.x, "Слой X", -200_000, 200_000), y: number(node.y, "Слой Y", -200_000, 200_000),
@@ -94,7 +109,8 @@ export function validateGarageScene(input) {
       ...(node.flipY === undefined ? {} : { flipY: boolean(node.flipY, "Отражение Y") }),
       ...(node.skewX === undefined ? {} : { skewX: number(node.skewX, "Наклон перспективы", -89.9999, 89.9999) }),
       pivotX: number(node.pivotX, "Опора X", 0, 1), pivotY: number(node.pivotY, "Опора Y", 0, 1), zIndex,
-      visible: boolean(node.visible, "Видимость слоя"), locked: boolean(node.locked, "Блокировка слоя"), sockets };
+      visible: boolean(node.visible, "Видимость слоя"), locked: boolean(node.locked, "Блокировка слоя"), sockets,
+      ...(occlusion ? { occlusion } : {}) };
   });
   unique(assets, "Изображения"); unique(nodes, "Слои");
   const byId = new Map(nodes.map(node => [node.id, node])), assetIds = new Set(assets.map(asset => asset.id));
@@ -125,6 +141,15 @@ export function validateGarageScene(input) {
   const result = { schemaVersion: 1, canvas: { width: number(canvas.width, "Ширина холста", 1, 20_000),
     height: number(canvas.height, "Высота холста", 1, 20_000) }, cameras: { portrait: camera("portrait"), landscape: camera("landscape") }, assets, nodes,
     ...(waterPreview ? { waterPreview } : {}) };
+  for (const node of nodes) {
+    if (!node.occlusion) continue;
+    if (node.assetId === null) throw new Error("Контур борта можно задать только слою с изображением.");
+    const allowed = new Set(garageOcclusionTargetIds(result, node.id));
+    for (const targetId of node.occlusion.targetIds) {
+      if (!byId.has(targetId)) throw new Error(`Контур борта «${node.name}» ссылается на неизвестный предмет.`);
+      if (!allowed.has(targetId)) throw new Error("Контур борта не может скрывать свой слой или его родительскую группу.");
+    }
+  }
   for (const node of nodes) {
     const [a, b, c, d] = getGarageNodeMatrix(result, node.id);
     const maximum = (Math.hypot(a + d, b - c) + Math.hypot(a - d, b + c)) / 2;
@@ -222,6 +247,8 @@ export function removeGarageNode(scene, id) {
     for (const node of scene.nodes) if (node.parentId && removed.has(node.parentId)) removed.add(node.id);
   }
   const result = { ...scene, nodes: scene.nodes.filter(node => !removed.has(node.id)) };
+  result.nodes = result.nodes.map(node => node.occlusion && node.occlusion.targetIds.some(id => removed.has(id))
+    ? { ...node, occlusion: { ...node.occlusion, targetIds: node.occlusion.targetIds.filter(id => !removed.has(id)) } } : node);
   if (result.waterPreview && removed.has(result.waterPreview.rootId)) delete result.waterPreview;
   return result;
 }
