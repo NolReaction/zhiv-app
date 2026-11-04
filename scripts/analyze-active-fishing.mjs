@@ -9,19 +9,26 @@ const hash = text => createHash("sha256").update(text).digest("hex");
 
 function markdownSnapshot(report, config) {
   const lines = [
-    "Снимок расчётного кандидата; длительности и успешность — допущения. Монеты после расхода наживки, по текущим гарантированным ценам продажи рыбы. Водоросли и будущие чертежи оценены в 0 монет.", "",
-    "| Набор | Рыб/ч: новичок | Освоивший | Опытный | Монет за 15 мин: освоивший | Заполнить ящик: освоивший |",
+    "Расчёт конечного выезда: останавливаемся при полном ящике или исчерпании забросов. Серия нефишовых исходов переносится между выездами; ниже средние установившегося потока, первый выезд из нулевой серии рассчитан отдельно в JSON. Успешность и длительности — гипотезы о навыке, не замеры и не скрытая случайная потеря после победы.", "",
+    "| Набор | Рыб/выезд: новичок | Освоивший | Опытный | Монет/выезд: освоивший | Активных минут/выезд |",
     "|---|---:|---:|---:|---:|---:|",
   ];
   for (const scenario of config.scenarios) {
     const rows = report.forecasts.filter(row => row.scenarioId === scenario.id);
-    const get = id => rows.find(row => row.profileId === id);
+    const get = id => rows.find(row => row.profileId === id).finiteTrip.stationaryTrip;
     const regular = get("regular");
-    lines.push(`| ${scenario.name} | ${get("novice").fishPerHour.toFixed(1)} | ${regular.fishPerHour.toFixed(1)} | ${get("expert").fishPerHour.toFixed(1)} | ${(regular.netCoinsPerHour / 4).toFixed(0)} | ${(regular.secondsToFillCrate / 60).toFixed(1)} мин |`);
+    lines.push(`| ${scenario.name} | ${get("novice").expectedFish.toFixed(2)} | ${regular.expectedFish.toFixed(2)} | ${get("expert").expectedFish.toFixed(2)} | ${regular.expectedNetCoins.toFixed(1)} | ${(regular.expectedActiveSeconds / 60).toFixed(1)} |`);
   }
-  const maximum = report.selectiveCancelStress.reduce((best, row) => row.bestNetCoinsPolicy.netCoinsPerHour > best.bestNetCoinsPolicy.netCoinsPerHour ? row : best);
-  lines.push("", `Максимум отдельного теоретического стресса быстрых идеальных вываживаний и селективных мгновенных отмен: **${maximum.bestNetCoinsPolicy.netCoinsPerHour.toFixed(0)} монет/ч**. Это допущение о заранее известном классе и нулевой цене отмены во времени, а не измеренный предел реальной игры.`, "",
-    "Повышенная доступность обычной рыбы — осознанная гипотеза активного режима. Этот отчёт не доказывает сохранение полного календарного срока развития; питание, заказы и будущие находки требуют отдельного общего прогона.");
+  lines.push("", "Монеты — при продаже всего улова по обычным текущим ценам, после расхода наживки на каждый начатый заброс. Находки оценены в 0 монет. Топливо не продаётся за монеты в этом кандидате.", "",
+    "| Набор | Рыб/день при 1 / 2 / 3 заходах | Из них обычных при 1 / 2 / 3 заходах | Активных минут/день при 3 заходах |", "|---|---:|---:|---:|");
+  for (const scenario of config.scenarios) {
+    const finite = report.forecasts.find(row => row.scenarioId === scenario.id && row.profileId === "regular").finiteTrip;
+    const visits = finite.dailyVisitSchedules;
+    lines.push(`| ${scenario.name} | ${visits.map(row => row.expectedFishPerDay.toFixed(1)).join(" / ")} | ${visits.map(row => row.expectedCommonFishPerDay.toFixed(1)).join(" / ")} | ${visits[2].requiredActiveMinutesPerDay.toFixed(1)} |`);
+  }
+  lines.push("", "Заходы равномерно распределены по суткам, в каждый расходуется весь доступный запас; времени на мини-игры хватает. Короткое восстановление во время самой сессии для этой таблицы не прибавлено. Число заходов не является ограничением игры, это сценарии присутствия.", "",
+    "Запас бака 2/3/4 выезда; один выезд восстанавливается за 120 минут на любой ступени. Долгосрочный максимум при достаточной частоте заходов — 12 выездов в сутки, или не более 36/60/96 рыб при ящике 3/5/8. Это потолок вместимости, не обещание улова и не ежедневная выдача топлива. Начальный полный бак не добавляется к каждому следующему дню.", "",
+    "Прежние неограниченные показатели рыб/активный час и стресс мгновенных отмен оставлены в JSON только как диагностика темпа. Для бюджета важны конечные выезды, расход топлива, обычная рыба для кухни и заданий. Отдельный стресс перебора классов тоже ограничен числом забросов и не возвращает топливо. Полный срок развития этим отчётом не подтверждён.");
   return lines.join("\n");
 }
 export async function runActiveFishingProposal({ write = false } = {}) {
@@ -52,19 +59,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const args = process.argv.slice(2);
   if (args.some(arg => arg !== "--write")) throw new Error("Usage: node scripts/analyze-active-fishing.mjs [--write]");
   const report = await runActiveFishingProposal({ write: args.includes("--write") });
-  console.log("OFFLINE PROPOSAL; human success/timing are assumptions, not measured runtime or a full-economy guarantee.");
+  console.log("OFFLINE FUEL-BOUNDED PROPOSAL; human success/timing are assumptions, not measured gameplay or full-economy validation.");
   console.table(report.forecasts.map(row => ({ scenario: row.scenarioId, profile: row.profileId,
-    fishPerHour: row.fishPerHour.toFixed(2), coinsPerHour: row.netCoinsPerHour.toFixed(2),
-    attemptSeconds: row.averageSecondsPerAttempt.toFixed(2), futureRecipeEquivalentSteadyMinutes:
-      row.futureBlueprintForecast.steadyStateActiveMinutesPerBlueprintEquivalent?.toFixed(1) ?? "disabled" })));
-  console.table(report.fastPerfectStress.map(row => ({ fastPerfect: row.scenarioId, fishPerHour: row.fishPerHour.toFixed(2), coinsPerHour: row.netCoinsPerHour.toFixed(2) })));
-  console.log("THEORETICAL OMNISCIENT INSTANT-CANCEL BOUND; no observed live exploit is asserted.");
-  console.table(report.selectiveCancelStress.map(row => ({ cancelStress: row.scenarioId,
-    allFishCoinsPerHour: row.allFishSkipNonFish.netCoinsPerHour.toFixed(2),
-    bestCoinsPerHour: row.bestNetCoinsPolicy.netCoinsPerHour.toFixed(2),
-    acceptOnly: row.bestNetCoinsPolicy.policy.acceptOnlyRarities.join(","), policies: row.evaluatedPolicyCount,
-    classFishPerHour: Object.entries(row.bestNetCoinsPolicy.classFishPerHour).filter(([, rate]) => rate > 0)
-      .map(([rarity, rate]) => `${rarity}:${rate.toFixed(2)}`).join(",") })));
-  console.table(report.legacyLandingNetForecast.map(row => ({ legacyNet: row.scenarioId, profile: row.profileId,
-    fishPerHour: row.fishPerHour.toFixed(2), coinsPerHour: row.netCoinsPerHour.toFixed(2), bonusBps: row.assumedSuccessBonusBps })));
+    fishPerTrip: row.finiteTrip.stationaryTrip.expectedFish.toFixed(2), coinsPerTrip: row.finiteTrip.stationaryTrip.expectedNetCoins.toFixed(2),
+    activeMinutesPerTrip: (row.finiteTrip.stationaryTrip.expectedActiveSeconds / 60).toFixed(2),
+    dryTripPercent: (row.finiteTrip.stationaryTrip.emptyTripProbability * 100).toFixed(4),
+    fishPerDayOneVisit: row.finiteTrip.dailyVisitSchedules[0].expectedFishPerDay.toFixed(2),
+    fishPerDayThreeVisits: row.finiteTrip.dailyVisitSchedules[2].expectedFishPerDay.toFixed(2) })));
+  console.log("THEORETICAL OMNISCIENT CANCEL STRESS; cast allowance, bait and outing fuel still consumed. Not an observed exploit.");
+  console.table(report.fuelBoundedSelectiveCancelStress.map(row => ({ scenario: row.scenarioId,
+    bestNetCoinsPerTrip: row.bestNetCoinsPerFuelPolicy.stationaryTrip.expectedNetCoins.toFixed(2),
+    acceptOnly: row.bestNetCoinsPerFuelPolicy.acceptOnlyRarities.join(","), policies: row.evaluatedPolicyCount })));
 }

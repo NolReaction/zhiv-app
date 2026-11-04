@@ -3,6 +3,7 @@
 import { useRef, type PointerEvent } from "react";
 import { Anchor, Box, Fuel, Settings2, Ship, X } from "lucide-react";
 import { getGarageNodeMatrix, getGarageParentMatrix, getGarageViewport, inverseGaragePoint } from "./garage-scene-model.mjs";
+import { getGarageShortcut } from "./garage-editor-shortcuts.mjs";
 import type { GarageNode, GaragePoint, GarageScene, GarageViewportMode } from "./garage-scene-types";
 import styles from "./garage-editor.module.css";
 
@@ -98,10 +99,15 @@ export function GarageStage({ scene, device, selectedId, tool, guides, clean, on
     }
   }
 
-  function finish(event: PointerEvent<SVGSVGElement>) {
-    if (!drag.current || event.pointerId !== drag.current.pointerId) return;
-    onGestureEnd(drag.current.before);
+  function finishGesture() {
+    const gesture = drag.current;
+    if (!gesture) return;
     drag.current = null;
+    onGestureEnd(gesture.before);
+    if (svg.current?.hasPointerCapture(gesture.pointerId)) svg.current.releasePointerCapture(gesture.pointerId);
+  }
+  function finish(event: PointerEvent<SVGSVGElement>) {
+    if (event.pointerId === drag.current?.pointerId) finishGesture();
   }
 
   return <div className={styles.device} style={{ width: device.width, height: device.height }} data-landscape={landscape}>
@@ -110,6 +116,7 @@ export function GarageStage({ scene, device, selectedId, tool, guides, clean, on
     <div className={styles.gameBody}>
       <svg ref={svg} className={styles.stage} width={width} height={height} viewBox={`0 0 ${width} ${height}`}
         aria-label="Сцена гаража" tabIndex={0} data-testid="garage-stage" style={{ touchAction: clean ? "auto" : "none" }}
+        onKeyDown={event => { if (getGarageShortcut(event)) finishGesture(); }}
         onPointerDown={event => down(event)} onPointerMove={move} onPointerUp={finish}
         onPointerCancel={finish} onLostPointerCapture={finish}>
         <rect width={width} height={height} fill="#3d2c20" />

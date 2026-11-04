@@ -67,6 +67,6 @@ export function GarageInspector({ scene, node, onChange, onDuplicate, onRemove, 
     </fieldset>
     <div className={styles.row}><button type="button" onClick={onDuplicate}><Copy size={15} />Дубликат</button>
       <button type="button" disabled={node.locked} onClick={onRemove}><Trash2 size={15} />Удалить</button></div>
-    <p className={styles.hint}>Стрелки — сдвиг на 1; Shift — на 10. Delete — удалить. Ctrl/Cmd + Z — отменить.</p>
+    <p className={styles.hint}>Стрелки — сдвиг на 1; Shift — на 10. Delete — удалить. Ctrl/⌘ Z — отменить; Ctrl/⌘ Y — повторить. Ctrl/⌘ D — дубликат.</p>
   </aside>;
 }

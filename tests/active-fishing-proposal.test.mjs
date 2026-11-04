@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { analyzeProposal, analyzeScenario, baselineFishingRates, realizedLootProbabilities,
-  regionalFishingPortfolio, validateProposal } from "../scripts/lib/active-fishing-proposal.mjs";
+  regionalFishingPortfolio, validateProposal, analyzeFiniteTrip, settleOutingFuel, spendOutingFuel, upgradeOutingFuel } from "../scripts/lib/active-fishing-proposal.mjs";
 
 const rarities = ["common", "uncommon", "rare", "epic", "legendary"];
 function fixture() {
@@ -203,4 +203,139 @@ test("seeded 100k-attempt renewal simulation cross-checks pity, skill failures a
   const actualFish = landed * 3600 / seconds, actualCoins = coins * 3600 / seconds;
   assert(Math.abs(actualFish / expected.fishPerHour - 1) < .01);
   assert(Math.abs(actualCoins / expected.rawFishCoinsPerHour - 1) < .01);
+});
+
+function fuelFixture() {
+  const f = fixture();
+  f.config.fuel = { costPerTrip: 1, regenerationSecondsPerUnit: 7200 };
+  f.config.tanks[0].fuelCapacity = 2;
+  f.config.crates[0].attemptBudget = 10;
+  f.config.crates[1].attemptBudget = 20;
+  return f;
+}
+
+test("fuel caps offline regeneration; spending starts a fresh full-tank clock and cannot time travel", () => {
+  const full = { fuel: 2, updatedAtSeconds: 0 };
+  assert.deepEqual(settleOutingFuel(full, 86400, 2, 7200), { fuel: 2, updatedAtSeconds: 86400 });
+  const spent = spendOutingFuel(full, 86400, 2, 7200);
+  assert.deepEqual(spent, { fuel: 1, updatedAtSeconds: 86400 });
+  close(settleOutingFuel(spent, 90000, 2, 7200).fuel, 1.5);
+  const empty = spendOutingFuel(spendOutingFuel(full, 0, 2, 7200), 0, 2, 7200);
+  assert.throws(() => spendOutingFuel(empty, 7199, 2, 7200), /Insufficient/);
+  close(spendOutingFuel(empty, 7200, 2, 7200).fuel, 0);
+  assert.throws(() => settleOutingFuel(spent, 0, 2, 7200), /invalid number/);
+});
+
+test("tank upgrade preserves fuel fraction without granting capped offline overflow or free refill", () => {
+  const next = upgradeOutingFuel({ fuel: 2, updatedAtSeconds: 0 }, 86400, 2, 4, 7200);
+  assert.deepEqual(next, { fuel: 2, updatedAtSeconds: 86400 });
+  close(settleOutingFuel(next, 90000, 4, 7200).fuel, 2.5);
+  const partial = upgradeOutingFuel({ fuel: .25, updatedAtSeconds: 0 }, 3600, 2, 4, 7200);
+  close(partial.fuel, .75);
+  assert.throws(() => upgradeOutingFuel(next, 86400, 2, 1, 7200), /invalid number/);
+});
+
+test("finite outing stops at crate capacity or cast allowance, counts short weeds and bait before terminal", () => {
+  const { config, catalog, scenario, profile } = fuelFixture();
+  config.loot = { fishBps: 10_000, weedBps: 0, blueprintBps: 0, maxConsecutiveNonFish: 2 };
+  const perfect = analyzeFiniteTrip(config, catalog, { ...scenario, baitId: "bait" }, profile, { perfect: true });
+  const trip = perfect.freshAccountFirstTrip;
+  close(trip.expectedFish, 3); close(trip.expectedAttempts, 3); close(trip.fullCrateProbability, 1);
+  close(trip.expectedActiveSeconds, 3 * 37 + 2);
+  close(trip.expectedNetCoins, 3 * 17.5 - 3 * 2);
+  close(perfect.fullTankSessionFromPity0.expectedFish, 6);
+  for (const rarity of rarities) profile.successBpsByRarity[rarity] = 0;
+  const dry = analyzeFiniteTrip(config, catalog, scenario, profile).freshAccountFirstTrip;
+  close(dry.expectedFish, 0); close(dry.expectedAttempts, 10); close(dry.emptyTripProbability, 1);
+  close(dry.expectedActiveSeconds, 10 * 25 + 2);
+});
+
+test("persistent finite-trip pity has exact fresh-state odds and is not reset or replaced by per-cast stationary odds", () => {
+  const { config, catalog, scenario, profile } = fuelFixture();
+  config.crates[0] = { ...config.crates[0], capacity: 1, attemptBudget: 1 };
+  const row = analyzeFiniteTrip(config, catalog, scenario, profile, { perfect: true });
+  close(row.freshAccountFirstTrip.expectedFish, .65);
+  close(row.freshAccountFirstTrip.emptyTripProbability, .35);
+  close(row.fromPity[1].expectedFish, .65); close(row.fromPity[2].expectedFish, 1);
+  close(row.stationaryTrip.expectedFish, 1 / 1.4725);
+  close(row.fullTankSessionFromPity0.expectedFish, 1.3);
+  close(row.fullTankSessionFromPity0.expectedAttempts, 2);
+});
+
+test("instant cancellation still spends finite casts and bait and cannot refill a crate for free", () => {
+  const { config, catalog, scenario, profile } = fuelFixture();
+  const all = analyzeFiniteTrip(config, catalog, { ...scenario, baitId: "bait" }, profile, { perfect: true });
+  const selected = analyzeFiniteTrip(config, catalog, { ...scenario, baitId: "bait" }, profile,
+    { perfect: true, skipNonFishInstantly: true, acceptOnlyRarities: ["uncommon"] });
+  assert(selected.stationaryTrip.expectedFish < all.stationaryTrip.expectedFish);
+  assert(selected.stationaryTrip.expectedAttempts > all.stationaryTrip.expectedAttempts);
+  close(selected.stationaryTrip.expectedBaitCoins, 2 * selected.stationaryTrip.expectedAttempts);
+  assert.equal(selected.stationaryTrip.classFish.common, 0);
+  close(selected.stationaryTrip.expectedWeeds, 0);
+  assert(selected.stationaryTrip.expectedFish <= 3);
+});
+
+test("tank stores absences rather than changing regeneration; visits and crate cap constrain daily common fish", () => {
+  const { config, catalog, scenario, profile } = fuelFixture();
+  const small = analyzeFiniteTrip(config, catalog, scenario, profile);
+  config.tanks[0].fuelCapacity = 4;
+  const large = analyzeFiniteTrip(config, catalog, scenario, profile);
+  close(small.sustainableTripsPerDay, 12); close(large.sustainableTripsPerDay, 12);
+  close(small.hardFishCapacityPerSteadyDay, 36);
+  assert.deepEqual(small.dailyVisitSchedules.map(row => row.tripsPerDay), [2, 4, 6]);
+  assert.deepEqual(large.dailyVisitSchedules.map(row => row.tripsPerDay), [4, 8, 12]);
+  close(small.dailyVisitSchedules[0].fuelLostToCapacityPerDay, 10);
+  close(small.dailyVisitSchedules[0].expectedCommonFishPerDay, small.stationaryTrip.classFish.common * 2);
+  close(small.fuelLimitedExpectedFishPerSteadyDay, large.fuelLimitedExpectedFishPerSteadyDay);
+  const bigCrate = analyzeFiniteTrip(config, catalog, { ...scenario, crateLevel: 2 }, profile);
+  assert(bigCrate.fuelLimitedExpectedFishPerSteadyDay > large.fuelLimitedExpectedFishPerSteadyDay);
+  assert(bigCrate.stationaryTrip.expectedFish <= 8);
+});
+
+test("seeded 100k-outing simulation independently checks finite capacity, persistent pity, failures and bait", () => {
+  const { config, catalog, scenario, profile } = fuelFixture();
+  const expected = analyzeFiniteTrip(config, catalog, { ...scenario, baitId: "bait" }, profile).stationaryTrip;
+  let seed = 0x58c024ab, pity = 0, fish = 0, seconds = 0, coins = 0, attempts = 0, dry = 0;
+  const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  const count = 100_000;
+  for (let trip = 0; trip < count; trip++) {
+    let landed = 0;
+    seconds += 2;
+    for (let attempt = 0; attempt < 10 && landed < 3; attempt++) {
+      attempts++; seconds += 5; coins -= 2;
+      if (pity === 2 || random() < .65) {
+        pity = 0;
+        const uncommon = random() >= .5, win = random() < .5;
+        seconds += win ? 32 : 20;
+        if (win) { landed++; coins += uncommon ? 20 : 15; }
+      } else { pity++; seconds += 3; }
+    }
+    fish += landed; if (!landed) dry++;
+  }
+  for (const [actual, theory] of [[fish / count, expected.expectedFish], [attempts / count, expected.expectedAttempts],
+    [seconds / count, expected.expectedActiveSeconds], [coins / count, expected.expectedNetCoins]])
+    assert(Math.abs(actual / theory - 1) < .01);
+  assert(Math.abs(dry / count - expected.emptyTripProbability) < .002);
+});
+
+test("motor and hull forecast effects can be varied independently without changing loot or zone width", () => {
+  const { config, catalog, scenario, profile } = fuelFixture();
+  config.motors = [{ level: 1, responseTimeConstantMilliseconds: 220, speedCeilingMultiplier: 1, assumedSuccessBonusBps: 0 },
+    { level: 2, responseTimeConstantMilliseconds: 180, speedCeilingMultiplier: 1, assumedSuccessBonusBps: 200 }];
+  config.scenarios[0].motorLevel = 1;
+  config.hulls[1].zoneWidthBps = config.hulls[0].zoneWidthBps;
+  const base = analyzeScenario(config, catalog, scenario, profile);
+  const hull = analyzeScenario(config, catalog, { ...scenario, hullLevel: 2 }, profile);
+  const motor = analyzeScenario(config, catalog, { ...scenario, motorLevel: 2 }, profile);
+  const both = analyzeScenario(config, catalog, { ...scenario, hullLevel: 2, motorLevel: 2 }, profile);
+  close(base.classes[0].assumedLandingProbability, .5);
+  close(hull.classes[0].assumedLandingProbability, .53);
+  close(motor.classes[0].assumedLandingProbability, .52);
+  close(both.classes[0].assumedLandingProbability, .55);
+  assert.deepEqual(base.loot, both.loot);
+  assert.deepEqual(base.classes.map(row => row.probability), both.classes.map(row => row.probability));
+  assert.equal(config.hulls[0].zoneWidthBps, config.hulls[1].zoneWidthBps);
+  const sensitivity = analyzeProposal(config, catalog).moduleControlSensitivity;
+  assert.equal(sensitivity.length, 4);
+  assert.deepEqual(sensitivity.map(row => row.assumedHumanSuccessBonusBps), [0, 300, 200, 500]);
 });

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Crosshair, Download, Eye, FolderPlus, Hand, ImagePlus, Layers, MousePointer2, Redo2, Save, Undo2, Upload } from "lucide-react";
 import defaultScene from "./garage-scene-default.json";
 import { duplicateGarageNode, removeGarageNode, validateGarageScene } from "./garage-scene-model.mjs";
+import { changeGarageHistory, finishGarageHistoryGesture, getGarageShortcut, redoGarageHistory, undoGarageHistory } from "./garage-editor-shortcuts.mjs";
 import type { GarageAsset, GarageNode, GarageScene } from "./garage-scene-types";
 import { GarageInspector, GarageNumber } from "./garage-inspector";
 import { GARAGE_DEVICES, GarageStage, type GarageTool } from "./garage-stage";
@@ -77,15 +78,11 @@ export function GarageEditor() {
   function change(next: GarageScene, record = true) {
     try {
       const validated = validateGarageScene(next);
-      setHistory(current => ({ past: record ? [...current.past, current.scene].slice(-40) : current.past, scene: validated, future: [] }));
+      setHistory(current => changeGarageHistory(current, validated, record));
     } catch (error) { setNotice(error instanceof Error ? error.message : "Изменение не применено."); }
   }
-  function undo() { setHistory(current => current.past.length ? { past: current.past.slice(0, -1), scene: current.past.at(-1)!, future: [current.scene, ...current.future] } : current); }
-  function redo() { setHistory(current => current.future.length ? { past: [...current.past, current.scene], scene: current.future[0], future: current.future.slice(1) } : current); }
-  function patchNode(changes: Partial<GarageNode>) {
-    if (!selected || selected.locked) return;
-    change({ ...scene, nodes: scene.nodes.map(item => item.id === selected.id ? { ...item, ...changes } : item) });
-  }
+  function undo() { setHistory(current => undoGarageHistory(current)); }
+  function redo() { setHistory(current => redoGarageHistory(current)); }
   function remove() { if (selected && !selected.locked) { change(removeGarageNode(scene, selected.id)); setSelectedId(null); } }
   function duplicate() {
     if (!selected) return;
@@ -155,29 +152,43 @@ export function GarageEditor() {
     catch { setNotice("Не удалось восстановить черновик."); }
     setDraftAvailable(false);
   }
-  function keyboard(event: KeyboardEvent) {
-    if (busy || !ready) return;
-    if (event.target instanceof HTMLElement && event.target.closest("input,select,textarea")) return;
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") { event.preventDefault(); if (event.shiftKey) redo(); else undo(); return; }
-    if (event.target instanceof HTMLElement && event.target.closest("button,a")) return;
-    if (event.key === "Escape") { setTool("move"); return; }
-    if (clean) return;
-    if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); remove(); return; }
-    const step = event.shiftKey ? 10 : 1;
-    if (selected && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
-      event.preventDefault(); patchNode({ x: selected.x + (event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0),
-        y: selected.y + (event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0) });
+  // This page owns these shortcuts, even after a toolbar click or a click on empty space.
+  // Reattach with the current scene so actions never use a stale selection or camera.
+  useEffect(() => {
+    function keyboard(event: globalThis.KeyboardEvent) {
+      if (busy || !ready) return;
+      const action = getGarageShortcut(event);
+      if (!action) return;
+      if (action === "save") { event.preventDefault(); if (!event.repeat && revision && dirty) void save(); return; }
+      if (action === "undo" || action === "redo") { event.preventDefault(); if (action === "undo") undo(); else redo(); return; }
+      if (action === "escape") { event.preventDefault(); setTool("move"); setClean(false); return; }
+      if (clean) return;
+      event.preventDefault();
+      if (action === "duplicate") { if (!event.repeat) duplicate(); return; }
+      if (action === "remove") { if (!event.repeat) remove(); return; }
+      if (["move", "camera", "pivot", "socket"].includes(action)) { setTool(action as GarageTool); return; }
+      const step = event.shiftKey ? 10 : 1;
+      const dx = action === "left" ? -step : action === "right" ? step : 0;
+      const dy = action === "up" ? -step : action === "down" ? step : 0;
+      if (selectedId && (dx || dy)) setHistory(current => {
+        const node = current.scene.nodes.find(item => item.id === selectedId);
+        if (!node || node.locked) return current;
+        return changeGarageHistory(current, validateGarageScene({ ...current.scene,
+          nodes: current.scene.nodes.map(item => item.id === node.id ? { ...item, x: Math.max(-200000, Math.min(200000, item.x + dx)), y: Math.max(-200000, Math.min(200000, item.y + dy)) } : item) }), !event.repeat);
+      });
     }
-  }
+    window.addEventListener("keydown", keyboard);
+    return () => window.removeEventListener("keydown", keyboard);
+  });
 
-  return <main className={styles.editor} onKeyDown={keyboard} tabIndex={-1}>
+  return <main className={styles.editor} tabIndex={-1}>
     <header className={styles.header}><Link href="/" aria-label="Вернуться в игру"><ArrowLeft size={19} /></Link>
       <div className={styles.heading}><small>МОХЛИК · ИНСТРУМЕНТЫ РАЗРАБОТКИ</small><h1>Сборщик лодки</h1></div>
       <span className={styles.saveState}>{dirty ? "Есть изменения" : revision ? "Сцена сохранена" : "Шаблон сцены"}</span>
-      <div className={styles.row}><button type="button" onClick={undo} disabled={!history.past.length || busy} title="Отменить"><Undo2 size={17} /></button>
-        <button type="button" onClick={redo} disabled={!history.future.length || busy} title="Повторить"><Redo2 size={17} /></button>
+      <div className={styles.row}><button type="button" onClick={undo} disabled={!history.past.length || busy} aria-label="Отменить (Ctrl/⌘ Z)" title="Отменить · Ctrl/⌘ Z"><Undo2 size={17} /></button>
+        <button type="button" onClick={redo} disabled={!history.future.length || busy} aria-label="Повторить (Ctrl/⌘ Shift Z или Ctrl/⌘ Y)" title="Повторить · Ctrl/⌘ Shift Z или Ctrl/⌘ Y"><Redo2 size={17} /></button>
         <button type="button" onClick={exportScene} disabled={!ready || busy}><Download size={16} />JSON</button>
-        <button className={styles.primary} type="button" onClick={save} disabled={!revision || busy || !dirty}><Save size={16} />В проект</button></div>
+        <button className={styles.primary} type="button" onClick={save} title="Сохранить в проект · Ctrl/⌘ S" disabled={!revision || busy || !dirty}><Save size={16} />В проект</button></div>
     </header>
     <div className={styles.status} role="status">{notice}{draftAvailable && <span><button type="button" disabled={busy} onClick={restoreDraft}>Восстановить черновик</button><button type="button" disabled={busy} onClick={() => { try { localStorage.removeItem(DRAFT_KEY); } catch {} setDraftAvailable(false); }}>Пропустить</button></span>}</div>
     <div className={styles.workspace} inert={busy || !ready}>
@@ -206,11 +217,18 @@ export function GarageEditor() {
           <div className={styles.deviceFrame} style={{ width: device.width * previewScale, height: device.height * previewScale }}>
             <div style={{ transform: `scale(${previewScale})`, transformOrigin: "top left" }}>
               <GarageStage scene={scene} device={device} selectedId={selectedId} tool={tool} guides={guides} clean={clean} onSelect={setSelectedId}
-                onChange={change} onGestureEnd={before => setHistory(current => JSON.stringify(current.scene) === JSON.stringify(before) ? current : { ...current, past: [...current.past, before].slice(-40), future: [] })} />
+                onChange={change} onGestureEnd={before => setHistory(current => finishGarageHistoryGesture(current, before))} />
             </div>
           </div>
         </div>
         <div className={styles.previewFoot}><span>{device.width} × {device.height} · {Math.round(previewScale * 100)}%</span><label><input type="checkbox" checked={guides} onChange={event => setGuides(event.target.checked)} />Безопасная область</label><span>Панель улучшений — отдельный макет UI</span></div>
+        <details className={styles.shortcuts}><summary>Горячие клавиши</summary>
+          <dl><dt>Ctrl/⌘ Z</dt><dd>Отменить действие</dd><dt>Ctrl/⌘ Shift Z · Ctrl/⌘ Y</dt><dd>Повторить</dd>
+            <dt>Ctrl/⌘ D</dt><dd>Дубликат детали</dd><dt>Ctrl/⌘ S</dt><dd>Сохранить в проект</dd>
+            <dt>← ↑ ↓ → · Shift</dt><dd>Сдвиг на 1 · на 10</dd><dt>Delete · Backspace</dt><dd>Удалить деталь</dd>
+            <dt>V · H · P · A</dt><dd>Двигать · камера · опора · крепление</dd><dt>Esc</dt><dd>Вернуться к перемещению</dd></dl>
+          <p>Работают и в русской раскладке. В полях ввода остаются обычные команды редактирования текста.</p>
+        </details>
         <details className={styles.camera}><summary>Кадр {cameraMode === "portrait" ? "телефона / планшета" : "альбомного экрана"}</summary><div className={styles.fields}>
           {(["x", "y", "width"] as const).map(key => <GarageNumber key={key} label={key === "width" ? "Ширина кадра" : key.toUpperCase()} value={camera[key]} step={10} min={key === "width" ? 300 : -10000}
             onChange={value => change({ ...scene, cameras: { ...scene.cameras, [cameraMode]: { ...camera, [key]: value } } })} />)}
