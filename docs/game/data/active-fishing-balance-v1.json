@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "status": "proposal-not-runtime",
+  "version": "active-fishing-v1-draft",
+  "scope": "Instant active fishing replaces new shore/shore_camp jobs and timed boat trips; no live rules changed.",
+  "engineDecision": "Basic visual engine initially; paid speed upgrades deferred until controllable movement between fishing spots. No catch-chance bonus assumed.",
+  "flow": { "starterHomeLevel": 1, "outboundSeconds": 0, "inboundSeconds": 0, "tripCooldownSeconds": 0, "maxCastsPerTrip": null, "actorExclusive": true },
+  "loot": { "fishBps": 6500, "weedBps": 3500, "blueprintBps": 0, "maxConsecutiveNonFish": 2 },
+  "futureBlueprintLoot": { "fishBps": 6500, "weedBps": 3400, "blueprintBps": 100, "maxConsecutiveNonFish": 2 },
+  "futureBlueprint": { "enabled": false, "piecesPerBlueprint": 6, "repeatableSameBuff": false, "categoryBonusCapBps": 500 },
+  "timing": { "castAndResultSeconds": 5, "weedPullSeconds": 3, "blueprintPullSeconds": 5, "tripPresentationSeconds": 2 },
+  "fightByRarity": {
+    "common": { "successSeconds": 32, "failureSeconds": 20 },
+    "uncommon": { "successSeconds": 36, "failureSeconds": 24 },
+    "rare": { "successSeconds": 42, "failureSeconds": 28 },
+    "epic": { "successSeconds": 48, "failureSeconds": 32 },
+    "legendary": { "successSeconds": 56, "failureSeconds": 38 }
+  },
+  "baitCostPerAttempt": true,
+  "paidBaitSupply": { "mode": "unlimited-coin-purchase-proposal", "prices": "current-catalog", "requiredHomeLevel": "current-catalog", "batchSizes": [1, 10, 25], "batchDiscountBps": 0, "purchasePractice": 0, "purchaseAccountXp": 0 },
+  "progression": { "successPracticePerActiveSecond": 1, "failurePracticePerActiveSecond": 0.25, "nonFishPracticePerActiveSecond": 0, "maxActiveSecondsPerCast": 90, "practiceSecondsPerAccountXp": 45, "carryFractionalRemainder": true },
+  "legacyLandingNet": { "zoneWidthBps": 4000, "assumedSuccessBonusBps": 800, "scope": "Migration-only forecast for already-owned net; no new purchasable hull tier." },
+  "hulls": [
+    { "level": 1, "name": "Рабочий корпус", "zoneWidthBps": 3200, "assumedSuccessBonusBps": 0, "requiredHomeLevel": 1, "workshopLevel": 0, "buildSeconds": 0, "cost": { "coins": 0, "items": {} } },
+    { "level": 2, "name": "Устойчивый корпус", "zoneWidthBps": 3500, "assumedSuccessBonusBps": 300, "requiredHomeLevel": 2, "workshopLevel": 1, "buildSeconds": 900, "cost": { "coins": 400, "items": { "planks": 4, "rope": 2 } } },
+    { "level": 3, "name": "Сбалансированный корпус", "zoneWidthBps": 3800, "assumedSuccessBonusBps": 600, "requiredHomeLevel": 3, "workshopLevel": 2, "buildSeconds": 1200, "cost": { "coins": 1200, "items": { "planks": 6, "rope": 3, "metal_parts": 1 } } }
+  ],
+  "crates": [
+    { "level": 1, "name": "Малый ящик", "capacity": 3, "requiredHomeLevel": 1, "workshopLevel": 0, "buildSeconds": 0, "cost": { "coins": 0, "items": {} } },
+    { "level": 2, "name": "Рыбный ящик", "capacity": 5, "requiredHomeLevel": 2, "workshopLevel": 1, "buildSeconds": 600, "cost": { "coins": 200, "items": { "planks": 2, "rope": 1 } } },
+    { "level": 3, "name": "Вместительный ящик", "capacity": 8, "requiredHomeLevel": 3, "workshopLevel": 2, "buildSeconds": 900, "cost": { "coins": 600, "items": { "planks": 4, "rope": 2 } } }
+  ],
+  "tanks": [
+    { "id": "shallows", "name": "Прибрежный плёс", "level": 1, "requiredHomeLevel": 1, "workshopLevel": 0, "buildSeconds": 0, "allowedSpecies": ["fish", "fish_silverfin", "fish_rudd", "fish_reedperch", "fish_dace", "fish_mooncarp"], "cost": { "coins": 0, "items": {} } },
+    { "id": "backwater", "name": "Камышовая заводь", "level": 2, "requiredHomeLevel": 2, "workshopLevel": 1, "buildSeconds": 900, "allowedSpecies": ["fish", "fish_silverfin", "fish_rudd", "fish_reedperch", "fish_dace", "fish_bream", "fish_mooncarp", "fish_pike", "fish_eel"], "cost": { "coins": 600, "items": { "planks": 3, "rope": 2 } } },
+    { "id": "deepwater", "name": "Глубокие воды", "level": 3, "requiredHomeLevel": 3, "workshopLevel": 2, "buildSeconds": 1200, "allowedSpecies": ["fish", "fish_silverfin", "fish_rudd", "fish_reedperch", "fish_dace", "fish_bream", "fish_mooncarp", "fish_pike", "fish_eel", "fish_sturgeon", "fish_mirror_koi", "fish_shark"], "cost": { "coins": 1800, "items": { "planks": 4, "rope": 3, "metal_parts": 2 } } }
+  ],
+  "profiles": [
+    { "id": "novice", "name": "Новичок", "timeMultiplier": 1.2, "successBpsByRarity": { "common": 6800, "uncommon": 6000, "rare": 5000, "epic": 3800, "legendary": 2800 } },
+    { "id": "regular", "name": "Освоивший управление", "timeMultiplier": 1, "successBpsByRarity": { "common": 8600, "uncommon": 8000, "rare": 7200, "epic": 6200, "legendary": 5000 } },
+    { "id": "expert", "name": "Опытный игрок", "timeMultiplier": 0.8, "successBpsByRarity": { "common": 9800, "uncommon": 9600, "rare": 9300, "epic": 8700, "legendary": 7800 } }
+  ],
+  "scenarios": [
+    { "id": "starter", "name": "Бесплатный старт", "homeLevel": 1, "tankId": "shallows", "rodId": "reed_rod", "hookId": "bare_hook", "baitId": null, "hullLevel": 1, "crateLevel": 1 },
+    { "id": "river", "name": "Необычный улов", "homeLevel": 2, "tankId": "shallows", "rodId": "river_rod", "hookId": "barbed_hook", "baitId": "worm_bait", "hullLevel": 2, "crateLevel": 2 },
+    { "id": "rare", "name": "Редкая рыба", "homeLevel": 2, "tankId": "backwater", "rodId": "willow_rod", "hookId": "silver_hook", "baitId": "glow_bait", "hullLevel": 2, "crateLevel": 2 },
+    { "id": "epic", "name": "Глубокая рыбалка", "homeLevel": 3, "tankId": "deepwater", "rodId": "tide_rod", "hookId": "tide_hook", "baitId": "firefly_bait", "hullLevel": 3, "crateLevel": 3 },
+    { "id": "legendary", "name": "Легендарный улов", "homeLevel": 4, "tankId": "deepwater", "rodId": "starfall_rod", "hookId": "leviathan_hook", "baitId": "star_bait", "hullLevel": 3, "crateLevel": 3 }
+  ],
+  "assumptions": [
+    "Skill success probabilities and fight durations are forecast assumptions, not measured V4/V5 gameplay and not hidden reward rolls.",
+    "Loot is fixed at cast start; a won fish challenge always lands its predetermined fish. No secondary random failure.",
+    "Travel, return and cooldown are zero. Presentation seconds are an optional skippable scene transition, never a server reward gate.",
+    "Free basic fishing stays available; paid bait is optional and one portion is spent per started cast. Paid supply must be replenishable without a six-hour stock wait.",
+    "No daily fish cap, fatigue, durability tax or fuel refill timer is assumed. Intense play earns more resources than short daily sessions.",
+    "Prices and existing tackle class preferences are read from the live economy catalog. No sale, recipe, XP or gameplay changes are applied by this proposal.",
+    "Future blueprint finding is disabled until storage, recipes and bounded passive effects exist; its former chance is weeds, never an unusable placeholder item.",
+    "An engine catch-rate or luck bonus is not assumed. Crate capacity improves convenience, not a hard daily income budget.",
+    "Stationary rates exclude human breaks, inventory limits, food production, orders/market proceeds and demand saturation. They do not establish a 24–25 day progression result."
+  ]
+}
