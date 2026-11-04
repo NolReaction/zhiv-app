@@ -88,6 +88,11 @@ export function validateGarageScene(input) {
       x: number(node.x, "Слой X", -200_000, 200_000), y: number(node.y, "Слой Y", -200_000, 200_000),
       width: number(node.width, "Ширина слоя", .001, 20_000), height: number(node.height, "Высота слоя", .001, 20_000),
       scale: number(node.scale, "Масштаб слоя", .001, 100), rotation: number(node.rotation, "Поворот слоя", -36_000, 36_000),
+      ...(node.scaleX === undefined ? {} : { scaleX: number(node.scaleX, "Ширина слоя по X", .001, 1000) }),
+      ...(node.scaleY === undefined ? {} : { scaleY: number(node.scaleY, "Высота слоя по Y", .001, 1000) }),
+      ...(node.flipX === undefined ? {} : { flipX: boolean(node.flipX, "Отражение X") }),
+      ...(node.flipY === undefined ? {} : { flipY: boolean(node.flipY, "Отражение Y") }),
+      ...(node.skewX === undefined ? {} : { skewX: number(node.skewX, "Наклон перспективы", -89.9999, 89.9999) }),
       pivotX: number(node.pivotX, "Опора X", 0, 1), pivotY: number(node.pivotY, "Опора Y", 0, 1), zIndex,
       visible: boolean(node.visible, "Видимость слоя"), locked: boolean(node.locked, "Блокировка слоя"), sockets };
   });
@@ -109,8 +114,16 @@ export function validateGarageScene(input) {
     }
     if (worldScale < 1e-6 || worldScale > 1e6) throw new Error("Суммарный масштаб вложенных слоёв выходит за допустимые пределы.");
   }
-  return { schemaVersion: 1, canvas: { width: number(canvas.width, "Ширина холста", 1, 20_000),
+  const result = { schemaVersion: 1, canvas: { width: number(canvas.width, "Ширина холста", 1, 20_000),
     height: number(canvas.height, "Высота холста", 1, 20_000) }, cameras: { portrait: camera("portrait"), landscape: camera("landscape") }, assets, nodes };
+  for (const node of nodes) {
+    const [a, b, c, d] = getGarageNodeMatrix(result, node.id);
+    const maximum = (Math.hypot(a + d, b - c) + Math.hypot(a - d, b + c)) / 2;
+    const minimum = Math.abs(a * d - b * c) / maximum;
+    if (!Number.isFinite(maximum) || minimum < 1e-6 || maximum > 1e6)
+      throw new Error("Суммарный масштаб вложенных слоёв выходит за допустимые пределы.");
+  }
+  return /** @type {GarageScene} */ (result);
 }
 
 /** @param {GarageMatrix} left @param {GarageMatrix} right @returns {GarageMatrix} */
@@ -121,9 +134,13 @@ function multiply(left, right) {
 
 /** @param {GarageNode} node @returns {GarageMatrix} */
 function localMatrix(node) {
-  const angle = node.rotation * Math.PI / 180, a = Math.cos(angle) * node.scale, b = Math.sin(angle) * node.scale;
-  return [a, b, -b, a, node.x - a * node.pivotX * node.width + b * node.pivotY * node.height,
-    node.y - b * node.pivotX * node.width - a * node.pivotY * node.height];
+  const angle = node.rotation * Math.PI / 180, cosine = Math.cos(angle), sine = Math.sin(angle);
+  const sx = node.scale * (node.scaleX ?? 1) * (node.flipX ? -1 : 1);
+  const sy = node.scale * (node.scaleY ?? 1) * (node.flipY ? -1 : 1);
+  const shear = Math.tan((node.skewX ?? 0) * Math.PI / 180);
+  const a = cosine * sx, b = sine * sx, c = (cosine * shear - sine) * sy, d = (sine * shear + cosine) * sy;
+  return [a, b, c, d, node.x - a * node.pivotX * node.width - c * node.pivotY * node.height,
+    node.y - b * node.pivotX * node.width - d * node.pivotY * node.height];
 }
 
 /** @param {GarageMatrix} matrix @param {GaragePoint} point @returns {GaragePoint} */
@@ -208,11 +225,89 @@ export function reparentGarageNode(scene, id, parentId, socketId = null) {
   const hierarchy = { ...scene, nodes: scene.nodes.map(value => value.id === id ? candidate : value) };
   const parent = getGarageParentMatrix(hierarchy, candidate);
   const local = multiply(inverseMatrix(parent), getGarageNodeMatrix(scene, id));
-  const scale = Math.hypot(local[0], local[1]);
-  const changed = { ...candidate, scale, rotation: Math.atan2(local[1], local[0]) * 180 / Math.PI,
-    x: local[4] + local[0] * node.pivotX * node.width + local[2] * node.pivotY * node.height,
-    y: local[5] + local[1] * node.pivotX * node.width + local[3] * node.pivotY * node.height };
+  const changed = nodeWithLocalMatrix(candidate, local);
   return validateGarageScene({ ...scene, nodes: scene.nodes.map(value => value.id === id ? changed : value) });
+}
+
+/** Canonical QR decomposition also preserves reflection and shear induced by a
+ * rotated nonuniform parent. A scale/rotation-only decomposition loses pixels.
+ * @param {GarageNode} node @param {GarageMatrix} matrix @returns {GarageNode} */
+function nodeWithLocalMatrix(node, matrix) {
+  const [a, b, c, d, e, f] = matrix, sx = Math.hypot(a, b), determinant = a * d - b * c;
+  if (sx < 1e-12 || Math.abs(determinant) < 1e-20) throw new Error("Невозможно подогнать вырожденный слой.");
+  const sy = determinant / sx, shear = (a * c + b * d) / determinant;
+  const scale = Math.max(.001, Math.min(100, Math.sqrt(sx * Math.abs(sy))));
+  return { ...node, scale, scaleX: sx / scale, scaleY: Math.abs(sy) / scale,
+    flipX: false, flipY: sy < 0, skewX: Math.atan(shear) * 180 / Math.PI,
+    rotation: Math.atan2(b, a) * 180 / Math.PI,
+    x: e + a * node.pivotX * node.width + c * node.pivotY * node.height,
+    y: f + b * node.pivotX * node.width + d * node.pivotY * node.height };
+}
+
+/** Change the normalized pivot while preserving the complete image and children.
+ * @param {GarageScene} scene @param {string} id @param {GaragePoint} pivot @returns {GarageScene} */
+export function moveGaragePivot(scene, id, pivot) {
+  const node = scene.nodes.find(candidate => candidate.id === id);
+  if (!node) throw new Error("Слой не найден.");
+  if (node.locked) throw new Error("Сначала открепите слой.");
+  const pivotX = number(pivot.x, "Опора X", 0, 1), pivotY = number(pivot.y, "Опора Y", 0, 1);
+  const [a, b, c, d] = localMatrix(node), dx = (pivotX - node.pivotX) * node.width, dy = (pivotY - node.pivotY) * node.height;
+  const changed = { ...node, pivotX, pivotY, x: node.x + a * dx + c * dy, y: node.y + b * dx + d * dy };
+  return validateGarageScene({ ...scene, nodes: scene.nodes.map(item => item.id === id ? changed : item) });
+}
+
+/** A one-shot world fit keeps supports independent of the hull hierarchy.
+ * Source coordinates are image pixels; target coordinates are world pixels.
+ * The existing fitted shape is rotated/scaled as a whole, never reset.
+ * @param {GarageScene} scene @param {string} id
+ * @param {[GaragePoint, GaragePoint]} source @param {[GaragePoint, GaragePoint]} target
+ * @returns {GarageScene} */
+export function alignGarageNodeToPoints(scene, id, source, target) {
+  const node = scene.nodes.find(candidate => candidate.id === id);
+  if (!node) throw new Error("Слой не найден.");
+  if (node.locked) throw new Error("Сначала открепите слой.");
+  for (const point of [...source, ...target]) {
+    number(point.x, "Точка X", -200_000, 200_000); number(point.y, "Точка Y", -200_000, 200_000);
+  }
+  const world = getGarageNodeMatrix(scene, id), from = source.map(point => transformGaragePoint(world, point));
+  const dx = from[1].x - from[0].x, dy = from[1].y - from[0].y;
+  const tx = target[1].x - target[0].x, ty = target[1].y - target[0].y, lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared < 1e-12 || tx * tx + ty * ty < 1e-12) throw new Error("Для подгонки выберите две разные точки.");
+  const a = (tx * dx + ty * dy) / lengthSquared, b = (ty * dx - tx * dy) / lengthSquared;
+  const fit = /** @type {GarageMatrix} */ ([a, b, -b, a,
+    target[0].x - a * from[0].x + b * from[0].y, target[0].y - b * from[0].x - a * from[0].y]);
+  const local = multiply(inverseMatrix(getGarageParentMatrix(scene, node)), multiply(fit, world));
+  const changed = nodeWithLocalMatrix(node, local);
+  return validateGarageScene({ ...scene, nodes: scene.nodes.map(item => item.id === id ? changed : item) });
+}
+
+/** Align a source socket (or pivot when null) to a target socket/pivot without
+ * changing parent, scale, rotation or reflection. Supports do not follow boats.
+ * @param {GarageScene} scene @param {string} id @param {string|null} sourceSocketId
+ * @param {string} targetId @param {string|null} targetSocketId @returns {GarageScene} */
+export function alignGarageNodeToSocket(scene, id, sourceSocketId, targetId, targetSocketId) {
+  const node = scene.nodes.find(candidate => candidate.id === id), target = scene.nodes.find(candidate => candidate.id === targetId);
+  if (!node || !target) throw new Error("Слой не найден.");
+  if (node.locked) throw new Error("Сначала открепите слой.");
+  let ancestor = target;
+  while (ancestor) {
+    if (ancestor.id === id) throw new Error("Точка назначения не может находиться на самом слое или его потомке.");
+    ancestor = scene.nodes.find(candidate => candidate.id === ancestor.parentId);
+  }
+  const sourcePoint = garageNodeContactPoint(node, sourceSocketId), targetPoint = garageNodeContactPoint(target, targetSocketId);
+  const from = transformGaragePoint(getGarageNodeMatrix(scene, id), sourcePoint);
+  const to = transformGaragePoint(getGarageNodeMatrix(scene, targetId), targetPoint);
+  const parent = getGarageParentMatrix(scene, node), localFrom = inverseGaragePoint(parent, from), localTo = inverseGaragePoint(parent, to);
+  const changed = { ...node, x: node.x + localTo.x - localFrom.x, y: node.y + localTo.y - localFrom.y };
+  return validateGarageScene({ ...scene, nodes: scene.nodes.map(item => item.id === id ? changed : item) });
+}
+
+/** @param {GarageNode} node @param {string|null} socketId @returns {GaragePoint} */
+export function garageNodeContactPoint(node, socketId) {
+  if (socketId === null) return { x: node.pivotX * node.width, y: node.pivotY * node.height };
+  const socket = node.sockets.find(item => item.id === socketId);
+  if (!socket) throw new Error("Крепление слоя не найдено.");
+  return { x: socket.x * node.width, y: socket.y * node.height };
 }
 
 /** A viewport never stretches artwork. Its chosen camera defines visible world width.

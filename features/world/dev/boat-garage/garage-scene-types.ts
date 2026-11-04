@@ -27,6 +27,12 @@ export type GarageNode = {
   width: number;
   height: number;
   scale: number;
+  /** Optional affine fitting keeps old scene JSON unchanged at identity. */
+  scaleX?: number;
+  scaleY?: number;
+  flipX?: boolean;
+  flipY?: boolean;
+  skewX?: number;
   rotation: number;
   pivotX: number;
   pivotY: number;

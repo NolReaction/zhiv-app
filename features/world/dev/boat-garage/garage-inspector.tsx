@@ -1,7 +1,8 @@
 "use client";
 
 import { Copy, Trash2 } from "lucide-react";
-import { reparentGarageNode } from "./garage-scene-model.mjs";
+import { useState } from "react";
+import { alignGarageNodeToPoints, alignGarageNodeToSocket, garageNodeContactPoint, getGarageNodeMatrix, reparentGarageNode, transformGaragePoint } from "./garage-scene-model.mjs";
 import type { GarageNode, GarageScene } from "./garage-scene-types";
 import styles from "./garage-editor.module.css";
 
@@ -38,20 +39,34 @@ export function GarageInspector({ scene, node, onChange, onDuplicate, onRemove, 
     <fieldset disabled={node.locked} className={styles.fieldset}>
       <div className={styles.fields}>{number("x", "X")}{number("y", "Y")}{number("scale", "Масштаб", .01, .001, 100)}
         {number("rotation", "Поворот °", 1, -3600, 3600)}{number("zIndex", "Слой", 1, -10000, 10000)}</div>
-      <p className={styles.hint}>Позиция задаётся относительно родителя. Масштаб сохраняет пропорции изображения.</p>
-      <label className={styles.field}><span>Изображение</span><select value={node.assetId ?? ""} onChange={event => {
+      <p className={styles.hint}>Позиция задаётся относительно родителя. Общий масштаб сохраняет выбранные пропорции.</p>
+      <details><summary>Форма и отражение</summary>
+        <div className={styles.fields}>
+          <GarageNumber label="Ширина %" value={(node.scaleX ?? 1) * 100} step={1} min={.1} max={100000} onChange={value => patch({ scaleX: value / 100 })} />
+          <GarageNumber label="Высота %" value={(node.scaleY ?? 1) * 100} step={1} min={.1} max={100000} onChange={value => patch({ scaleY: value / 100 })} />
+          <GarageNumber label="Скос °" value={node.skewX ?? 0} step={1} min={-89} max={89} onChange={value => patch({ skewX: value })} />
+        </div>
+        <div className={styles.checks}>
+          <label><input type="checkbox" checked={node.flipX ?? false} onChange={event => patch({ flipX: event.target.checked })} />Отразить X</label>
+          <label><input type="checkbox" checked={node.flipY ?? false} onChange={event => patch({ flipY: event.target.checked })} />Отразить Y</label>
+        </div>
+        <button type="button" onClick={() => patch({ scaleX: 1, scaleY: 1, flipX: false, flipY: false, skewX: 0 })}>Сбросить форму</button>
+        <p className={styles.hint}>Высотой подгоняйте стойку под корпус, шириной — ложемент. Сильный скос не исправляет различие ракурсов рисунков.</p>
+      </details>
+      <label className={styles.field}><span>Изображение</span><select aria-label="Изображение" value={node.assetId ?? ""} onChange={event => {
         const asset = scene.assets.find(item => item.id === event.target.value);
         patch(asset ? { assetId: asset.id, width: asset.width, height: asset.height, scale: node.width * node.scale / asset.width } : { assetId: null });
       }}><option value="">Группа без изображения</option>{scene.assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
       <h3>Крепление</h3>
-      <label className={styles.field}><span>Родитель</span><select value={node.parentId ?? ""} onChange={event => attach(event.target.value || null, null)}>
+      <label className={styles.field}><span>Родитель</span><select aria-label="Родитель" value={node.parentId ?? ""} onChange={event => attach(event.target.value || null, null)}>
         <option value="">Сцена гаража</option>{scene.nodes.filter(item => item.id !== node.id).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select></label>
-      <label className={styles.field}><span>Точка родителя</span><select value={node.socketId ?? ""} disabled={!parent} onChange={event => attach(node.parentId, event.target.value || null)}>
+      <label className={styles.field}><span>Точка родителя</span><select aria-label="Точка родителя" value={node.socketId ?? ""} disabled={!parent} onChange={event => attach(node.parentId, event.target.value || null)}>
         <option value="">Начало координат родителя</option>{parent?.sockets.map(socket => <option key={socket.id} value={socket.id}>{socket.name}</option>)}
       </select></label>
       <button type="button" disabled={!node.socketId} onClick={() => patch({ x: 0, y: 0 })}>Совместить с креплением</button>
       <p className={styles.hint}>Смена родителя сохраняет положение. «Совместить» ставит жёлтую опорную точку детали на бирюзовое крепление.</p>
+      <GarageContactFit key={node.id} scene={scene} node={node} onChange={onChange} onError={onError} />
       <h3>Точки на этой детали</h3>
       <p className={styles.hint}>Инструмент «Крепление»: нажмите на деталь. «Опора»: задайте точку, которой она крепится.</p>
       {node.sockets.map(socket => <div key={socket.id} className={styles.socket}>
@@ -69,4 +84,54 @@ export function GarageInspector({ scene, node, onChange, onDuplicate, onRemove, 
       <button type="button" disabled={node.locked} onClick={onRemove}><Trash2 size={15} />Удалить</button></div>
     <p className={styles.hint}>Стрелки — сдвиг на 1; Shift — на 10. Delete — удалить. Ctrl/⌘ Z — отменить; Ctrl/⌘ Y — повторить. Ctrl/⌘ D — дубликат.</p>
   </aside>;
+}
+
+/** One-shot contact alignment deliberately leaves fixtures out of the boat group. */
+function GarageContactFit({ scene, node, onChange, onError }: {
+  scene: GarageScene; node: GarageNode; onChange: (scene: GarageScene) => void; onError: (message: string) => void;
+}) {
+  const targets = scene.nodes.filter(item => {
+    let ancestor: GarageNode | undefined = item;
+    while (ancestor) {
+      if (ancestor.id === node.id) return false;
+      const parentId: string | null = ancestor.parentId;
+      ancestor = scene.nodes.find(candidate => candidate.id === parentId);
+    }
+    return true;
+  });
+  const [targetId, setTargetId] = useState(() => targets.find(item => item.sockets.length)?.id ?? "");
+  const [sourceId, setSourceId] = useState(node.sockets[0]?.id ?? "");
+  const [targetSocketId, setTargetSocketId] = useState("");
+  const [sourceSecondId, setSourceSecondId] = useState(node.sockets[1]?.id ?? "");
+  const [targetSecondId, setTargetSecondId] = useState("");
+  const [twoPoints, setTwoPoints] = useState(false);
+  const target = targets.find(item => item.id === targetId);
+  function fit() {
+    if (!target) return;
+    try {
+      if (twoPoints) {
+        const world = getGarageNodeMatrix(scene, target.id);
+        onChange(alignGarageNodeToPoints(scene, node.id,
+          [garageNodeContactPoint(node, sourceId || null), garageNodeContactPoint(node, sourceSecondId || null)],
+          [transformGaragePoint(world, garageNodeContactPoint(target, targetSocketId || null)),
+            transformGaragePoint(world, garageNodeContactPoint(target, targetSecondId || null))]));
+      } else onChange(alignGarageNodeToSocket(scene, node.id, sourceId || null, target.id, targetSocketId || null));
+    } catch (error) { onError(error instanceof Error ? error.message : "Не удалось совместить точки."); }
+  }
+  const pointSelect = (label: string, value: string, setValue: (value: string) => void, item: GarageNode | undefined) =>
+    <label className={styles.field}><span>{label}</span><select aria-label={label} value={value} onChange={event => setValue(event.target.value)} disabled={!item}>
+      <option value="">Опорная точка</option>{item?.sockets.map(socket => <option key={socket.id} value={socket.id}>{socket.name}</option>)}
+    </select></label>;
+  return <details><summary>Подгонка контакта</summary>
+    <p className={styles.hint}>Перенесите точку стойки к точке корпуса, сохранив стойку независимой. По двум точкам также подгоняются размер и поворот.</p>
+    <label className={styles.field}><span>Слой назначения</span><select aria-label="Слой назначения" value={targetId} onChange={event => {
+      setTargetId(event.target.value); setTargetSocketId(""); setTargetSecondId("");
+    }}><option value="">Выберите слой</option>{targets.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+    {pointSelect("Точка детали", sourceId, setSourceId, node)}
+    {pointSelect("Точка назначения", targetSocketId, setTargetSocketId, target)}
+    <label className={styles.field}><span><input type="checkbox" checked={twoPoints} onChange={event => setTwoPoints(event.target.checked)} /> По двум точкам</span></label>
+    {twoPoints && <>{pointSelect("Вторая точка детали", sourceSecondId, setSourceSecondId, node)}
+      {pointSelect("Вторая точка назначения", targetSecondId, setTargetSecondId, target)}</>}
+    <button type="button" disabled={!target} onClick={fit}>{twoPoints ? "Подогнать по двум точкам" : "Совместить точки"}</button>
+  </details>;
 }

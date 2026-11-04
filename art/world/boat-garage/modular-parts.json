@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Editor example only; not live fishing artwork replacement.",
+  "camera": "Near broadside three-quarter, slightly above; stern left, bow right. Hull is the camera/light master.",
+  "sourcePolicy": "Original generated project artwork; PNG masters retain alpha and are not trimmed. Previous front-facing stand remains unchanged.",
+  "assets": [
+    {
+      "id": "starter-hull",
+      "name": "Корпус · уровень 0",
+      "src": "/world/boat-garage/starter-hull.webp",
+      "width": 1752,
+      "height": 897,
+      "master": "art/world/boat-garage/starter-hull.png"
+    },
+    {
+      "id": "starter-motor",
+      "name": "Первый двигатель",
+      "src": "/world/boat-garage/starter-motor.webp",
+      "width": 1145,
+      "height": 1374,
+      "master": "art/world/boat-garage/starter-motor.png"
+    },
+    {
+      "id": "stand-side",
+      "name": "Боковая опора",
+      "src": "/world/boat-garage/stand-side.webp",
+      "width": 1448,
+      "height": 1086,
+      "master": "art/world/boat-garage/stand-side.png"
+    }
+  ],
+  "contacts": {
+    "hull": {
+      "supportLeft": [
+        0.25,
+        0.891862
+      ],
+      "supportRight": [
+        0.7,
+        0.837235
+      ],
+      "engine": [
+        0.08,
+        0.5
+      ]
+    },
+    "sideStand": {
+      "contact": [
+        0.5,
+        0.14
+      ],
+      "foot": [
+        0.5,
+        0.935
+      ]
+    },
+    "motor": {
+      "clamp": [
+        0.67,
+        0.47
+      ]
+    }
+  },
+  "supportArtDirection": "Redesign the wide frontal U cradle as a compact vertical side-view adjustable boat keel jack. Small shallow padded saddle, threaded post, low level foot, worn olive metal and warm brass. Match the starter hull camera and upper-left light. Keep clean transparent alpha, no floor, scene or external shadow.",
+  "occlusion": "Example motor and support tops draw behind the hull. Final wrapping clamps and saddles need separate front/back images or masks; zIndex does not split a single image."
+}

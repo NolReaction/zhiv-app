@@ -2,18 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Crosshair, Download, Eye, FolderPlus, Hand, ImagePlus, Layers, MousePointer2, Redo2, Save, Undo2, Upload } from "lucide-react";
+import { ArrowLeft, Crosshair, Download, Expand, Eye, FolderPlus, Hand, ImagePlus, Layers, Maximize2, Minimize2, Minus, MousePointer2, Plus, Redo2, Save, Undo2, Upload } from "lucide-react";
 import defaultScene from "./garage-scene-default.json";
+import exampleScene from "./garage-scene-example.json";
 import { duplicateGarageNode, removeGarageNode, validateGarageScene } from "./garage-scene-model.mjs";
 import { changeGarageHistory, finishGarageHistoryGesture, getGarageShortcut, redoGarageHistory, undoGarageHistory } from "./garage-editor-shortcuts.mjs";
 import type { GarageAsset, GarageNode, GarageScene } from "./garage-scene-types";
 import { GarageInspector, GarageNumber } from "./garage-inspector";
 import { GARAGE_DEVICES, GarageStage, type GarageTool } from "./garage-stage";
+import { fitGarageEditorView, frameGarageEditorBounds, garageEditorNodeBounds, garageEditorWorldPoint, zoomGarageEditorView } from "./garage-editor-view.mjs";
 import styles from "./garage-editor.module.css";
 
 const DRAFT_KEY = "zhiv:boat-garage:scene:v1";
 const ENDPOINT = "/api/dev/boat-garage";
 const initialScene = validateGarageScene(defaultScene);
+const assemblyExample = validateGarageScene(exampleScene);
 type History = { past: GarageScene[]; scene: GarageScene; future: GarageScene[] };
 
 export function GarageEditor() {
@@ -27,12 +30,19 @@ export function GarageEditor() {
   const [revision, setRevision] = useState<string | null>(null), [saved, setSaved] = useState(JSON.stringify(initialScene));
   const [ready, setReady] = useState(false), [busy, setBusy] = useState(false), [draftAvailable, setDraftAvailable] = useState(false);
   const [previewScale, setPreviewScale] = useState(.65);
+  const [mode, setMode] = useState<"assembly" | "devices">("assembly"), [focused, setFocused] = useState(false);
+  const [surface, setSurface] = useState({ width: 800, height: 600 });
+  const [editorView, setEditorView] = useState({ x: 0, y: 0, scale: 1 });
+  const autoFit = useRef(true), previousSurface = useRef({ width: 800, height: 600 });
   const preview = useRef<HTMLDivElement>(null), imageInput = useRef<HTMLInputElement>(null), jsonInput = useRef<HTMLInputElement>(null);
   const device = GARAGE_DEVICES.find(item => item.id === deviceId)!;
   const selected = scene.nodes.find(item => item.id === selectedId);
+  const libraryAssets = [...scene.assets, ...assemblyExample.assets.filter(asset => !scene.assets.some(item => item.id === asset.id))];
   const cameraMode = device.width > device.height || device.width >= 700 ? "landscape" : "portrait";
   const camera = scene.cameras[cameraMode];
   const dirty = JSON.stringify(scene) !== saved;
+  const canvasWidth = scene.canvas.width, canvasHeight = scene.canvas.height;
+  const placementCenter = mode === "assembly" ? garageEditorWorldPoint(editorView, { x: surface.width / 2, y: surface.height / 2 }) : camera;
 
   useEffect(() => {
     let active = true;
@@ -70,10 +80,48 @@ export function GarageEditor() {
   useEffect(() => {
     const element = preview.current;
     if (!element) return;
-    const measure = () => setPreviewScale(Math.max(.12, Math.min(1, (element.clientWidth - 32) / device.width, (element.clientHeight - 32) / device.height)));
+    const measure = () => {
+      const width = Math.max(1, element.clientWidth), height = Math.max(1, element.clientHeight);
+      const previous = previousSurface.current;
+      previousSurface.current = { width, height };
+      setSurface(current => current.width === width && current.height === height ? current : { width, height });
+      setPreviewScale(Math.max(.12, Math.min(1, (width - 32) / device.width, (height - 32) / device.height)));
+      if (mode === "assembly") setEditorView(current => autoFit.current ? fitGarageEditorView({ width: canvasWidth, height: canvasHeight }, width, height)
+        : { ...current, x: current.x + (width - previous.width) / 2, y: current.y + (height - previous.height) / 2 });
+    };
     const observer = new ResizeObserver(measure); observer.observe(element); measure();
     return () => observer.disconnect();
-  }, [device]);
+  }, [device, mode, canvasWidth, canvasHeight]);
+
+  useEffect(() => {
+    const element = preview.current;
+    if (!element || mode !== "assembly") return;
+    const wheel = (event: WheelEvent) => {
+      if (busy || !ready) return;
+      event.preventDefault();
+      const rect = element.getBoundingClientRect(), delta = Math.max(-800, Math.min(800, event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1)));
+      autoFit.current = false;
+      setEditorView(current => zoomGarageEditorView(current, current.scale * Math.exp(-delta * .0015),
+        { x: event.clientX - rect.left, y: event.clientY - rect.top }));
+    };
+    element.addEventListener("wheel", wheel, { passive: false });
+    return () => element.removeEventListener("wheel", wheel);
+  }, [mode, busy, ready]);
+
+  function fitView() {
+    autoFit.current = true;
+    setEditorView(fitGarageEditorView(scene.canvas, surface.width, surface.height));
+  }
+  function zoomView(scale: number) {
+    autoFit.current = false;
+    setEditorView(current => zoomGarageEditorView(current, scale, { x: surface.width / 2, y: surface.height / 2 }));
+  }
+  function frameSelected() {
+    const bounds = selectedId && garageEditorNodeBounds(scene, selectedId);
+    if (!bounds) return;
+    autoFit.current = false;
+    setEditorView(frameGarageEditorBounds(bounds, surface.width, surface.height, 60));
+  }
 
   function change(next: GarageScene, record = true) {
     try {
@@ -91,10 +139,10 @@ export function GarageEditor() {
   }
   function add(asset?: GarageAsset) {
     const node: GarageNode = { id: `part-${crypto.randomUUID().slice(0, 8)}`, name: asset?.name ?? "Новая группа", assetId: asset?.id ?? null,
-      parentId: null, socketId: null, x: camera.x, y: camera.y, width: asset?.width ?? 1000, height: asset?.height ?? 650,
+      parentId: null, socketId: null, x: placementCenter.x, y: placementCenter.y, width: asset?.width ?? 1000, height: asset?.height ?? 650,
       scale: asset ? Math.min(350 / asset.width, 220 / asset.height) : 1, rotation: 0, pivotX: .5, pivotY: .5,
       zIndex: 20, visible: true, locked: false, sockets: [] };
-    change({ ...scene, nodes: [...scene.nodes, node] }); setSelectedId(node.id);
+    change({ ...scene, assets: asset && !scene.assets.some(item => item.id === asset.id) ? [...scene.assets, asset] : scene.assets, nodes: [...scene.nodes, node] }); setSelectedId(node.id);
   }
   async function uploadImage(file: File) {
     setBusy(true);
@@ -105,7 +153,7 @@ export function GarageEditor() {
       if (!response.ok) throw new Error(body.message ?? "Не удалось загрузить изображение.");
       const asset: GarageAsset = body.asset;
       const node: GarageNode = { id: `part-${crypto.randomUUID().slice(0, 8)}`, name: asset.name, assetId: asset.id,
-        parentId: null, socketId: null, x: camera.x, y: camera.y, width: asset.width, height: asset.height,
+        parentId: null, socketId: null, x: placementCenter.x, y: placementCenter.y, width: asset.width, height: asset.height,
         scale: Math.min(350 / asset.width, 220 / asset.height), rotation: 0, pivotX: .5, pivotY: .5, zIndex: 20, visible: true, locked: false, sockets: [] };
       change({ ...scene, assets: scene.assets.some(item => item.id === asset.id) ? scene.assets : [...scene.assets, asset], nodes: [...scene.nodes, node] });
       setSelectedId(node.id); setNotice("Изображение добавлено. Расставьте деталь и сохраните сборку.");
@@ -161,7 +209,7 @@ export function GarageEditor() {
       if (!action) return;
       if (action === "save") { event.preventDefault(); if (!event.repeat && revision && dirty) void save(); return; }
       if (action === "undo" || action === "redo") { event.preventDefault(); if (action === "undo") undo(); else redo(); return; }
-      if (action === "escape") { event.preventDefault(); setTool("move"); setClean(false); return; }
+      if (action === "escape") { event.preventDefault(); setFocused(false); setTool("move"); setClean(false); return; }
       if (clean) return;
       event.preventDefault();
       if (action === "duplicate") { if (!event.repeat) duplicate(); return; }
@@ -181,7 +229,7 @@ export function GarageEditor() {
     return () => window.removeEventListener("keydown", keyboard);
   });
 
-  return <main className={styles.editor} tabIndex={-1}>
+  return <main className={styles.editor} data-focus={focused} tabIndex={-1}>
     <header className={styles.header}><Link href="/" aria-label="Вернуться в игру"><ArrowLeft size={19} /></Link>
       <div className={styles.heading}><small>МОХЛИК · ИНСТРУМЕНТЫ РАЗРАБОТКИ</small><h1>Сборщик лодки</h1></div>
       <span className={styles.saveState}>{dirty ? "Есть изменения" : revision ? "Сцена сохранена" : "Шаблон сцены"}</span>
@@ -197,7 +245,7 @@ export function GarageEditor() {
         <button className={styles.upload} type="button" disabled={busy || !ready} onClick={() => imageInput.current?.click()}><ImagePlus size={18} />Загрузить PNG / WebP</button>
         <input ref={imageInput} hidden type="file" accept="image/png,image/webp,image/jpeg" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadImage(file); event.target.value = ""; }} />
         <input ref={jsonInput} hidden type="file" accept="application/json,.json" onChange={event => { const file = event.target.files?.[0]; if (file) void importScene(file); event.target.value = ""; }} />
-        <div className={styles.assets}>{scene.assets.map(asset => <button key={asset.id} type="button" disabled={busy} title="Добавить экземпляр на сцену" onClick={() => add(asset)}>
+        <div className={styles.assets}>{libraryAssets.map(asset => <button key={asset.id} type="button" disabled={busy} title="Добавить экземпляр на сцену" onClick={() => add(asset)}>
           {/* Raster originals stay independent from the scene layout. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={asset.src} alt="" /><span>{asset.name}</span><small>{asset.width} × {asset.height}</small></button>)}</div>
@@ -207,33 +255,54 @@ export function GarageEditor() {
           <span>{node.parentId ? "↳ " : ""}{node.name}</span><small>{node.locked ? "🔒" : node.visible ? node.zIndex : "скрыт"}</small></button>)}</div>
         <p className={styles.hint}>Корпус, мотор и снаряжение загружайте отдельными изображениями. Для Мохлика понадобятся задняя часть корпуса и передний борт.</p>
       </aside>
-      <section className={styles.center} aria-label="Предпросмотр устройств">
-        <div className={styles.deviceToolbar}>{GARAGE_DEVICES.map(item => <button type="button" key={item.id} aria-pressed={deviceId === item.id} onClick={() => setDeviceId(item.id)}>{item.name}</button>)}</div>
+      <section className={styles.center} aria-label={mode === "assembly" ? "Холст сборки" : "Предпросмотр устройств"}>
+        <div className={styles.modeToolbar}>
+          <div className={styles.modeTabs}><button type="button" aria-pressed={mode === "assembly"} onClick={() => setMode("assembly")}>Сборка</button>
+            <button type="button" aria-pressed={mode === "devices"} onClick={() => setMode("devices")}>Устройства</button></div>
+          <button type="button" disabled={busy || !ready} title="Загрузить пример одним отменяемым действием; текущую сборку можно вернуть Ctrl/⌘ Z" onClick={() => {
+            change(assemblyExample); setSelectedId("starter-hull"); setNotice("Пример посадки загружен. Ctrl/⌘ Z вернёт вашу сборку; файл проекта не изменён.");
+          }}>Пример посадки</button>
+          <button type="button" aria-pressed={focused} onClick={() => { setFocused(value => !value); setMode("assembly"); }} title="Скрыть панели; Esc — выйти">
+            {focused ? <Minimize2 size={15} /> : <Maximize2 size={15} />}{focused ? "Вернуть панели" : "На весь экран"}</button>
+        </div>
+        {mode === "devices" && <div className={styles.deviceToolbar}>{GARAGE_DEVICES.map(item => <button type="button" key={item.id} aria-pressed={deviceId === item.id} onClick={() => setDeviceId(item.id)}>{item.name}</button>)}</div>}
         <div className={styles.tools}>{([
-          ["move", MousePointer2, "Двигать"], ["camera", Hand, "Камера"], ["pivot", Crosshair, "Опора"], ["socket", Crosshair, "Крепление"],
+          ["move", MousePointer2, "Двигать"], ["camera", Hand, mode === "assembly" ? "Холст" : "Камера"], ["pivot", Crosshair, "Опора"], ["socket", Crosshair, "Крепление"],
         ] as const).map(([value, Icon, label]) => <button key={value} type="button" disabled={busy || clean} aria-pressed={tool === value} onClick={() => setTool(value)}><Icon size={15} />{label}</button>)}
           <button type="button" aria-pressed={clean} onClick={() => setClean(value => !value)}><Eye size={15} />Без разметки</button></div>
-        <div className={styles.preview} ref={preview}>
-          <div className={styles.deviceFrame} style={{ width: device.width * previewScale, height: device.height * previewScale }}>
-            <div style={{ transform: `scale(${previewScale})`, transformOrigin: "top left" }}>
-              <GarageStage scene={scene} device={device} selectedId={selectedId} tool={tool} guides={guides} clean={clean} onSelect={setSelectedId}
-                onChange={change} onGestureEnd={before => setHistory(current => finishGarageHistoryGesture(current, before))} />
-            </div>
-          </div>
+        {mode === "assembly" && <div className={styles.zoomToolbar} aria-label="Масштаб холста">
+          <button type="button" title="Уменьшить" aria-label="Уменьшить холст" onClick={() => zoomView(editorView.scale / 1.25)}><Minus size={15} /></button>
+          <span>{Math.round(editorView.scale * 100)}%</span>
+          <button type="button" title="Увеличить" aria-label="Увеличить холст" onClick={() => zoomView(editorView.scale * 1.25)}><Plus size={15} /></button>
+          <button type="button" onClick={fitView}><Expand size={14} />Вписать</button><button type="button" onClick={() => zoomView(1)}>100%</button>
+          <button type="button" disabled={!selected} onClick={frameSelected}>К детали</button>
+        </div>}
+        <div className={`${styles.preview} ${mode === "assembly" ? styles.assemblyPreview : ""}`} ref={preview} data-testid="garage-preview" data-mode={mode}>
+          {mode === "assembly" ? <GarageStage key="assembly" scene={scene} device={device} selectedId={selectedId} tool={tool} guides={guides} clean={clean}
+            editingView={{ ...editorView, width: surface.width, height: surface.height }} onViewChange={view => { autoFit.current = false; setEditorView(view); }}
+            onSelect={setSelectedId} onChange={change} onGestureEnd={before => setHistory(current => finishGarageHistoryGesture(current, before))} />
+            : <div className={styles.deviceFrame} style={{ width: device.width * previewScale, height: device.height * previewScale }}>
+              <div style={{ transform: `scale(${previewScale})`, transformOrigin: "top left" }}>
+                <GarageStage key="device" scene={scene} device={device} selectedId={selectedId} tool={tool} guides={guides} clean={clean} onSelect={setSelectedId}
+                  onChange={change} onGestureEnd={before => setHistory(current => finishGarageHistoryGesture(current, before))} />
+              </div>
+            </div>}
         </div>
-        <div className={styles.previewFoot}><span>{device.width} × {device.height} · {Math.round(previewScale * 100)}%</span><label><input type="checkbox" checked={guides} onChange={event => setGuides(event.target.checked)} />Безопасная область</label><span>Панель улучшений — отдельный макет UI</span></div>
+        <div className={styles.previewFoot}><span>{mode === "assembly" ? `${scene.canvas.width} × ${scene.canvas.height} · холст` : `${device.width} × ${device.height} · ${Math.round(previewScale * 100)}%`}</span>
+          <label><input type="checkbox" checked={guides} onChange={event => setGuides(event.target.checked)} />{mode === "assembly" ? "Область композиции" : "Безопасная область"}</label>
+          <span>{mode === "assembly" ? "Колесо — зум · пробел / средняя кнопка — двигать холст" : "Панель улучшений — отдельный макет UI"}</span></div>
         <details className={styles.shortcuts}><summary>Горячие клавиши</summary>
           <dl><dt>Ctrl/⌘ Z</dt><dd>Отменить действие</dd><dt>Ctrl/⌘ Shift Z · Ctrl/⌘ Y</dt><dd>Повторить</dd>
             <dt>Ctrl/⌘ D</dt><dd>Дубликат детали</dd><dt>Ctrl/⌘ S</dt><dd>Сохранить в проект</dd>
             <dt>← ↑ ↓ → · Shift</dt><dd>Сдвиг на 1 · на 10</dd><dt>Delete · Backspace</dt><dd>Удалить деталь</dd>
             <dt>V · H · P · A</dt><dd>Двигать · камера · опора · крепление</dd><dt>Esc</dt><dd>Вернуться к перемещению</dd></dl>
-          <p>Работают и в русской раскладке. В полях ввода остаются обычные команды редактирования текста.</p>
+          <p>В сборке: колесо — зум к курсору; пробел + перетаскивание или средняя кнопка — перемещение холста. Зум не изменяет кадры устройств. Работают и в русской раскладке. В полях ввода остаются обычные команды редактирования текста.</p>
         </details>
-        <details className={styles.camera}><summary>Кадр {cameraMode === "portrait" ? "телефона / планшета" : "альбомного экрана"}</summary><div className={styles.fields}>
+        {mode === "devices" && <details className={styles.camera}><summary>Кадр {cameraMode === "portrait" ? "телефона / планшета" : "альбомного экрана"}</summary><div className={styles.fields}>
           {(["x", "y", "width"] as const).map(key => <GarageNumber key={key} label={key === "width" ? "Ширина кадра" : key.toUpperCase()} value={camera[key]} step={10} min={key === "width" ? 300 : -10000}
             onChange={value => change({ ...scene, cameras: { ...scene.cameras, [cameraMode]: { ...camera, [key]: value } } })} />)}
           <button type="button" onClick={() => change({ ...scene, cameras: { ...scene.cameras, [cameraMode]: { x: scene.canvas.width / 2, y: scene.canvas.height / 2, width: cameraMode === "portrait" ? 1280 : scene.canvas.width } } })}>Сбросить кадр</button>
-        </div></details>
+        </div></details>}
       </section>
       <GarageInspector scene={scene} node={selected} onChange={change} onDuplicate={duplicate} onRemove={remove} onError={setNotice} />
     </div>
