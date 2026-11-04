@@ -55,6 +55,26 @@ export function rotateGarageNode(scene, id, start, pointer, { snap = false } = {
     pivot.y + sine * (e - pivot.x) + cosine * (f - pivot.y)]);
 }
 
+/** Uniform world-space scaling keeps the authored pivot fixed even through affine parents.
+ * @param {GarageScene} scene @param {string} id @param {GaragePoint} start
+ * @param {GaragePoint} pointer @param {{snap?:boolean}} [options] */
+export function scaleGarageNodeAroundPivot(scene, id, start, pointer, { snap = false } = {}) {
+  const node = scene.nodes.find(item => item.id === id);
+  if (!node) throw new Error("Слой не найден.");
+  if (![start.x, start.y, pointer.x, pointer.y].every(Number.isFinite)) throw new Error("Неверная точка масштабирования.");
+  const matrix = getGarageNodeMatrix(scene, id);
+  const pivot = transformGaragePoint(matrix, { x: node.pivotX * node.width, y: node.pivotY * node.height });
+  const initial = Math.hypot(start.x - pivot.x, start.y - pivot.y);
+  if (initial < 1e-7) return scene;
+  let ratio = Math.hypot(pointer.x - pivot.x, pointer.y - pivot.y) / initial;
+  if (snap) ratio = Math.round(ratio * 10) / 10;
+  ratio = Math.max(.001, Math.min(1000, ratio));
+  if (Math.abs(ratio - 1) < 1e-12) return scene;
+  const [a, b, c, d, e, f] = matrix;
+  return setGarageNodeWorldMatrix(scene, id, [a * ratio, b * ratio, c * ratio, d * ratio,
+    pivot.x + (e - pivot.x) * ratio, pivot.y + (f - pivot.y) * ratio]);
+}
+
 /** @param {GarageScene} scene @param {string} id @param {GaragePoint} point */
 export function pointInsideGarageNode(scene, id, point) {
   const node = scene.nodes.find(item => item.id === id);

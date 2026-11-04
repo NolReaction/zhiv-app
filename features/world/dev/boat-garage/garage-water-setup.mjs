@@ -1,5 +1,12 @@
 import { garageEditorNodeBounds } from './garage-editor-view.mjs';
 
+/** Resolve visual defaults without adding authored fields or changing physics.
+ * @param {Partial<import('./garage-scene-types').GarageWaterPreviewConfig>} [config] */
+export function garageWaterEffects(config = {}) {
+  return { effectsEnabled: config.effectsEnabled ?? false, effectOpacity: config.effectOpacity ?? .65,
+    effectOffsetY: config.effectOffsetY ?? 0, immersionEnabled: config.immersionEnabled ?? false };
+}
+
 /** An authored hierarchy defines one floating assembly, independently of z-order. */
 export function garageWaterRigIds(scene, rootId) {
   const ids = new Set(scene.nodes.some(node => node.id === rootId) ? [rootId] : []);

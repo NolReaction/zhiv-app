@@ -4,7 +4,7 @@ export function getGarageShortcut(event) {
   if (event.defaultPrevented || event.isComposing || event.altKey) return null;
   const target = event.target;
   if (target?.closest?.("input:not([type=checkbox]):not([type=radio]),textarea,select,[contenteditable]:not([contenteditable=false]),[role=textbox]")) return null;
-  const code = event.code || ({ z: "KeyZ", y: "KeyY", d: "KeyD", s: "KeyS", v: "KeyV", h: "KeyH", p: "KeyP", a: "KeyA" }[event.key?.toLowerCase()] ?? event.key);
+  const code = event.code || ({ z: "KeyZ", y: "KeyY", d: "KeyD", s: "KeyS", g: "KeyG", r: "KeyR", m: "KeyM", v: "KeyV", h: "KeyH", p: "KeyP", a: "KeyA" }[event.key?.toLowerCase()] ?? event.key);
   if (event.ctrlKey || event.metaKey) {
     if (code === "KeyZ") return event.shiftKey ? "redo" : "undo";
     if (code === "KeyY") return "redo";
@@ -13,9 +13,10 @@ export function getGarageShortcut(event) {
     return null;
   }
   if (code === "Escape") return "escape";
+  const tool = { KeyG: "move", KeyV: "move", KeyR: "rotate", KeyS: "scale", KeyM: "occlusion", KeyH: "camera", KeyP: "pivot", KeyA: "socket" }[code];
+  if (tool) return tool;
   if (target?.closest?.("button,a,summary,[role=button],input")) return null;
-  return ({ Delete: "remove", Backspace: "remove", ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down",
-    KeyV: "move", KeyH: "camera", KeyP: "pivot", KeyA: "socket" })[code] ?? null;
+  return ({ Delete: "remove", Backspace: "remove", ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" })[code] ?? null;
 }
 
 const HISTORY_LIMIT = 100;

@@ -28,6 +28,11 @@ export type GarageWaterPreviewConfig = {
   waterlineY: number;
   beam: number;
   amplitude: number;
+  /** Decorative contact effects are opt-in; absence keeps old scene JSON unchanged. */
+  effectsEnabled?: boolean;
+  effectOpacity?: number;
+  effectOffsetY?: number;
+  immersionEnabled?: boolean;
 };
 
 /** x/y place the normalized pivot in the parent's image coordinates.

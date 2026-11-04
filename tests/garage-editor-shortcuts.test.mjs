@@ -36,15 +36,31 @@ test("toolbar focus permits commands but keeps arrow navigation and backspace aw
   assert.equal(getGarageShortcut(key("ArrowRight", { target })), null);
   assert.equal(getGarageShortcut(key("Backspace", { target })), null);
   assert.equal(getGarageShortcut(key("Escape", { target })), "escape");
+  for (const [code, expected] of [["KeyG", "move"], ["KeyR", "rotate"], ["KeyS", "scale"], ["KeyM", "occlusion"]]) {
+    assert.equal(getGarageShortcut(key(code, { target })), expected);
+  }
+  assert.equal(getGarageShortcut(key("Enter", { target })), null);
 });
 
 test("scene nudging, deletion and physical tool keys are mapped without overriding browser modifiers", () => {
-  for (const [code, expected] of [["KeyV", "move"], ["KeyH", "camera"], ["KeyP", "pivot"], ["KeyA", "socket"],
+  for (const [code, expected] of [["KeyG", "move"], ["KeyR", "rotate"], ["KeyS", "scale"], ["KeyM", "occlusion"], ["KeyV", "move"], ["KeyH", "camera"], ["KeyP", "pivot"], ["KeyA", "socket"],
     ["Delete", "remove"], ["Backspace", "remove"], ["ArrowLeft", "left"], ["ArrowRight", "right"], ["ArrowUp", "up"], ["ArrowDown", "down"]]) {
     assert.equal(getGarageShortcut(key(code)), expected);
   }
   assert.equal(getGarageShortcut(key("ArrowRight", { shiftKey: true })), "right");
   assert.equal(getGarageShortcut(key("KeyA", { ctrlKey: true })), null);
+});
+
+test("transform modes use physical keys with Russian layout while editable fields keep their text", () => {
+  const letters = [["KeyG", "п", "move"], ["KeyR", "к", "rotate"], ["KeyS", "ы", "scale"], ["KeyM", "ь", "occlusion"]];
+  for (const [code, letter, expected] of letters) {
+    assert.equal(getGarageShortcut(key(code, { key: letter })), expected);
+    const target = { closest: selector => selector.includes("textarea") ? {} : null };
+    assert.equal(getGarageShortcut(key(code, { key: letter, target })), null);
+  }
+  assert.equal(getGarageShortcut(key("KeyS", { ctrlKey: true })), "save");
+  assert.equal(getGarageShortcut(key("KeyS", { metaKey: true })), "save");
+  assert.equal(getGarageShortcut(key("", { key: "g" })), "move");
 });
 
 test("pointermove updates form a single undo checkpoint, and undo-redo reproduces exact scene", () => {

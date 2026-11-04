@@ -68,9 +68,14 @@ export function GarageWaterRig({ center, beam, amplitude = 10, running = true, c
 }
 
 /** Static contact shadow and slowly moving foam hide the cutout's floating edge. */
-export function GarageWaterContact({ center, beam, running = true, layer = "all" }: { center: GaragePoint; beam: number; running?: boolean; layer?: "all" | "shadow" | "surface" }) {
+export function GarageWaterContact({ center, beam, running = true, layer = "all", enabled = false, opacity = .65, offsetY = 0 }: {
+  center: GaragePoint; beam: number; running?: boolean; layer?: "all" | "shadow" | "surface";
+  enabled?: boolean; opacity?: number; offsetY?: number;
+}) {
   const active = useWaterAnimation(running), half = Math.max(50, beam * .44), depth = Math.max(12, Math.min(36, beam * .034));
-  return <g className={styles.water} data-active={active} transform={`translate(${center.x} ${center.y})`} data-testid={`garage-water-contact-${layer}`} aria-hidden="true">
+  if (!enabled || opacity <= 0) return null;
+  return <g className={styles.water} data-active={active} transform={`translate(${center.x} ${center.y + offsetY})`}
+    opacity={opacity} data-testid={`garage-water-contact-${layer}`} aria-hidden="true">
     {layer !== "surface" && <ellipse className={styles.shadow} cx="0" cy="7" rx={half} ry={depth} />}
     {layer !== "shadow" && <>
     <ellipse className={styles.ripple} cx="0" cy="7" rx={half * 1.02} ry={depth * 1.15} />

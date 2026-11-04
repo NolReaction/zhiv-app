@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Crosshair, Download, Expand, Eye, FolderPlus, Hand, ImagePlus, Layers, Maximize2, Minimize2, Minus, MousePointer2, Plus, Redo2, Save, Scissors, Undo2, Upload } from "lucide-react";
+import { ArrowLeft, Crosshair, Download, Expand, Eye, FolderPlus, Hand, ImagePlus, Layers, Maximize2, Minimize2, Minus, MousePointer2, Plus, Redo2, RotateCw, Save, Scaling, Scissors, Undo2, Upload } from "lucide-react";
 import defaultScene from "./garage-scene-default.json";
 import exampleScene from "./garage-scene-example.json";
 import { duplicateGarageNode, removeGarageNode, validateGarageScene } from "./garage-scene-model.mjs";
 import { changeGarageHistory, finishGarageHistoryGesture, getGarageShortcut, redoGarageHistory, undoGarageHistory } from "./garage-editor-shortcuts.mjs";
 import type { GarageAsset, GarageNode, GarageScene } from "./garage-scene-types";
-import { GarageInspector, GarageNumber } from "./garage-inspector";
+import { GarageInspector, GarageNumber, type GarageInspectorTab } from "./garage-inspector";
 import { GARAGE_DEVICES, GarageStage, type GarageTool } from "./garage-stage";
 import { fitGarageEditorView, frameGarageEditorBounds, garageEditorNodeBounds, garageEditorWorldPoint, zoomGarageEditorView } from "./garage-editor-view.mjs";
 import { garageWaterSetup } from "./garage-water-setup.mjs";
@@ -29,6 +29,7 @@ export function GarageEditor() {
   const [selectedId, setSelectedId] = useState<string | null>("stand-left");
   const [deviceId, setDeviceId] = useState("phone");
   const [tool, setTool] = useState<GarageTool>("move");
+  const [inspectorTab, setInspectorTab] = useState<GarageInspectorTab>("object");
   const [occlusionEdit, setOcclusionEdit] = useState({ session: 0, redraw: false });
   const [occlusionDraft, setOcclusionDraft] = useState(false);
   const [guides, setGuides] = useState(true), [clean, setClean] = useState(false);
@@ -132,6 +133,7 @@ export function GarageEditor() {
     setEditorView(frameGarageEditorBounds(bounds, surface.width, surface.height, 60));
   }
   function editOcclusion(redraw = false) {
+    setInspectorTab("occlusion");
     setWaterRunning(false); setClean(false); setTool("occlusion");
     setOcclusionEdit(current => ({ session: current.session + 1, redraw }));
     setNotice(redraw ? "Новый контур: ставьте точки по борту; Enter — применить, Escape — отменить. Пока рисунок не закончен, сохранённый контур остаётся прежним."
@@ -139,7 +141,26 @@ export function GarageEditor() {
   }
   function selectNode(id: string) {
     setSelectedId(id);
+    if (id !== selectedId) setInspectorTab("object");
     if (id !== selectedId && tool === "occlusion") setTool("move");
+  }
+  function activateTool(next: GarageTool) {
+    if (next === "occlusion" && tool === "occlusion" && selected?.occlusion && !clean) {
+      setInspectorTab("occlusion"); return;
+    }
+    if (next === "occlusion" && (!selected?.assetId || selected.locked)) {
+      setNotice("Для маски выберите незакреплённое изображение корпуса."); return;
+    }
+    setWaterRunning(false); setClean(false);
+    if (next === "occlusion") {
+      if (selected && !selected.occlusion) change({ ...scene, nodes: scene.nodes.map(node => node.id === selected.id ? { ...node, occlusion: defaultGarageOcclusion() } : node) });
+      editOcclusion();
+    } else {
+      if (occlusionDraft) setNotice("Незавершённый рисунок отменён. Сохранённый контур остался прежним.");
+      setTool(next);
+      if (["move", "rotate", "scale"].includes(next)) setInspectorTab("object");
+      else if (["pivot", "socket"].includes(next)) setInspectorTab("attachments");
+    }
   }
 
   function change(next: GarageScene, record = true) {
@@ -154,7 +175,7 @@ export function GarageEditor() {
   function remove() { if (selected && !selected.locked) { change(removeGarageNode(scene, selected.id)); setSelectedId(null); } }
   function duplicate() {
     if (!selected) return;
-    try { const next = duplicateGarageNode(scene, selected.id); change(next); setSelectedId(next.nodes.at(-1)!.id); }
+    try { const next = duplicateGarageNode(scene, selected.id); change(next); setSelectedId(next.nodes.at(-1)!.id); setInspectorTab("object"); }
     catch (error) { setNotice(error instanceof Error ? error.message : "Не удалось создать копию."); }
   }
   function add(asset?: GarageAsset) {
@@ -162,7 +183,7 @@ export function GarageEditor() {
       parentId: null, socketId: null, x: placementCenter.x, y: placementCenter.y, width: asset?.width ?? 1000, height: asset?.height ?? 650,
       scale: asset ? Math.min(350 / asset.width, 220 / asset.height) : 1, rotation: 0, pivotX: .5, pivotY: .5,
       zIndex: 20, visible: true, locked: false, sockets: [] };
-    change({ ...scene, assets: asset && !scene.assets.some(item => item.id === asset.id) ? [...scene.assets, asset] : scene.assets, nodes: [...scene.nodes, node] }); setSelectedId(node.id);
+    change({ ...scene, assets: asset && !scene.assets.some(item => item.id === asset.id) ? [...scene.assets, asset] : scene.assets, nodes: [...scene.nodes, node] }); setSelectedId(node.id); setInspectorTab("object");
   }
   async function uploadImage(file: File) {
     setBusy(true);
@@ -176,7 +197,7 @@ export function GarageEditor() {
         parentId: null, socketId: null, x: placementCenter.x, y: placementCenter.y, width: asset.width, height: asset.height,
         scale: Math.min(350 / asset.width, 220 / asset.height), rotation: 0, pivotX: .5, pivotY: .5, zIndex: 20, visible: true, locked: false, sockets: [] };
       change({ ...scene, assets: scene.assets.some(item => item.id === asset.id) ? scene.assets : [...scene.assets, asset], nodes: [...scene.nodes, node] });
-      setSelectedId(node.id); setNotice("Изображение добавлено. Расставьте деталь и сохраните сборку.");
+      setSelectedId(node.id); setInspectorTab("object"); setNotice("Изображение добавлено. Расставьте деталь и сохраните сборку.");
     } catch (error) { setNotice(error instanceof Error ? error.message : "Ошибка загрузки."); }
     finally { setBusy(false); }
   }
@@ -207,7 +228,7 @@ export function GarageEditor() {
   async function importScene(file: File) {
     try {
       if (file.size > 1024 * 1024) throw new Error("JSON должен быть не больше 1 МБ.");
-      const next = validateGarageScene(JSON.parse(await file.text())); change(next); setSelectedId(next.nodes[0]?.id ?? null);
+      const next = validateGarageScene(JSON.parse(await file.text())); change(next); setSelectedId(next.nodes[0]?.id ?? null); setInspectorTab("object");
       setNotice("Сборка импортирована. Пути изображений должны существовать в этом проекте.");
     } catch (error) { setNotice(error instanceof Error ? error.message : "Не удалось импортировать JSON."); }
   }
@@ -233,11 +254,13 @@ export function GarageEditor() {
       if (action === "save") { event.preventDefault(); if (!event.repeat && revision && dirty) void save(); return; }
       if (action === "undo" || action === "redo") { event.preventDefault(); if (action === "undo") undo(); else redo(); return; }
       if (action === "escape") { event.preventDefault(); setFocused(false); setTool("move"); setClean(false); return; }
+      if (["move", "rotate", "scale", "camera", "pivot", "socket", "occlusion"].includes(action)) {
+        event.preventDefault(); if (!event.repeat) activateTool(action as GarageTool); return;
+      }
       if (clean) return;
       event.preventDefault();
       if (action === "duplicate") { if (!event.repeat) duplicate(); return; }
       if (action === "remove") { if (tool !== "occlusion" && !event.repeat) remove(); return; }
-      if (["move", "camera", "pivot", "socket"].includes(action)) { setTool(action as GarageTool); return; }
       const step = event.shiftKey ? 10 : 1;
       const dx = action === "left" ? -step : action === "right" ? step : 0;
       const dy = action === "up" ? -step : action === "down" ? step : 0;
@@ -287,20 +310,17 @@ export function GarageEditor() {
             <button type="button" aria-pressed={environment === "water"} onClick={() => { setEnvironment("water"); setWaterRunning(false); }}>На воде</button>
           </div>
           <button type="button" disabled={busy || !ready} title="Загрузить пример одним отменяемым действием; текущую сборку можно вернуть Ctrl/⌘ Z" onClick={() => {
-            change(assemblyExample); setSelectedId("starter-hull"); setNotice("Пример посадки загружен. Ctrl/⌘ Z вернёт вашу сборку; файл проекта не изменён.");
+            change(assemblyExample); setSelectedId("starter-hull"); setInspectorTab("object"); setNotice("Пример посадки загружен. Ctrl/⌘ Z вернёт вашу сборку; файл проекта не изменён.");
           }}>Пример посадки</button>
           <button type="button" aria-pressed={focused} onClick={() => { setFocused(value => !value); setMode("assembly"); }} title="Скрыть панели; Esc — выйти">
             {focused ? <Minimize2 size={15} /> : <Maximize2 size={15} />}{focused ? "Вернуть панели" : "На весь экран"}</button>
         </div>
         {mode === "devices" && <div className={styles.deviceToolbar}>{GARAGE_DEVICES.map(item => <button type="button" key={item.id} aria-pressed={deviceId === item.id} onClick={() => setDeviceId(item.id)}>{item.name}</button>)}</div>}
         <div className={styles.tools}>{([
-          ["move", MousePointer2, "Двигать"], ["camera", Hand, mode === "assembly" ? "Холст" : "Камера"], ["pivot", Crosshair, "Опора"], ["socket", Crosshair, "Крепление"],
-        ] as const).map(([value, Icon, label]) => <button key={value} type="button" disabled={busy || clean} aria-pressed={tool === value} onClick={() => { setWaterRunning(false); setTool(value); }}><Icon size={15} />{label}</button>)}
-          <button type="button" disabled={busy || clean || !selected?.assetId || selected.locked} aria-pressed={tool === "occlusion"} onClick={() => {
-            if (!selected?.assetId) return;
-            if (!selected.occlusion) change({ ...scene, nodes: scene.nodes.map(node => node.id === selected.id ? { ...node, occlusion: defaultGarageOcclusion() } : node) });
-            editOcclusion();
-          }}><Scissors size={15} />Борт / маска</button>
+          ["move", MousePointer2, "Двигать", "G"], ["rotate", RotateCw, "Повернуть", "R"], ["scale", Scaling, "Масштаб", "S"],
+          ["camera", Hand, mode === "assembly" ? "Холст" : "Камера", "H"], ["pivot", Crosshair, "Опора", "P"], ["socket", Crosshair, "Крепление", "A"],
+        ] as const).map(([value, Icon, label, key]) => <button key={value} type="button" disabled={busy} aria-label={label} title={`${label} · ${key}`} aria-pressed={tool === value} onClick={() => activateTool(value)}><Icon size={15} />{label}<kbd aria-hidden>{key}</kbd></button>)}
+          <button type="button" disabled={busy || !selected?.assetId || selected.locked} aria-label="Борт / маска" title="Борт / маска · M" aria-pressed={tool === "occlusion"} onClick={() => activateTool("occlusion")}><Scissors size={15} />Борт / маска<kbd aria-hidden>M</kbd></button>
           <button type="button" aria-pressed={clean} onClick={() => setClean(value => !value)}><Eye size={15} />Без разметки</button></div>
         {environment === "water" && <GarageWaterControls key={waterSetup.config.rootId} scene={scene} config={waterSetup.config} running={waterRunning} hasArtwork={waterSetup.hasArtwork}
           onRunningChange={setWaterRunning} onChange={waterPreview => change({ ...scene, waterPreview })}
@@ -335,7 +355,8 @@ export function GarageEditor() {
           <dl><dt>Ctrl/⌘ Z</dt><dd>Отменить действие</dd><dt>Ctrl/⌘ Shift Z · Ctrl/⌘ Y</dt><dd>Повторить</dd>
             <dt>Ctrl/⌘ D</dt><dd>Дубликат детали</dd><dt>Ctrl/⌘ S</dt><dd>Сохранить в проект</dd>
             <dt>← ↑ ↓ → · Shift</dt><dd>Сдвиг на 1 · на 10</dd><dt>Delete · Backspace</dt><dd>Удалить деталь</dd>
-            <dt>V · H · P · A</dt><dd>Двигать · камера · опора · крепление</dd><dt>Esc</dt><dd>Вернуться к перемещению</dd></dl>
+            <dt>G / V · R · S</dt><dd>Двигать · поворот · масштаб; выберите режим и тяните деталь</dd>
+            <dt>H · P · A · M</dt><dd>Холст · опора · крепление · маска борта</dd><dt>Esc</dt><dd>Вернуться к перемещению</dd></dl>
           <p>Рамка двигает выбранный слой, даже если он за другим предметом. Alt + клик — выбрать другой слой. Ручки растягивают свободно, Shift сохраняет пропорции; ручка поворота с Shift даёт шаг 15°. В «Борт / маска» Delete удаляет точку, нажатие на ребро добавляет её; Enter завершает новый контур, Escape отменяет. Колесо — зум; пробел + перетаскивание или средняя кнопка — холст. В полях ввода остаются обычные команды редактирования текста.</p>
         </details>
         {mode === "devices" && <details className={styles.camera}><summary>Кадр {cameraMode === "portrait" ? "телефона / планшета" : "альбомного экрана"}</summary><div className={styles.fields}>
@@ -345,6 +366,7 @@ export function GarageEditor() {
         </div></details>}
       </section>
       <GarageInspector scene={scene} node={selected} onChange={change} onDuplicate={duplicate} onRemove={remove} onError={setNotice}
+        activeTab={inspectorTab} onTabChange={tab => { setInspectorTab(tab); if (tab !== "occlusion" && tool === "occlusion") setTool("move"); }}
         onEditOcclusion={() => editOcclusion()} onRedrawOcclusion={() => editOcclusion(true)} />
     </div>
   </main>;

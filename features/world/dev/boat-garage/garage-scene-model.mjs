@@ -136,7 +136,11 @@ export function validateGarageScene(input) {
     const rootId = id(value.rootId, "Группа лодки на воде");
     if (!byId.has(rootId)) throw new Error("Группа лодки на воде не найдена.");
     waterPreview = { rootId, waterlineY: number(value.waterlineY, "Линия воды", -200_000, 200_000),
-      beam: number(value.beam, "Длина опоры на воде", 1, 40_000), amplitude: number(value.amplitude, "Высота волн", 0, 30) };
+      beam: number(value.beam, "Длина опоры на воде", 1, 40_000), amplitude: number(value.amplitude, "Высота волн", 0, 30),
+      ...(value.effectsEnabled === undefined ? {} : { effectsEnabled: boolean(value.effectsEnabled, "Эффекты у корпуса") }),
+      ...(value.effectOpacity === undefined ? {} : { effectOpacity: number(value.effectOpacity, "Интенсивность эффектов", 0, 1) }),
+      ...(value.effectOffsetY === undefined ? {} : { effectOffsetY: number(value.effectOffsetY, "Смещение эффектов по Y", -2000, 2000) }),
+      ...(value.immersionEnabled === undefined ? {} : { immersionEnabled: boolean(value.immersionEnabled, "Эффект погружения") }) };
   }
   const result = { schemaVersion: 1, canvas: { width: number(canvas.width, "Ширина холста", 1, 20_000),
     height: number(canvas.height, "Высота холста", 1, 20_000) }, cameras: { portrait: camera("portrait"), landscape: camera("landscape") }, assets, nodes,

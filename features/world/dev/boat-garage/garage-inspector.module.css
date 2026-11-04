@@ -1,0 +1,24 @@
+aside.panel{padding:0;min-height:0;min-width:0;scroll-padding-top:210px;overscroll-behavior:contain}
+.header{position:sticky;top:0;z-index:3;padding:14px 14px 0;background:#101f17;border-bottom:1px solid var(--line);box-shadow:0 5px 12px #07130b45}
+.header h2{font-size:13px;margin:0}.header small{font-size:9px;letter-spacing:.08em;color:var(--muted)}
+.header :global(input){min-height:35px}.header :global(label){min-width:0}
+.tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;margin:10px -4px 0;padding-bottom:7px}
+.tabs button{min-width:0;min-height:36px;justify-content:center;padding:7px 3px;font-size:11px;border-color:transparent;background:transparent;border-radius:6px;color:#a6bfa9;white-space:nowrap}
+.tabs button[aria-selected=true]{background:#344a35;border-color:#bba15d;color:#ffe6a5}
+.tabs button:focus-visible{outline:2px solid #ffe6a5;outline-offset:1px}
+.body{padding:15px 14px 18px;min-width:0}
+.body[hidden]{display:none}
+.body [data-testid="garage-occlusion-controls"]{margin:0;padding-top:0;border-top:0}
+.sectionTitle{display:flex;justify-content:space-between;align-items:center;margin:0 0 12px;font-size:12px;font-weight:650;color:#d6dfc4}
+.sectionTitle small{font-size:11px;font-weight:400;color:var(--muted)}
+.tip{margin:0 0 14px;font-size:10px;line-height:1.55;color:#9eb3a4}
+.fold{margin:10px 0 15px;border:1px solid var(--line);border-radius:6px;background:#14281c}
+.fold>summary{cursor:pointer;padding:10px;font-size:11px;font-weight:600;color:#d7c38f}
+.foldBody{padding:2px 10px 10px}.foldBody>button{width:100%;justify-content:center}.foldBody>.tip{margin:10px 0 0}
+.imageField{padding-top:4px}
+.footer{position:sticky;bottom:0;z-index:2;padding:11px 14px 9px;border-top:1px solid var(--line);background:#101f17;box-shadow:0 -5px 12px #07130b45}
+.footer>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.footer button{justify-content:center;min-width:0;padding:7px 5px;font-size:11px}
+.footer p{margin:8px 0 0;font-size:9px;line-height:1.55;color:#9eb3a4}
+.empty{padding:18px 14px}.empty h2,.emptyMask h3{font-size:13px;color:#d6dfc4}.empty p,.emptyMask p{font-size:11px;line-height:1.65;color:#9eb3a4}
+@media(max-width:1100px){.header{padding:12px 10px 0}.body{padding:13px 10px}.footer{padding:10px}.tabs button{font-size:10px}}
+@media(max-width:760px){aside.panel{scroll-padding-top:0}.header{position:static}.tabs button{font-size:12px;min-height:40px}.body{padding:15px 12px}.footer{position:static;padding:12px}.footer button{font-size:12px;min-height:38px}.empty{padding:18px 12px}}

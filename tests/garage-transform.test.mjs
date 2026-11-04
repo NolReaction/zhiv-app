@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { getGarageNodeMatrix, transformGaragePoint, validateGarageScene } from "../features/world/dev/boat-garage/garage-scene-model.mjs";
-import { GARAGE_RESIZE_HANDLES, garageTransformHandles, pointInsideGarageNode, resizeGarageNode, rotateGarageNode } from "../features/world/dev/boat-garage/garage-transform.mjs";
+import { GARAGE_RESIZE_HANDLES, garageTransformHandles, pointInsideGarageNode, resizeGarageNode, rotateGarageNode, scaleGarageNodeAroundPivot } from "../features/world/dev/boat-garage/garage-transform.mjs";
 const base = JSON.parse(await readFile(new URL("../features/world/dev/boat-garage/garage-scene-default.json", import.meta.url), "utf8"));
 const node = (id, changes = {}) => ({ id, name: id, assetId: null, parentId: null, socketId: null, x: 100, y: 80, width: 180, height: 100,
  scale: .8, rotation: 17, pivotX: .3, pivotY: .7, zIndex: 1, visible: true, locked: false, sockets: [], ...changes });
@@ -61,4 +61,29 @@ test("hit testing follows true transformed frame and rotation handles use screen
  assert.equal(garageTransformHandles(s,"missing"),null);assert.throws(()=>resizeGarageNode(s,"part","e",{x:NaN,y:1}));
  const locked={...s,nodes:s.nodes.map(i=>i.id==="part"?{...i,locked:true}:i)};
  assert.throws(()=>resizeGarageNode(locked,"part","se",world(s,{x:n.width*2,y:n.height*2})),/открепите/);
+});
+
+test("uniform scale preserves pivot, shape, reflection and child placement through affine parents", () => {
+ const s=fixture(),n=s.nodes[1],pivot=world(s,{x:n.width*n.pivotX,y:n.height*n.pivotY});
+ const out=scaleGarageNodeAroundPivot(s,"part",{x:pivot.x+100,y:pivot.y},{x:pivot.x,y:pivot.y+160});
+ near(world(out,{x:n.width*n.pivotX,y:n.height*n.pivotY}),pivot);
+ for(const p of [{x:0,y:0},{x:n.width,y:n.height}]){const a=world(s,p);near(world(out,p),{x:pivot.x+(a.x-pivot.x)*1.6,y:pivot.y+(a.y-pivot.y)*1.6});}
+ const m=getGarageNodeMatrix(s,"part"),after=getGarageNodeMatrix(out,"part");
+ assert.equal(Math.sign(m[0]*m[3]-m[1]*m[2]),Math.sign(after[0]*after[3]-after[1]*after[2]));
+ const child=transformGaragePoint(getGarageNodeMatrix(s,"child"),{x:0,y:0});
+ near(transformGaragePoint(getGarageNodeMatrix(out,"child"),{x:0,y:0}),{x:pivot.x+(child.x-pivot.x)*1.6,y:pivot.y+(child.y-pivot.y)*1.6});
+ assert.equal(out.nodes[1].parentId,"parent");
+});
+
+test("uniform scaling handles zero radius, bounded noncollapsed size, snapping and invalid pointers", () => {
+ const s=fixture(),n=s.nodes[1],pivot=world(s,{x:n.width*n.pivotX,y:n.height*n.pivotY}),start={x:pivot.x+100,y:pivot.y};
+ assert.equal(scaleGarageNodeAroundPivot(s,"part",pivot,start),s);
+ assert.equal(scaleGarageNodeAroundPivot(s,"part",start,start),s);
+ const snapped=scaleGarageNodeAroundPivot(s,"part",start,{x:pivot.x+143,y:pivot.y},{snap:true});
+ const a=world(s,{x:0,y:0}),b=world(snapped,{x:0,y:0});close(Math.hypot(b.x-pivot.x,b.y-pivot.y)/Math.hypot(a.x-pivot.x,a.y-pivot.y),1.4);
+ const minimal=scaleGarageNodeAroundPivot(s,"part",start,pivot);assert(getGarageNodeMatrix(minimal,"part").every(Number.isFinite));
+ assert.throws(()=>scaleGarageNodeAroundPivot(s,"part",start,{x:Infinity,y:0}),/Неверная/);
+ assert.throws(()=>scaleGarageNodeAroundPivot(s,"missing",start,start),/не найден/);
+ const locked={...s,nodes:s.nodes.map(i=>i.id==="part"?{...i,locked:true}:i)};
+ assert.throws(()=>scaleGarageNodeAroundPivot(locked,"part",start,{x:pivot.x+150,y:pivot.y}),/открепите/);
 });
