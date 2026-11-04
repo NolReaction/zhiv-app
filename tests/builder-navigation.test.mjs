@@ -131,10 +131,10 @@ test("actual selected stops leave each of the seven placed hosts' interaction po
   }
 });
 
-test("each actual Tiled work marker keeps its exact position across its host's exterior levels", () => {
+test("valid actual Tiled work markers keep their exact position across their host's exterior levels", () => {
   const initial = initialPreviewLevels(TILED_WORLD);
   const hosts = { home: "home", warehouse: "home", workshop: "workshop", kiln: "workshop",
-    quarry: "quarry", garden: "garden", dryer: "dryer" };
+    garden: "garden", dryer: "dryer" };
   for (const [stationId, host] of Object.entries(hosts)) {
     const site = TILED_WORLD.sites.find(site => site.id === host), levels = site?.states.map(state => state.level) ?? [1];
     for (const level of levels) {
@@ -144,6 +144,35 @@ test("each actual Tiled work marker keeps its exact position across its host's e
       const targetLevel = Math.min(host === "home" ? 5 : host === "workshop" ? 2 : 1, level + 1);
       const { route } = checkedRoute(scene, job(stationId, targetLevel));
       assert.deepEqual(route.target.position, marker.position, `${stationId}, exterior ${level} keeps the valid authored foot position`);
+    }
+  }
+});
+
+test("the actual quarry work stop preserves safe authored feet and keeps the current and upgraded doorway clear", () => {
+  const initial = initialPreviewLevels(TILED_WORLD), quarry = TILED_WORLD.sites.find(site => site.id === "quarry");
+  for (const exterior of quarry.states) {
+    const scene = previewWorldScene(TILED_WORLD, { ...initial, quarry: exterior.level });
+    const marker = scene.destinations.find(destination => destination.id === "builder-work-quarry");
+    const order = job("quarry", 1), clearance = builderWorkClearance(scene);
+    const checks = builderWorkMarkerChecks(scene, order);
+    assert.equal(checks.length, 1);
+    assert.equal(checks[0].id, marker.id);
+    const { stops, route } = checkedRoute(scene, order);
+    if (checks[0].issues.length) {
+      assert.deepEqual(checks[0].issues, ["doorway"], "the current marker crowds an entrance, not an unrelated invalid area");
+      assert.notDeepEqual(route.target.position, marker.position, "unsafe authored feet are not used");
+    } else assert.deepEqual(route.target.position, marker.position, "a corrected safe marker keeps its exact position");
+    const next = previewWorldScene(TILED_WORLD, { ...initial, quarry: 1 });
+    for (const current of [scene, next]) {
+      const host = current.sites.find(site => site.id === "quarry");
+      const visitor = current.destinations.find(destination => destination.id === "quarry" && destination.siteId === "quarry");
+      const navigation = createWorldNavigation(current, BUILDER_NAVIGATION_LIMITS.radius);
+      for (const stop of stops) {
+        assertClear(stop.position, [host.entry, host.doorway ?? host.entry], clearance, "quarry doorway stays free");
+        if (visitor) assertClear(stop.position, [visitor.position, host.entry], clearance, "quarry visitor stays free");
+        assert.ok(isWalkable(navigation, stop.position), "fallback remains on clear ground after the upgrade");
+        assert.ok(distanceToContour(stop.position, host.collision) <= 32, "fallback stays beside the actual quarry facade");
+      }
     }
   }
 });
