@@ -255,19 +255,23 @@ test("derived scene cache depends on source and geometry revision, never mode or
   assert.deepEqual(original, before); assert.deepEqual(otherSource, before);
 });
 
-test("all authored building levels remain editable and apply only to their active preview", () => {
+test("all authored building volumes remain editable and each level applies exactly its own volumes", () => {
   const original = structuredClone(TILED_WORLD), before = structuredClone(original);
   const store = createWorldLightingEditorStore(true, original);
   const authoredHouse = original.shadowCasters.filter(caster => caster.when?.siteId === "home");
-  assert.equal(authoredHouse.length, 5);
+  assert.ok(authoredHouse.length);
   for (const caster of authoredHouse) {
     store.select(caster.id); store.patchSelected({ softness: caster.softness === 7 ? 6 : 7 });
-    const preview = previewWorldScene(original, { home: caster.when.level });
-    const effective = store.applyToScene(preview);
-    assert.equal(effective.shadowCasters.filter(caster => caster.when?.siteId === "home").length, 1);
-    assert.equal(effective.shadowCasters.find(candidate => candidate.id === caster.id).softness, caster.softness === 7 ? 6 : 7);
   }
-  assert.equal(JSON.parse(store.exportPatch()).casters.length, 5);
+  for (const { level } of original.sites.find(site => site.id === "home").states) {
+    const expected = authoredHouse.filter(caster => caster.when.level === level);
+    const preview = previewWorldScene(original, { home: level });
+    const effective = store.applyToScene(preview);
+    const active = effective.shadowCasters.filter(caster => caster.when?.siteId === "home");
+    assert.deepEqual(active.map(caster => caster.id), expected.map(caster => caster.id));
+    for (const caster of expected) assert.equal(active.find(candidate => candidate.id === caster.id).softness, caster.softness === 7 ? 6 : 7);
+  }
+  assert.equal(JSON.parse(store.exportPatch()).casters.length, authoredHouse.length);
   assert.deepEqual(original, before);
 });
 
