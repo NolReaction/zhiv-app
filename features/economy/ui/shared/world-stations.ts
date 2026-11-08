@@ -168,7 +168,7 @@ export function worldProductionReason(state: EconomyView, recipe: WorldRecipe, q
   return null;
 }
 export function worldConstructionReason(state: EconomyView, stationId: string, target: WorldBuildingLevel) {
-  if (state.boat?.work) return "Строитель занят лодкой. Заберите работу у причала";
+  if (state.boat?.work) return "Строитель занят лодкой. Заберите работу в разделе «В путь» → «На рыбалку»";
   const required = worldMissingRequirements(state, worldRequirements(target));
   if (required.length) return `${state.catalog.buildings.find(building => building.id === required[0].id)?.name ?? "Постройка"}: нужен уровень ${required[0].level}`;
   const tutorial = tutorialOrderProgress(state);

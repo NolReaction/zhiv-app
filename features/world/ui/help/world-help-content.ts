@@ -1,3 +1,4 @@
+import releaseFeatures from "@/apps/api/src/main/resources/world/release-features.json";
 import { CLICKER_IDLE_RESET_MS } from "@/features/game/clicker-story";
 import { PLAYER_LEVELS, playerProgressionCatalog } from "@/features/economy/domain/player-levels";
 import { miningBatchCatalog } from "@/features/economy/domain/mining-batch";
@@ -551,6 +552,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       action: { label: "К рыбалке", target: { kind: "expeditions", sector: "coast" } },
       relatedIds: ["boat-fishing", "plesk", "collection", "campfire"],
     },
+    ...(releaseFeatures.boatFishingEnabled ? [
     {
       id: "boat-fishing", group: "travel", title: "Как выйти на рыбалку в лодке?", summary: "Ремонт, дорога и возвращение с уловом",
       keywords: "лодка лодочная рыбалка починить ремонт причал плыть река забрать улов мохлик занят вернуться",
@@ -611,7 +613,18 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       note: "В текущем прототипе доступны личные рекорды. Общего рейтинга и недельного соревнования пока нет.",
       action: { label: "К лодке", target: { kind: "expeditions", sector: "coast" } },
       relatedIds: ["boat-fishing", "fishing", "collection", "craft-skills"],
-    },
+    }
+    ] satisfies WorldHelpTopic[] : [{
+      id: "boat-fishing", group: "travel", title: "Можно ли сейчас рыбачить с лодки?", summary: "Береговая рыбалка и возвращение прежнего улова",
+      keywords: "лодка лодочная рыбалка причал забрать улов мохлик занят вернуться работа",
+      steps: [
+        "Выходы на лодке временно закрыты. Для рыбалки на берегу откройте «В путь» → «На рыбалку» и выберите маршрут.",
+        "Если поездка уже была начата, там же откройте «Возвращение к причалу». Дождитесь прибытия и заберите улов. При полной кладовой освободите место и повторите получение.",
+        "Оплаченную раньше работу с лодкой можно завершить там же, когда закончится её таймер.",
+      ],
+      action: { label: "К береговой рыбалке", target: { kind: "expeditions", sector: "coast" } },
+      relatedIds: ["fishing", "storage", "construction"],
+    }] satisfies WorldHelpTopic[]),
     {
       id: "plesk", group: "travel", title: "Где купить снасти и продать рыбу?", summary: "Плёска, лавка и книга улова",
       keywords: "плеск плёска выдра рыбачка торговка жительница магазин лавка снасти удочка крючки наживка купить продажа рыбы",

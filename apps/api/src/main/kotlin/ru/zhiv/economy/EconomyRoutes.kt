@@ -10,6 +10,7 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import ru.zhiv.presence.PresenceRepository
 import ru.zhiv.presence.requireGameplayPresence
@@ -18,6 +19,13 @@ import ru.zhiv.config.AppConfig
 import ru.zhiv.http.isTrustedWrite
 import ru.zhiv.http.sessionCookie
 import ru.zhiv.security.TokenCodec
+
+@Serializable
+private data class ReleaseFeatures(val boatFishingEnabled: Boolean, val boatFishingPlayActions: Set<String>)
+
+private val releaseFeatures: ReleaseFeatures = checkNotNull(
+    ReleaseFeatures::class.java.getResourceAsStream("/world/release-features.json")
+).bufferedReader().use { economyJson.decodeFromString<ReleaseFeatures>(it.readText()) }
 
 private fun ApplicationCall.economySession(config: AppConfig, codec: TokenCodec, write: Boolean = false): ByteArray {
     response.header(HttpHeaders.CacheControl, "no-store")
@@ -41,7 +49,10 @@ fun Route.economyRoutes(repository: EconomyRepository, codec: TokenCodec, config
                 post {
                     val hash = call.economySession(config, codec, true)
                     call.requireGameplayPresence(presence, hash)
-                    call.respond(repository.command(hash, decodeEconomyCommand(call.receive<JsonElement>())))
+                    val command = decodeEconomyCommand(call.receive<JsonElement>())
+                    if (!releaseFeatures.boatFishingEnabled && command.action in releaseFeatures.boatFishingPlayActions)
+                        economyFailure("ECONOMY_BOAT_PAUSED", "Лодочная рыбалка временно закрыта")
+                    call.respond(repository.command(hash, command))
                 }
             }
         }

@@ -17,6 +17,7 @@ import { locked } from "@/features/economy/sync/controller-state";
 import { ProductIcon, itemName, number, stationName } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldCostShortfalls, worldCountdown, worldDuration, worldJobProgress, worldMissingRequirements, worldRequirements } from "@/features/economy/ui/shared/world-stations";
 import { fishClassForItem, fishingBaitCompatible, fishingState, fishingTripCost } from "@/features/economy/domain/fishing";
+import { boatAccess } from "@/features/economy/ui/boat/boat-access";
 import { ExpeditionFishingSummary } from "@/features/economy/ui/fishing/expedition-fishing-summary";
 import { FishingCatchReport, fishingCatchRevealed } from "@/features/economy/ui/fishing/fishing-catch-report";
 import { PleskCatchOdds } from "@/features/economy/ui/fishing/plesk-fishing-shop";
@@ -332,6 +333,7 @@ export function WorldExpeditionsMenu({ economy, onOpenBoat, onOpenPantry, onNavi
   const lastSector = useRef<SectorId>(initialTravelSector ?? "forest");
   const cancellationSent = useRef<string | null>(null), selectedSectorButton = useRef<HTMLButtonElement>(null), content = useRef<HTMLDivElement>(null);
   const state = economy.snapshot;
+  const boatMode = boatAccess(state);
   const reportOwner = state?.ownerPublicId ?? null;
   if (reportHistory.owner !== reportOwner) setReportHistory({ owner: reportOwner,
     baseline: (economy.inventoryGains ?? []).map(gain => gain.id), dismissed: null });
@@ -419,8 +421,8 @@ export function WorldExpeditionsMenu({ economy, onOpenBoat, onOpenPantry, onNavi
         <button ref={selectedSectorButton} type="button" className={styles.back} onClick={() => selectSector(null)}><ArrowLeft size={15} aria-hidden="true" />Все занятия</button>
         <header className={styles.activityHeading} data-activity={currentSector}><span className={styles.activityArt}><ExpeditionActivityArt sector={currentSector} /></span><h3 data-activity-heading tabIndex={-1}>{expeditionSectors.find(sector => sector.id === currentSector)!.name}</h3><p>{currentSector === "shore" ? "Выбери время у воды. Снасти настроим перед выходом." : "Выбери, что пригодится твоей полянке."}</p></header>
       </>}
-      {!embeddedCaves && !activeOnly && state.catalog.boat && onOpenBoat && (currentSector === "shore" || !currentSector) && <button type="button" className={styles.boatEntry} onClick={onOpenBoat}>
-        <Sailboat size={28} aria-hidden="true" /><span><strong>Лодочная рыбалка</strong><small>{state.boat?.voyage ? "Вернуться к поездке" : state.boat?.level ? "Самостоятельно вываживай рыбу" : "Почини лодку и выйди на реку"}</small></span><ArrowRight size={17} aria-hidden="true" />
+      {!embeddedCaves && !activeOnly && boatMode && onOpenBoat && (currentSector === "shore" || !currentSector) && <button type="button" className={styles.boatEntry} onClick={onOpenBoat}>
+        <Sailboat size={28} aria-hidden="true" /><span><strong>{boatMode === "recover" ? "Возвращение к причалу" : "Лодочная рыбалка"}</strong><small>{boatMode === "recover" ? (state.boat?.work ? "Завершить начатую работу" : "Завершить поездку и получить улов") : state.boat?.voyage ? "Вернуться к поездке" : state.boat?.level ? "Самостоятельно вываживай рыбу" : "Почини лодку и выйди на реку"}</small></span><ArrowRight size={17} aria-hidden="true" />
       </button>}
       {!activeOnly && currentSector && <WorldExpeditionSector isOnline={isOnline} sectorId={currentSector} selectedRoute={visibleRoute} onSelectRoute={setSelectedRoute} state={state} economy={economy} exploring={heroTrips.length > 0} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} onUpgradeQuarry={onUpgradeQuarry} onOpenHelp={onOpenHelp} />}
     </>}

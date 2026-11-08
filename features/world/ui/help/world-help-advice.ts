@@ -20,7 +20,7 @@ type AdviceInput = {
   isOnline?: boolean;
 };
 const boatBusyAdvice = (): WorldHelpSuggestion => ({ id: "boat:busy", title: "Мохлик на рыбалке", topicId: "boat-fishing", severity: "problem",
-  message: "Откройте лодку у причала. После возвращения заберите улов, чтобы отправить Мохлика в другое занятие." });
+  message: "Откройте «В путь» → «На рыбалку». После возвращения заберите улов, чтобы отправить Мохлика в другое занятие." });
 const itemName = (state: EconomyView, id: string) => state.catalog.items.find(item => item.id === id)?.name ?? "Материал";
 const stationName = (state: EconomyView, id: string) => state.catalog.buildings.find(building => building.id === id)?.name ?? "Постройка";
 const itemCount = (items: Record<string, number>) => Object.values(items).reduce((sum, count) => sum + count, 0);

@@ -80,7 +80,7 @@ const vite = await createServer({ configFile: false, appType: "custom", root, ca
   }] });
 after(() => vite.close());
 const hooks = await vite.ssrLoadModule(hookId);
-const { WorldBoatFishingDialog } = await vite.ssrLoadModule("/features/economy/ui/boat/world-boat-fishing-dialog.tsx");
+const { PlayableBoatFishingDialog } = await vite.ssrLoadModule("/features/economy/ui/boat/world-boat-fishing-dialog.tsx");
 const { economyCatalog, economyCommandSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyShipSchema } = await vite.ssrLoadModule("/features/economy/domain/ship-model.ts");
 const { newEconomyState, applyEconomyCommand, economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
@@ -160,7 +160,7 @@ function fixture({ outbound = false, dev = false } = {}) {
       hooks.begin();
       const economy = { snapshot: view(), now: time, snapshotConfirmed: true, busy, uncertain: false, retryAt: 0, error: null, devAvailable: dev,
         act(action, targetId, quantity, totalPrice, fishSelection, unused, reel) { if (busy) return false; busy = true; pending.push(command(action, targetId, reel)); return true; }, refresh() {}, retry() {} };
-      tree = featureTree(open ? createElement(WorldBoatFishingDialog, { economy, onClose() { open = false; } }) : null, "root", hosts);
+      tree = featureTree(open ? createElement(PlayableBoatFishingDialog, { economy, onClose() { open = false; } }) : null, "root", hosts);
       hooks.finish(); if (!hooks.changed()) return tree;
     }
     assert.fail("Boat feature effects did not settle");

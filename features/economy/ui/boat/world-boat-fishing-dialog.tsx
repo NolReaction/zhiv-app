@@ -14,6 +14,8 @@ import { number } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldDuration } from "@/features/economy/ui/shared/world-stations";
 import { BoatRecords, BoatWork } from "./boat-panels";
 import { BoatFishingAlbum } from "./boat-fishing-album";
+import releaseFeatures from "@/apps/api/src/main/resources/world/release-features.json";
+import { BoatRecoveryDialog } from "./boat-recovery-dialog";
 import { BoatGarage } from "./boat-garage";
 import { BoatTripSummary } from "./boat-trip-summary";
 import { createBoatTripReceipt, type BoatTripReceipt } from "./boat-trip-summary-data";
@@ -28,6 +30,11 @@ type Props = { economy: ReadyEconomy; onClose: () => void; onOpenPantry?: () => 
 export type BoatSend = (action: EconomyCommand["action"], targetId: string, reel?: BoatReelCommand) => boolean;
 
 export function WorldBoatFishingDialog(props: Props) {
+  if (!releaseFeatures.boatFishingEnabled && props.economy.snapshot.catalog.boat) return <BoatRecoveryDialog {...props} />;
+  return <PlayableBoatFishingDialog {...props} />;
+}
+
+export function PlayableBoatFishingDialog(props: Props) {
   if (!props.economy.snapshot.catalog.boat) return <BoatUnavailableDialog economy={props.economy} onClose={props.onClose} />;
   const view = boatPhase(boatState(props.economy.snapshot), props.economy.now) === "fishing" ? "river" : "dock";
   return <BoatDialogSession key={`${props.economy.snapshot.ownerPublicId}.${view}`} {...props} />;

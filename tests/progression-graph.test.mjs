@@ -31,6 +31,7 @@ const context = { exports: {}, require: specifier => {
   if (specifier === "@/features/economy/domain/money") return moneyContext.exports;
   if (specifier === "@/features/economy/domain/rules") return { constructionTimePearlPrice: (seconds, config) => timeContext.exports.durationPearlPrice(seconds * 1000,
     config.secondsPerPearl, moneyContext.exports.ECONOMY_PEARL_SCALE, config.priceStepPearls, config.pricingPoints) };
+  if (specifier === "@/apps/api/src/main/resources/world/release-features.json") return { default: JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/release-features.json", import.meta.url), "utf8")) };
   if (specifier === "@/apps/api/src/main/resources/world/progression-rewards-catalog.json") return { default: JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/progression-rewards-catalog.json", import.meta.url), "utf8")) };
   assert.equal(specifier, "@/features/economy/domain/model");
   return { economyCatalog: catalog, recipeBuildingLevel };
@@ -135,7 +136,7 @@ test("node and edge ids are unique and actual world remains connected without pr
   for (const value of graph.nodes.filter(value => value.status === "active")) assert(actual.has(value.id), `Disconnected active node ${value.id}`);
   assert.equal(node("pearls").status, "active");
   assert.ok(!graph.edges.some(edge => edge.source === "pearls" && ["requirement", "unlock"].includes(edge.kind)), "optional acceleration never gates progression");
-  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 9);
+  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 10);
 });
 
 test("fish ingredients resolve to a real chance source without inventing guaranteed species rewards", () => {
@@ -388,14 +389,15 @@ test("restored landmarks gate real routes while future proposals cannot gate act
   assert(!getPrerequisiteIds(graph, "leaderboard").has("taps"), "Rating flow is not an unlock gate");
 });
 
-test("the working boat follows catalog repair gates without requiring the planned private shore", () => {
+test("the paused boat is marked as planned and remains independent of shore and port progression", () => {
   const repair = catalog.boat.upgrades.find(upgrade => upgrade.id === "repair"), boat = node("boat");
-  assert.equal(boat.status, "active");
+  assert.equal(boat.status, "plan");
+  assert.match(boat.description, /выходы на лодке временно закрыты/i);
   assert.deepEqual(plain(boat.requirements), { home: repair.requiredHomeLevel, ...repair.requiredBuildings });
   assert.deepEqual(plain(boat.cost), repair.cost);
   assert.equal(boat.seconds, repair.seconds);
-  assert(hasEdge("b:home:2", "boat", "requirement"));
-  assert(hasEdge("b:workshop:1", "boat", "requirement"));
+  assert(hasEdge("b:home:2", "boat", "plan"));
+  assert(hasEdge("b:workshop:1", "boat", "plan"));
   assert(!getPrerequisiteIds(graph, "boat").has("shore_site"));
   assert(!graph.edges.some(edge => edge.source === "shore_site" && edge.target === "boat"));
   assert.equal(node("port").status, "active");
@@ -407,7 +409,7 @@ test("the working boat follows catalog repair gates without requiring the planne
   const changedGraph = buildProgressionGraph(changed), changedBoat = changedGraph.nodes.find(value => value.id === "boat");
   assert.equal(changedBoat.cost.coins, 475);
   assert.deepEqual(plain(changedBoat.requirements), { home: 3, workshop: 2 });
-  assert(changedGraph.edges.some(edge => edge.source === "b:home:3" && edge.target === "boat" && edge.kind === "requirement"));
+  assert(changedGraph.edges.some(edge => edge.source === "b:home:3" && edge.target === "boat" && edge.kind === "plan"));
   assert(!changedGraph.edges.some(edge => edge.source === "b:home:2" && edge.target === "boat"));
 });
 

@@ -5,6 +5,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -51,10 +52,22 @@ class EconomyRateLimitTest {
         }
         assertEquals(HttpStatusCode.PayloadTooLarge, send(boundaryBody + " ").status)
         assertEquals(0, fixture.commands, "One byte over the limit cannot reach the repository")
-        assertEquals(HttpStatusCode.OK, send(boundaryBody).status, "Transport accepts all 600 controls at the exact byte limit; the domain independently validates their result")
-        assertEquals(1, fixture.commands)
+        val paused = send(boundaryBody)
+        assertEquals(HttpStatusCode.Conflict, paused.status)
+        assertTrue(paused.bodyAsText().contains("ECONOMY_BOAT_PAUSED"))
+        assertEquals(0, fixture.commands)
         assertEquals(HttpStatusCode.PayloadTooLarge, send(boundaryBody + " ").status)
-        assertEquals(1, fixture.commands, "Oversized input cannot reach the repository")
+        assertEquals(0, fixture.commands, "Oversized input cannot reach the repository")
+        for (action in listOf("start_boat_upgrade", "depart_boat", "begin_boat_cast")) {
+            val response = send(economyJson.encodeToString(command.copy(action = action, reel = null)))
+            assertEquals(HttpStatusCode.Conflict, response.status)
+            assertTrue(response.bodyAsText().contains("ECONOMY_BOAT_PAUSED"))
+        }
+        assertEquals(0, fixture.commands)
+        for (action in listOf("return_boat", "claim_boat", "claim_boat_upgrade", "start_fishing")) {
+            assertEquals(HttpStatusCode.OK, send(economyJson.encodeToString(command.copy(action = action, reel = null, expectedRevision = fixture.commands.toLong()))).status)
+        }
+        assertEquals(4, fixture.commands)
     }
     @Test fun `ordinary active play continues for ninety minutes and permits the next construction on either device`() = testApplication {
         val fixture = Fixture(); installApi(fixture)

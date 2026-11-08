@@ -520,6 +520,44 @@ test("commands reject hostile JSON shape, extra fields, fractions and body overf
   assert.equal(economy.getDevEconomy(p.token).revision, 0);
 });
 
+test("paused boat commands leave saved state untouched; pending repairs and returning cargo remain claimable", async () => {
+  const p = player();
+  economy.getDevEconomy(p.token);
+  const profile = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  const store = await vite.ssrLoadModule("/features/economy/domain/boat-fishing.ts");
+  profile.state.boat = { ...store.newBoatState(), level: 1 };
+  // Seed an outing made by the previous version, already at the fishing spot with one fish on board.
+  const previous = Date.now() - 15 * 60_000;
+  const oldVoyage = economy.commandDevEconomy(p.token, { ...command(p), action: "depart_boat", targetId: "river_reach" }, previous).state.boat.voyage;
+  const slot = profile.state.boat.voyage.slots[0];
+  profile.state.boat.voyage.castsUsed = 1;
+  profile.state.boat.voyage.catches = [{ castIndex: 0, fishId: slot.fishId, weightGrams: slot.weightGrams, caughtAt: oldVoyage.arrivesAt }];
+  const saved = structuredClone(profile.state.boat);
+  for (const [action, targetId] of [["depart_boat", "river_reach"], ["start_boat_upgrade", "oars"], ["begin_boat_cast", oldVoyage.id]]) {
+    const cmd = { ...command(p), action, targetId }, before = profile.revision;
+    const response = await POST(post(cmd));
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).code, "ECONOMY_BOAT_PAUSED");
+    assert.equal(profile.revision, before);
+    assert.deepEqual(profile.state.boat, saved);
+  }
+  const arrived = Date.now() - 1000;
+  const returning = await POST(post({ ...command(p), action: "return_boat", targetId: oldVoyage.id }));
+  assert.equal(returning.status, 200);
+  profile.state.boat.voyage.returnStartedAt = new Date(arrived - oldVoyage.inboundSeconds * 1000).toISOString();
+  profile.state.boat.voyage.returnsAt = new Date(arrived).toISOString();
+  const claim = { ...command(p), action: "claim_boat", targetId: oldVoyage.id };
+  assert.equal((await POST(post(claim))).status, 200);
+  assert.equal((await (await POST(post(claim))).json()).replayed, true);
+  assert.equal(profile.state.boat.voyage, undefined);
+  assert.equal(profile.state.fishing.stock[slot.fishId], 1);
+  profile.state.boat.work = { id: crypto.randomUUID(), upgradeId: "oars", startedAt: new Date(arrived - 1000).toISOString(),
+    finishesAt: new Date(arrived).toISOString(), cost: { coins: 0, items: {} } };
+  const work = { ...command(p), action: "claim_boat_upgrade", targetId: profile.state.boat.work.id };
+  assert.equal((await POST(post(work))).status, 200);
+  assert.deepEqual(profile.state.boat.upgrades, ["oars"]);
+});
+
 test("HTTP accepts a bounded 600-event reel through parsing without enlarging the market limit", async () => {
   const p = player(), before = economy.getDevEconomy(p.token);
   const cmd = { ...command(p), action: "submit_boat_cast", targetId: crypto.randomUUID(),
@@ -529,7 +567,7 @@ test("HTTP accepts a bounded 600-event reel through parsing without enlarging th
   assert.ok(bytes > 4096 && bytes < 32768, "a complete legal control envelope exceeds the former command limit");
   const response = await POST(post(body));
   assert.equal(response.status, 409);
-  assert.equal((await response.json()).code, "ECONOMY_BOAT_VOYAGE_GONE", "the valid envelope reaches domain validation, not body or schema rejection");
+  assert.equal((await response.json()).code, "ECONOMY_BOAT_PAUSED", "the valid envelope reaches the release gate");
   const invalid = await POST(post({ ...cmd, reel: { ...cmd.reel, inputs: [...cmd.reel.inputs, { tick: 600, held: true }] } }));
   assert.equal(invalid.status, 400); assert.equal((await invalid.json()).code, "INVALID_ECONOMY_COMMAND");
   assert.equal((await marketPOST(post(body, {}, "/market/commands"))).status, 413, "market retains its smaller 2048-byte limit");

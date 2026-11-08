@@ -2,6 +2,7 @@ import { economyCatalog, recipeBuildingLevel, type EconomyCatalog, type EconomyC
 import { formatPearls } from "@/features/economy/domain/money";
 import { recipeResultName } from "@/features/economy/domain/recipe-prerequisites";
 import { constructionTimePearlPrice } from "@/features/economy/domain/rules";
+import releaseFeatures from "@/apps/api/src/main/resources/world/release-features.json";
 import progressionRewards from "@/apps/api/src/main/resources/world/progression-rewards-catalog.json";
 
 export type ProgressionNodeKind = "location" | "building" | "recipe" | "exploration" | "acquisition" | "world" | "collection" | "equipment" | "milestone" | "market" | "project";
@@ -382,11 +383,11 @@ export function buildProgressionGraph(inputCatalog: EconomyCatalog = economyCata
   const boat = catalog.boat, repair = boat?.upgrades.find(upgrade => upgrade.id === "repair");
   if (boat && repair) {
     const requirements = { home: repair.requiredHomeLevel, ...repair.requiredBuildings };
-    add({ id: "boat", title: "Рыбацкая лодка", label: "Рыбацкая лодка", icon: "🛶", kind: "world", status: "active", phase: repair.requiredHomeLevel,
+    add({ id: "boat", title: "Рыбацкая лодка", label: "Рыбацкая лодка", icon: "🛶", kind: "world", status: releaseFeatures.boatFishingEnabled ? "active" : "plan", phase: repair.requiredHomeLevel,
       cost: cloneCost(repair.cost), seconds: repair.seconds, requirements, children: [],
-      description: `Лодочная рыбалка открывается через «В путь» после ремонта. Нужны дом ${repair.requiredHomeLevel} и мастерская ${repair.requiredBuildings.workshop}; личный берег строить не требуется. Дорога занимает ${shortTime(boat.outboundSeconds)} туда и ${shortTime(boat.inboundSeconds)} обратно. За выход доступны ${boat.maxCasts} попытки вываживания, с ящиком ${boat.maxCasts + 1}; вёсла сокращают каждую дорогу до ${shortTime(boat.oarsTravelSeconds)}. Сохраняются купленные удочки и крючки, одна наживка расходуется на весь выход. Улов поступает в кладовую после возвращения и получения. Только доставленная рыба развивает профессиональный навык рыбалки. Чертежи не относятся к развитию лодки и не выдаются за её выходы. Вес сохраняется в личных рекордах каждого вида и не увеличивает цену рыбы. Текущий прототип без общего рейтинга и объёмной сцены; береговая рыбалка по таймеру остаётся.` });
-    for (const [building, level] of Object.entries(requirements)) edge(buildingNodeId(building, level), "boat");
-    edge("boat", "fishing_catches", "flow");
+      description: !releaseFeatures.boatFishingEnabled ? "Выходы на лодке временно закрыты. За уловом можно отправиться на береговую рыбалку." : `Лодочная рыбалка открывается через «В путь» после ремонта. Нужны дом ${repair.requiredHomeLevel} и мастерская ${repair.requiredBuildings.workshop}; личный берег строить не требуется. Дорога занимает ${shortTime(boat.outboundSeconds)} туда и ${shortTime(boat.inboundSeconds)} обратно. За выход доступны ${boat.maxCasts} попытки вываживания, с ящиком ${boat.maxCasts + 1}; вёсла сокращают каждую дорогу до ${shortTime(boat.oarsTravelSeconds)}. Сохраняются купленные удочки и крючки, одна наживка расходуется на весь выход. Улов поступает в кладовую после возвращения и получения. Только доставленная рыба развивает профессиональный навык рыбалки. Чертежи не относятся к развитию лодки и не выдаются за её выходы. Вес сохраняется в личных рекордах каждого вида и не увеличивает цену рыбы. Текущий прототип без общего рейтинга и объёмной сцены; береговая рыбалка по таймеру остаётся.` });
+    for (const [building, level] of Object.entries(requirements)) edge(buildingNodeId(building, level), "boat", releaseFeatures.boatFishingEnabled ? "requirement" : "plan");
+    edge("boat", "fishing_catches", releaseFeatures.boatFishingEnabled ? "flow" : "plan");
   }
   const lighthouseHome = catalog.buildings.find(building => building.id === "lighthouse")?.levels.find(level => level.level === 1)?.requiredHomeLevel ?? 3;
   const port = fixed("port", "Порт", "⚓", lighthouseHome, "Действующий причал торгового корабля. После получения восстановленного маяка здесь открываются личные грузы. Рыбацкая лодка ремонтируется отдельно и не требуется для поставок.");

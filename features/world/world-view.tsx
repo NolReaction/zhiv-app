@@ -1,5 +1,6 @@
 "use client";
 
+import { boatAccess } from "@/features/economy/ui/boat/boat-access";
 import { WorldBoatFishingDialog } from "@/features/economy/ui/boat/world-boat-fishing-dialog";
 import { boatPhase, boatState } from "@/features/economy/domain/boat-fishing";
 import { shipOrdersState } from "@/features/economy/domain/ship-orders";
@@ -122,7 +123,9 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const [openObjectRequest, setOpenObjectRequest] = useState<{ id: number; place: WorldPlace }>();
   const objectRequestSequence = useRef(0);
   const [quickMenu, setQuickMenu] = useState<QuickMenu | null>(null);
-  const riverOpen = quickMenu === "boat" && economy.snapshot?.ownerPublicId === ownerPublicId && Boolean(economy.snapshot?.catalog.boat) && boatPhase(boatState(economy.snapshot!), economy.now) === "fishing";
+  const ownerSnapshot = economy.snapshot?.ownerPublicId === ownerPublicId ? economy.snapshot : null;
+  const boatMode = boatAccess(ownerSnapshot);
+  const riverOpen = quickMenu === "boat" && boatMode === "play" && Boolean(ownerSnapshot && boatPhase(boatState(ownerSnapshot), economy.now) === "fishing");
   const [pantryFishSale, setPantryFishSale] = useState<{ owner: string; open: boolean } | null>(null);
   const pantryFishSaleOpen = quickMenu === "pantry" && pantryFishSale?.owner === ownerPublicId && pantryFishSale.open;
   const onFishSaleOpenChange = useCallback((value: boolean) => {
@@ -286,11 +289,12 @@ export default function WorldView({ open, suspended = false, world, economy, mai
     if (quickReturn.current?.isConnected) quickReturn.current.focus({ preventScroll: true });
   }, []);
   const openQuick = useCallback((next: QuickMenu, sector: SectorId = "forest", profileTab: WorldProfileDestination = "profile") => {
+    if (next === "boat" && !boatMode) return;
     quickReturn.current = worldElement.current?.querySelector<HTMLElement>(`[data-world-quick="${next === "ship" ? "more" : next === "boat" ? "expeditions" : next}"]`) ?? null;
     if (next === "profile") setProfileEntry(value => ({ tab: profileTab, request: value.request + 1 }));
     if (next === "expeditions") { setExpeditionSector(sector); setExpeditionOpenRequest(value => value + 1); }
     clearObject(); setPanel(null); setCharactersOpen(false); setQuickMenu(next);
-  }, [clearObject]);
+  }, [boatMode, clearObject]);
   const openResident = useCallback((id: WorldResidentId = "plesk") => {
     if (currentOwner.current !== ownerPublicId || economy.snapshot && economy.snapshot.ownerPublicId !== ownerPublicId
       || !worldResidentAvailable(id, quarryBuilt, leaftailAvailable, lopukhAvailable)) return false;

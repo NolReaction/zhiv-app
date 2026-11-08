@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
+import releaseFeatures from "@/apps/api/src/main/resources/world/release-features.json";
 import { PlayerItemIcon } from "@/features/economy/ui/fishing/fish-discovery";
 
 import { shipOrdersConfig } from "@/features/economy/domain/ship-orders";
@@ -46,7 +47,7 @@ export function HomeUnlockCard({ unlock, onSelect }: { unlock: EconomyHomeUnlock
     })}</div>
     {products.length > 0 && <><h4>Новые товары</h4><Ingredients items={Object.fromEntries(products.map(id => [id, 1]))} onSelect={onSelect} /></>}
     {unlock.landmarks.map(landmark => <div className={styles.guarantee} key={`${landmark.id}:${landmark.level}`}><strong>{landmark.name}: {number(landmark.cost.coins)} монет · {time(landmark.seconds)}</strong><Ingredients items={landmark.cost.items} onSelect={onSelect} /><p className={styles.hint}>{landmark.id === "bridge" ? "После получения восстановления открывается рынок игроков. Для следующего дома мост необязателен; поздний проект потребует его." : `После получения восстановления включается ночной свет и приходит корабль с тремя грузами. Стоянка ${shipOrdersConfig.staySeconds / 3600} ч, следующий рейс через ${shipOrdersConfig.intervalSeconds / 3600} ч после отплытия. За рейс ${shipOrdersConfig.freeReplacements} бесплатные замены нетронутых грузов; досрочное отправление стоит ${formatPearls(shipOrdersConfig.resetPricePearls)} жемчужин. Маяк показывает время прибытия. Для следующего дома маяк необязателен.`}</p></div>)}
-    {boatUpgrades.length > 0 && <details className={styles.chain}><summary>Лодка и снаряжение: {boatUpgrades.length}</summary><div className={styles.chainBody}>
+    {releaseFeatures.boatFishingEnabled && boatUpgrades.length > 0 && <details className={styles.chain}><summary>Лодка и снаряжение: {boatUpgrades.length}</summary><div className={styles.chainBody}>
       {boatUpgrades.map(upgrade => <div className={styles.buildingCost} key={upgrade.id} data-boat-upgrade={upgrade.id}>
         <div><strong>{upgrade.name}</strong><span>{number(upgrade.cost.coins)} монет · {time(upgrade.seconds)}</span></div>
         <Ingredients items={upgrade.cost.items} onSelect={onSelect} /><p className={styles.hint}>{upgrade.description}</p>
