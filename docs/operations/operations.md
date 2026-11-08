@@ -11,6 +11,12 @@ Production-контур запускается из `deploy/compose.yml`. Postgr
 инстанса со старого mount-path сначала сделайте проверенный `pg_dump`: не
 перемещайте production volume между путями вслепую.
 
+## Второй сайт на imlive-cloud
+
+При `DOMAIN=im-alive.ru` Caddy загружает [маршрут Авто-Горизонта](../../deploy/caddy-sites/im-alive.ru.auto-gorizont.caddy). Запросы к `auto-gorizont.ru` идут через Unix-сокет `/srv/deploy/avto-gorizont/site.sock` в отдельный контейнер сайта. На хосте сокет расположен в `deploy/runtime/avto-gorizont/`. При обновлении Caddy каталог `deploy/caddy-sites/` подключается только для чтения. Для `localhost` дополнительных маршрутов нет.
+
+После обновления проверьте `https://im-alive.ru/readyz` и главную страницу `https://auto-gorizont.ru/`. В режиме закрытого показа Авто-Горизонт отвечает на запрос без пароля кодом 401.
+
 ## Перед обновлением
 
 Выпуск **0.7.0** и административное дополнение в `master` используют схему **V52**.
