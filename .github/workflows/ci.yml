@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches-ignore: [maintenance/archive-2026-11-08]
   pull_request:
   workflow_dispatch:
 

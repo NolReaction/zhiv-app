@@ -1,0 +1,36 @@
+name: Archive completed branches (2026-11-08)
+on:
+  push:
+    branches: [maintenance/archive-2026-11-08]
+permissions:
+  contents: write
+jobs:
+  archive:
+    if: github.repository == 'NolReaction/zhiv-app' && github.event.created && !github.event.deleted && !github.event.forced
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - name: Archive three finished heads and the maintenance branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix=refs/tags/archive/2026-11-08
+          leases=()
+          refs=()
+          add_archive() {
+            local name=$1 tip=$2 head="refs/heads/$1" tag="$prefix/$1"
+            test "$(git ls-remote --refs origin "$head" | cut -f1)" = "$tip"
+            test -z "$(git ls-remote --refs origin "$tag")"
+            git cat-file -e "$tip^{commit}"
+            leases+=("--force-with-lease=$head:$tip" "--force-with-lease=$tag:")
+            refs+=("$tip:$tag" ":$head")
+          }
+          add_archive work/0.7.2-bot 568c8ea2e86fc09c62f134c89c14d762d3814333
+          add_archive work/0.7.2-ship dd50778b9632c7f2807336d9e18c0cd667ac6536
+          add_archive work/admin-operations 36b9cb58ec1faa4dd9abd5d835ee1c61122353ce
+          add_archive maintenance/archive-2026-11-08 "$GITHUB_SHA"
+          git push --atomic --no-follow-tags "${leases[@]}" origin "${refs[@]}"
