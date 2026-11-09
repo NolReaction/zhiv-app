@@ -1,4 +1,5 @@
 import { validateGarageScene } from "./garage-scene-model.mjs";
+import { BOAT_GARAGE_STAND_ASSET, boatGarageStandFrames } from "../../objects/fishing-boat/fishing-boat-garage-layout.mjs";
 
 const root = "/world/boat/modular/";
 export const GARAGE_SIDE_LEVELS = [0, 1, 2, 3, 4, 5];
@@ -11,6 +12,7 @@ export const GARAGE_SIDE_ASSETS = [
     height: kind === "hull" ? 640 : kind === "engine" ? 570 : 230,
   }))),
   { id: "side-fuel-hose", name: "Топливный шланг", src: `${root}fuel_hose_aligned.svg`, width: 1600, height: 640 },
+  BOAT_GARAGE_STAND_ASSET,
 ];
 
 /** Creates a separate undoable example. It never reads or replaces a user's saved project.
@@ -23,16 +25,14 @@ export function createGarageSideProfile(levels = {}) {
     id, name, assetId, parentId, socketId: null, x, y, width, height, scale: 1, rotation: 0,
     pivotX: 0, pivotY: 0, zIndex, visible: true, locked: false, sockets: [], ...extra,
   });
-  const stand = (id, x) => node(id, "Боковая опора", "side-stand", null, x, 735, 1448, 1086, 10, {
-    scale: .13, scaleY: (735 - (185 + 560 * .8 - 4)) / (1086 * (.935 - .14) * .13), pivotX: .5, pivotY: .935,
-    sockets: [{ id: "contact", name: "Контакт с килем", x: .5, y: .14 }, { id: "foot", name: "Подошва", x: .5, y: .935 }],
-  });
+  const stands = boatGarageStandFrames({ boatScale: .8, boatX: 195.5, boatY: 185 });
   return validateGarageScene({ schemaVersion: 1, canvas: { width: 1671, height: 941 },
     cameras: { portrait: { x: 835.5, y: 470.5, width: 1600 }, landscape: { x: 835.5, y: 470.5, width: 1671 } },
     assets: [{ id: "garage", name: "Мастерская", src: "/world/boat-garage/garage.webp", width: 1671, height: 941 },
-      { id: "side-stand", name: "Боковая опора", src: "/world/boat-garage/stand-side.webp", width: 1448, height: 1086 }, ...GARAGE_SIDE_ASSETS],
+      ...GARAGE_SIDE_ASSETS],
     nodes: [node("garage", "Фон мастерской", "garage", null, 0, 0, 1671, 941, 0, { locked: true }),
-      stand("side-stand-left", 195.5 + 480 * .8), stand("side-stand-right", 195.5 + 1100 * .8),
+      ...stands.map((frame, index) => node(`side-stand-${index ? "right" : "left"}`, `${index ? "Правая" : "Левая"} опора · SVG`,
+        "side-stand", null, frame.x, frame.y, frame.width, frame.height, 10, frame)),
       node("boat", "Лодка сбоку · группа", null, null, 195.5, 185, 1600, 640, 20, { scale: .8,
         sockets: [{ id: "engine", name: "Транец · мотор", x: 220 / 1600, y: 290 / 640 },
           { id: "fuel", name: "Бак", x: 500 / 1600, y: 290 / 640 }, { id: "actor", name: "Мохлик", x: 960 / 1600, y: 344 / 640 }] }),

@@ -16,3 +16,10 @@ for (const asset of assets) {
   } else await writeFile(output, bytes);
   console.log(`${asset.output}: ${asset.width}×${asset.height}, ${bytes.length} bytes${check ? " (verified)" : ""}`);
 }
+const standSource = new URL("../art/world/boat-garage/stand-side.svg", import.meta.url);
+const standOutput = new URL("../public/world/boat-garage/stand-side.svg", import.meta.url);
+const standBytes = await readFile(standSource);
+if (check) {
+  if (!standBytes.equals(await readFile(standOutput))) throw new Error("Boat stand SVG is stale: public/world/boat-garage/stand-side.svg");
+} else await writeFile(standOutput, standBytes);
+console.log(`public/world/boat-garage/stand-side.svg: ${standBytes.length} bytes${check ? " (verified)" : ""}`);

@@ -9,17 +9,23 @@ function ArtworkPart({ layer }: { layer: BoatArtLayer }) {
   </svg>;
 }
 
-export function BoatArt({ repaired = true, crate = false, oars = false, net = false, telescope = false,
-  travelling = false, selectedModule, previewModule }: {
+export type BoatArtProps = {
   repaired?: boolean; crate?: boolean; oars?: boolean; net?: boolean; telescope?: boolean; travelling?: boolean;
   selectedModule?: BoatArtModule; previewModule?: BoatArtModule;
-}) {
+};
+
+export function BoatArtAssembly({ repaired = true, crate = false, oars = false, net = false, telescope = false,
+  selectedModule, previewModule }: BoatArtProps) {
   const layers = boatArtworkLayers({ repaired, upgrades: [crate && "crate", oars && "oars"].filter(Boolean) as string[],
     artifacts: [net && "landing_net", telescope && "telescope"].filter(Boolean) as string[], previewModule });
+  return <g className={styles.assembly}>{layers.map(layer => <g key={layer.id} data-boat-part={layer.id} className={styles.part}
+    data-selected={selectedModule === layer.id || undefined} data-preview={previewModule === layer.id || undefined}><ArtworkPart layer={layer} /></g>)}</g>;
+}
+
+export function BoatArt({ repaired = true, travelling = false, previewModule, ...props }: BoatArtProps) {
   return <svg viewBox={BOAT_SIDE_VIEWPORT.join(" ")} className={styles.art} role="img"
     aria-label={repaired || previewModule === "repair" ? "Рыбацкая лодка с установленными модулями" : "Повреждённый корпус лодки"}
     data-boat-art={repaired ? "repaired" : "broken"} data-travelling={travelling || undefined} data-preview-module={previewModule}>
-    <g className={styles.assembly}>{layers.map(layer => <g key={layer.id} data-boat-part={layer.id} className={styles.part}
-      data-selected={selectedModule === layer.id || undefined} data-preview={previewModule === layer.id || undefined}><ArtworkPart layer={layer} /></g>)}</g>
+    <BoatArtAssembly {...props} repaired={repaired} previewModule={previewModule} />
   </svg>;
 }

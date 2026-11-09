@@ -7,10 +7,10 @@ import { garageBranchIds, garageNodeContactPoint, getGarageNodeMatrix, transform
 const root = new URL("../", import.meta.url);
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-7, `${actual} != ${expected}`);
 
-test("studio side-profile library preserves all 18 editable masters and the shared hose", async () => {
+test("studio side-profile library preserves editable boat masters, hose and vector stand", async () => {
   assert.deepEqual(GARAGE_SIDE_LEVELS, [0, 1, 2, 3, 4, 5]);
-  assert.equal(GARAGE_SIDE_ASSETS.length, 19);
-  assert.equal(new Set(GARAGE_SIDE_ASSETS.map(asset => asset.id)).size, 19);
+  assert.equal(GARAGE_SIDE_ASSETS.length, 20);
+  assert.equal(new Set(GARAGE_SIDE_ASSETS.map(asset => asset.id)).size, 20);
   for (const asset of GARAGE_SIDE_ASSETS) {
     const publicBytes = await readFile(new URL(`public${asset.src}`, root));
     assert.deepEqual(publicBytes, await readFile(new URL(`art${asset.src}`, root)), `${asset.id}: runtime matches editable master`);
@@ -46,7 +46,8 @@ test("side-profile presets are fresh owned scenes and cannot mutate another buil
 
 test("only the shipped modular SVG allowlist extends the raster-only import boundary", () => {
   for (const src of ["/world/boat/modular/custom.svg", "/world/boat/modular/hull_l6.svg", "/world/boat/modular/engine_l0.svg#x",
-    "/world/boat/modular/../hull_l0.svg", "/world/boat-garage/custom.svg", "https://example.com/hull_l0.svg", "data:image/svg+xml,<svg/>"]) {
+    "/world/boat/modular/../hull_l0.svg", "/world/boat-garage/custom.svg", "/world/boat-garage/stand-side.svg#x",
+    "/world/boat-garage/sub/stand-side.svg", "https://example.com/hull_l0.svg", "data:image/svg+xml,<svg/>"]) {
     const scene = createGarageSideProfile(); scene.assets[1].src = src;
     assert.throws(() => validateGarageScene(scene), /Изображения должны/);
   }
@@ -61,6 +62,8 @@ test("side-profile garage supports touch the keel and stay outside the floating 
     const top = transformGaragePoint(matrix, garageNodeContactPoint(stand, "contact"));
     const foot = transformGaragePoint(matrix, garageNodeContactPoint(stand, "foot"));
     close(top.y, 185 + 560 * .8 - 4); close(foot.y, 735);
+    close(matrix[0], matrix[3]); close(matrix[1], 0); close(matrix[2], 0);
+    assert.equal(scene.assets.find(asset => asset.id === stand.assetId).src, "/world/boat-garage/stand-side.svg");
     assert.equal(stand.parentId, null); assert.equal(floating.has(id), false);
   }
 });

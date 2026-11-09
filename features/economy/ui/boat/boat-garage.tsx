@@ -7,7 +7,7 @@ import type { BoatCatalog, BoatState, BoatUpgradeId } from "@/features/economy/d
 import type { EconomyView } from "@/features/economy/domain/model";
 import { number } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldDuration } from "@/features/economy/ui/shared/world-stations";
-import { BoatArt } from "./boat-art";
+import { BoatGarageArt } from "./boat-garage-art";
 import { BoatModuleThumbnail } from "./boat-module-thumbnail";
 import { BoatCost, BoatWork } from "./boat-panels";
 import shared from "./boat-fishing.module.css";
@@ -48,7 +48,7 @@ export function BoatGarage({ state, boat, config, now, disabled, onUpgrade, onCl
   return <section className={styles.garage} aria-label="Гараж лодки" data-boat-garage>
     <div className={styles.stage} data-boat-preview={preview && !installed ? selected : undefined}>
       <div className={styles.stageHeading}><span>ЛОДОЧНАЯ МАСТЕРСКАЯ</span><strong>{preview && !installed ? "Примерка модуля" : boat.level ? "Ваша комплектация" : "Корпус под восстановление"}</strong></div>
-      <div className={styles.assembly}><BoatArt repaired={boat.level > 0} crate={boat.upgrades.includes("crate")} oars={boat.upgrades.includes("oars")} selectedModule={selected} previewModule={preview && !installed ? selected : undefined} /></div>
+      <div className={styles.assembly}><BoatGarageArt repaired={boat.level > 0} crate={boat.upgrades.includes("crate")} oars={boat.upgrades.includes("oars")} selectedModule={selected} previewModule={preview && !installed ? selected : undefined} /></div>
       <div className={styles.hotspots} aria-label="Модули на лодке">{modules.map((module, index) => module.x === undefined || module.y === undefined ? null : <button key={module.id} type="button" className={styles.hotspot} style={{ left: `${module.x}%`, top: `${module.y}%` }} aria-label={`Выбрать: ${module.label}`} aria-pressed={selected === module.id} onClick={() => choose(module.id)}><span>{String(index + 1).padStart(2, "0")}</span><small>{module.label}</small></button>)}</div>
       <div className={styles.stageFoot}><span><Wrench size={13} />{modules.filter(module => ownsModule(boat, module.id)).length} / {modules.length} модулей готово</span>
         {!installed && selected !== "crate" && <button type="button" className={styles.preview} aria-pressed={preview} onClick={() => setPreview(value => !value)}><Eye size={14} />{preview ? "Показать текущую" : "Примерить модуль"}</button>}</div>

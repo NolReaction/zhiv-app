@@ -27,6 +27,7 @@ test("side-profile BoatArt shows SVG baseline parts with no crate for owned or p
   }
   const oars = html(BoatArt, { repaired: true, oars: true });
   assert.match(oars, /module-oars\.webp/); assert.doesNotMatch(oars, /engine_l1\.svg/);
+  assert.doesNotMatch(oars, /stand-side|data-garage-supports/);
 });
 
 test("storage thumbnail uses a capacity symbol without a crate image", () => {
@@ -45,6 +46,8 @@ test("garage keeps the storage upgrade rail and bonus but removes its spatial ma
     now: Date.parse("2026-11-09T15:05:00Z"), disabled: false,
     onUpgrade() { assert.fail("Rendering must not spend materials"); }, onClaim() { assert.fail("Rendering must not claim an upgrade"); } });
   assert.match(result, /data-boat-module="crate"/); assert.match(result, />Трюм</);
+  assert.match(result, /data-boat-garage-art/);
+  assert.equal([...result.matchAll(/href="\/world\/boat-garage\/stand-side\.svg"/g)].length, 2);
   assert.match(result, /Рыбы за один выход/); assert.match(result, />5</);
   assert.doesNotMatch(result, /Выбрать: Трюм|Примерить модуль|module-crate|data-boat-part="crate"/);
   assert.deepEqual(state, before);
