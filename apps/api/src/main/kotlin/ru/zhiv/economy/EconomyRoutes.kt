@@ -33,7 +33,13 @@ private fun ApplicationCall.economySession(config: AppConfig, codec: TokenCodec,
     val token = sessionCookie(config) ?: throw AuthFailure("UNAUTHORIZED", "Войдите в профиль ещё раз", 401)
     return codec.hash(token)
 }
-fun Route.economyRoutes(repository: EconomyRepository, codec: TokenCodec, config: AppConfig, presence: PresenceRepository? = null) {
+fun Route.economyRoutes(
+    repository: EconomyRepository,
+    codec: TokenCodec,
+    config: AppConfig,
+    presence: PresenceRepository? = null,
+    boatFishingEnabled: Boolean = releaseFeatures.boatFishingEnabled,
+) {
     route("/api/v1/economy") {
         rateLimit(RateLimitName("world-read")) {
             get {
@@ -50,7 +56,7 @@ fun Route.economyRoutes(repository: EconomyRepository, codec: TokenCodec, config
                     val hash = call.economySession(config, codec, true)
                     call.requireGameplayPresence(presence, hash)
                     val command = decodeEconomyCommand(call.receive<JsonElement>())
-                    if (!releaseFeatures.boatFishingEnabled && command.action in releaseFeatures.boatFishingPlayActions)
+                    if (!boatFishingEnabled && command.action in releaseFeatures.boatFishingPlayActions)
                         economyFailure("ECONOMY_BOAT_PAUSED", "Лодочная рыбалка временно закрыта")
                     call.respond(repository.command(hash, command))
                 }

@@ -1,4 +1,4 @@
 {
-  "boatFishingEnabled": false,
+  "boatFishingEnabled": true,
   "boatFishingPlayActions": ["start_boat_upgrade", "depart_boat", "begin_boat_cast", "submit_boat_cast"]
 }

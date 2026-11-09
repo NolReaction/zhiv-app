@@ -520,7 +520,21 @@ test("commands reject hostile JSON shape, extra fields, fractions and body overf
   assert.equal(economy.getDevEconomy(p.token).revision, 0);
 });
 
-test("paused boat commands leave saved state untouched; pending repairs and returning cargo remain claimable", async () => {
+test("a repaired boat can depart through the economy API", async () => {
+  const p = player();
+  const departure = { ...command(p), action: "depart_boat", targetId: "river_reach" };
+  const profile = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  profile.state.boat.level = 1;
+  const response = await POST(post(departure));
+  assert.equal(response.status, 200);
+  assert.ok((await response.json()).state.boat.voyage.id);
+});
+
+test("paused boat commands leave saved state untouched; pending repairs and returning cargo remain claimable", async t => {
+  const { default: features } = await vite.ssrLoadModule("/apps/api/src/main/resources/world/release-features.json");
+  const configured = features.boatFishingEnabled;
+  features.boatFishingEnabled = false;
+  t.after(() => { features.boatFishingEnabled = configured; });
   const p = player();
   economy.getDevEconomy(p.token);
   const profile = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
@@ -567,7 +581,7 @@ test("HTTP accepts a bounded 600-event reel through parsing without enlarging th
   assert.ok(bytes > 4096 && bytes < 32768, "a complete legal control envelope exceeds the former command limit");
   const response = await POST(post(body));
   assert.equal(response.status, 409);
-  assert.equal((await response.json()).code, "ECONOMY_BOAT_PAUSED", "the valid envelope reaches the release gate");
+  assert.equal((await response.json()).code, "ECONOMY_BOAT_VOYAGE_GONE", "the valid envelope reaches the voyage check");
   const invalid = await POST(post({ ...cmd, reel: { ...cmd.reel, inputs: [...cmd.reel.inputs, { tick: 600, held: true }] } }));
   assert.equal(invalid.status, 400); assert.equal((await invalid.json()).code, "INVALID_ECONOMY_COMMAND");
   assert.equal((await marketPOST(post(body, {}, "/market/commands"))).status, 413, "market retains its smaller 2048-byte limit");

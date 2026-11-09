@@ -15,7 +15,7 @@ const { newEconomyState, economyStorage, applyEconomyCommand } = await vite.ssrL
 const { publicBoatState } = await vite.ssrLoadModule("/features/economy/domain/boat-fishing.ts");
 const { initialBoatReel, stepBoatReel, replayBoatReel } = await vite.ssrLoadModule("/features/economy/domain/boat-reel.ts");
 const checkpoint = await vite.ssrLoadModule("/features/economy/ui/boat/boat-reel-checkpoint.ts");
-const { WorldBoatFishingDialog, PlayableBoatFishingDialog } = await vite.ssrLoadModule("/features/economy/ui/boat/world-boat-fishing-dialog.tsx");
+const { WorldBoatFishingDialog } = await vite.ssrLoadModule("/features/economy/ui/boat/world-boat-fishing-dialog.tsx");
 const { WorldExpeditionsMenu } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
 const { BoatRecords, BoatCatchList } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-panels.tsx");
 const at = Date.parse("2026-11-03T10:00:00Z");
@@ -28,7 +28,7 @@ function state() {
 function view(value) { return { ...value, ownerPublicId: "0000-0000-0000", revision: 2, serverTime: new Date(at).toISOString(), catalog: economyCatalog,
   boat: publicBoatState(value.boat), ship: economyShipSchema.parse(value.ship), storage: economyStorage(value) }; }
 function run(value, action, targetId, now = at) { return applyEconomyCommand(value, { action, targetId, requestId: uuid(), ownerPublicId: "0000-0000-0000", expectedRevision: 2, quantity: 1, totalPrice: 0 }, now, uuid, {}, () => 37); }
-function render(value, now = at, component = PlayableBoatFishingDialog) { return renderToStaticMarkup(createElement(component, { economy: { snapshot: view(value), now, busy: false, uncertain: false, retryAt: 0, snapshotConfirmed: true,
+function render(value, now = at, component = WorldBoatFishingDialog) { return renderToStaticMarkup(createElement(component, { economy: { snapshot: view(value), now, busy: false, uncertain: false, retryAt: 0, snapshotConfirmed: true,
   act() { assert.fail("Opening boat UI must never mutate an expedition"); } }, onClose() {} })); }
 function challenge() { return { id: uuid(), rulesVersion: 1, seed: 17, tickMs: 50, maxTicks: 600, zoneWidth: 3200, difficulty: 1, startedAt: new Date(at).toISOString(), expiresAt: new Date(at + 120000).toISOString() }; }
 const memory = () => { const values = new Map(); return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }; };
@@ -51,17 +51,24 @@ test("a cached catalog without boats hides its entry and an already-open dialog 
   assert.doesNotMatch(fallback, /data-boat-upgrade|Отправиться на рыбалку|Восстановить лодку/);
   const entry = snapshot => renderToStaticMarkup(createElement(WorldExpeditionsMenu, { economy: { ...economy, snapshot }, initialSector: "shore", onOpenBoat() { assert.fail("Entry rendering must not navigate"); }, onOpenPantry() {} }));
   assert.doesNotMatch(entry(legacy), /Лодочная рыбалка/);
-  assert.doesNotMatch(entry(view(state())), /Лодочная рыбалка|Возвращение к причалу/);
+  assert.match(entry(view(state())), /Лодочная рыбалка/);
   const saved = state();
   run(saved, "start_boat_upgrade", "repair");
-  assert.match(entry(view(saved)), /Возвращение к причалу/);
+  assert.match(entry(view(saved)), /Лодочная рыбалка/);
   assert.match(render(saved, Date.parse(saved.boat.work.finishesAt), WorldBoatFishingDialog), /Завершить работу/);
   assert.deepEqual(legacy, before);
 });
 
-test("the public release only offers recovery for a paid boat voyage", () => {
+test("a paused release hides new outings and offers recovery for a paid voyage", async t => {
+  const { default: flags } = await vite.ssrLoadModule("/apps/api/src/main/resources/world/release-features.json");
+  const previous = flags.boatFishingEnabled;
+  t.after(() => { flags.boatFishingEnabled = previous; });
+  flags.boatFishingEnabled = false;
+  const { boatAccess } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-access.ts");
+  assert.equal(boatAccess(view(state())), null);
   const saved = state(); saved.boat.level = 1; run(saved, "depart_boat", "river_reach");
   const voyage = saved.boat.voyage, arrival = Date.parse(voyage.arrivesAt);
+  assert.equal(boatAccess(view(saved)), "recover");
   const atRiver = render(saved, arrival, WorldBoatFishingDialog);
   assert.match(atRiver, /data-boat-recovery/);
   assert.match(atRiver, /Вернуться с уловом/);

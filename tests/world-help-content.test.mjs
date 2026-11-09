@@ -64,14 +64,24 @@ test("Leaftail help explains personal finds, delivery progress, permanent owners
   assert.ok(topic("relics").relatedIds.includes("leaftail-shop"));
 });
 
-test("release help points to shore fishing and explains how to recover saved boat trips and work", () => {
+test("boat help links busy-player advice to real repair, attempts, delivery and current upgrade rules", () => {
+  const boat = economyCatalog.boat, repair = boat.upgrades.find(upgrade => upgrade.id === "repair");
   assert.equal(topic("boat-fishing").group, "travel");
   assert.deepEqual(topic("boat-fishing").action.target, { kind: "expeditions", sector: "coast" });
-  assert.match(answer("boat-fishing"), /Выходы на лодке временно закрыты/);
-  assert.match(answer("boat-fishing"), /Возвращение к причалу/);
-  assert.match(answer("boat-fishing"), /Оплаченную раньше работу/);
-  assert.deepEqual(topics.filter(entry => entry.id.startsWith("boat-")).map(entry => entry.id), ["boat-fishing"]);
-  assert.ok(searchWorldHelp(topics, "лодочная рыбалка").some(entry => entry.id === "boat-fishing"));
+  assert.ok(answer("boat-fishing").includes(`дом ${repair.requiredHomeLevel} и мастерская ${repair.requiredBuildings.workshop}`));
+  assert.match(answer("boat-fishing"), /полной кладовой.*улов останется/);
+  assert.match(answer("boat-fishing"), /Мохлик занят до получения улова/);
+  assert.ok(answer("boat-controls").includes(`${boat.maxCasts} заброса, с ящиком ${boat.maxCasts + 1}`));
+  assert.match(answer("boat-controls"), /Попытка тратится при забросе/);
+  assert.match(answer("boat-controls"), /Пауза.*не дольше/);
+  assert.equal(topics.some(entry => entry.id === "boat-blueprints"), false);
+  assert.doesNotMatch(answer("boat-fishing"), /Нажмите лодку у причала/);
+  assert.doesNotMatch(answer("boat-upgrades"), /чертеж|подзорная труба/i);
+  assert.match(answer("boat-records"), /Вес не меняет цену/);
+  assert.match(answer("boat-records"), /профессиональный навык рыбалки/);
+  assert.match(answer("boat-records"), /Общего рейтинга.*пока нет/);
+  for (const [query, id] of [["лодочная рыбалка", "boat-fishing"], ["вес рыбы рекорд", "boat-records"]])
+    assert.ok(searchWorldHelp(topics, query).some(entry => entry.id === id), query);
 });
 
 test("search understands normal Russian questions, endings, ё and one-letter mistakes", () => {
