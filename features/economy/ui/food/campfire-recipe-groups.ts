@@ -16,6 +16,11 @@ const sections = [
   { id: "provisions", label: "Походные припасы", items: ["dried_berries", "smoked_fish", "trail_ration", "packed_berries", "trail_feast"] },
 ] as const;
 
+export function campfireRecipeSection(recipe: WorldRecipeGroup["recipe"]) {
+  const outputs = Object.keys(recipe.rewards).filter(id => recipe.rewards[id] > 0);
+  return outputs.length === 1 ? sections.find(entry => entry.items.some(id => id === outputs[0])) : undefined;
+}
+
 export function campfireDurationMatches(seconds: number, filter: CampfireDurationFilter) {
   return filter === "all" || (filter === "short" && seconds <= 900)
     || (filter === "medium" && seconds > 900 && seconds <= 3600)
@@ -27,8 +32,7 @@ export function campfireRecipeGroups(products: readonly WorldRecipeGroup[], filt
   const grouped = new Map<string, CampfireRecipeSection>();
   for (const product of products) {
     if (!campfireDurationMatches(product.recipe.seconds, filter)) continue;
-    const outputs = Object.keys(product.recipe.rewards).filter(id => product.recipe.rewards[id] > 0);
-    const section = outputs.length === 1 ? sections.find(entry => entry.items.some(id => id === outputs[0])) : undefined;
+    const section = campfireRecipeSection(product.recipe);
     const id = section?.id ?? "other";
     const group = grouped.get(id) ?? { id, label: section?.label ?? "Другие заготовки", recipes: [] };
     group.recipes.push(product);

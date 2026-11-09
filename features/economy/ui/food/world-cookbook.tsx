@@ -16,7 +16,7 @@ import { CraftSkillsCard } from "./craft-skills-card";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
 import { explorationActorId } from "@/features/economy/domain/actor-availability";
 import { cookbookCategories, cookbookProducts, cookbookRarities, cookbookFishRarity, type CookbookCategory } from "./cookbook-recipes";
-import { cookbookVisibleRecipes } from "./cookbook-visibility";
+import { cookbookPages } from "./cookbook-visibility";
 import { CookbookPot } from "./cookbook-pot";
 import styles from "./world-cookbook.module.css";
 
@@ -32,7 +32,7 @@ export function WorldCookbook({ economy, recipes, focusedRecipeId, navigationReq
   onOpenHelp?: (context: WorldHelpContext) => void; achievements?: ReactNode;
 }) {
   const state = economy.productionSnapshot ?? economy.snapshot;
-  const visibleRecipes = cookbookVisibleRecipes(state, recipes);
+  const { known: visibleRecipes, masked, maskedTotal } = cookbookPages(state, recipes);
   const products = [...cookbookProducts(state, visibleRecipes), ...visibleRecipes.filter(recipe => !recipe.retired && recipe.experiment && !experimentDiscovered(state, recipe)).map(recipe => ({ key: recipe.id, recipe, methods: [recipe], category: "discoveries" as const }))];
   const focused = products.find(product => product.methods.some(recipe => recipe.id === focusedRecipeId));
   const [selection, setSelection] = useState<Selection>({ focus: focusedRecipeId, request: navigationRequest, recipeId: focused?.recipe.id ?? null, category: focused?.category ?? "fish", queue: state.jobs.some(job => job.targetId === "dryer" && (job.kind === "construction" || !focused && job.kind === "production")) });
@@ -71,11 +71,12 @@ export function WorldCookbook({ economy, recipes, focusedRecipeId, navigationReq
   const showQueue = selection.queue;
   const selectedRecipeId = selectedRecipe?.id;
   const confirmedRecipes = economy.snapshot.progression?.recipes ?? {};
-  const activeRecipes = visibleRecipes;
-  const mastered = activeRecipes.filter(recipe => (confirmedRecipes[recipe.id] ?? 0) > 0).length;
+  const mastered = visibleRecipes.filter(recipe => (confirmedRecipes[recipe.id] ?? 0) > 0).length;
+  const summary = `Знакомо рецептов: ${visibleRecipes.length} · освоено ${mastered}${maskedTotal ? ` · скрыто ${maskedTotal}` : ""}`;
   const cooked = economy.snapshot.catalog.recipes.filter(recipe => recipe.buildingId === "dryer").reduce((total, recipe) => total + (confirmedRecipes[recipe.id] ?? 0), 0);
   const available = (recipe: WorldRecipe) => !worldRecipeAccessReason(state, recipe) && !worldCostShortfalls(state, worldRecipeCost(state, recipe)).length;
   const categoryProducts = products.filter(product => product.category === selection.category);
+  const maskedInView = !availableOnly && !query.trim() && rarity === "all" ? masked[selection.category] : 0;
   const filtered = categoryProducts.filter(product => (!availableOnly || available(product.recipe))
     && (!query.trim() || [recipeTitle(product.recipe), product.recipe.experiment?.hint ?? ""].join(" ").toLocaleLowerCase("ru-RU").includes(query.trim().toLocaleLowerCase("ru-RU")))
     && (selection.category !== "fish" || rarity === "all" || cookbookFishRarity(state, product.recipe) === rarity));
@@ -89,7 +90,7 @@ export function WorldCookbook({ economy, recipes, focusedRecipeId, navigationReq
   }
   return <div className={styles.cookbook} data-campfire-catalog data-cookbook-view={showQueue ? "queue" : selectedRecipe ? "detail" : "recipes"}>
     <div className={styles.topline}>
-      <div className={styles.kitchenSummary}><CookbookPot economy={economy} /><div><strong>{ready.length ? `Готово: ${ready.length}` : currentJob ? "На огне" : construction ? "Улучшаем костёр" : "Кухня у костра"}</strong><span>{currentJob ? `${currentJob.cooking || recipes.find(recipe => recipe.id === currentJob.recipeId)?.experiment ? "Кулинарный опыт" : itemName(state, Object.keys(currentJob.rewards)[0])} · ${worldCountdown(worldJobProgress(state, currentJob, economy.now).seconds)}` : `Знакомо рецептов: ${activeRecipes.length} · освоено ${mastered}`}</span></div></div>
+      <div className={styles.kitchenSummary}><CookbookPot economy={economy} /><div><strong>{ready.length ? `Готово: ${ready.length}` : currentJob ? "На огне" : construction ? "Улучшаем костёр" : "Кухня у костра"}</strong><span>{currentJob ? `${currentJob.cooking || recipes.find(recipe => recipe.id === currentJob.recipeId)?.experiment ? "Кулинарный опыт" : itemName(state, Object.keys(currentJob.rewards)[0])} · ${worldCountdown(worldJobProgress(state, currentJob, economy.now).seconds)}` : summary}</span></div></div>
       <button type="button" className={styles.queueToggle} aria-pressed={showQueue} data-cookbook-queue onClick={() => setSelection(value => ({ ...value, queue: !value.queue }))}><Flame size={16} aria-hidden="true" /><span>{showQueue ? "К рецептам" : ready.length ? "Забрать" : "Готовится"}<b>{ready.length || `${jobs.length}/${productionSlotCount(state, "dryer")}`}</b></span></button>
     </div>
     {resultRecipe && result && <div className={styles.discoveryNotice} role="status" data-cooking-result={result.successful ? "success" : "failed"}>
@@ -98,7 +99,7 @@ export function WorldCookbook({ economy, recipes, focusedRecipeId, navigationReq
     {showQueue ? <section className={styles.queue} aria-label="Готовка и места" tabIndex={-1}>
       {construction ? <Work economy={economy} job={construction} openPantry={openPantry} /> : <WorldProductionSlots economy={claimEconomy} stationId="dryer" openPantry={openPantry} />}
       <CraftSkillsCard state={economy.snapshot} cookingOnly />
-      <div className={styles.achievements}><Award size={20} aria-hidden="true" /><div><strong>Лесная кухня</strong><p>Знакомо рецептов: {activeRecipes.length} · освоено {mastered} · приготовлено {number(cooked)}</p></div>{achievements}</div>
+      <div className={styles.achievements}><Award size={20} aria-hidden="true" /><div><strong>Лесная кухня</strong><p>{summary} · приготовлено {number(cooked)}</p></div>{achievements}</div>
     </section> : <>
       <div className={styles.categories} role="tablist" aria-label="Разделы книги рецептов">{bookTabs.map((category, index) => {
         const Icon = categoryIcons[category.id];
@@ -115,13 +116,20 @@ export function WorldCookbook({ economy, recipes, focusedRecipeId, navigationReq
           <div className={styles.recipeList} data-section-guide-target="workshop-recipes">{groups.filter(group => group.products.length > 0).map(group => <section key={group.id} data-cooking-group={selection.category} data-cookbook-rarity={selection.category === "fish" ? group.id : undefined}><h3 className={styles.groupHeading}>{group.label}<span>{group.products.length}</span></h3><div className={styles.recipeGrid}>{group.products.map(product => {
             const recipe = product.recipe, output = Object.keys(recipe.rewards)[0], access = worldRecipeAccessReason(state, recipe), hidden = recipe.experiment && !experimentDiscovered(state, recipe);
             return <button key={product.key} type="button" className={styles.recipe} data-cookbook-recipe={recipe.id} data-recipe-focused={recipe.id === focusedRecipeId || undefined} aria-pressed={selectedRecipe?.id === recipe.id} aria-label={`Рецепт: ${recipeTitle(recipe)}`} onClick={event => { lastTrigger.current = event.currentTarget; setSelection(value => ({ ...value, recipeId: recipe.id })); onHelpContextChange?.({ stationId: "dryer", intent: "production", recipeId: recipe.id, quantity: 1 }); }}>{hidden ? <CookingExperimentIcon recipeId={recipe.id} size={35} /> : <ProductIcon state={state} itemId={output} size={35} />}<span><strong>{recipeTitle(recipe)}</strong>{recipe.fishInput?.exactSpecies && <em className={styles.signature}>Фирменное</em>}<small><Clock3 size={11} aria-hidden="true" />{worldRecipeDuration(recipe.seconds)}{access ? <LockKeyhole size={12} aria-label="Есть условия открытия" /> : available(recipe) ? <Check size={13} aria-label="Есть ингредиенты" /> : null}</small></span></button>;
-          })}</div></section>)}{!filtered.length && <p className={styles.empty}>{categoryProducts.length ? "Нет подходящих рецептов. Попробуйте другой раздел или фильтр." : selection.category === "discoveries" ? "Новые опыты появятся, когда вы познакомитесь с их ингредиентами и разовьёте кухню." : "Новые рецепты появятся по мере развития кухни и знакомства с ингредиентами."}</p>}</div>
+          })}</div></section>)}
+            {maskedInView > 0 && <div className={styles.maskedRecipes}>
+              <LockKeyhole size={23} aria-hidden="true" />
+              <div><strong>Скрытые рецепты: {maskedInView}</strong><p>{selection.category === "discoveries"
+                ? "Готовьте у костра и собирайте новые ингредиенты, чтобы открыть опыты."
+                : "Собирайте новые ингредиенты, чтобы открыть страницы."}</p></div>
+            </div>}
+            {!filtered.length && !maskedInView && <p className={styles.empty}>{categoryProducts.length || masked[selection.category] ? "Нет подходящих рецептов. Попробуйте другой раздел или фильтр." : selection.category === "discoveries" ? "Новые опыты появятся, когда вы познакомитесь с их ингредиентами и разовьёте кухню." : "Новые рецепты появятся по мере развития кухни и знакомства с ингредиентами."}</p>}</div>
         </div>
         {selectedRecipe ? <section className={styles.detail} aria-label={`Рецепт: ${recipeTitle(selectedRecipe)}`}>
           <div className={styles.detailScroll}><button type="button" className={styles.back} onClick={backToRecipes}><ArrowLeft size={15} aria-hidden="true" />Все рецепты</button><CookbookRecipeDetails economy={economy} recipe={selectedRecipe} navigation={navigation} headingRef={heading} />
             {onOpenHelp && <button type="button" className={styles.helpLink} onClick={() => onOpenHelp({ stationId: "dryer", intent: "production", recipeId: selectedRecipe.id, quantity: 1 })}><BookOpen size={14} aria-hidden="true" />Рецепт в справочнике<ArrowRight size={12} aria-hidden="true" /></button>}
           </div><div className={styles.cookFooter}><WorldProductionCard key={`${state.ownerPublicId}:${selectedRecipe.id}`} economy={economy} recipe={selectedRecipe} actionOnly onHelpContextChange={onHelpContextChange} focused={selectedRecipe.id === focusedRecipeId} />{jobs.length >= productionSlotCount(state, "dryer") && <button type="button" className={styles.helpLink} onClick={() => setSelection(value => ({ ...value, queue: true }))}>Все места заняты. Открыть готовку<ArrowRight size={12} aria-hidden="true" /></button>}</div>
-        </section> : <div className={styles.placeholder}><BookOpen size={40} strokeWidth={1.2} aria-hidden="true" /><strong>Выберите рецепт</strong><p>Ингредиенты, польза и приготовление.</p><span>Знакомо рецептов: {activeRecipes.length} · освоено {mastered}</span></div>}
+        </section> : <div className={styles.placeholder}><BookOpen size={40} strokeWidth={1.2} aria-hidden="true" /><strong>Выберите рецепт</strong><p>Ингредиенты, польза и приготовление.</p><span>{summary}</span></div>}
       </div>
     </>}
   </div>;

@@ -271,9 +271,39 @@ test("an unknown experiment cannot be exposed through search or a recipe link be
   assert.doesNotMatch(view.html, /Тягучая ягодная сладость|Ягодная пастила/);
   view.tab("discoveries").props.onClick(); view = catalog(economy, "experiment_berry_pastila");
   assert.deepEqual(view.ids, []);
-  assert.match(view.html, /Новые опыты появятся/);
+  assert.match(view.html, /Скрытые рецепты: 4/);
+  assert.doesNotMatch(view.html, /Тягучая ягодная сладость|Ягодная пастила|experiment_berry_pastila/);
   economy.snapshot.familiarItems = ["strawberry_compote", "berries"];
   view = catalog(economy, "experiment_berry_pastila", 1);
   assert.equal(view.cards[0].props.recipe.id, "experiment_berry_pastila");
   assert.doesNotMatch(view.html, /Ягодная пастила|data-known-meal-benefits/);
+});
+
+
+test("eligible unknown dishes show an anonymous count and never match search or ingredient filters", () => {
+  const economy = controller({ buildings: { home: 1, dryer: 1 }, familiarItems: [], progression: { recipes: {}, routes: {} } });
+  const show = () => catalog(economy, "cook_forest_pan");
+  hooks.reset();
+  assert.doesNotMatch(show().html, /Скрытые рецепты|скрыто \d/);
+  economy.snapshot.buildings = { home: 2, dryer: 2 };
+  let view = show();
+  assert.match(view.html, /Скрытые рецепты: 1/);
+  assert.deepEqual(view.ids, ["cook_grilled_fish"]);
+  assert.equal(view.cards.length, 0);
+  assert.doesNotMatch(view.html, /лесное жаркое|cook_forest_pan|forest_pan/i);
+  view.search.props.onChange({ target: { value: "жаркое" } });
+  view = show();
+  assert.deepEqual(view.ids, []);
+  assert.doesNotMatch(view.html, /Скрытые рецепты:/);
+  view.search.props.onChange({ target: { value: "" } });
+  view.available.props.onChange({ target: { checked: true } });
+  assert.doesNotMatch(show().html, /Скрытые рецепты:/);
+  view.available.props.onChange({ target: { checked: false } });
+  view.rarity.props.onChange({ target: { value: "rare" } });
+  assert.doesNotMatch(show().html, /Скрытые рецепты:/);
+  view.rarity.props.onChange({ target: { value: "all" } });
+  economy.snapshot.familiarItems = ["berries", "fish_common"];
+  view = show();
+  assert.doesNotMatch(view.html, /Скрытые рецепты:/);
+  assert.ok(view.ids.includes("cook_forest_pan"), "the familiar dish reveals itself even when the shelf is empty");
 });

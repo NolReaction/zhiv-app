@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
-const { cookbookCoreIngredients, cookbookRecipeVisible, cookbookVisibleRecipes } = await vite.ssrLoadModule("/features/economy/ui/food/cookbook-visibility.ts");
+const { cookbookCoreIngredients, cookbookRecipeVisible, cookbookPages } = await vite.ssrLoadModule("/features/economy/ui/food/cookbook-visibility.ts");
 const { worldRecipeAccessReason } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
 const recipes = economyCatalog.recipes.filter(recipe => recipe.buildingId === "dryer");
 const recipe = id => recipes.find(entry => entry.id === id);
@@ -17,14 +17,14 @@ const visible = (snapshot, id) => cookbookRecipeVisible(snapshot, recipe(id));
 
 test("an untouched book starts with fish, then compote at campfire level one", () => {
   const snapshot = state({ buildings: { home: 1, dryer: 0 } });
-  assert.deepEqual(cookbookVisibleRecipes(snapshot, recipes).map(entry => entry.id), ["cook_grilled_fish"]);
+  assert.deepEqual(cookbookPages(snapshot, recipes).known.map(entry => entry.id), ["cook_grilled_fish"]);
   snapshot.buildings.dryer = 1;
-  assert.deepEqual(cookbookVisibleRecipes(snapshot, recipes).map(entry => entry.id), ["cook_grilled_fish", "cook_compote"]);
+  assert.deepEqual(cookbookPages(snapshot, recipes).known.map(entry => entry.id), ["cook_grilled_fish", "cook_compote"]);
 });
 
 test("a high house and every tradable unlocked item never substitute for familiar ingredients", () => {
   const snapshot = state({ unlockedItems: economyCatalog.items.map(item => item.id) });
-  assert.deepEqual(cookbookVisibleRecipes(snapshot, recipes).map(entry => entry.id), ["cook_grilled_fish", "cook_compote"]);
+  assert.deepEqual(cookbookPages(snapshot, recipes).known.map(entry => entry.id), ["cook_grilled_fish", "cook_compote"]);
 });
 
 test("ingredient familiarity and station progress are independent gates", () => {

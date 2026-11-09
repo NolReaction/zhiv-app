@@ -101,19 +101,19 @@ test("home and campfire upgrade previews keep experiment names and result art hi
     function preview() {
       const node = elements(WorldUpgradeContent({ stationId, economy: controller, onClose() {} })).find(node => node.type?.name === "UpgradeUnlocks");
       assert.ok(node, `${stationId}/${recipe.id}: preview exists`);
-      return node.type(node.props).props.cards.find(card => card.recipeId === recipe.id);
+      return node.type(node.props).props.cards;
     }
-    const hidden = preview();
-    assert.ok(hidden); assert.equal(hidden.label, recipe.experiment.title);
-    for (const section of [hidden.content, hidden.details]) {
-      const html = renderToStaticMarkup(section);
-      assert.ok(!html.includes(name), `${stationId}/${recipe.id}: no result name`);
-      assert.ok(!html.includes(`data-item-icon="${output}"`), `${stationId}/${recipe.id}: no result artwork`);
-      assert.ok(html.includes(recipe.experiment.title));
+    const locked = preview();
+    assert.ok(!locked.some(card => card.recipeId === recipe.id), "an unread page has no identifying card");
+    const hidden = locked.find(card => card.id === "undiscovered-dishes");
+    assert.ok(hidden.count > 0);
+    assert.equal(hidden.details, undefined, "the masked preview cannot disclose ingredients");
+    const anonymous = renderToStaticMarkup(hidden.content);
+    for (const spoiler of [name, recipe.id, recipe.experiment.title, `data-item-icon="${output}"`]) {
+      assert.ok(!anonymous.includes(spoiler), `${stationId}/${recipe.id}: no ${spoiler}`);
     }
-    assert.match(renderToStaticMarkup(hidden.content), /Кулинарный опыт/);
     controller.snapshot.progression.recipes[recipe.id] = 1;
-    const learned = renderToStaticMarkup(preview().content);
+    const learned = renderToStaticMarkup(preview().find(card => card.recipeId === recipe.id).content);
     assert.ok(learned.includes(name)); assert.ok(learned.includes(`data-item-icon="${output}"`));
   }
 });

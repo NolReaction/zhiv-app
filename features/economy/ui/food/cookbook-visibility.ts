@@ -1,5 +1,6 @@
 import type { EconomyView } from "@/features/economy/domain/model";
 import { familiarEconomyItems } from "@/features/economy/domain/familiar-items";
+import { campfireRecipeSection } from "./campfire-recipe-groups";
 import { experimentCanPractice } from "@/features/economy/domain/craft-skill";
 import { worldMissingRequirements, worldRequirements, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
 
@@ -14,17 +15,34 @@ export function cookbookCoreIngredients(recipe: WorldRecipe): string[] {
 }
 
 /** Visibility is discovery, not permission to spend ingredients or start a job. */
-export function cookbookRecipeVisible(state: EconomyView, recipe: WorldRecipe, familiar: ReadonlySet<string> = new Set(familiarEconomyItems(state))): boolean {
-  if (recipe.retired || recipe.buildingId !== "dryer") return false;
+export function cookbookRecipeVisibility(state: EconomyView, recipe: WorldRecipe, familiar: ReadonlySet<string>): "known" | "masked" | "future" {
+  if (recipe.retired || recipe.buildingId !== "dryer") return "future";
   // A learned page survives empty inventory and later changes to its requirements.
-  if ((state.progression?.recipes?.[recipe.id] ?? 0) > 0) return true;
-  if (worldMissingRequirements(state, worldRequirements(recipe, recipe)).length) return false;
-  if (basicRecipes.has(recipe.id)) return true;
-  if (!experimentCanPractice(state, recipe, state.catalog)) return false;
-  return cookbookCoreIngredients(recipe).every(itemId => familiar.has(itemId));
+  if ((state.progression?.recipes?.[recipe.id] ?? 0) > 0) return "known";
+  if (worldMissingRequirements(state, worldRequirements(recipe, recipe)).length) return "future";
+  if (basicRecipes.has(recipe.id)) return "known";
+  return experimentCanPractice(state, recipe, state.catalog) && cookbookCoreIngredients(recipe).every(id => familiar.has(id))
+    ? "known" : "masked";
 }
 
-export function cookbookVisibleRecipes(state: EconomyView, recipes: readonly WorldRecipe[]): WorldRecipe[] {
+export function cookbookRecipeVisible(state: EconomyView, recipe: WorldRecipe, familiar: ReadonlySet<string> = new Set(familiarEconomyItems(state))) {
+  return cookbookRecipeVisibility(state, recipe, familiar) === "known";
+}
+
+/** Only anonymous counts leave this boundary for unreadable pages. */
+export function cookbookPages(state: EconomyView, recipes: readonly WorldRecipe[]) {
   const familiar = new Set(familiarEconomyItems(state));
-  return recipes.filter(recipe => cookbookRecipeVisible(state, recipe, familiar));
+  const known: WorldRecipe[] = [];
+  const masked = { fish: 0, drinks: 0, desserts: 0, provisions: 0, discoveries: 0 };
+  let maskedTotal = 0;
+  for (const recipe of recipes) {
+    const visibility = cookbookRecipeVisibility(state, recipe, familiar);
+    if (visibility === "known") known.push(recipe);
+    if (visibility === "masked") {
+      const category = recipe.experiment ? "discoveries" : campfireRecipeSection(recipe)?.id ?? "provisions";
+      masked[category]++;
+      maskedTotal++;
+    }
+  }
+  return { known, masked, maskedTotal };
 }

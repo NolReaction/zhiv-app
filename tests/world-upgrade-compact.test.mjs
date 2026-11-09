@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
+const { worldUpgradeUnlocks, WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage, constructionSpeedupPrice } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { formatPearls } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
@@ -307,33 +307,47 @@ test("the first furnace previews separate unit charcoal brick and ceramic jobs",
   assert.doesNotMatch(html, /data-recipe="smelt_iron"/);
 });
 
-test("home previews each opportunity with explicit collapsed disclosures for additional requirements", () => {
+test("home groups its benefits into closed, keyboard-accessible sections while keeping each unlock and its conditions", () => {
   const html = render("home");
   assert.match(text(html), /Новый облик дома Можно развивать постройки до ур\. 3/);
-  assert.match(html, /aria-roledescription="карусель"/);
-  assert.doesNotMatch(html, /<details/);
-  assert.match(text(html), /Каменоломня.*Печь.*Добыть камень.*Добыть глину.*Рынок между игроками/);
+  assert.doesNotMatch(html, /aria-roledescription="карусель"|Предыдущая возможность|Следующая возможность/);
+  const groups = [...html.matchAll(/<details\b([^>]*)data-benefit-group="([^"]+)"([^>]*)>\s*<summary>/g)];
+  assert.deepEqual(groups.map(match => match[2]), ["buildings", "routes", "production", "cooking", "fishing"]);
+  assert.ok(groups.every(match => !/\bopen\b/.test(match[1] + match[3])));
+  assert.match(text(html), /Каменоломня.*Печь.*Рынок между игроками/);
+  assert.match(text(html), /Добыть камень.*Добыть глину/);
   for (const id of ["home", "building:quarry", "building:kiln", "route:quarry_stone", "route:quarry_clay", "market"]) assert.ok(html.includes(`data-upgrade-benefit="${id}"`));
   assert.doesNotMatch(html, /data-upgrade-benefit="route:cave"|data-upgrade-benefit="route:quarry_stone_overnight"/);
-  assert.match(buttons(html).find(button => /aria-label="Предыдущая возможность"/.test(button.attributes)).attributes, /disabled/);
-  assert.doesNotMatch(buttons(html).find(button => /aria-label="Следующая возможность"/.test(button.attributes)).attributes, /disabled/);
   assert.match(text(html), /Торговля Рынок между игроками Покупайте материалы и продавайте свои запасы\. Ещё условия/);
   assert.doesNotMatch(html, /<section[^>]*aria-label="Подробнее: Рынок между игроками"/, "prerequisites open only on an explicit card press");
   assert.doesNotMatch(text(html), /Нужно завершить вылазок/);
   assert.doesNotMatch(html, /Развитие хозяйства|Новых рецептов|Выплавить железо/);
 });
 
-test("every next home tier previews its new berry and dish with the real station and distinct food effects", () => {
+test("each home tier previews crops and groups unfamiliar dishes without revealing names or results", () => {
   for (const [level, crop, dish] of [[2, "grow_blueberries", "cook_blueberry_compote"], [3, "grow_currants", "cook_currant_jelly"],
     [4, "grow_blackberries", "cook_blackberry_preserve"], [5, "grow_cranberries", "cook_cranberry_glaze"]]) {
-    const html = render("home", { snapshot: state({ buildings: { home: level - 1, warehouse: 1 } }) });
+    const snapshot = state({ buildings: { home: level - 1, warehouse: 1 } });
+    const html = render("home", { snapshot });
     assert.ok(html.includes(`data-upgrade-benefit="recipe:${crop}"`));
-    assert.ok(html.includes(`data-upgrade-benefit="recipe:${dish}"`));
+    assert.ok(!html.includes(dish));
     const recipe = economyCatalog.recipes.find(entry => entry.id === dish);
     const meal = economyCatalog.food.meals.find(entry => recipe.rewards[entry.itemId]);
     assert.match(text(html), /Новый рецепт · Ягодный куст/);
-    assert.match(text(html), /Новый рецепт · Костёр/);
-    assert.ok(text(html).includes(`Пример: вылазка ${mealTimeExample(meal.heroSpeedBps, meal.heroWorkSeconds)} · стройка ${mealTimeExample(meal.builderSpeedBps, meal.builderWorkSeconds, "builder")}`));
+    const target = snapshot.catalog.buildings.find(building => building.id === "home").levels.find(tier => tier.level === level);
+    const hiddenRecipes = worldUpgradeUnlocks(snapshot, "home", target).recipes.filter(entry => entry.buildingId === "dryer");
+    const cookingGroup = html.match(/data-benefit-group="cooking"[^>]*>([\s\S]*?)<\/details>/)[1];
+    assert.equal((cookingGroup.match(/data-upgrade-benefit=/g) ?? []).length, 1);
+    assert.ok(text(cookingGroup).includes(`Рецептов предстоит открыть: ${hiddenRecipes.length}`));
+    for (const entry of hiddenRecipes) {
+      assert.ok(!cookingGroup.includes(entry.id) && !cookingGroup.includes(entry.name));
+      if (entry.experiment) assert.ok(!cookingGroup.includes(entry.experiment.title));
+    }
+    assert.doesNotMatch(cookingGroup, /data-item-icon|Состав и условия|мин|×/);
+    const learned = render("home", { snapshot: { ...snapshot, progression: { recipes: { [dish]: 1 } } } });
+    assert.ok(learned.includes(`data-upgrade-benefit="recipe:${dish}"`));
+    assert.ok(text(learned).includes(`Рецептов предстоит открыть: ${hiddenRecipes.length - 1}`));
+    assert.ok(text(learned).includes(`Пример: вылазка ${mealTimeExample(meal.heroSpeedBps, meal.heroWorkSeconds)} · стройка ${mealTimeExample(meal.builderSpeedBps, meal.builderWorkSeconds, "builder")}`));
     assert.match(text(html), /Ещё условия/);
   }
 });
