@@ -30,7 +30,7 @@ import { WorldProductionStatus } from "@/features/world/ui/hud/world-production-
 import { WorldMarketSaleStatus, marketSaleMarkerAnchor } from "@/features/world/ui/hud/world-market-sale-status";
 import { WorldProductionEffects } from "@/features/world/ui/feedback/world-production-effects";
 import { mapProductionGroups, productionMarkerHeight } from "@/features/world/ui/hud/world-production-state";
-import { CONSTRUCTION_MARKER, constructionMapPlace } from "./construction-map-anchor";
+import { constructionMapPlace } from "./construction-map-anchor";
 import { INVENTORY_GAIN_MS, INVENTORY_GAIN_QUEUE_LIMIT } from "@/features/world/ui/feedback/inventory-gain-playback";
 import { createMapAnchorStore } from "./map-anchor-store";
 import { observeMapGuideInset } from "./map-guide-inset";
@@ -143,7 +143,7 @@ export function WorldScene({ readOnly = false, tradeShipArrivalEnabled = false, 
             onSelectionChange: value => selection.current.onObjectSelection?.(value),
             onResident: id => interactions.current.onResident?.(id),
             objectAnchorsEnabled: anchorTracking.current.enabled,
-            objectMarkerHeight: place => markerHeights.current.get(place) ?? CONSTRUCTION_MARKER.height,
+            objectMarkerHeight: place => markerHeights.current.get(place),
             onObjectAnchorsChange: values => { if (!disposed) anchorStore.publish(values); },
           }, speechCanvas.current, root.current);
       },

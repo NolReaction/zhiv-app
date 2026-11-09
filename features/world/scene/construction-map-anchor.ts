@@ -7,6 +7,10 @@ export type MapObjectScreenAnchor = {
   x: number;
   y: number;
   pointerOffset: number;
+  below?: boolean;
+  belowY?: number;
+  sideX?: readonly [number, number];
+  facadeY?: number;
 };
 
 /** The compact 80px pill sits within a real 98 × 44px touch target.
@@ -18,22 +22,21 @@ const constructionPlaces: Readonly<Record<string, MapObjectPlace>> = {
   garden: "garden", woodlot: "lopukh-home", quarry: "quarry", dryer: "campfire",
   bridge: "bridge", lighthouse: "lighthouse",
 };
-// Tiled/preview contours are immutable: selecting a different building level or
-// applying a studio draft replaces the contour. Camera motion changes only its
-// screen projection, so retain its world-space roof without rescanning points.
-const contourRoofs = new WeakMap<MapInteractiveObject["hitArea"], Point>();
+// Cache immutable authored geometry; panning and zooming only reproject it.
+type Contour = { roof: Point; baseY: number };
+const contours = new WeakMap<MapInteractiveObject["hitArea"], Contour>();
 
-function contourRoof(points: MapInteractiveObject["hitArea"]): Point {
-  let roof = contourRoofs.get(points);
-  if (!roof) {
-    let left = Infinity, right = -Infinity, top = Infinity;
-    for (const point of points) {
-      left = Math.min(left, point.x); right = Math.max(right, point.x); top = Math.min(top, point.y);
-    }
-    roof = { x: (left + right) / 2, y: top };
-    contourRoofs.set(points, roof);
+function markerContour(points: MapInteractiveObject["hitArea"]): Contour {
+  const cached = contours.get(points);
+  if (cached) return cached;
+  let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
+  for (const { x, y } of points) {
+    left = Math.min(left, x); right = Math.max(right, x);
+    top = Math.min(top, y); bottom = Math.max(bottom, y);
   }
-  return roof;
+  const contour = { roof: { x: (left + right) / 2, y: top }, baseY: bottom };
+  contours.set(points, contour);
+  return contour;
 }
 
 /** Interior stations belong to their real map host; no invented coordinates. */
@@ -43,20 +46,29 @@ export function constructionMapPlace(stationId: string): MapObjectPlace | null {
 
 /** The active Tiled contour follows rotations and selected artwork levels. */
 export function projectConstructionAnchor(object: MapInteractiveObject, camera: Camera, view: Viewport,
-  insets: VerticalCameraInsets = { top: 0, bottom: 0 }, markerHeight: number = CONSTRUCTION_MARKER.height): MapObjectScreenAnchor | null {
+  insets: VerticalCameraInsets = { top: 0, bottom: 0 }, productionHeight?: number): MapObjectScreenAnchor | null {
   if (!object.hitArea.length) return null;
-  const roof = worldToScreen(contourRoof(object.hitArea), camera, view);
-  const { width, gap, margin } = CONSTRUCTION_MARKER;
-  const height = Number.isFinite(markerHeight) ? Math.max(CONSTRUCTION_MARKER.height, markerHeight) : CONSTRUCTION_MARKER.height;
+  const contour = markerContour(object.hitArea);
+  const roof = worldToScreen(contour.roof, camera, view);
+  const { width, gap, margin, height: minHeight } = CONSTRUCTION_MARKER;
+  const requestedHeight = productionHeight ?? minHeight;
+  const height = Number.isFinite(requestedHeight) ? Math.max(minHeight, requestedHeight) : minHeight;
   const safeTop = insets.top + margin, safeBottom = view.height - insets.bottom - margin;
-  // Do not pin an offscreen building's timer to the HUD or to another building.
   if (![roof.x, roof.y, view.width, view.height].every(Number.isFinite) || view.width < width + margin * 2
-    || roof.x < 0 || roof.x > view.width || roof.y < safeTop || roof.y > safeBottom) return null;
-  // In the overview, northern roofs can remain visible with less than a pill's
-  // height above them. Keep their full touch target in the map instead of
-  // dropping the timer; a roof behind the HUD still never receives a marker.
+    || roof.x < 0 || roof.x > view.width || roof.y > safeBottom || Math.ceil(safeTop + height) > safeBottom) return null;
+  const clampX = (center: number) => Math.round(Math.max(width / 2 + margin, Math.min(view.width - width / 2 - margin, center)));
+  const x = clampX(roof.x);
+  const anchor = { objectId: object.id, place: object.place, x, pointerOffset: Math.round(roof.x - x) || 0 };
   const y = Math.max(Math.round(roof.y - gap), Math.ceil(safeTop + height));
-  if (y > safeBottom) return null;
-  const x = Math.round(Math.max(width / 2 + margin, Math.min(view.width - width / 2 - margin, roof.x)));
-  return { objectId: object.id, place: object.place, x, y, pointerOffset: Math.round(roof.x - x) || 0 };
+  if (productionHeight === undefined) return roof.y < safeTop ? null : { ...anchor, y };
+  // The northern buildings can have their roofs behind the HUD while the entrance is on screen.
+  // A running station can also use the clear space under its own facade when two roofs are close.
+  const baseY = roof.y + (contour.baseY - contour.roof.y) * camera.zoom;
+  const belowY = Math.ceil(baseY + gap + height);
+  const fitsBelow = baseY >= safeTop + margin && belowY <= safeBottom;
+  if (roof.y < safeTop && !fitsBelow) return null;
+  // Side placements keep the pointer on the 80px pill and the full button on screen.
+  const sideX: [number, number] = [clampX(roof.x - 30), clampX(roof.x + 30)];
+  if (roof.y < safeTop) return { ...anchor, y: belowY, below: true, sideX, facadeY: Math.round(baseY) };
+  return fitsBelow ? { ...anchor, y, belowY, sideX } : { ...anchor, y, sideX };
 }

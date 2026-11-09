@@ -553,7 +553,7 @@ test("shared workshop marker height refreshes paused anchors without repaint or 
     let markerHeight = 44;
     const loading = createMapEngine(canvas, options, assert.fail, [], undefined, { top, bottom }, {
       onObjectAnchorsChange: anchors => samples.push(anchors),
-      objectMarkerHeight: place => place === "workshop" ? markerHeight : 44,
+      objectMarkerHeight: place => place === "workshop" ? markerHeight : undefined,
     });
     env.finish(); await flush(); env.finishPath("/test-residence.webp"); engine = await loading;
     engine.control("overview");
@@ -564,7 +564,7 @@ test("shared workshop marker height refreshes paused anchors without repaint or 
     engine.update({ ...options, paused: true });
     const painted = canvas.calls.length, frames = env.frames.size;
     markerHeight = 88; engine.refreshObjectAnchors();
-    const expanded = { ...original, y: top.offsetHeight + 8 + 88 };
+    const expanded = { ...original, y: top.offsetHeight + 8 + 88, belowY: original.belowY + 44 };
     assert.deepEqual(samples.at(-1), [expanded], "adding the second section keeps the full badge below the HUD");
     markerHeight = 44; engine.refreshObjectAnchors();
     assert.deepEqual(samples.at(-1), [original], "a completed queue restores the smaller badge immediately while paused");

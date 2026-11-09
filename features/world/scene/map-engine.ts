@@ -33,7 +33,7 @@ export type MapInteractionCallbacks = {
   objectAnchorsEnabled?: boolean;
   onSelectionChange?: (selection: MapObjectSelection | null) => void;
   onObjectAnchorsChange?: (anchors: readonly MapObjectScreenAnchor[]) => void;
-  objectMarkerHeight?: (place: MapObjectPlace) => number;
+  objectMarkerHeight?: (place: MapObjectPlace) => number | undefined;
 };
 export type MapAction = "home" | "pet" | "overview" | "in" | "out" | "plesk" | "builder" | "fishing" | "ship";
 export type CameraHudElements = { top?: HTMLElement | null; bottom?: HTMLElement | null };

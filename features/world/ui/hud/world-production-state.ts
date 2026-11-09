@@ -90,10 +90,22 @@ export function layoutProductionMarkers(groups: readonly MapProductionGroup[], a
   const occupied: { anchor: MapObjectScreenAnchor; height: number }[] = reserved.map(anchor => ({ anchor, height: CONSTRUCTION_MARKER.height }));
   return [...groups].sort((a, b) => compareWork(a.primary, b.primary) || a.place.localeCompare(b.place))
     .flatMap(group => {
-      const anchor = anchors.find(entry => entry.place === group.place);
+      const preferred = anchors.find(entry => entry.place === group.place);
+      if (!preferred) return [];
       const height = productionMarkerHeight(group);
-      if (!anchor || occupied.some(other => Math.abs(other.anchor.x - anchor.x) < CONSTRUCTION_MARKER.width + 6
-        && anchor.y > other.anchor.y - other.height - 6 && other.anchor.y > anchor.y - height - 6)) return [];
+      const overlaps = (position: MapObjectScreenAnchor) => occupied.some(other => Math.abs(other.anchor.x - position.x) < CONSTRUCTION_MARKER.width + 6
+        && position.y > other.anchor.y - other.height - 6 && other.anchor.y > position.y - height - 6);
+      const positions = [preferred];
+      if (preferred.belowY !== undefined) positions.push({ ...preferred, y: preferred.belowY, below: true });
+      let anchor = positions.find(position => !overlaps(position));
+      // When the HUD forces neighbouring buildings onto the same side, slide the
+      // pill within reach of its pointer before giving up its touch target.
+      if (!anchor && preferred.sideX) {
+        const sideX = preferred.sideX;
+        anchor = positions.flatMap(position => sideX.map(x => ({ ...position, x,
+          pointerOffset: position.pointerOffset + position.x - x }))).find(position => !overlaps(position));
+      }
+      if (!anchor) return [];
       occupied.push({ anchor, height });
       return [{ group, anchor }];
     });

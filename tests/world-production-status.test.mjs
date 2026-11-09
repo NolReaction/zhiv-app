@@ -217,6 +217,52 @@ test("projected host coordinates follow pan/zoom and cull overlaps/offscreen bad
   assert.equal(projectConstructionAnchor(object, { ...camera, x: 900 }, view), null);
 });
 
+test("the real mine and woodlot both keep clickable timers at maximum zoom out", async () => {
+  const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/scene/site-interactions.ts");
+  const { initialPreviewLevels, previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+  const { default: authored } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
+  const { overviewCamera } = await vite.ssrLoadModule("/features/world/scene/camera.ts");
+  const scene = previewWorldScene(authored, { ...initialPreviewLevels(authored), quarry: 1, "lopukh-home": 1 });
+  const objects = interactiveMapObjects(scene);
+  const miner = { id: "miner", kind: "exploration", actorId: "miner", targetId: "quarry_stone",
+    startedAt: iso(start), finishesAt: iso(start + 180_000), rewards: { stone: 1 } };
+  const saved = state([miner, job("woodlot")]), now = start + 60_000;
+  const groups = mapProductionGroups(saved, now);
+  for (const [width, height, top, bottom] of [[865, 864, 104, 68], [320, 600, 80, 64], [320, 640, 80, 64], [812, 375, 36, 56]]) {
+    const view = { width, height }, insets = { top, bottom }, camera = overviewCamera(view, scene);
+    const anchors = groups.flatMap(group => {
+      const host = objects.find(object => object.place === group.place);
+      return projectConstructionAnchor(host, camera, view, insets, productionMarkerHeight(group)) ?? [];
+    });
+    const placed = layoutProductionMarkers(groups, anchors);
+    assert.equal(placed.length, 2, `both active hosts fit at ${width}×${height}`);
+    const [a, b] = placed.map(({ anchor }) => anchor);
+    assert.ok(Math.abs(a.x - b.x) >= 104 || Math.abs(a.y - b.y) >= 50, "separate 98×44 targets plus clearance");
+    for (const { anchor } of placed) {
+      assert.ok(anchor.x - 49 >= 8 && anchor.x + 49 <= width - 8);
+      assert.ok(anchor.y - 44 >= top + 8 && anchor.y <= height - bottom - 8);
+    }
+    const opened = [], output = WorldProductionStatus({ economy: { snapshot: saved, now }, groups, anchors, onOpen: id => opened.push(id) });
+    const html = renderToStaticMarkup(output);
+    if (width === 865) {
+      assert.ok(anchors.every(anchor => anchor.below), "both roofs in the screenshot are behind the top toolbar");
+      const quarry = anchors.find(anchor => anchor.place === "quarry");
+      const reserved = anchor("market", quarry.x - 85, quarry.y);
+      const withMarket = layoutProductionMarkers(groups, anchors, [reserved]);
+      const shifted = withMarket.find(entry => entry.group.place === "quarry")?.anchor;
+      assert.equal(withMarket.length, 2, "the reservation and both below-facade buttons can coexist");
+      assert.ok(shifted.below && shifted.x - reserved.x >= 104);
+      assert.equal(shifted.x + shifted.pointerOffset, quarry.x + quarry.pointerOffset, "the displaced pointer still marks the mine");
+      assert.ok(shifted.facadeY < shifted.y - 44, "map effects remain attached to the facade");
+    }
+    assert.match(html, /data-below="true"/);
+    assert.match(html, /Шахтёр добывает, 2:00/);
+    assert.match(html, /Заготовка, 59:00/);
+    output.props.children.forEach(button => button.props.onClick());
+    assert.deepEqual(opened.sort(), ["quarry", "woodlot"]);
+  }
+});
+
 test("split workshop placement reserves its actual height and clears the measured top HUD", () => {
   const groups = mapProductionGroups(state([job("workshop"), job("kiln"), job("quarry", { finishesAt: iso(start + 1000) })]), start + 2000);
   const shared = groups.find(group => group.place === "workshop");

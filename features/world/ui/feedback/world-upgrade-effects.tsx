@@ -54,7 +54,7 @@ export function WorldUpgradeEffects({ economy, anchors, ready }: {
       const name = stationName(economy.snapshot, event.stationId);
       return <div key={event.id} hidden className={styles.effect} data-upgrade-event={event.id}
         data-upgrade-target={event.stationId} data-map-object={anchor.objectId}
-        style={{ left: anchor.x + anchor.pointerOffset, top: anchor.y + CONSTRUCTION_MARKER.gap,
+        style={{ left: anchor.x + anchor.pointerOffset, top: anchor.facadeY ?? anchor.y + CONSTRUCTION_MARKER.gap,
           "--badge-offset": `${-anchor.pointerOffset}px` } as CSSProperties}>
         <span className={styles.halo} aria-hidden="true" />
         <span className={styles.ring} aria-hidden="true" />
