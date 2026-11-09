@@ -382,11 +382,10 @@ export function buildProgressionGraph(inputCatalog: EconomyCatalog = economyCata
   fixed("friend_glade", "Полянки друзей", "🌿", 6, "В профиле Мохлика откройте «Друзья» и нажмите «В гости». Доступны просмотр полянки и лавки друга. Берест находится здесь как персонаж мира; его личные предложения зависят от ваших открытий. Собственные монеты и покупки сохраняются в вашем хозяйстве.");
   const boat = catalog.boat, repair = boat?.upgrades.find(upgrade => upgrade.id === "repair");
   if (boat && repair) {
-    const requirements = { home: repair.requiredHomeLevel, ...repair.requiredBuildings };
-    add({ id: "boat", title: "Рыбацкая лодка", label: "Рыбацкая лодка", icon: "🛶", kind: "world", status: releaseFeatures.boatFishingEnabled ? "active" : "plan", phase: repair.requiredHomeLevel,
-      cost: cloneCost(repair.cost), seconds: repair.seconds, requirements, children: [],
-      description: !releaseFeatures.boatFishingEnabled ? "Выходы на лодке временно закрыты. За уловом можно отправиться на береговую рыбалку." : `С дома ${repair.requiredHomeLevel} лодку можно восстановить в меню «В путь». Каждый выход расходует ячейку топлива. Двигатель улучшает отклик снасти, корпус сглаживает рывки рыбы, бак накапливает бензин, а хранилище определяет число рыб и забросов за выход. У берега заберите улов, чтобы пополнить кладовую, альбом и личные рекорды.` });
-    for (const [building, level] of Object.entries(requirements)) edge(buildingNodeId(building, level), "boat", releaseFeatures.boatFishingEnabled ? "requirement" : "plan");
+    add({ id: "boat", title: "Рыбацкая лодка", label: "Рыбацкая лодка", icon: "🛶", kind: "world", status: releaseFeatures.boatFishingEnabled ? "active" : "plan", phase: 1,
+      cost: cloneCost(repair.cost), seconds: repair.seconds, requirements: {}, children: [],
+      description: !releaseFeatures.boatFishingEnabled ? "Выходы на лодке временно закрыты. За уловом можно отправиться на береговую рыбалку." : `Лодку можно сразу бесплатно восстановить в меню «В путь». Каждый выход расходует ячейку топлива. Двигатель улучшает отклик снасти, корпус сглаживает рывки рыбы, бак накапливает бензин, а хранилище определяет число рыб и забросов за выход. У берега заберите улов, чтобы пополнить кладовую, альбом и личные рекорды.` });
+    edge("start", "boat", releaseFeatures.boatFishingEnabled ? "flow" : "plan");
     edge("boat", "fishing_catches", releaseFeatures.boatFishingEnabled ? "flow" : "plan");
   }
   const lighthouseHome = catalog.buildings.find(building => building.id === "lighthouse")?.levels.find(level => level.level === 1)?.requiredHomeLevel ?? 3;

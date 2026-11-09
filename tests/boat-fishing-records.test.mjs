@@ -24,36 +24,26 @@ const share = (user, enabled, version) => records.updateDevFishingVisibility(use
 });
 const fishId = "fish_silverfin";
 function delivered(user, grams) {
-  // Seed an existing authoritative save, then publish precisely the confirmed projection a successful claim returns.
+  // Seed the authoritative delivered-catch ledger, including an old save with no ranking settings.
   const owner = user.me.user.publicId;
   economy.getDevEconomy(user.token);
   const state = globalThis.__zhivDevEconomyStore.profiles.get(owner).state;
   state.boat.records[fishId] = { weightGrams: grams, caughtAt: new Date().toISOString() };
-  const view = economy.getDevEconomy(user.token);
-  records.publishDevFishingRecords(view);
-  return view;
+  return economy.getDevEconomy(user.token);
 }
 
-test("fishing publication is a separate opt-in, backfills confirmed catches, resolves ties and rechecks friendships", () => {
+test("rankings include all delivered catches and old saves, resolve ties and recheck friendships", () => {
   const me = player("Мохлик"), friend = player("Дима"), stranger = player("Плёска");
   const request = ok(identity.sendDevDirectRequest(me.token, friend.me.user.publicId, crypto.randomUUID()));
   const relation = ok(identity.actOnDevDirectRequest(friend.token, request.request.requestId, "ACCEPTED")).person;
   delivered(me, 420); delivered(friend, 420); delivered(stranger, 730);
-  ok(game.updateDevGameVisibility(me.token, me.me.user.publicId, true, 0));
   const board = scope => ok(records.getDevFishingRecords(me.token, scope));
-  assert.deepEqual(board("global").entries, []);
-  for (const p of [me, friend, stranger]) ok(share(p, true, 0));
   assert.deepEqual(board("global").entries, [{ fishId, weightGrams: 730, displayName: "Плёска", tiedCount: 1, isMe: false }]);
   assert.deepEqual(board("friends").entries, [{ fishId, weightGrams: 420, displayName: "Мохлик", tiedCount: 2, isMe: true }]);
   delivered(friend, 600);
   assert.equal(board("friends").entries[0].displayName, "Дима");
-  assert.equal(ok(share(friend, false, 1)).visibilityVersion, 2);
-  assert.equal(ok(share(friend, false, 1)).visibilityVersion, 2);
-  assert.equal(share(friend, true, 0).code, "GAME_VISIBILITY_CONFLICT");
+  assert.deepEqual(ok(share(friend, false, 1)), { ownerPublicId: friend.me.user.publicId, leaderboardOptIn: true, visibilityVersion: 0 });
   delivered(friend, 800);
-  assert.equal(board("friends").entries[0].displayName, "Мохлик");
-  assert.equal(board("global").entries[0].weightGrams, 730);
-  ok(share(friend, true, 2));
   assert.equal(board("friends").entries[0].weightGrams, 800);
   ok(identity.removeDevPerson(me.token, relation.circleId));
   assert.equal(board("friends").entries[0].displayName, "Мохлик");
@@ -64,11 +54,11 @@ test("fishing publication is a separate opt-in, backfills confirmed catches, res
 
 test("published records hide undiscovered artwork and label a shared first place for the viewer", () => {
   const me = player("Мохлик"), friend = player("Дима");
-  delivered(friend, 550); ok(share(friend, true, 0));
+  delivered(friend, 550);
   const render = state => renderToStaticMarkup(createElement(FishingRecordLeaders, { state, board: ok(records.getDevFishingRecords(me.token, "global")) }));
   const hidden = render(economy.getDevEconomy(me.token));
   assert.match(hidden, /Неизвестная рыба/); assert.doesNotMatch(hidden, /Серебринка|fish_silverfin|Ваш рекорд/);
-  const state = delivered(me, 550); ok(share(me, true, 0));
+  const state = delivered(me, 550);
   const tied = render(state);
   assert.match(tied, /Серебринка/); assert.match(tied, /Ваш рекорд/); assert.match(tied, /Делят рекорд: 2/);
 });

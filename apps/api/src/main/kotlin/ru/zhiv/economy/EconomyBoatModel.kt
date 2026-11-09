@@ -164,7 +164,8 @@ private fun boatCost(value: EconomyCost) = require(value.coins in 0L..1_000_000_
     @EncodeDefault(EncodeDefault.Mode.NEVER) val blueprint: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val module: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val tier: Int? = null) {
-    init { require(id in boatUpgradeIds && seconds in 1L..86400L && requiredHomeLevel in 1..5 && requiredBuildings.values.all { it in 1..100 })
+    init { require(id in boatUpgradeIds && seconds in 0L..86400L && (seconds > 0 || id == "repair"))
+        require(requiredHomeLevel == 1 && requiredBuildings.isEmpty() && cost.items.isEmpty())
         require(if (module == null) id in boatArtifactIds && tier == null else
             module in boatModuleIds && tier != null && tier in 1..5 && id == boatModuleUpgradeId(module, tier))
         require(blueprint == null || blueprint in boatArtifactIds); boatCost(cost) }

@@ -63,8 +63,8 @@ export const boatCatalogSchema = z.object({ version: z.literal(1), routeId: id, 
   fuel: z.object({ baseCapacity: count.min(1).max(7), regenSeconds: count.positive(), refillPricePearls: count.positive() }),
   moduleEffects: z.object({ engine: z.array(count.max(5)).length(6), tank: z.array(count.min(1).max(7)).length(6),
     storage: z.array(count.min(1).max(9)).length(6), hull: z.array(count.max(20)).length(6) }), spareCasts: count.max(2),
-  upgrades: z.array(z.object({ id: z.enum(boatUpgradeIds), name: z.string(), description: z.string(), cost, seconds: count.min(1).max(86400),
-    requiredHomeLevel: count.min(1).max(5), requiredBuildings: z.record(id, count.min(1).max(100)), module: z.enum(boatModuleIds).optional(), tier: moduleTier.min(1).optional(), blueprint: artifact.optional() })).length(boatUpgradeIds.length),
+  upgrades: z.array(z.object({ id: z.enum(boatUpgradeIds), name: z.string(), description: z.string(), cost, seconds: count.max(86400),
+    requiredHomeLevel: count.min(1).max(5), requiredBuildings: z.record(id, count.min(1).max(100)), module: z.enum(boatModuleIds).optional(), tier: moduleTier.min(1).optional(), blueprint: artifact.optional() }).refine(upgrade => upgrade.seconds > 0 || upgrade.id === "repair", "Only the first hull can be installed immediately")).length(boatUpgradeIds.length),
   blueprints: z.array(z.object({ id: artifact, name: z.string(), milestones: z.array(count.min(1).max(100)).length(3)
     .refine(values => values.every((value, index) => !index || value > values[index - 1])) })).length(2),
   weights: z.record(id, z.object({ minGrams: count.min(1).max(1_000_000), maxGrams: count.min(1).max(1_000_000) })

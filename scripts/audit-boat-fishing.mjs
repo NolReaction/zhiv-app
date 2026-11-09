@@ -35,7 +35,7 @@ export function auditBoatFishingBalance(catalog) {
   for (const capacities of [storage, tank])
     assert(capacities.length === 6 && capacities.every((n, i) => Number.isSafeInteger(n) && n > 0 && (!i || n > capacities[i - 1])));
   const repair = boat.upgrades.find(row => row.id === "repair");
-  assert.deepEqual([repair?.requiredHomeLevel, repair?.requiredBuildings, repair?.cost], [1, {}, { coins: 0, items: {} }],
+  assert.deepEqual([repair?.seconds, repair?.cost], [0, { coins: 0, items: {} }],
     "Starter fishing must require no currency or locked source");
   assert.equal(boat.fuel.baseCapacity, tank[0]);
   assert.deepEqual(Object.keys(boat.weights).sort(), fishing.fish.map(fish => fish.itemId).sort(), "Every collectible species has exactly one mass profile");
@@ -48,12 +48,11 @@ export function auditBoatFishingBalance(catalog) {
   assert(boat.netZoneWidth > boat.zoneWidth && boat.netZoneWidth < 10000, "The net widens a bounded holding zone");
 
   const upgrades = boat.upgrades.map(upgrade => {
-    const sourceHome = Math.max(1, ...Object.keys(upgrade.cost.items).map(id => math.sourceHome(id)));
-    assert(upgrade.requiredHomeLevel >= sourceHome, `${upgrade.id}: material sources must exist by its advertised house`);
-    assert(upgrade.seconds > 0 && upgrade.cost.coins >= 0);
-    return { id: upgrade.id, module: upgrade.module, tier: upgrade.tier, home: upgrade.requiredHomeLevel, seconds: upgrade.seconds, coins: upgrade.cost.coins,
-      inputs: upgrade.cost.items, inputSaleValue: math.liquidation(upgrade.cost.items),
-      totalForegoneSaleValue: upgrade.cost.coins + math.liquidation(upgrade.cost.items) };
+    assert.equal(upgrade.requiredHomeLevel, 1, `${upgrade.id}: available in a starter household`);
+    assert.deepEqual(upgrade.requiredBuildings, {}, `${upgrade.id}: boat work does not require buildings`);
+    assert.deepEqual(upgrade.cost.items, {}, `${upgrade.id}: coin-only price`);
+    assert(upgrade.id === "repair" || (upgrade.seconds > 0 && upgrade.cost.coins > 0));
+    return { id: upgrade.id, module: upgrade.module, tier: upgrade.tier, seconds: upgrade.seconds, coins: upgrade.cost.coins };
   });
   assert.deepEqual(boat.blueprints.map(blueprint => blueprint.id).sort(), ["landing_net", "telescope"]);
   const blueprints = boat.blueprints.map(blueprint => {

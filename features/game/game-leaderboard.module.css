@@ -19,11 +19,6 @@
 .score > div { display: grid; gap: 4px; min-width: 0; }
 .score small { font-size: 14px; color: #c0c5b6; }
 .score strong { font-size: clamp(22px,6vw,28px); color: #ead8ac; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.participation { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
-.participation > span { display: grid; gap: 4px; min-width: 0; }
-.participation strong { font-size: 14px; }
-.participation small { color: #b6c1a9; font-size: 13px; line-height: 1.4; }
-.participation [role="switch"] { flex-shrink: 0; }
 .rankingTabs { gap: 14px; min-width: 0; }
 .rankingContent { display: grid; gap: 8px; min-width: 0; }
 .rankingContent:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 12px; }

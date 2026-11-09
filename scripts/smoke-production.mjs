@@ -291,7 +291,7 @@ assert.deepEqual(market.data.listings, []);
 assert.equal(gameReplay.data.progress.lifetimeTaps, 7);
 await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: { ...gameBatch, tapCount: 8 }, expected: 409 });
 await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: { ...gameBatch, sequence: 2, lifetimeTaps: 999999 }, expected: 400 });
-assert.deepEqual((await api("GET", "/api/v1/game/leaderboard", { cookie: friend.cookie })).data.entries, []);
+assert.equal((await api("GET", "/api/v1/game/leaderboard", { cookie: friend.cookie })).data.entries[0].displayName, owner.data.user.displayName);
 const gameVisible = await api("PATCH", "/api/v1/game/visibility", { cookie: owner.cookie,
   body: { ownerPublicId: owner.data.user.publicId, leaderboardOptIn: true, expectedVersion: 0 } });
 const gameBoard = await api("GET", "/api/v1/game/leaderboard", { cookie: friend.cookie });
@@ -315,8 +315,8 @@ await api("PATCH", "/api/v1/game/visibility", { cookie: owner.cookie,
   body: { ownerPublicId: owner.data.user.publicId, leaderboardOptIn: false, expectedVersion: gameVisible.data.visibilityVersion } });
 await api("PATCH", "/api/v1/game/visibility", { cookie: owner.cookie,
   body: { ownerPublicId: owner.data.user.publicId, leaderboardOptIn: true, expectedVersion: 0 }, expected: 409 });
-assert.deepEqual((await api("GET", "/api/v1/game/leaderboard", { cookie: friend.cookie })).data.entries, []);
-assert.deepEqual((await api("GET", "/api/v1/game/leaderboard?scope=friends", { cookie: friend.cookie })).data.entries, []);
+assert.equal((await api("GET", "/api/v1/game/leaderboard", { cookie: friend.cookie })).data.entries[0].displayName, owner.data.user.displayName);
+assert.equal((await api("GET", "/api/v1/game/leaderboard?scope=friends", { cookie: friend.cookie })).data.entries[0].taps, 7);
 assert.equal((await api("GET", "/api/v1/me", { cookie: owner.cookie })).data.checkInCount, marked.data.checkInCount);
 await api("GET", "/api/v1/game/achievements", { expected: 401 });
 const achievements = await api("GET", "/api/v1/game/achievements?catalog=3", { cookie: owner.cookie });

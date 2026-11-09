@@ -1,0 +1,14 @@
+.overlay { position: fixed; inset: 0; z-index: 151; background: #03110bd4; }
+.review { box-sizing: border-box; position: fixed; z-index: 152; inset: 50% auto auto 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; width: min(520px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: hidden; background: #1c3028; color: #e8e5ce; border: 1px solid #888b66; border-radius: 12px; box-shadow: 0 16px 52px #050d09a8; }
+.review * { box-sizing: border-box; }
+.review header, .review footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; }
+.review header { background: #24392e; border-bottom: 1px solid #56664e; }
+.review h2 { margin: 0; font-size: 19px; }
+.review button { cursor: pointer; }
+.review button:disabled { cursor: default; opacity: .55; }
+.review button:focus-visible { outline: 3px solid #dfbe77; outline-offset: 2px; }
+.choices { min-height: 0; padding: 12px 14px; overflow: auto; overscroll-behavior: contain; }
+.choices > p { margin: 0 0 8px; color: #c9d6c0; font-size: 13px; }
+.review footer { flex-wrap: wrap; flex-shrink: 0; border-top: 1px solid #56664e; }
+.review footer p { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: #dad3b1; }
+@media (max-width: 450px) { .review footer > button { width: 100%; } }

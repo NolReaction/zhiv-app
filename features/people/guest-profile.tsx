@@ -27,7 +27,7 @@ export function GuestProfileContents({ profile, section = "overview" }: { profil
     {profile.tapStats ? <dl className={styles.tapStats} aria-label="Рекорды по тапам">
       <div><dt>Всего тапов</dt><dd>{profile.tapStats.lifetimeTaps.toLocaleString("ru-RU")}</dd></div>
       <div><dt>Лучшая серия</dt><dd>×{profile.tapStats.bestSeries.toLocaleString("ru-RU")}</dd></div>
-    </dl> : <p className={styles.privateStats}>Рекорды по тапам скрыты настройкой рейтинга игрока.</p>}
+    </dl> : <p className={styles.privateStats}>Подтверждённые тапы за месяц и лучшие серии доступны в игровом рейтинге.</p>}
     <section aria-label="Достижения друга">
       <h4>Достижения мира · {profile.achievements.length}</h4>
       {profile.achievements.length === 0 ? <p>Первые игровые медали ещё впереди.</p> : <ul className={styles.awards}>

@@ -1,5 +1,5 @@
 import { economyCatalog, economyCommandSchema, economyViewSchema, type EconomyCommand, type EconomyResult, type EconomyState } from "@/features/economy/domain/model";
-import { publicBoatState } from "@/features/economy/domain/boat-fishing";
+import { boatPhase, publicBoatState } from "@/features/economy/domain/boat-fishing";
 import { applyEconomyCommand, economyStorage, EconomyRuleError, newEconomyState } from "@/features/economy/domain/rules";
 import { economyShipSchema } from "@/features/economy/domain/ship-model";
 import { ApiError } from "@/lib/check-in-api";
@@ -55,8 +55,12 @@ export function createBoatWorkshopDemo({ ownerPublicId = demoOwner(), now = () =
       const parsed = economyCommandSchema.safeParse(input);
       if (!parsed.success) throw reject("INVALID_ECONOMY_COMMAND", "Некорректная команда демонстрационной лодки.", 400);
       const command = parsed.data;
-      if (!playerActions.has(command.action)) throw reject("INVALID_ECONOMY_COMMAND", "В этом демо доступны только лодка и снасти.", 400);
-      return transact(command, next => applyEconomyCommand(next, command, now(), () => crypto.randomUUID(), {}, maximum => 37 % maximum));
+      return transact(command, next => {
+        const at = now();
+        const unloadingSale = command.action === "sell" && next.boat && boatPhase(next.boat, at) === "ready";
+        if (!unloadingSale && !playerActions.has(command.action)) throw reject("INVALID_ECONOMY_COMMAND", "В этом демо доступны только лодка, снасти и разгрузка улова.", 400);
+        return applyEconomyCommand(next, command, at, () => crypto.randomUUID(), {}, maximum => 37 % maximum);
+      });
     },
     dev(input: EconomyDevCommand) {
       const parsed = economyDevCommandSchema.safeParse(input);

@@ -122,8 +122,11 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const requestedObjectReturn = useRef<HTMLElement | null>(null);
   const [openObjectRequest, setOpenObjectRequest] = useState<{ id: number; place: WorldPlace }>();
   const objectRequestSequence = useRef(0);
-  const [quickMenu, setQuickMenu] = useState<QuickMenu | null>(null);
+  const [quickSurface, setQuickMenu] = useState<QuickMenu | { boatOwner: string; voyageId: string } | null>(null);
+  const pantryReturn = typeof quickSurface === "object" ? quickSurface : null;
+  const quickMenu = pantryReturn ? "pantry" : typeof quickSurface === "string" ? quickSurface : null;
   const ownerSnapshot = economy.snapshot?.ownerPublicId === ownerPublicId ? economy.snapshot : null;
+  const returnToBoat = Boolean(pantryReturn && pantryReturn.boatOwner === ownerPublicId && ownerSnapshot?.boat?.voyage?.id === pantryReturn.voyageId);
   const boatMode = boatAccess(ownerSnapshot);
   const riverOpen = quickMenu === "boat" && boatMode === "play" && Boolean(ownerSnapshot && boatPhase(boatState(ownerSnapshot), economy.now) === "fishing");
   const [pantryFishSale, setPantryFishSale] = useState<{ owner: string; open: boolean } | null>(null);
@@ -285,9 +288,10 @@ export default function WorldView({ open, suspended = false, world, economy, mai
     setDailyOpen(true);
   }, []);
   const closeQuick = useCallback(() => {
+    if (returnToBoat) { setQuickMenu("boat"); return; }
     setQuickMenu(null); setCharactersOpen(false);
     if (quickReturn.current?.isConnected) quickReturn.current.focus({ preventScroll: true });
-  }, []);
+  }, [returnToBoat]);
   const openQuick = useCallback((next: QuickMenu, sector: SectorId = "forest", profileTab: WorldProfileDestination = "profile") => {
     if (next === "boat" && !boatMode) return;
     quickReturn.current = worldElement.current?.querySelector<HTMLElement>(`[data-world-quick="${next === "ship" ? "more" : next === "boat" ? "expeditions" : next}"]`) ?? null;
@@ -331,11 +335,11 @@ export default function WorldView({ open, suspended = false, world, economy, mai
         || event.target.closest('[data-world-quick], [data-connection-status], [data-connection-details], [data-guide-coach="world"], [data-meal-picker], [data-audio-settings], [data-audio-settings-overlay], [data-world-mood], [data-world-mood-overlay]')) return;
       const pantryPopup = quickMenu === "pantry" ? event.target.closest<HTMLElement>("[data-pantry-fish-popover]") : null;
       if (pantryPopup?.dataset.pantryFishOwner === ownerPublicId) return;
-      setQuickMenu(null);
+      setQuickMenu(returnToBoat ? "boat" : null);
     };
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
-  }, [quickMenu, quickUpgrade, dailyOpen, ownerPublicId]);
+  }, [quickMenu, quickUpgrade, dailyOpen, ownerPublicId, returnToBoat]);
   useEffect(() => { if (quickMenu) quickFrame.current?.focus({ preventScroll: true }); }, [quickMenu]);
   const restoreObjectFocus = useCallback(() => {
     if (objectReturn.current?.isConnected) objectReturn.current.focus({ preventScroll: true });
@@ -663,7 +667,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
       onPointerDown={event => event.stopPropagation()} onWheel={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeQuick(); } }}>
       <header className={`${hudStyles.quickHeader} ${styles.quickHeader}`}><h2 id="world-quick-title"><QuickIcon size={17} aria-hidden="true" />{quickMenu === "pantry" ? <span>{quickTitle}{warehouseState && <small>Ур. {warehouseState.buildings.warehouse ?? 1}</small>}</span> : quickTitle}</h2>
         {quickMenu === "pantry" && <WorldPantryUpgrade state={warehouseState} now={economy.now} onUpgrade={() => openUpgrade("warehouse")} className={hudStyles.headerUpgrade} />}
-        <button type="button" aria-label={`Закрыть: ${quickTitle}`} onClick={closeQuick} data-audio-cue="ui.close"><X size={18} aria-hidden="true" /></button></header>
+        <button type="button" aria-label={returnToBoat ? "Вернуться к улову" : `Закрыть: ${quickTitle}`} onClick={closeQuick} data-audio-cue="ui.close">{returnToBoat ? <ArrowLeft size={18} aria-hidden="true" /> : <X size={18} aria-hidden="true" />}</button></header>
       <div data-guide-coach-slot />
       {open && quickSection && <SectionGuide key={`${ownerPublicId}:${quickSection}`} owner={ownerPublicId} section={quickSection} enabled={quickGuideEnabled && !pantryFishSaleOpen} targetRoot={quickFrame} />}
       <div className={`${hudStyles.quickBody} ${styles.quickBody}`}>
@@ -812,7 +816,10 @@ export default function WorldView({ open, suspended = false, world, economy, mai
       </DialogPrimitive.Content>
       </DialogPortal>
     </Dialog>
-    {quickMenu === "boat" && economy.snapshot?.ownerPublicId === ownerPublicId && <WorldBoatFishingDialog economy={{ ...economy, snapshot: economy.snapshot }} appearance={state.equipment} timeZone={timeZone} suspended={!open || suspended} onClose={closeQuick} onOpenPantry={() => openQuick("pantry")} />}
+    {quickMenu === "boat" && economy.snapshot?.ownerPublicId === ownerPublicId && <WorldBoatFishingDialog economy={{ ...economy, snapshot: economy.snapshot }} appearance={state.equipment} timeZone={timeZone} suspended={!open || suspended} onClose={closeQuick} onOpenPantry={() => {
+      const voyageId = ownerSnapshot?.boat?.voyage?.id;
+      if (voyageId) setQuickMenu({ voyageId, boatOwner: ownerPublicId });
+    }} />}
     <ForestSessionNotice presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} onExit={onClose} />
     <MarketUnlockOnboarding open={marketGuide.open} worldElement={worldElement}
       onOpenMarket={() => { marketGuide.complete(); openEconomy("market"); }} onDismiss={marketGuide.dismiss} />

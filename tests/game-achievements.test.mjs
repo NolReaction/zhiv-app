@@ -62,15 +62,15 @@ test("friends leaderboard ranks only active direct friends and self with consent
   ok(game.updateDevGameVisibility(hidden.token, hidden.me.user.publicId, false, 1));
   const board = ok(game.getDevGameLeaderboard(owner.token, "friends"));
   assert.equal(board.scope, "friends");
-  assert.deepEqual(board.entries.map(item => [item.displayName, item.rank, item.isMe]), [["Friend", 1, false], ["Owner", 2, true]]);
-  assert.equal(board.myRank, 2);
+  assert.deepEqual(board.entries.map(item => [item.displayName, item.rank, item.isMe]), [["Private friend", 1, false], ["Friend", 2, false], ["Owner", 3, true]]);
+  assert.equal(board.myRank, 3);
   assert.equal(ok(game.getDevGameLeaderboard(owner.token)).scope, "global");
-  assert.equal(ok(game.getDevGameLeaderboard(owner.token)).myRank, 5);
+  assert.equal(ok(game.getDevGameLeaderboard(owner.token)).myRank, 6);
   ok(identities.removeDevPerson(owner.token, relation.circleId));
-  assert.equal(ok(game.getDevGameLeaderboard(owner.token, "friends")).myRank, 1);
+  assert.equal(ok(game.getDevGameLeaderboard(owner.token, "friends")).myRank, 2);
   ok(game.updateDevGameVisibility(owner.token, owner.me.user.publicId, false, 1));
-  assert.deepEqual(ok(game.getDevGameLeaderboard(owner.token, "friends")).entries, []);
-  assert.equal(ok(game.getDevGameLeaderboard(owner.token, "friends")).myRank, null);
+  assert.deepEqual(ok(game.getDevGameLeaderboard(owner.token, "friends")).entries.map(row => row.displayName), ["Private friend", "Owner"]);
+  assert.equal(ok(game.getDevGameLeaderboard(owner.token, "friends")).myRank, 2);
   assert.equal(game.getDevGameLeaderboard(undefined, "friends").code, "UNAUTHORIZED");
 });
 

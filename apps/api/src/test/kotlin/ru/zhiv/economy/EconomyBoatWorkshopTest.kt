@@ -11,8 +11,7 @@ class EconomyBoatWorkshopTest {
     private val time = Instant.parse("2026-11-05T15:45:37Z")
     private val config get() = requireNotNull(EconomyRules.catalog.boat)
     private fun player(boat: EconomyBoatState) = EconomyRules.initial().copy(boat = boat,
-        buildings = (EconomyRules.catalog.buildings.associate { it.id to it.levels.maxOf { level -> level.level } }),
-        inventory = config.upgrades.flatMap { it.cost.items.keys }.associateWith { 5_000L },
+        buildings = mapOf("home" to 1), inventory = emptyMap(),
         wallet = EconomyWallet(1_000_000, 500))
     private fun command(s: EconomyState, action: String, target: String, now: Instant = time, price: Long = 0) =
         EconomyBoats.command(s, EconomyCommand(UUID.randomUUID().toString(), "ABCD-EFGH-JKMP", 0, action, target, totalPrice = price), now).first
@@ -27,7 +26,7 @@ class EconomyBoatWorkshopTest {
         val started = command(first,"start_boat_upgrade","engine_2")
         val bill = config.upgrades.single { it.id == "engine_2" }
         assertEquals(first.wallet.coins - bill.cost.coins, started.wallet.coins)
-        for ((item, amount) in bill.cost.items) assertEquals(first.inventory.getValue(item) - amount, started.inventory[item])
+        assertEquals(first.inventory, started.inventory)
         val work = started.boat!!.work!!
         val installed = command(started, "claim_boat_upgrade", work.id, Instant.parse(work.finishesAt))
         assertEquals(2, EconomyBoatWorkshop.modules(installed.boat!!).engine)
@@ -54,6 +53,8 @@ class EconomyBoatWorkshopTest {
                 assertEquals(tier, EconomyBoatWorkshop.modules(state.boat!!).tier(module))
             }
         }
+        assertEquals(1_000_000L - 47_150, state.wallet.coins)
+        assertTrue(state.inventory.isEmpty())
         val outward = command(state,"depart_boat",config.routeId,now)
         val voyage = outward.boat!!.voyage!!
         assertEquals(9, voyage.maxCatches)

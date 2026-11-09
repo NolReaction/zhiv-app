@@ -4,17 +4,16 @@ import { boatFishWeightLabel } from "./boat-panels";
 import type { BoatTripReceipt } from "./boat-trip-summary-data";
 import styles from "./boat-trip-summary.module.css";
 
-type Props = { receipt: BoatTripReceipt; delivered?: boolean };
+type Props = { receipt: BoatTripReceipt };
 
-/** Before unloading this is an onboard manifest, after acknowledgement a read-only keepsake. */
-export function BoatTripSummary({ receipt, delivered = false }: Props) {
+export function BoatTripSummary({ receipt }: Props) {
   const largest = receipt.largest;
-  return <section className={styles.summary} data-boat-trip-summary={receipt.voyageId} data-delivered={delivered} aria-label="Итоги рыбалки">
+  return <section className={styles.summary} data-boat-trip-summary={receipt.voyageId} aria-label="Итоги рыбалки">
     <header className={styles.header}>
-      <span className={styles.seal}>{delivered ? <Check size={26} /> : <Anchor size={26} />}</span>
-      <div><span className={styles.eyebrow}>{receipt.routeName} · {delivered ? "Выход завершён" : "Лодка вернулась"}</span>
-        <h3>{receipt.count ? delivered ? "Улов доставлен" : "Улов прибыл домой" : "Снова у причала"}</h3>
-        <p>{receipt.count ? delivered ? "Рыба в запасах, находки и рекорды сохранены." : "Ваш речной улов. Осталось разгрузить лодку." : delivered ? "Спокойный выход завершён. Река подождёт следующей встречи." : "На этот раз без улова. Завершите выход и возвращайтесь за новой рыбалкой."}</p>
+      <span className={styles.seal}><Anchor size={26} /></span>
+      <div><span className={styles.eyebrow}>{receipt.routeName} · Лодка вернулась</span>
+        <h3>{receipt.count ? "Улов прибыл домой" : "Снова у причала"}</h3>
+        <p>{receipt.count ? "Примите улов, чтобы поместить рыбу в кладовую и сохранить рекорды." : "На этот раз без улова. Можно завершить выход и снова снарядить лодку."}</p>
       </div>
     </header>
     <div className={styles.stats}>
@@ -36,18 +35,13 @@ export function BoatTripSummary({ receipt, delivered = false }: Props) {
       <div><strong>{caught.name}</strong><small>{caught.isNewSpecies ? "Новый вид" : caught.isRecord ? "Личный рекорд" : caught.rarityLabel}</small></div>
       <span>{boatFishWeightLabel(caught.weightGrams)}</span>
     </li>)}</ol>}
-    {receipt.count > 0 && <p className={styles.note} data-trip-delivery-status>{delivered ? "Виды и лучшие веса доступны в альбоме рыбака." : "Улов пока на борту. Разгрузка добавит рыбу в запасы и сохранит рекорды; при полной кладовой рыба останется в лодке."}</p>}
   </section>;
 }
 
-/** The boat stays visible while its manifest can be inspected before or after unloading. */
-export function BoatDockReceipt({ receipt, delivered = false }: Props) {
-  return <div className={styles.dockReceipt}>
-    <p role={delivered ? "status" : undefined} data-boat-delivery={delivered || undefined}>
-      {delivered ? <Check size={17} aria-hidden="true" /> : <Anchor size={17} aria-hidden="true" />}
-      <strong>{delivered ? receipt.count ? "Улов доставлен" : "Выход завершён" : receipt.count ? "Улов на борту" : "Возвращение без улова"}</strong>
-      {receipt.count > 0 && <span>Рыб: {receipt.count} · {boatFishWeightLabel(receipt.totalWeightGrams)}</span>}
-    </p>
-    {receipt.count > 0 && <details><summary>Итоги рыбалки</summary><BoatTripSummary receipt={receipt} delivered={delivered} /></details>}
-  </div>;
+export function BoatDeliveryNotice({ receipt }: Props) {
+  return <p className={styles.delivered} role="status" data-boat-delivery>
+    <Check size={17} aria-hidden="true" />
+    <strong>{receipt.count ? "Улов доставлен" : "Выход завершён"}</strong>
+    {receipt.count > 0 && <span>Рыб: {receipt.count} · {boatFishWeightLabel(receipt.totalWeightGrams)}</span>}
+  </p>;
 }

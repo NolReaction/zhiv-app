@@ -26,7 +26,7 @@
 | `features/game/` | Тапы, журнал отправки, уровни, рейтинг, достижения | [Синхронизация](game/game-sync-reliability.md) |
 | `features/activity/` | Активный сеанс, подтверждённое время, AFK и восстановление сети | [Активность и offline](game/activity-and-offline.md) |
 | `features/economy/` | Серверное хозяйство, склад, стройка, исследования, рынок и клиентский протокол | [Экономика](game/economy-foundation.md) |
-| Лодочная рыбалка | Контроллер снасти воспроизводит локальный ввод. Правила TypeScript/Kotlin проверяют запись и выдают улов. При разгрузке PostgreSQL обновляет только опубликованные рекорды. Личные веса берутся из снимка игрока, дружеская и мировая выборки — из API | [Сцена и сохранение](game/boat-fishing-scene.md), [индекс V81](development/database-baseline.md) |
+| Лодочная рыбалка | Контроллер снасти воспроизводит локальный ввод. Правила TypeScript/Kotlin проверяют запись и выдают улов. При разгрузке PostgreSQL индексирует подтверждённые личные рекорды всех игроков. Личные веса берутся из снимка игрока, дружеская и мировая выборки — из API | [Сцена и сохранение](game/boat-fishing-scene.md), [индекс и заполнение V81–V82](development/database-baseline.md) |
 | `features/world/` | Tiled-сцена, камера, свет, погода, живность, UI и серверное состояние мира | [Редактор карты](game/tiled-editor.md), [освещение](game/world-lighting.md) |
 | `features/mochlik/` | Рисование Мохлика и сохранённые модули прежней сцены | Текущий лес собирается в [features/world/scene/new-map-scene.ts](../features/world/scene/new-map-scene.ts) |
 | `features/admin/` | Закрытые инструменты поддержки и модерации | [Админка](operations/admin-panel.md) |

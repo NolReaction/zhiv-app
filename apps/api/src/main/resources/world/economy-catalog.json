@@ -10405,7 +10405,7 @@
           "coins": 0,
           "items": {}
         },
-        "seconds": 5,
+        "seconds": 0,
         "requiredHomeLevel": 1,
         "requiredBuildings": {},
         "module": "hull",
@@ -10417,16 +10417,11 @@
         "description": "Увеличивает вместимость трюма и число доступных забросов.",
         "cost": {
           "coins": 600,
-          "items": {
-            "planks": 4,
-            "rope": 3
-          }
+          "items": {}
         },
         "seconds": 900,
-        "requiredHomeLevel": 2,
-        "requiredBuildings": {
-          "workshop": 1
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "storage",
         "tier": 1
       },
@@ -10436,16 +10431,11 @@
         "description": "Снасть быстрее меняет направление при смене тяги.",
         "cost": {
           "coins": 1200,
-          "items": {
-            "hardwood": 3,
-            "rope": 2
-          }
+          "items": {}
         },
         "seconds": 1200,
-        "requiredHomeLevel": 3,
-        "requiredBuildings": {
-          "workshop": 2
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "engine",
         "tier": 1
       },
@@ -10455,16 +10445,11 @@
         "description": "Зона удержания рыбы становится шире.",
         "cost": {
           "coins": 200,
-          "items": {
-            "rope": 3,
-            "planks": 1
-          }
+          "items": {}
         },
         "seconds": 600,
-        "requiredHomeLevel": 2,
-        "requiredBuildings": {
-          "workshop": 1
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "blueprint": "landing_net"
       },
       {
@@ -10473,17 +10458,11 @@
         "description": "Показывает грузы следующего торгового корабля.",
         "cost": {
           "coins": 800,
-          "items": {
-            "lens": 1,
-            "metal_parts": 1,
-            "planks": 2
-          }
+          "items": {}
         },
         "seconds": 1200,
-        "requiredHomeLevel": 4,
-        "requiredBuildings": {
-          "workshop": 3
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "blueprint": "telescope"
       },
       {
@@ -10492,16 +10471,11 @@
         "description": "Снасть быстрее меняет направление при смене тяги.",
         "cost": {
           "coins": 1500,
-          "items": {
-            "metal_parts": 2,
-            "hardwood": 2
-          }
+          "items": {}
         },
         "seconds": 900,
-        "requiredHomeLevel": 3,
-        "requiredBuildings": {
-          "workshop": 2
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "engine",
         "tier": 2
       },
@@ -10511,16 +10485,11 @@
         "description": "Снасть быстрее меняет направление при смене тяги.",
         "cost": {
           "coins": 1800,
-          "items": {
-            "metal_parts": 3,
-            "iron_ingot": 2
-          }
+          "items": {}
         },
         "seconds": 1200,
-        "requiredHomeLevel": 3,
-        "requiredBuildings": {
-          "workshop": 2
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "engine",
         "tier": 3
       },
@@ -10530,17 +10499,11 @@
         "description": "Снасть быстрее меняет направление при смене тяги.",
         "cost": {
           "coins": 3200,
-          "items": {
-            "tools": 2,
-            "metal_parts": 4,
-            "iron_ingot": 2
-          }
+          "items": {}
         },
         "seconds": 1800,
-        "requiredHomeLevel": 4,
-        "requiredBuildings": {
-          "workshop": 3
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "engine",
         "tier": 4
       },
@@ -10550,17 +10513,11 @@
         "description": "Снасть быстрее меняет направление при смене тяги.",
         "cost": {
           "coins": 5200,
-          "items": {
-            "reinforced_parts": 3,
-            "tools": 2,
-            "iron_ingot": 3
-          }
+          "items": {}
         },
         "seconds": 2700,
-        "requiredHomeLevel": 5,
-        "requiredBuildings": {
-          "workshop": 4
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "engine",
         "tier": 5
       },
@@ -10570,17 +10527,11 @@
         "description": "Снижает максимальную скорость рывков рыбы.",
         "cost": {
           "coins": 900,
-          "items": {
-            "planks": 4,
-            "rope": 2,
-            "resin": 1
-          }
+          "items": {}
         },
         "seconds": 900,
-        "requiredHomeLevel": 3,
-        "requiredBuildings": {
-          "workshop": 2
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "hull",
         "tier": 2
       },
@@ -10590,17 +10541,11 @@
         "description": "Снижает максимальную скорость рывков рыбы.",
         "cost": {
           "coins": 1800,
-          "items": {
-            "planks": 6,
-            "hardwood": 2,
-            "resin": 2
-          }
+          "items": {}
         },
         "seconds": 1200,
-        "requiredHomeLevel": 3,
-        "requiredBuildings": {
-          "workshop": 2
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "hull",
         "tier": 3
       },
@@ -10610,17 +10555,11 @@
         "description": "Снижает максимальную скорость рывков рыбы.",
         "cost": {
           "coins": 3200,
-          "items": {
-            "beams": 2,
-            "hardwood": 4,
-            "metal_parts": 2
-          }
+          "items": {}
         },
         "seconds": 1800,
-        "requiredHomeLevel": 4,
-        "requiredBuildings": {
-          "workshop": 3
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "hull",
         "tier": 4
       },
@@ -10630,17 +10569,11 @@
         "description": "Снижает максимальную скорость рывков рыбы.",
         "cost": {
           "coins": 5200,
-          "items": {
-            "reinforced_parts": 2,
-            "beams": 3,
-            "resin": 3
-          }
+          "items": {}
         },
         "seconds": 2700,
-        "requiredHomeLevel": 5,
-        "requiredBuildings": {
-          "workshop": 4
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "hull",
         "tier": 5
       },
@@ -10650,16 +10583,11 @@
         "description": "Позволяет накопить ещё одну ячейку топлива.",
         "cost": {
           "coins": 350,
-          "items": {
-            "planks": 2,
-            "rope": 1
-          }
+          "items": {}
         },
         "seconds": 600,
-        "requiredHomeLevel": 2,
-        "requiredBuildings": {
-          "workshop": 1
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "tank",
         "tier": 1
       },
@@ -10669,17 +10597,11 @@
         "description": "Позволяет накопить ещё одну ячейку топлива.",
         "cost": {
           "coins": 900,
-          "items": {
-            "planks": 3,
-            "resin": 1,
-            "rope": 2
-          }
+          "items": {}
         },
         "seconds": 900,
-        "requiredHomeLevel": 3,
-        "requiredBuildings": {
-          "workshop": 2
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "tank",
         "tier": 2
       },
@@ -10689,17 +10611,11 @@
         "description": "Позволяет накопить ещё одну ячейку топлива.",
         "cost": {
           "coins": 1800,
-          "items": {
-            "metal_parts": 2,
-            "resin": 2,
-            "rope": 2
-          }
+          "items": {}
         },
         "seconds": 1200,
-        "requiredHomeLevel": 3,
-        "requiredBuildings": {
-          "workshop": 2
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "tank",
         "tier": 3
       },
@@ -10709,17 +10625,11 @@
         "description": "Позволяет накопить ещё одну ячейку топлива.",
         "cost": {
           "coins": 3200,
-          "items": {
-            "metal_parts": 3,
-            "hardwood": 4,
-            "resin": 2
-          }
+          "items": {}
         },
         "seconds": 1800,
-        "requiredHomeLevel": 4,
-        "requiredBuildings": {
-          "workshop": 3
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "tank",
         "tier": 4
       },
@@ -10729,17 +10639,11 @@
         "description": "Позволяет накопить ещё одну ячейку топлива.",
         "cost": {
           "coins": 5200,
-          "items": {
-            "reinforced_parts": 2,
-            "resin": 3,
-            "metal_parts": 3
-          }
+          "items": {}
         },
         "seconds": 2700,
-        "requiredHomeLevel": 5,
-        "requiredBuildings": {
-          "workshop": 4
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "tank",
         "tier": 5
       },
@@ -10749,16 +10653,11 @@
         "description": "Увеличивает вместимость трюма и число доступных забросов.",
         "cost": {
           "coins": 900,
-          "items": {
-            "planks": 5,
-            "rope": 3
-          }
+          "items": {}
         },
         "seconds": 900,
-        "requiredHomeLevel": 3,
-        "requiredBuildings": {
-          "workshop": 2
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "storage",
         "tier": 2
       },
@@ -10768,17 +10667,11 @@
         "description": "Увеличивает вместимость трюма и число доступных забросов.",
         "cost": {
           "coins": 1800,
-          "items": {
-            "planks": 6,
-            "rope": 3,
-            "cloth": 1
-          }
+          "items": {}
         },
         "seconds": 1200,
-        "requiredHomeLevel": 3,
-        "requiredBuildings": {
-          "workshop": 2
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "storage",
         "tier": 3
       },
@@ -10788,17 +10681,11 @@
         "description": "Увеличивает вместимость трюма и число доступных забросов.",
         "cost": {
           "coins": 3200,
-          "items": {
-            "beams": 3,
-            "rope": 4,
-            "cloth": 2
-          }
+          "items": {}
         },
         "seconds": 1800,
-        "requiredHomeLevel": 4,
-        "requiredBuildings": {
-          "workshop": 3
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "storage",
         "tier": 4
       },
@@ -10808,17 +10695,11 @@
         "description": "Увеличивает вместимость трюма и число доступных забросов.",
         "cost": {
           "coins": 5200,
-          "items": {
-            "beams": 4,
-            "cloth": 3,
-            "reinforced_parts": 1
-          }
+          "items": {}
         },
         "seconds": 2700,
-        "requiredHomeLevel": 5,
-        "requiredBuildings": {
-          "workshop": 4
-        },
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
         "module": "storage",
         "tier": 5
       }

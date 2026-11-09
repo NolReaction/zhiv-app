@@ -7,7 +7,7 @@ import { boatConfig, boatPhase, boatState } from "@/features/economy/domain/boat
 import type { BoatReelCommand, BoatUpgradeId } from "@/features/economy/domain/boat-model";
 import type { EconomyCommand } from "@/features/economy/domain/model";
 import { BoatDockDeparture } from "./boat-dock-departure";
-import { BoatDevControls } from "@/features/economy/dev/boat-dev-controls";
+import { BoatWorkshopDevButton } from "@/features/economy/dev/boat-dev-controls";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { number } from "@/features/economy/ui/shared/world-economy-parts";
 import { BoatWork } from "./boat-panels";
@@ -16,7 +16,7 @@ import { BoatFishingAlbum } from "./boat-fishing-album";
 import { boatAccess } from "./boat-access";
 import { BoatRecoveryDialog } from "./boat-recovery-dialog";
 import { BoatGarage } from "./boat-garage";
-import { BoatDockReceipt } from "./boat-trip-summary";
+import { BoatDeliveryNotice } from "./boat-trip-summary";
 import { createBoatTripReceipt, type BoatTripReceipt } from "./boat-trip-summary-data";
 import { BoatVoyagePanel } from "./boat-voyage-panel";
 import { BoatFishingMap } from "./boat-fishing-map";
@@ -65,6 +65,7 @@ function BoatDialogSession({ sharedRecordsAvailable, economy, onClose, onOpenPan
   const sent = useRef(false), content = useRef<HTMLDivElement>(null), id = useId();
   const disabled = locked(economy) || economy.snapshotConfirmed === false;
   const challenge = boat.voyage?.challenge;
+  const unloading = phase === "ready";
   const onRiver = phase === "fishing" && Boolean(boat.voyage);
   const [leaving, setLeaving] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -107,25 +108,25 @@ function BoatDialogSession({ sharedRecordsAvailable, economy, onClose, onOpenPan
         <Dialog.Description id={`${id}-description`} className={styles.srOnly}>Мохлик в лодке на речном плёсе. Забросьте удочку и удерживайте рыбу в зоне снасти.</Dialog.Description>
         <BoatFishingMap key={`${state.ownerPublicId}.${boat.voyage.id}`} economy={economy} disabled={disabled} send={send} onClose={requestClose} appearance={appearance} suspended={suspended || leaving} timeZone={timeZone} />
       </> : <>
-      <header className={styles.header}><Anchor size={25} strokeWidth={1.6} /><div><small>{phaseName}</small><Dialog.Title>{boat.voyage && phase !== "ready" ? "Лодочная рыбалка" : "Лодочная мастерская"}</Dialog.Title></div><span className={styles.wallet} aria-label={`${number(state.wallet.coins)} монет`}><Coins size={17} /><strong>{number(state.wallet.coins)}</strong></span><button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть лодку"><X size={22} /></button></header>
+      <header className={styles.header}><Anchor size={25} strokeWidth={1.6} /><div><small>{phaseName}</small><Dialog.Title>{unloading ? "Итоги рыбалки" : boat.voyage ? "Лодочная рыбалка" : "Лодочная мастерская"}</Dialog.Title></div><span className={styles.wallet} aria-label={`${number(state.wallet.coins)} монет`}><Coins size={17} /><strong>{number(state.wallet.coins)}</strong></span><BoatWorkshopDevButton economy={economy} /><button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть лодку"><X size={22} /></button></header>
       <Dialog.Description id={`${id}-description`} className={styles.srOnly}>Лодочная рыбалка, ремонт, улучшения и личные рекорды.</Dialog.Description>
-      <nav className={styles.tabs} role="tablist" aria-label="Разделы лодки">{tabs.map((entry, index) => <button key={entry.id} id={`${id}-${entry.id}`} type="button" role="tab" className={styles.tab} aria-selected={tab === entry.id} aria-controls={`${id}-panel`} tabIndex={tab === entry.id ? 0 : -1} onClick={() => setTab(entry.id)} onKeyDown={event => {
+      {!unloading && <nav className={styles.tabs} role="tablist" aria-label="Разделы лодки">{tabs.map((entry, index) => <button key={entry.id} id={`${id}-${entry.id}`} type="button" role="tab" className={styles.tab} aria-selected={tab === entry.id} aria-controls={`${id}-panel`} tabIndex={tab === entry.id ? 0 : -1} onClick={() => setTab(entry.id)} onKeyDown={event => {
         const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
         if (next !== null) { event.preventDefault(); setTab(tabs[next].id); event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus(); }
-      }}><entry.icon size={17} />{entry.label}</button>)}</nav>
+      }}><entry.icon size={17} />{entry.label}</button>)}</nav>}
       {economy.error && <p className={styles.error} role="alert">{economy.error}</p>}
       {economy.uncertain && <div className={styles.recovery}><span>Проверим, сохранилось ли последнее действие.</span><button type="button" className={styles.secondary} disabled={economy.busy} onClick={() => economy.retry()}>Проверить</button></div>}
-      <div ref={content} className={styles.body} id={`${id}-panel`} role="tabpanel" tabIndex={0} aria-labelledby={`${id}-${tab}`}>
-        <BoatDevControls economy={economy} compact />
-        {tab === "album" ? <BoatFishingAlbum state={state} /> : tab === "records" ? <BoatRecords state={state} boat={boat} sharedRecordsAvailable={sharedRecordsAvailable} /> : boat.voyage && phase !== "ready" ? <BoatVoyagePanel economy={economy} disabled={disabled} send={send} onOpenPantry={onOpenPantry} /> : <>
+      <div ref={content} className={styles.body} id={`${id}-panel`} role={unloading ? "region" : "tabpanel"} tabIndex={0}
+        aria-label={unloading ? "Улов выхода" : undefined} aria-labelledby={unloading ? undefined : `${id}-${tab}`}>
+        {unloading ? <BoatVoyagePanel economy={economy} disabled={disabled} send={send} onOpenPantry={onOpenPantry} />
+          : tab === "album" ? <BoatFishingAlbum state={state} /> : tab === "records" ? <BoatRecords state={state} boat={boat} sharedRecordsAvailable={sharedRecordsAvailable} />
+          : boat.voyage ? <BoatVoyagePanel economy={economy} disabled={disabled} send={send} /> : <>
+            {deliveredTrip && <BoatDeliveryNotice receipt={deliveredTrip} />}
             <BoatGarage state={state} boat={boat} config={config} now={economy.now} disabled={disabled} onUpgrade={upgrade} onClaim={workId => send("claim_boat_upgrade", workId)}>
-              {phase === "ready" ? <BoatVoyagePanel economy={economy} disabled={disabled} send={send} onOpenPantry={onOpenPantry} /> : <>
-                {deliveredTrip && <BoatDockReceipt receipt={deliveredTrip} delivered />}
-                {boat.level > 0 && <BoatDockDeparture economy={economy} disabled={disabled} send={send} />}
-              </>}
+              {boat.level > 0 && <BoatDockDeparture economy={economy} disabled={disabled} send={send} />}
             </BoatGarage>
           </>}
-        {tab !== "boat" && <BoatWork boat={boat} config={config} now={economy.now} disabled={disabled} onClaim={workId => send("claim_boat_upgrade", workId)} />}
+        {!unloading && tab !== "boat" && <BoatWork boat={boat} config={config} now={economy.now} disabled={disabled} onClaim={workId => send("claim_boat_upgrade", workId)} />}
       </div>
       </>}
     </Dialog.Content>

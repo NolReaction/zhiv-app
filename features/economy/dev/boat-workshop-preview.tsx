@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
+import { Dialog } from "radix-ui";
+import { ArrowLeft } from "lucide-react";
+import { WorldPantryMenu } from "@/features/economy/ui/inventory/world-pantry-menu";
 import { boatPhase } from "@/features/economy/domain/boat-fishing";
 import { createEconomySession } from "@/features/economy/sync/session";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
@@ -20,7 +23,7 @@ function WorkshopSession({ onReset }: { onReset: () => void }) {
     trade: async () => { throw new Error("Рынок недоступен в демонстрации лодки."); },
   }, () => {}), [demo]);
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
-  const [now, setNow] = useState(0), [open, setOpen] = useState(false);
+  const [now, setNow] = useState(0), [surface, setSurface] = useState<"workshop" | "pantry" | null>(null);
   useEffect(() => {
     const deactivate = session.activate();
     void session.refresh();
@@ -40,16 +43,23 @@ function WorkshopSession({ onReset }: { onReset: () => void }) {
     </header>
     <section className={styles.instructions} aria-labelledby="boat-demo-steps">
       <h2 id="boat-demo-steps">Как проверить полный выход</h2>
-      <ol><li>Восстановите корпус обычной кнопкой. Монеты и материалы уже выданы этому примеру.</li>
-        <li>Внутри окна раскройте «Лодка · тестовое управление» и нажмите «Завершить таймер установки», затем получите готовую работу.</li>
-        <li>Проверьте запас бензина и отправьтесь на рыбалку. Кнопка расходует одну ячейку и открывает речной плёс.</li>
+      <ol><li>Восстановите первый корпус бесплатно. Лодка сразу готова к выходу.</li>
+        <li>Откройте DEV в шапке мастерской. Выберите модуль и установите уровень или выдайте монеты, чтобы проверить покупку обычной кнопкой.</li>
+        <li>Нажмите «Отправиться на рыбалку», проверьте снасти и подтвердите выход. На это уйдёт одна ячейка бензина.</li>
         <li>Забросьте удочку, дождитесь начала вываживания и проверьте удержание, отпускание и паузу. После поимки вернитесь в мастерскую и заберите улов.</li></ol>
       <p>На реке тестовое управление открывается кнопкой DEV. После закрытия окна можно открыть его снова или начать новый пример.</p>
       <p className={styles.status} role="status">{snapshot ? phaseName : "Готовим демонстрационную лодку…"}</p>
-      <div className={styles.actions}><button type="button" onClick={() => setOpen(true)} disabled={!snapshot || open}>Открыть мастерскую</button>
-        <button type="button" onClick={onReset} disabled={open}>Начать пример заново</button></div>
+      <div className={styles.actions}><button type="button" onClick={() => setSurface("workshop")} disabled={!snapshot || Boolean(surface)}>Открыть мастерскую</button>
+        <button type="button" onClick={onReset} disabled={Boolean(surface)}>Начать пример заново</button></div>
     </section>
-    {open && snapshot && <WorldBoatFishingDialog sharedRecordsAvailable={false} economy={{ ...economy, snapshot }} onClose={() => setOpen(false)} timeZone="Europe/Moscow" />}
+    {surface === "workshop" && snapshot && <WorldBoatFishingDialog sharedRecordsAvailable={false} economy={{ ...economy, snapshot }} onClose={() => setSurface(null)} onOpenPantry={() => setSurface("pantry")} timeZone="Europe/Moscow" />}
+    {surface === "pantry" && <Dialog.Root open onOpenChange={value => { if (!value) setSurface("workshop"); }}><Dialog.Portal>
+      <Dialog.Overlay className={styles.pantryBackdrop} />
+      <Dialog.Content className={styles.pantry} aria-describedby={undefined}>
+        <header><Dialog.Title>Кладовая</Dialog.Title><Dialog.Close asChild><button type="button"><ArrowLeft size={15} />К улову</button></Dialog.Close></header>
+        <WorldPantryMenu economy={economy} onExplore={() => setSurface("workshop")} />
+      </Dialog.Content>
+    </Dialog.Portal></Dialog.Root>}
   </main>;
 }
 

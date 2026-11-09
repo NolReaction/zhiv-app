@@ -193,6 +193,11 @@ test("boat card shows installed artwork, earned levels, regenerated fuel and the
   for (const part of ["hull_l3", "tank_l2", "engine_l1"]) assert.ok(dock.includes(`${part}.svg`));
   assert.doesNotMatch(dock, /hull_l4|tank_l3|engine_l2/);
   assert.match(dock, /Улучшения 7\/20/); assert.match(dock, /Бензин 1\/4/);
+  assert.match(dock, /До следующей ячейки[\s\S]*?<time>30:00<\/time>/);
+  const partial = boat.fuel;
+  boat.fuel = { cells: 4 };
+  assert.doesNotMatch(card(), /До следующей ячейки/);
+  boat.fuel = partial;
   boat.voyage = { arrivesAt: new Date(now - 1000).toISOString(), fishingUntil: new Date(now + 100000).toISOString(),
     inboundSeconds: 0, maxCatches: 5, catches: [{ fishId: "fish_silverfin", weightGrams: 65 }] };
   assert.match(card(), /Продолжить рыбалку/); assert.match(card(), /На борту 1\/5/);

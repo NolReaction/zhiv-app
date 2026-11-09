@@ -71,15 +71,18 @@ test("every hold and legal tackle fit the renewable fish budget and emergency pe
   assert.equal(report.fuel.refillAlternativeCoins, 350);
   assert.equal(report.holds.at(-1).luckyFullSaleCeiling, 342);
   assert.equal(report.holds[0].sensitivity[0].expectedCatches, 2.875);
-  assert.equal(report.upgrades.find(upgrade => upgrade.id === "repair").totalForegoneSaleValue, 0);
-  assert.equal(report.upgrades.find(upgrade => upgrade.id === "telescope").totalForegoneSaleValue, 2080);
+  assert.equal(report.upgrades.find(upgrade => upgrade.id === "repair").coins, 0);
+  assert.equal(report.upgrades.find(upgrade => upgrade.id === "telescope").coins, 800);
+  assert.equal(report.upgrades.filter(row => row.module).reduce((sum, row) => sum + row.coins, 0), 47150);
   assert(report.blueprints.every(blueprint => blueprint.awardedByBoat === false && !("guaranteedAtQualifiedVoyage" in blueprint)));
 });
 
-test("the audit rejects inflation, unbounded casts, overpriced raw-fish output, unreachable materials and invalid legacy data", () => {
+test("the audit rejects inflation, unbounded casts, overpriced raw-fish output, building and material gates and invalid legacy data", () => {
   for (const mutate of [copy => { copy.boat.spareCasts = 100; }, copy => { copy.boat.fuel.regenSeconds = 300; },
     copy => { copy.boat.fuel.refillPricePearls = 2; }, copy => { delete copy.boat.weights.fish; },
     copy => { copy.boat.blueprints[0].milestones = [1, 1, 3]; },
+    copy => { copy.boat.upgrades[0].seconds = 5; }, copy => { copy.boat.upgrades[1].requiredHomeLevel = 2; },
+    copy => { copy.boat.upgrades[1].requiredBuildings.workshop = 1; },
     copy => { copy.boat.upgrades.find(upgrade => upgrade.id === "tank_1").cost.items.lens = 1; }]) {
     const changed = structuredClone(catalog); mutate(changed);
     assert.throws(() => auditBoatFishingBalance(changed));
@@ -109,8 +112,8 @@ test("a fresh house-one player reaches a delivered fish using only starting tack
     quantity: 1, totalPrice: 0, ...extra,
   }, at, createId, {}, () => 0);
   run("start_boat_upgrade", "repair");
-  at = Date.parse(current.boat.work.finishesAt);
-  run("claim_boat_upgrade", current.boat.work.id);
+  assert.equal(current.boat.work, undefined);
+  assert.equal(current.boat.level, 1);
   run("depart_boat", catalog.boat.routeId);
   const voyage = current.boat.voyage;
   assert.equal(Date.parse(voyage.arrivesAt), at);

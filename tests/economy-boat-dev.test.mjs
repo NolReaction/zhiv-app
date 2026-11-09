@@ -48,10 +48,10 @@ const post = (body, headers = {}) => new Request("http://localhost:3000/api/v1/e
   headers: { "Content-Type": "application/json", Origin: "http://localhost:3000",
     ...(presence.has(globalThis.__boatDevTestToken) ? { "X-Game-Presence": presence.get(globalThis.__boatDevTestToken) } : {}), ...headers },
   body: JSON.stringify(body) });
-function paidRepair(p) {
-  cheat(p, "set_building_level", "home", 2); cheat(p, "set_building_level", "workshop", 1);
-  cheat(p, "grant_boat_upgrade_cost", "repair");
-  return normal(p, "start_boat_upgrade", "repair").state.boat.work;
+function paidTank(p) {
+  normal(p, "start_boat_upgrade", "repair");
+  cheat(p, "grant_boat_upgrade_cost", "tank_1");
+  return normal(p, "start_boat_upgrade", "tank_1").state.boat.work;
 }
 function caughtTrace(challenge) {
   let reel = physics.initialBoatReel(challenge), held = false;
@@ -70,7 +70,7 @@ test("boat DEV commands remain behind development, session, presence and origin 
   const p = player(), before = read(p);
   const commands = [request(p, "prepare_boat", "boat"), request(p, "grant_boat_upgrade_cost", "repair"),
     request(p, "finish_boat_work", crypto.randomUUID()), request(p, "finish_boat_travel", crypto.randomUUID()),
-    request(p, "set_boat_blueprint", "landing_net", 2)];
+    request(p, "set_boat_blueprint", "landing_net", 2), request(p, "set_boat_module_level", "tank", 5)];
   for (const command of commands) {
     assert.equal(economyDevCommandSchema.safeParse(command).success, true);
     assert.equal(model.economyCommandSchema.safeParse(command).success, false);
@@ -92,6 +92,7 @@ test("boat DEV validates exact targets and bounded fragment counts before any mu
     ["grant_boat_upgrade_cost", "home", 1], ["grant_boat_upgrade_cost", "repair", 0],
     ["finish_boat_work", "boat", 1], ["finish_boat_travel", crypto.randomUUID(), 2],
     ["set_boat_blueprint", "crate", 1], ["set_boat_blueprint", "telescope", -1],
+    ["set_boat_module_level", "crate", 1], ["set_boat_module_level", "tank", 6], ["set_boat_module_level", "tank", -1],
     ["set_boat_blueprint", "telescope", 4], ["set_boat_blueprint", "telescope", 1.5],
   ]) {
     const command = request(p, action, targetId, quantity);
@@ -130,37 +131,37 @@ test("preparing a repaired boat preserves earned progress and assets, checks own
   assert.deepEqual(read(p).boat.voyage, voyage);
 });
 
-test("missing-only boat upgrade funding retains building gates and same-millisecond timer acceleration requires an ordinary claim", () => {
+test("missing-only boat upgrade funding retains the hull prerequisite and same-millisecond timer acceleration requires an ordinary claim", () => {
   const p = player();
   const funded = cheat(p, "grant_boat_upgrade_cost", "repair").state;
   assert.deepEqual(cheat(p, "grant_boat_upgrade_cost", "repair").state.inventory, funded.inventory);
   assert.equal(cheat(p, "grant_boat_upgrade_cost", "repair").state.wallet.coins, funded.wallet.coins);
   assert.throws(() => normal(p, "start_boat_upgrade", "tank_1"), { code: "ECONOMY_BOAT_UPGRADE" });
-  const work = paidRepair(p), paid = read(p), finish = request(p, "finish_boat_work", work.id);
+  const work = paidTank(p), paid = read(p), finish = request(p, "finish_boat_work", work.id);
   assert.throws(() => cheat(p, "prepare_boat", "boat"), { code: "ECONOMY_BOAT_BUSY" });
   assert.throws(() => cheat(p, "finish_boat_work", crypto.randomUUID()), { code: "ECONOMY_BOAT_WORK_GONE" });
   const finished = api.commandDevEconomyCheat(p.token, finish, now);
   assert.equal(model.economyResultSchema.safeParse(finished).success, true);
-  assert.equal(finished.state.boat.level, 0);
+  assert.equal(boats.boatModules(finished.state.boat).tank, 0);
   assert.equal(finished.state.boat.work.id, work.id); assert.deepEqual(finished.state.boat.work.cost, work.cost);
   assert.equal(Date.parse(finished.state.boat.work.finishesAt), now);
   assert.ok(Date.parse(finished.state.boat.work.startedAt) < now);
   assert.deepEqual(finished.state.wallet, paid.wallet); assert.deepEqual(finished.state.inventory, paid.inventory);
   const replay = api.commandDevEconomyCheat(p.token, finish, now + 1000);
   assert.equal(replay.replayed, true); assert.deepEqual(replay.state.boat, finished.state.boat);
-  assert.equal(normal(p, "claim_boat_upgrade", work.id).state.boat.level, 1);
+  assert.equal(boats.boatModules(normal(p, "claim_boat_upgrade", work.id).state.boat).tank, 1);
   assert.throws(() => normal(p, "claim_boat_upgrade", work.id), { code: "ECONOMY_BOAT_WORK_GONE" });
 });
 
 test("the shared construction and all-jobs controls include boat work without claiming the upgrade", () => {
   for (const filter of ["construction", "all"]) {
-    const p = player(), work = paidRepair(p), before = read(p);
+    const p = player(), work = paidTank(p), before = read(p);
     const finished = cheat(p, "finish_jobs", filter).state;
     assert.equal(model.economyViewSchema.safeParse(finished).success, true);
     assert.equal(finished.boat.work.id, work.id); assert.equal(Date.parse(finished.boat.work.finishesAt), now);
-    assert.equal(finished.boat.level, 0); assert.deepEqual(finished.wallet, before.wallet);
+    assert.equal(boats.boatModules(finished.boat).tank, 0); assert.deepEqual(finished.wallet, before.wallet);
     assert.deepEqual(finished.inventory, before.inventory); assert.deepEqual(finished.jobs, before.jobs);
-    assert.equal(normal(p, "claim_boat_upgrade", work.id).state.boat.level, 1);
+    assert.equal(boats.boatModules(normal(p, "claim_boat_upgrade", work.id).state.boat).tank, 1);
   }
 });
 
@@ -225,4 +226,29 @@ test("blueprint controls inspect every puzzle stage without manufacturing the it
   assert.deepEqual(read(p), pending);
   cheat(p, "finish_boat_work", work.id);
   assert.deepEqual(normal(p, "claim_boat_upgrade", work.id).state.boat.artifacts, ["landing_net"]);
+});
+
+test("boat DEV previews all four actual tiers, reconciles legacy rights and fuel, and preserves an active voyage", () => {
+  const p = player(), before = read(p);
+  assert.throws(() => cheat(p, "set_boat_module_level", "tank", 1), { code: "ECONOMY_BOAT_UPGRADE" });
+  for (const moduleId of ["hull", "engine", "tank", "storage"]) {
+    for (let level = moduleId === "hull" ? 1 : 0; level <= 5; level++) {
+      const state = cheat(p, "set_boat_module_level", moduleId, level).state;
+      assert.equal(boats.boatModules(state.boat)[moduleId], level);
+      assert.deepEqual(state.wallet, before.wallet);
+      assert.deepEqual(state.inventory, before.inventory);
+    }
+  }
+  const tank = read(p).boat.fuel;
+  assert.equal(tank.cells, 2);
+  assert.equal(Date.parse(tank.nextAt), now + 30 * 60_000);
+  const rewind = cheat(p, "set_boat_module_level", "tank", 0).state;
+  assert.deepEqual(rewind.boat.fuel, { cells: 2 });
+  assert.throws(() => cheat(p, "set_boat_module_level", "hull", 0), { code: "ECONOMY_BOAT_UPGRADE" });
+  cheat(p, "set_boat_module_level", "engine", 0);
+  const docked = cheat(p, "set_boat_module_level", "storage", 0).state;
+  assert.deepEqual(docked.boat.upgrades, []);
+  const voyage = normal(p, "depart_boat", "river_reach").state.boat.voyage;
+  assert.throws(() => cheat(p, "set_boat_module_level", "hull", 0), { code: "ECONOMY_BOAT_BUSY" });
+  assert.deepEqual(read(p).boat.voyage, voyage);
 });

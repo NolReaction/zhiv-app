@@ -15,3 +15,9 @@
 .actions button:disabled { opacity: .45; }
 .actions button:focus-visible, .header a:focus-visible { outline: 2px solid #f0d18d; outline-offset: 4px; }
 @media(max-width:480px) { .page { padding: 24px 12px; } .instructions { padding: 16px; } .actions button { flex: 1 1 100%; } }
+
+.pantryBackdrop { position: fixed; inset: 0; z-index: 120; background: #07110dd9; }
+.pantry { box-sizing: border-box; position: fixed; z-index: 121; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(440px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; background: #f0e7cb; color: #283b2d; border: 1px solid #8a8a64; border-radius: 12px; }
+.pantry > header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #273c2d; color: #e9debe; }
+.pantry h2 { margin: 0; font-size: 18px; }
+.pantry > header button { display: inline-flex; align-items: center; gap: 4px; padding: 8px; color: inherit; }

@@ -36,7 +36,7 @@ const memory = () => { const values = new Map(); return { getItem: key => values
 
 test("opening a broken or docked boat is read-only and explains capped outings", () => {
   const value = state(), before = structuredClone(value), broken = render(value);
-  assert.match(broken, /data-boat-phase="broken"/); assert.match(broken, /Восстановить лодку/);
+  assert.match(broken, /data-boat-phase="broken"/); assert.match(broken, /Восстановить бесплатно/);
   assert.doesNotMatch(broken, /рыбалка на пирсе остаётся/); assert.deepEqual(value, before);
   value.boat.level = 1;
   assert.match(render(value), /Забросов 6/); assert.match(render(value), /Отправиться на рыбалку/);
@@ -49,12 +49,13 @@ test("a cached catalog without boats hides its entry and an already-open dialog 
     act() { assert.fail("Missing boat data must not start an action"); }, refresh() { assert.fail("Opening the fallback must not request data automatically"); } };
   const fallback = renderToStaticMarkup(createElement(WorldBoatFishingDialog, { economy, onClose() {} }));
   assert.match(fallback, /data-boat-unavailable/); assert.match(fallback, /Данные о лодке пока недоступны/); assert.match(fallback, />Обновить</);
-  assert.doesNotMatch(fallback, /data-boat-upgrade|Отправиться на рыбалку|Восстановить лодку/);
+  assert.doesNotMatch(fallback, /data-boat-upgrade|Отправиться на рыбалку|Восстановить бесплатно/);
   const entry = snapshot => renderToStaticMarkup(createElement(WorldExpeditionsMenu, { economy: { ...economy, snapshot }, initialSector: "shore", onOpenBoat() { assert.fail("Entry rendering must not navigate"); }, onOpenPantry() {} }));
   assert.doesNotMatch(entry(legacy), /Лодочная рыбалка/);
   assert.match(entry(view(state())), /Лодочная рыбалка/);
   const saved = state();
   run(saved, "start_boat_upgrade", "repair");
+  run(saved, "start_boat_upgrade", "tank_1");
   assert.match(entry(view(saved)), /Лодочная рыбалка/);
   assert.match(render(saved, Date.parse(saved.boat.work.finishesAt), WorldBoatFishingDialog), /Завершить работу/);
   assert.deepEqual(legacy, before);

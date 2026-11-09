@@ -1,6 +1,6 @@
 import { economyCatalog, type EconomyState } from "@/features/economy/domain/model";
-import { boatConfig, boatPhase, newBoatState } from "@/features/economy/domain/boat-fishing";
-import { boatPrivateStateSchema } from "@/features/economy/domain/boat-model";
+import { boatConfig, boatFuelStatus, boatModules, boatPhase, newBoatState } from "@/features/economy/domain/boat-fishing";
+import { boatModuleIds, boatPrivateStateSchema } from "@/features/economy/domain/boat-model";
 import { creditEconomyItems, EconomyRuleError } from "@/features/economy/domain/rules";
 import type { EconomyDevCommand } from "./dev-model";
 
@@ -22,14 +22,32 @@ export function applyDevBoatCommand(state: EconomyState, command: EconomyDevComm
   const config = boatConfig(), boat = state.boat ? boatPrivateStateSchema.parse(state.boat) : newBoatState();
   if (command.action === "prepare_boat") {
     if (boat.work || boat.voyage) throw new EconomyRuleError("ECONOMY_BOAT_BUSY", "Сначала завершите работу или вернитесь и заберите улов");
-    const repair = config.upgrades.find(upgrade => upgrade.id === "repair")!;
-    const minimums: Record<string, number> = { ...repair.requiredBuildings, home: repair.requiredHomeLevel };
-    if (state.jobs.some(job => job.kind === "construction" && (minimums[job.targetId] ?? 0) > (state.buildings[job.targetId] ?? 0)))
-      throw new EconomyRuleError("ECONOMY_BOAT_BUSY", "Сначала завершите строительство дома или мастерской");
-    state.buildings.home = Math.max(state.buildings.home ?? 1, repair.requiredHomeLevel);
-    for (const [id, minimum] of Object.entries(repair.requiredBuildings)) state.buildings[id] = Math.max(state.buildings[id] ?? 0, minimum);
     boat.level = 1; state.boat = boat;
-    return "DEV: лодка восстановлена, минимальные условия дома и мастерской готовы";
+    return "DEV: лодка восстановлена";
+  }
+  if (command.action === "set_boat_module_level") {
+    const moduleId = boatModuleIds.find(key => key === command.targetId);
+    if (!moduleId || !Number.isInteger(command.quantity) || command.quantity < 0 || command.quantity >= config.moduleEffects[moduleId].length)
+      throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Неизвестный уровень модуля", 400);
+    if (boat.work || boat.voyage) throw new EconomyRuleError("ECONOMY_BOAT_BUSY", "Сначала завершите работу или вернитесь и примите улов");
+    const levels = boatModules(boat), tier = command.quantity;
+    if (moduleId !== "hull" && tier > 0 && !levels.hull) throw new EconomyRuleError("ECONOMY_BOAT_UPGRADE", "Сначала восстановите корпус");
+    if (moduleId === "hull" && tier === 0 && (levels.tank || levels.engine || levels.storage))
+      throw new EconomyRuleError("ECONOMY_BOAT_UPGRADE", "Для проверки сломанной лодки сначала снимите двигатель, бак и хранилище");
+    const fuel = boatFuelStatus(boat, now, config);
+    boat.modules = { ...levels, [moduleId]: tier };
+    if (moduleId === "hull") boat.level = tier > 0 ? 1 : 0;
+    const legacy = moduleId === "engine" ? "oars" : moduleId === "storage" ? "crate" : null;
+    if (legacy) {
+      boat.upgrades = boat.upgrades.filter(id => id !== legacy);
+      if (tier > 0) boat.upgrades.push(legacy);
+    }
+    if (moduleId === "tank") {
+      const capacity = config.moduleEffects.tank[tier], cells = Math.min(fuel.cells, capacity);
+      boat.fuel = cells === capacity ? { cells } : { cells, nextAt: iso(fuel.nextAt ?? now + config.fuel.regenSeconds * 1000) };
+    }
+    state.boat = boat;
+    return "DEV: уровень модуля установлен";
   }
   if (command.action === "grant_boat_upgrade_cost") {
     const upgrade = config.upgrades.find(entry => entry.id === command.targetId);

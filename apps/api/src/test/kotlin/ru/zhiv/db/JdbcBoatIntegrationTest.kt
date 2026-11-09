@@ -132,8 +132,8 @@ class JdbcBoatIntegrationTest {
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='claim_boat'", p.id))
     }
 
-    @Test fun `confirmed species leaders respect direct friends opt-in ties and revocation`() = runBlocking<Unit> {
-        val viewer = player("Зритель"); val friend = player("Друг"); val stranger = player("Чужой"); val hidden = player("Скрытый")
+    @Test fun `confirmed species leaders are automatic and respect direct friends ties and account status`() = runBlocking<Unit> {
+        val viewer = player("Зритель"); val friend = player("Друг"); val stranger = player("Чужой"); val removed = player("Удалённый")
         val games = JdbcGameRepository(source)
         val relationships = JdbcRelationshipRepository(source)
         val sent = assertIs<RelationshipResult.Success<DirectRequestMutationSnapshot>>(
@@ -141,39 +141,37 @@ class JdbcBoatIntegrationTest {
         val link = assertIs<RelationshipResult.Success<DirectRequestActionSnapshot>>(
             relationships.actOnRequest(friend.hash, sent.requestId, RequestAction.ACCEPTED)).value
         val now = Instant.now().toString()
-        val fish = "fish_silverfin"
+        val fish = "fish_rudd"
         fun record(owner: Player, weight: Int) {
             put(owner, state(owner).copy(boat = EconomyBoatState(level = 1, records = mapOf(fish to EconomyBoatRecord(weight, now)))))
         }
-        record(viewer, 500); record(friend, 500); record(stranger, 650); record(hidden, 900)
-        games.setVisibility(hidden.hash, true, 0, hidden.publicId) // The older tap ranking permission grants no access to fish.
-        suspend fun visibility(p: Player, visible: Boolean, version: Long) =
-            games.setFishingVisibility(p.hash, GameVisibilityRequest(visible, version, p.publicId))
-        val privateBoard = games.fishingRecords(viewer.hash, "friends")
-        assertFalse(privateBoard.leaderboardOptIn); assertEquals(0L, privateBoard.visibilityVersion)
-        assertTrue(privateBoard.entries.isEmpty())
-        visibility(friend, true, 0); visibility(stranger, true, 0)
-        val friendBest = games.fishingRecords(viewer.hash, "friends").entries.single()
-        assertEquals("Друг", friendBest.displayName); assertEquals(500, friendBest.weightGrams); assertFalse(friendBest.isMe)
-        val scope = "global"
-        val worldBest = games.fishingRecords(viewer.hash, scope).entries.single { it.fishId == fish }
-        assertEquals(650, worldBest.weightGrams); assertEquals("Чужой", worldBest.displayName)
-        val opted = visibility(viewer, true, 0)
-        assertEquals(opted, visibility(viewer, true, 0), "replaying a lost response cannot advance the version")
-        val tied = games.fishingRecords(viewer.hash, "friends").entries.single()
+        record(viewer, 500); record(friend, 500); record(stranger, 650); record(removed, 900)
+        assertEquals("0", scalar("SELECT count(*) FROM game_profiles WHERE user_id=?", removed.id))
+        suspend fun leader(scope: String) = games.fishingRecords(viewer.hash, scope).entries.single { it.fishId == fish }
+        assertEquals("Удалённый", leader("global").displayName)
+        val tied = leader("friends")
         assertTrue(tied.isMe); assertEquals("Зритель", tied.displayName); assertEquals(2L, tied.tiedCount)
-        assertEquals("GAME_VISIBILITY_CONFLICT", assertFailsWith<AuthFailure> { visibility(viewer, false, 0) }.code)
+        val oldPreference = games.setFishingVisibility(viewer.hash, GameVisibilityRequest(false, 10, viewer.publicId))
+        assertTrue(oldPreference.leaderboardOptIn); assertEquals(0L, oldPreference.visibilityVersion)
+        assertEquals(tied, leader("friends"))
         assertEquals("GAME_OWNER_CHANGED", assertFailsWith<AuthFailure> {
             games.setFishingVisibility(viewer.hash, GameVisibilityRequest(false, 1, stranger.publicId))
         }.code)
+        assertEquals("INVALID_GAME_VISIBILITY", assertFailsWith<AuthFailure> {
+            games.setFishingVisibility(viewer.hash, GameVisibilityRequest(false, -1, viewer.publicId))
+        }.code)
         assertEquals("INVALID_GAME_SCOPE", assertFailsWith<AuthFailure> { games.fishingRecords(viewer.hash, "self") }.code)
         relationships.removePerson(viewer.hash, assertNotNull(link.person).circleId)
-        assertEquals(1L, games.fishingRecords(viewer.hash, "friends").entries.single().tiedCount)
+        assertEquals(1L, leader("friends").tiedCount)
+        execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?", removed.id)
+        assertEquals(650, leader("global").weightGrams)
         execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Fishing moderation test' WHERE id=?", stranger.id)
-        assertEquals(500, games.fishingRecords(viewer.hash, scope).entries.single { it.fishId == fish }.weightGrams)
-        visibility(viewer, false, 1); visibility(friend, false, 1)
+        assertEquals(2L, leader("global").tiedCount)
+        games.setVisibility(viewer.hash, true, 0, viewer.publicId)
+        execute("DELETE FROM game_profiles WHERE user_id=?", viewer.id)
+        assertTrue(leader("friends").isMe)
+        execute("DELETE FROM economy_profiles WHERE user_id=?", viewer.id)
         assertTrue(games.fishingRecords(viewer.hash, "friends").entries.isEmpty())
-        assertEquals(500, state(viewer).boat!!.records.getValue(fish).weightGrams)
     }
 
     @Test fun `fishing record routes require a session preserve privacy and reject competing scopes and untrusted writes`() = testApplication {
@@ -188,19 +186,19 @@ class JdbcBoatIntegrationTest {
         assertEquals(HttpStatusCode.OK, privateBoardResponse.status)
         assertEquals("no-store", privateBoardResponse.headers[HttpHeaders.CacheControl])
         val board = economyJson.decodeFromString<ru.zhiv.game.FishingRecordsBoard>(privateBoardResponse.bodyAsText())
-        assertEquals(owner.publicId, board.ownerPublicId); assertEquals("friends", board.scope); assertFalse(board.leaderboardOptIn)
+        assertEquals(owner.publicId, board.ownerPublicId); assertEquals("friends", board.scope); assertTrue(board.leaderboardOptIn)
         suspend fun change(origin: String) = client.post("$path/visibility") {
             cookie(config.cookieName, token.raw); header(HttpHeaders.Origin, origin); contentType(ContentType.Application.Json)
-            setBody(economyJson.encodeToString(GameVisibilityRequest(true, 0, owner.publicId)))
+            setBody(economyJson.encodeToString(GameVisibilityRequest(false, 0, owner.publicId)))
         }
         assertEquals(HttpStatusCode.Forbidden, change("https://elsewhere.test").status)
         val response = change("http://localhost")
         assertEquals(HttpStatusCode.OK, response.status)
         val settings = economyJson.decodeFromString<ru.zhiv.game.FishingRecordVisibility>(response.bodyAsText())
-        assertTrue(settings.leaderboardOptIn); assertEquals(1L, settings.visibilityVersion)
+        assertTrue(settings.leaderboardOptIn); assertEquals(0L, settings.visibilityVersion)
     }
 
-    @Test fun `publication and confirmed claim serialize on the owner including an opt-out racing another claim`() = runBlocking<Unit> {
+    @Test fun `confirmed claims publish exactly once regardless of concurrent legacy preferences`() = runBlocking<Unit> {
         val p = player()
         val games = JdbcGameRepository(source)
         val fish = "fish_silverfin"
@@ -223,10 +221,10 @@ class JdbcBoatIntegrationTest {
             preference.await(); collecting.await()
             assertTrue(economy.command(p.hash, claim).replayed)
             val board = games.fishingRecords(p.hash, "friends")
-            assertEquals(publish, board.leaderboardOptIn)
-            assertEquals(if (publish) 300 else null, board.entries.singleOrNull()?.weightGrams)
+            assertTrue(board.leaderboardOptIn)
+            assertEquals(300 + i, board.entries.single().weightGrams)
             assertEquals(300 + i, state(p).boat!!.records.getValue(fish).weightGrams)
-            assertEquals(if (publish) "1" else "0", scalar("SELECT count(*) FROM game_fishing_records WHERE user_id=?", p.id))
+            assertEquals("1", scalar("SELECT count(*) FROM game_fishing_records WHERE user_id=?", p.id))
         }
     }
 

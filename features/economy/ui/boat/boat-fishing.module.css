@@ -106,3 +106,19 @@
   .header { gap: 7px; padding: 9px 10px; }
   .header h2 { white-space: normal; text-wrap: balance; font-size: 15px; }
 }
+
+/* Main workshop fills the panel. Additional text and large-type settings can still scroll. */
+.body:has([data-boat-garage]) { display: flex; flex-direction: column; overflow-y: auto; scrollbar-gutter: auto; padding: clamp(5px, 1vw, 12px); }
+@media (max-width: 680px), (max-height: 540px) {
+  .dialog:not([data-boat-unavailable]) { height: calc(100dvh - 12px); max-height: calc(100dvh - 12px); }
+  .header { padding: 4px 9px; }
+  .tabs { padding: 1px 6px; }
+  .tab { padding: 4px; }
+}
+@media (max-height: 500px) {
+  .dialog:not([data-boat-unavailable]) { width: calc(100vw - 8px); height: calc(100dvh - 8px); max-height: calc(100dvh - 8px); }
+  .header { padding-block: 0; }
+  .header small { margin-bottom: 0; }
+  .header h2 { font-size: 16px; }
+  .body:has([data-boat-garage]) { padding: 3px; }
+}

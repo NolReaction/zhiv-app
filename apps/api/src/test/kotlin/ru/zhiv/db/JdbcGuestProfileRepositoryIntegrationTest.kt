@@ -96,7 +96,7 @@ class JdbcGuestProfileRepositoryIntegrationTest {
     }
 
 
-    @Test fun `tap statistics require leaderboard consent and are revoked immediately`() = runBlocking<Unit> {
+    @Test fun `guest lifetime statistics remain private without legacy permission regardless of automatic ranking`() = runBlocking<Unit> {
         val a=player();val b=player();val circle=connect(a,b)
         assertNull(profiles.profile(a.hash,circle).tapStats)
         execute("INSERT INTO game_profiles(user_id,lifetime_taps,best_series) VALUES (?,12345,678)",b.id)

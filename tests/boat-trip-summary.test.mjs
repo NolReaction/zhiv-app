@@ -12,7 +12,7 @@ after(() => vite.close());
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { newEconomyState, economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { createBoatTripReceipt } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-trip-summary-data.ts");
-const { BoatTripSummary } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-trip-summary.tsx");
+const { BoatDeliveryNotice, BoatTripSummary } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-trip-summary.tsx");
 const { BoatVoyagePanel } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-voyage-panel.tsx");
 const instant = "2026-11-03T12:00:00.000Z";
 const caught = (castIndex, fishId, weightGrams) => ({ castIndex, fishId, weightGrams, caughtAt: instant });
@@ -50,22 +50,29 @@ test("a pre-claim receipt remains unchanged after acknowledged delivery changes 
   state.boat.records.fish_silverfin = { weightGrams: 999, caughtAt: instant };
   state.fishing.catches.fish_silverfin = 10; delete state.boat.voyage;
   assert.equal(JSON.stringify(receipt), before);
-  const delivered = renderToStaticMarkup(createElement(BoatTripSummary, { receipt, delivered: true }));
-  assert.match(delivered, /Улов доставлен/); assert.match(delivered, /data-delivered="true"/);
+  const delivered = renderToStaticMarkup(createElement(BoatDeliveryNotice, { receipt }));
+  assert.match(delivered, /Улов доставлен/); assert.match(delivered, /role="status"/);
   assert.match(delivered, /300 г/); assert.doesNotMatch(delivered, /999 г|Разгрузка добавит/);
 });
 
-test("returned trips show a summary while disabled claims and full-storage recovery retain the onboard manifest", () => {
-  const state = fixture([caught(0, "fish_silverfin", 300)]), now = Date.parse(state.boat.voyage.returnsAt);
+test("the return report always lists every catch; the only action changes when the pantry has space", () => {
+  const state = fixture([caught(0, "fish_silverfin", 300), caught(1, "fish_silverfin", 450)]), now = Date.parse(state.boat.voyage.returnsAt);
+  const economy = { snapshot: state, now, busy: false, uncertain: false };
+  const report = () => renderToStaticMarkup(createElement(BoatVoyagePanel, { economy, disabled: false,
+    send() { assert.fail("Rendering cannot issue a claim"); }, onOpenPantry() {} }));
   state.storage.available = 0;
-  const economy = { snapshot: state, now, busy: false, uncertain: false, error: "Освободите место в кладовой" };
   const before = JSON.stringify(state);
-  const html = renderToStaticMarkup(createElement(BoatVoyagePanel, { economy, disabled: false, send() { assert.fail("Rendering cannot issue a claim"); }, onOpenPantry() {} }));
-  assert.match(html, /data-boat-trip-ready/); assert.match(html, /Улов прибыл домой/);
-  assert.match(html, /Самая крупная/); assert.match(html, /Весь улов выхода/);
-  assert.match(html, /Улов пока на борту/); assert.match(html, /при полной кладовой рыба останется в лодке/);
-  assert.match(html, /disabled=""[^>]*>[^]*?Забрать улов/);
-  assert.match(html, /Открыть кладовую/); assert.equal(JSON.stringify(state), before);
+  const full = report();
+  assert.match(full, /data-boat-trip-ready/); assert.match(full, /Улов прибыл домой/);
+  assert.match(full, /Самая крупная/); assert.match(full, /Весь улов выхода/);
+  assert.match(full, /data-trip-catch="0"[^]*300 г/); assert.match(full, /data-trip-catch="1"[^]*450 г/);
+  assert.match(full, /Освободите мест в кладовой: 2/); assert.match(full, /В кладовую/);
+  assert.doesNotMatch(full, /Принять улов|<details/); assert.equal(JSON.stringify(state), before);
+  state.storage.available = 2;
+  const ready = report();
+  assert.match(ready, /Принять улов/); assert.doesNotMatch(ready, /В кладовую|<details/);
+  assert.equal((ready.match(/<button/g) || []).length, 1);
+  assert.equal((full.match(/<button/g) || []).length, 1);
 });
 
 test("an empty outing has no invented largest fish, achievement or reward and retains explicit completion", () => {

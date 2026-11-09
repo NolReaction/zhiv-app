@@ -66,7 +66,7 @@ test("garage keeps the storage upgrade rail and bonus but removes its spatial ma
 test("garage keeps a free starter repair disabled while the economy request is pending", () => {
   const state = garageState(), before = structuredClone(state);
   const enabled = renderGarage(state), pending = renderGarage(state, { disabled: true });
-  const buy = result => [...result.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(match => match[0]).find(button => button.includes("Восстановить лодку"));
+  const buy = result => [...result.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(match => match[0]).find(button => button.includes("Восстановить бесплатно"));
   assert.doesNotMatch(buy(enabled), /disabled=""/);
   assert.match(buy(pending), /disabled=""/);
   assert.equal([...pending.matchAll(/data-boat-module="/g)].length, 4);
@@ -130,5 +130,5 @@ test("legacy first-tier rights show their current parts and all-maxed modules ha
   const result = renderGarage(state);
   assert.equal([...result.matchAll(/data-boat-module=/g)].length, 4);
   assert.match(result, /Максимум/);
-  assert.doesNotMatch(result, /Установить улучшение|Восстановить лодку|После улучшения/);
+  assert.doesNotMatch(result, /Установить улучшение|Восстановить бесплатно|После улучшения/);
 });

@@ -138,7 +138,7 @@ class JdbcGameProgressResetIntegrationTest {
                     '{"expectedRevision":39}','Old receipt predating an individual reset',40);
                 UPDATE economy_profiles SET state = state || '{"boat":{"records":{"fish_dace":{"weightGrams":285,"caughtAt":"2026-11-10T00:00:00Z"}}}}'::jsonb;
                 INSERT INTO game_profiles(user_id,lifetime_taps,best_series,fishing_leaderboard_opt_in,fishing_visibility_version)
-                  VALUES ('10000000-0000-4000-8000-000000000001',5000,100,true,39);
+                  VALUES ('10000000-0000-4000-8000-000000000001',5000,100,false,39);
                 INSERT INTO game_items(user_id,item_id) VALUES ('10000000-0000-4000-8000-000000000001','flower');
                 INSERT INTO game_achievements(user_id,achievement_id)
                   VALUES ('10000000-0000-4000-8000-000000000001','thousand_taps'),
@@ -241,13 +241,13 @@ class JdbcGameProgressResetIntegrationTest {
             assertEquals(0, preview.exitCode, preview.stderr)
             assertEquals(before, snapshot(source), "No-argument SQL invocation must be read only")
 
-            execute(source, "UPDATE flyway_schema_history SET version='82' WHERE version='81'")
+            execute(source, "UPDATE flyway_schema_history SET version='83' WHERE version='82'")
             val unreviewed = snapshot(source)
             val wrongVersion = reset(true)
             assertNotEquals(0, wrongVersion.exitCode)
-            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V81"), wrongVersion.stderr)
+            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V82"), wrongVersion.stderr)
             assertEquals(unreviewed, snapshot(source), "An unreviewed migration must fail before deletion")
-            execute(source, "UPDATE flyway_schema_history SET version='81' WHERE version='82'")
+            execute(source, "UPDATE flyway_schema_history SET version='82' WHERE version='83'")
 
             execute(source, "CREATE TABLE ci_unreviewed_game_reset_guard(value text)")
             val unexpected = snapshot(source)

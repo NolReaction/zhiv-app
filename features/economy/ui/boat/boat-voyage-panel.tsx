@@ -3,7 +3,7 @@ import { boatConfig, boatModules, boatPhase, boatReturnStartedAt, boatReturnsAt,
 import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { BoatCountdown } from "./boat-countdown";
 import { BoatArt } from "./boat-art";
-import { BoatDockReceipt } from "./boat-trip-summary";
+import { BoatTripSummary } from "./boat-trip-summary";
 import { createBoatTripReceipt } from "./boat-trip-summary-data";
 import summaryStyles from "./boat-trip-summary.module.css";
 import { BoatCatchList } from "./boat-panels";
@@ -18,11 +18,12 @@ export function BoatVoyagePanel({ economy, disabled, send, onOpenPantry }: Props
   if (phase === "ready") {
     const shortfall = Math.max(0, voyage.catches.length - state.storage.available);
     return <section data-boat-trip-ready>
-      <BoatDockReceipt receipt={createBoatTripReceipt(state, voyage)} />
+      <BoatTripSummary receipt={createBoatTripReceipt(state, voyage)} />
       <div className={summaryStyles.unloading}>
         {shortfall > 0 && <p>Освободите мест в кладовой: {shortfall}. Улов ждёт на борту.</p>}
-        <button type="button" className={styles.primary} disabled={disabled || shortfall > 0} onClick={() => send("claim_boat", voyage.id)}>{voyage.catches.length ? <Package size={17} /> : <Check size={17} />}{voyage.catches.length ? "Забрать улов" : "Завершить выход"}</button>
-        {shortfall > 0 && onOpenPantry && <button type="button" className={styles.secondary} onClick={onOpenPantry}>Открыть кладовую</button>}
+        {shortfall > 0
+          ? <button type="button" className={styles.primary} disabled={!onOpenPantry || economy.busy} onClick={onOpenPantry}><Package size={17} />В кладовую</button>
+          : <button type="button" className={styles.primary} disabled={disabled} onClick={() => send("claim_boat", voyage.id)}><Check size={17} />{voyage.catches.length ? "Принять улов" : "Завершить выход"}</button>}
       </div>
     </section>;
   }

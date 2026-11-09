@@ -65,11 +65,11 @@ test("Leaftail help explains personal finds, delivery progress, permanent owners
 });
 
 test("boat help links busy-player advice to real repair, attempts, delivery and current upgrade rules", () => {
-  const boat = economyCatalog.boat, repair = boat.upgrades.find(upgrade => upgrade.id === "repair");
+  const boat = economyCatalog.boat;
   assert.equal(topic("boat-fishing").group, "travel");
   assert.deepEqual(topic("boat-fishing").action.target, { kind: "boat" });
-  assert.ok(answer("boat-fishing").includes(`С дома ${repair.requiredHomeLevel} можно бесплатно починить корпус`));
-  assert.match(answer("boat-fishing"), /полной кладовой.*улов останется/);
+  assert.match(answer("boat-fishing"), /Восстановить бесплатно.*сразу готов/);
+  assert.match(answer("boat-fishing"), /Принять улов.*В кладовую.*Улов останется/);
   assert.match(answer("boat-fishing"), /Мохлик занят до получения улова/);
   assert.ok(answer("boat-controls").includes(`${boat.moduleEffects.storage[0]} рыб за ${boat.moduleEffects.storage[0] + boat.spareCasts} забросов`));
   assert.match(answer("boat-controls"), /Попытка тратится при забросе/);
@@ -81,7 +81,7 @@ test("boat help links busy-player advice to real repair, attempts, delivery and 
   assert.doesNotMatch(answer("boat-upgrades"), /чертеж|подзорная труба/i);
   assert.match(answer("boat-records"), /Вес не меняет цену/);
   assert.match(answer("boat-records"), /профессиональный навык рыбалки/);
-  assert.match(answer("boat-records"), /«Друзья» и «Мир».*Публиковать мои рекорды/);
+  assert.match(answer("boat-records"), /автоматически.*«Друзья» и «Мир»/);
   for (const [query, id] of [["лодочная рыбалка", "boat-fishing"], ["вес рыбы рекорд", "boat-records"]])
     assert.ok(searchWorldHelp(topics, query).some(entry => entry.id === id), query);
 });

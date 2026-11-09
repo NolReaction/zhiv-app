@@ -2,10 +2,7 @@
 .scopes button { min-height: 44px; padding: 6px 16px; color: #c2cdb5; background: transparent; border: 1px solid transparent; border-radius: 5px; }
 .scopes button[data-state="active"] { color: #f2deb0; border-color: #987d4b; background: #384438; }
 .scopes button:focus-visible { outline: 2px solid #efcf8c; outline-offset: 1px; }
-.visibility, .notice { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-block: 4px 14px; }
-.visibility strong, .visibility small { display: block; }
-.visibility strong { color: #efe3c5; font-size: 14px; }
-.visibility small { margin-top: 3px; color: #b3c1ac; font-size: 12px; line-height: 1.4; }
+.notice { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-block: 4px 14px; }
 .holder { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; overflow-wrap: anywhere; }
 .cup { color: #efc774; flex: none; }
 .unknown { color: #92a291; flex: none; margin-inline: 4px; }

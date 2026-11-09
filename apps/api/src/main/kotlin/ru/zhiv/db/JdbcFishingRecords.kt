@@ -2,14 +2,8 @@ package ru.zhiv.db
 
 import ru.zhiv.economy.EconomyRules
 import ru.zhiv.game.FishingRecordLeader
-import ru.zhiv.game.FishingRecordVisibility
 import java.sql.Connection
 import java.util.UUID
-
-internal fun fishingRecordVisibility(c: Connection, user: UUID, publicId: String): FishingRecordVisibility =
-    c.economyRows("SELECT fishing_leaderboard_opt_in, fishing_visibility_version FROM game_profiles WHERE user_id=?", user) {
-        FishingRecordVisibility(publicId, it.getBoolean(1), it.getLong(2))
-    }.singleOrNull() ?: FishingRecordVisibility(publicId, false, 0)
 
 internal fun fishingRecordLeaders(c: Connection, user: UUID, scope: String): List<FishingRecordLeader> {
     val species = c.createArrayOf("text", checkNotNull(EconomyRules.catalog.boat).weights.keys.toTypedArray())
@@ -27,7 +21,6 @@ internal fun fishingRecordLeaders(c: Connection, user: UUID, scope: String): Lis
             CROSS JOIN LATERAL (
                 SELECT r.weight_grams, u.id, u.display_name, u.public_id
                 FROM game_fishing_records r $filter
-                JOIN game_profiles p ON p.user_id=r.user_id AND p.fishing_leaderboard_opt_in
                 JOIN app_users u ON u.id=r.user_id
                 WHERE r.fish_id=s.fish_id AND u.deleted_at IS NULL AND u.banned_at IS NULL
                 ORDER BY r.weight_grams DESC FETCH FIRST ROW WITH TIES

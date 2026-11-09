@@ -57,14 +57,44 @@ test("boat defaults preserve old profiles and public projection never reveals se
   assert.ok(!("slots" in publicState.voyage)); assert.equal(publicState.voyage.catches.length, 0);
   publicState.upgrades.push("crate"); assert.deepEqual(state, before);
 });
-test("repair and ordinary construction share one builder, ready work remains reserved", () => {
-  const state = fresh(); run(state, "start_boat_upgrade", "repair");
-  assert.equal(state.wallet.coins, 100000); assert.equal(state.inventory.planks, 12); assert.equal(state.inventory.rope, 12);
+test("instant starter repair costs nothing with a busy builder; paid work reserves the builder until claimed", () => {
+  const starter = fresh();
+  starter.inventory = { wood: 100, stone: 100 };
+  run(starter, "start_construction", "woodlot");
+  starter.wallet.coins = 0; starter.inventory = {};
+  const jobs = structuredClone(starter.jobs);
+  run(starter, "start_boat_upgrade", "repair");
+  assert.equal(boats.boatModules(starter.boat).hull, 1); assert.equal(starter.boat.level, 1);
+  assert.equal(starter.boat.work, undefined); assert.equal(starter.wallet.coins, 0);
+  assert.deepEqual(starter.inventory, {}); assert.deepEqual(starter.jobs, jobs);
+  assert.throws(() => run(starter, "start_boat_upgrade", "repair"), { code: "ECONOMY_BOAT_UPGRADE" });
+  assert.throws(() => run(starter, "start_boat_upgrade", "tank_1"), /Строитель занят/);
+
+  const state = ready(); state.buildings = { home: 1 }; state.inventory = {};
+  state.wallet.coins = 349;
+  assert.throws(() => run(state, "start_boat_upgrade", "tank_1"), /Не хватает монет/);
+  state.wallet.coins = 350;
+  run(state, "start_boat_upgrade", "tank_1");
+  assert.equal(state.wallet.coins, 0); assert.deepEqual(state.inventory, {});
   assert.throws(() => run(state, "start_construction", "woodlot"), { code: "ECONOMY_CONSTRUCTION_BUSY" });
   const work = state.boat.work;
   assert.throws(() => run(state, "claim_boat_upgrade", work.id), { code: "ECONOMY_BOAT_WORK_WAIT" });
-  run(state, "claim_boat_upgrade", work.id, Date.parse(work.finishesAt)); assert.equal(state.boat.level, 1);
+  run(state, "claim_boat_upgrade", work.id, Date.parse(work.finishesAt));
+  assert.equal(boats.boatModules(state.boat).tank, 1);
   assert.throws(() => run(state, "claim_boat_upgrade", work.id, Date.parse(work.finishesAt)), { code: "ECONOMY_BOAT_WORK_GONE" });
+});
+
+test("a previously paid starter repair keeps its stored deadline and is never charged again", () => {
+  const state = fresh();
+  state.wallet.coins = 0; state.inventory = {};
+  const work = { id: uuid(), upgradeId: "repair", startedAt: new Date(at).toISOString(),
+    finishesAt: new Date(at + 900000).toISOString(), cost: { coins: 400, items: { planks: 4, rope: 2 } } };
+  state.boat.work = work;
+  assert.throws(() => run(state, "start_boat_upgrade", "repair"), { code: "ECONOMY_BOAT_UPGRADE" });
+  assert.throws(() => run(state, "claim_boat_upgrade", work.id, at + 899999), { code: "ECONOMY_BOAT_WORK_WAIT" });
+  run(state, "claim_boat_upgrade", work.id, at + 900000);
+  assert.equal(state.boat.level, 1); assert.equal(state.wallet.coins, 0); assert.deepEqual(state.inventory, {});
+  assert.throws(() => run(state, "claim_boat_upgrade", work.id), { code: "ECONOMY_BOAT_WORK_GONE" });
 });
 test("departures snapshot fixed times, loadout and every draw; consume one bait for the whole trip", () => {
   const state = ready(); state.inventory.crumb_bait = 2; state.fishing.equippedBaitId = "crumb_bait";
@@ -269,7 +299,7 @@ test("an expanded tank starts its extra cell from claim time and retains progres
 });
 
 test("paid three-module legacy loadouts map once and all twenty sequential tiers affect play", () => {
-  const state = ready(); state.boat.upgrades = ["oars", "crate"]; state.buildings.home = 5; state.buildings.workshop = 4;
+  const state = ready(); state.boat.upgrades = ["oars", "crate"]; state.buildings = { home: 1 };
   assert.deepEqual(boats.boatModules(state.boat), { engine: 1, storage: 1, hull: 1, tank: 0 });
   assert.throws(() => run(state, "start_boat_upgrade", "engine_3"), { code: "ECONOMY_BOAT_UPGRADE" });
   for (const moduleId of schema.boatModuleIds) {

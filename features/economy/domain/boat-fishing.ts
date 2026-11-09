@@ -79,16 +79,17 @@ export function boatUpgradeReason(state: BoatSource, upgradeId: BoatUpgradeId | 
   if (!Number.isFinite(now)) return "Обновите время хозяйства";
   const boat = boatState(state), upgrade = (state.catalog?.boat ?? boatConfig()).upgrades.find(entry => entry.id === upgradeId);
   if (!upgrade) return "Улучшение не найдено";
-  if (boat.work || state.jobs.some(job => job.kind === "construction")) return "Строитель занят. Сначала завершите текущую работу";
+  if (boat.work || (upgrade.seconds > 0 && state.jobs.some(job => job.kind === "construction"))) return "Строитель занят. Сначала завершите текущую работу";
   if (boat.voyage) return "Сначала вернитесь и заберите улов";
   if (upgradeId === "repair" ? boat.level > 0 : boat.level === 0) return upgradeId === "repair" ? "Лодка уже восстановлена" : "Сначала восстановите лодку";
   if (upgrade.module && upgrade.tier !== boatModules(boat)[upgrade.module] + 1)
     return (upgrade.tier ?? 0) <= boatModules(boat)[upgrade.module] ? "Улучшение уже готово" : "Сначала установите предыдущий уровень";
   if (boat.artifacts.some(id => id === upgradeId)) return "Улучшение уже готово";
-  if ((state.buildings.home ?? 1) < upgrade.requiredHomeLevel) return `Нужен дом уровня ${upgrade.requiredHomeLevel}`;
+  if (upgrade.requiredHomeLevel > 1 && (state.buildings.home ?? 1) < upgrade.requiredHomeLevel) return `Нужен дом уровня ${upgrade.requiredHomeLevel}`;
   if (Object.entries(upgrade.requiredBuildings).some(([id, level]) => (state.buildings[id] ?? 0) < level)) return "Сначала улучшите мастерскую";
   if (upgrade.blueprint && boat.blueprints[upgrade.blueprint] < 3) return "Соберите три страницы чертежа";
-  if (state.wallet.coins < upgrade.cost.coins || Object.entries(upgrade.cost.items).some(([id, amount]) => (state.inventory[id] ?? 0) < amount)) return "Не хватает монет или материалов";
+  if (state.wallet.coins < upgrade.cost.coins) return "Не хватает монет";
+  if (Object.entries(upgrade.cost.items).some(([id, amount]) => (state.inventory[id] ?? 0) < amount)) return "Не хватает материалов";
   return null;
 }
 export function boatDepartureReason(state: BoatSource, now: number): string | null {

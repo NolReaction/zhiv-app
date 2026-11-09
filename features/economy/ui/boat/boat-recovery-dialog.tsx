@@ -8,6 +8,7 @@ import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { useFishingCommand } from "@/features/economy/ui/fishing/use-fishing-command";
 import { worldCountdown } from "@/features/economy/ui/shared/world-stations";
 import { BoatCatchList, BoatWork } from "./boat-panels";
+import { BoatVoyagePanel } from "./boat-voyage-panel";
 import styles from "./boat-fishing.module.css";
 
 type Props = { economy: ReadyEconomy; onClose: () => void; onOpenPantry?: () => void };
@@ -28,14 +29,13 @@ export function BoatRecoveryDialog({ economy, onClose, onOpenPantry }: Props) {
       <div className={styles.body}>
         <Dialog.Description id={description}>Можно завершить оплаченную работу или забрать улов прежнего выхода.</Dialog.Description>
         {voyage && <section className={styles.trip}>
-          {phase === "ready" ? <>
-            <button type="button" className={styles.primary} disabled={disabled} onClick={() => send("claim_boat", voyage.id)}>{voyage.catches.length ? "Забрать улов" : "Завершить выход"}</button>
-            {onOpenPantry && <button type="button" className={styles.secondary} onClick={onOpenPantry}>Открыть кладовую</button>}
-          </> : <>
-            <p>До возвращения: {worldCountdown(Math.ceil((boatReturnsAt(voyage) - economy.now) / 1000))}</p>
-            {phase === "fishing" && <button type="button" className={styles.primary} disabled={disabled} onClick={() => send("return_boat", voyage.id)}>Вернуться с уловом</button>}
-          </>}
-          <BoatCatchList state={state} boat={boat} />
+          {phase === "ready"
+            ? <BoatVoyagePanel economy={economy} disabled={disabled} send={(action, id) => send(action, id)} onOpenPantry={onOpenPantry} />
+            : <>
+              <p>До возвращения: {worldCountdown(Math.ceil((boatReturnsAt(voyage) - economy.now) / 1000))}</p>
+              {phase === "fishing" && <button type="button" className={styles.primary} disabled={disabled} onClick={() => send("return_boat", voyage.id)}>Вернуться с уловом</button>}
+              <BoatCatchList state={state} boat={boat} />
+            </>}
         </section>}
         <BoatWork boat={boat} config={state.catalog.boat ?? boatConfig()} now={economy.now} disabled={disabled} onClaim={id => send("claim_boat_upgrade", id)} />
         {economy.error && <p className={styles.error} role="alert">{economy.error}</p>}

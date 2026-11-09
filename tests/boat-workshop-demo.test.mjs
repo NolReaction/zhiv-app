@@ -52,19 +52,16 @@ test("demo starts broken, owns its state, isolates coach keys and needs no IO", 
   } finally { globalThis.fetch = previous; }
 });
 
-test("ordinary repair, claim, departure and cast run real rules against private local authority", () => {
+test("ordinary instant repair, departure and cast run real rules against private local authority", () => {
   const demo = rehearsal(), before = demo.read();
   const repair = demo.command("start_boat_upgrade", "repair"), started = demo.send(repair);
-  assert.equal(started.state.boat.level, 0);
+  assert.equal(started.state.boat.level, 1);
   assert.equal(started.state.wallet.coins, before.wallet.coins, "first hull repair is free");
   assert.equal(demo.send(repair).replayed, true);
   assert.throws(() => demo.send({ ...repair, targetId: "oars" }), /другими параметрами/);
   assert.equal(demo.read().wallet.coins, started.state.wallet.coins);
-  demo.actDev("finish_boat_work", started.state.boat.work.id);
-  assert.equal(demo.read().boat.level, 0, "accelerating a timer never claims the paid upgrade");
-  const ready = demo.act("claim_boat_upgrade", started.state.boat.work.id).state;
-  assert.equal(ready.boat.level, 1);
-  const outward = demo.act("depart_boat", ready.catalog.boat.routeId).state;
+  assert.equal(started.state.boat.work, undefined);
+  const outward = demo.act("depart_boat", started.state.catalog.boat.routeId).state;
   assert.equal(boatPhase(outward.boat, at), "fishing");
   assert.equal(outward.boat.voyage.slots, undefined);
   assert.equal(boatPhase(demo.read().boat, at), "fishing");
@@ -81,6 +78,22 @@ test("unrelated actions, stale revisions and another owner cannot mutate the dem
   assert.throws(() => demo.send({ ...demo.command("start_boat_upgrade", "repair"), expectedRevision: 0 }), /сцена изменилась/);
   assert.throws(() => demo.send({ ...demo.command("start_boat_upgrade", "repair"), ownerPublicId: "0000-0000-0000" }), /сцена изменилась/);
   assert.deepEqual(demo.read(), before);
+});
+
+test("a demo pantry sale is available on return, keeps the manifest and replays once after unloading", () => {
+  const demo = rehearsal();
+  demo.act("start_boat_upgrade", "repair");
+  const voyage = demo.act("depart_boat", demo.read().catalog.boat.routeId).state.boat.voyage;
+  demo.act("return_boat", voyage.id);
+  const before = demo.read(), quantity = 2;
+  const sale = { ...demo.command("sell", "planks"), quantity, totalPrice: quantity * before.catalog.localBuyer.unitPrices.planks };
+  const sold = demo.send(sale);
+  assert.equal(sold.state.storage.available, before.storage.available + quantity);
+  assert.deepEqual(sold.state.boat.voyage, before.boat.voyage);
+  demo.act("claim_boat", voyage.id);
+  const after = demo.read();
+  assert.equal(demo.send(sale).replayed, true);
+  assert.deepEqual(demo.read(), after);
 });
 
 test("local validation, owner and revision rejections preserve the real API status/code contract", () => {
@@ -106,6 +119,9 @@ test("the real controller delivers demo work and ordinary claims without an acco
     assert.equal(session.getSnapshot().snapshotConfirmed, true);
     assert.equal(session.act("start_boat_upgrade", "repair"), true);
     await flush();
+    assert.equal(session.getSnapshot().snapshot.boat.level, 1);
+    assert.equal(session.act("start_boat_upgrade", "tank_1"), true);
+    await flush();
     const work = session.getSnapshot().snapshot.boat.work;
     assert.ok(work);
     const paidRevision = session.getSnapshot().snapshot.revision;
@@ -114,14 +130,14 @@ test("the real controller delivers demo work and ordinary claims without an acco
     assert.equal(session.getSnapshot().busy, false);
     assert.equal(session.getSnapshot().uncertain, false, "an early rejected claim must clear the pending request");
     assert.equal(session.getSnapshot().snapshot.revision, paidRevision);
-    assert.equal(session.getSnapshot().snapshot.boat.level, 0);
+    assert.equal(session.getSnapshot().snapshot.boat.modules.tank, 0);
     assert.match(session.getSnapshot().error, /Работа ещё не закончена/);
     session.actDev("finish_boat_work", work.id);
     await flush();
-    assert.equal(session.getSnapshot().snapshot.boat.level, 0);
+    assert.equal(session.getSnapshot().snapshot.boat.modules.tank, 0);
     assert.equal(session.act("claim_boat_upgrade", work.id), true);
     await flush();
-    assert.equal(session.getSnapshot().snapshot.boat.level, 1);
+    assert.equal(session.getSnapshot().snapshot.boat.modules.tank, 1);
     assert.equal(session.getSnapshot().error, null);
   } finally { deactivate(); }
   assert.equal(session.act("depart_boat", demo.read().catalog.boat.routeId), false);
@@ -149,6 +165,7 @@ test("an unexpected authority failure remains uncertain and retries its original
     await session.retry();
     assert.deepEqual(sent[1], sent[0]);
     assert.equal(session.getSnapshot().uncertain, false);
-    assert.equal(session.getSnapshot().snapshot.boat.work.upgradeId, "repair");
+    assert.equal(session.getSnapshot().snapshot.boat.level, 1);
+    assert.equal(session.getSnapshot().snapshot.boat.work, undefined);
   } finally { deactivate(); }
 });

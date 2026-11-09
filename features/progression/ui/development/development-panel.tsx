@@ -35,7 +35,7 @@ export function StageCard({ stage, onSelect }: { stage: EconomyStage; onSelect: 
 export function HomeUnlockCard({ unlock, onSelect }: { unlock: EconomyHomeUnlock; onSelect: (id: string) => void }) {
   const berries = new Set(unlock.berries.map(berry => berry.itemId));
   const products = unlock.newItems.filter(id => !berries.has(id));
-  const boatUpgrades = economyCatalog.boat?.upgrades.filter(upgrade => !upgrade.blueprint && upgrade.requiredHomeLevel === unlock.homeLevel) ?? [];
+  const boatUpgrades = unlock.homeLevel === 1 ? economyCatalog.boat?.upgrades.filter(upgrade => upgrade.module) ?? [] : [];
   return <article className={styles.unlockCard} data-home-unlocks={unlock.homeLevel}>
     <h3>Дом {unlock.homeLevel}</h3>
     <div className={styles.berryUnlocks}>{unlock.berries.map(berry => {
@@ -49,11 +49,10 @@ export function HomeUnlockCard({ unlock, onSelect }: { unlock: EconomyHomeUnlock
     {unlock.landmarks.map(landmark => <div className={styles.guarantee} key={`${landmark.id}:${landmark.level}`}><strong>{landmark.name}: {number(landmark.cost.coins)} монет · {time(landmark.seconds)}</strong><Ingredients items={landmark.cost.items} onSelect={onSelect} /><p className={styles.hint}>{landmark.id === "bridge" ? "После получения восстановления открывается рынок игроков. Для следующего дома мост необязателен; поздний проект потребует его." : `После получения восстановления включается ночной свет и приходит корабль с тремя грузами. Стоянка ${shipOrdersConfig.staySeconds / 3600} ч, следующий рейс через ${shipOrdersConfig.intervalSeconds / 3600} ч после отплытия. За рейс ${shipOrdersConfig.freeReplacements} бесплатные замены нетронутых грузов; досрочное отправление стоит ${formatPearls(shipOrdersConfig.resetPricePearls)} жемчужин. Маяк показывает время прибытия. Для следующего дома маяк необязателен.`}</p></div>)}
     {releaseFeatures.boatFishingEnabled && boatUpgrades.length > 0 && <details className={styles.chain}><summary>Лодка и снаряжение: {boatUpgrades.length}</summary><div className={styles.chainBody}>
       {boatUpgrades.map(upgrade => <div className={styles.buildingCost} key={upgrade.id} data-boat-upgrade={upgrade.id}>
-        <div><strong>{upgrade.name}</strong><span>{number(upgrade.cost.coins)} монет · {time(upgrade.seconds)}</span></div>
-        <Ingredients items={upgrade.cost.items} onSelect={onSelect} /><p className={styles.hint}>{upgrade.description}</p>
-        {Object.keys(upgrade.requiredBuildings).length > 0 && <small>Нужны: {Object.entries(upgrade.requiredBuildings).map(([id, level]) => `${buildingLabels[id] ?? id} ${level}`).join(" · ")}</small>}
+        <div><strong>{upgrade.name}</strong><span>{upgrade.seconds === 0 ? "Бесплатно · Сразу" : `${number(upgrade.cost.coins)} монет · ${time(upgrade.seconds)}`}</span></div>
+        <p className={styles.hint}>{upgrade.description}</p>
       </div>)}
-      <p className={styles.hint}>Это отдельное развитие лодки у существующего причала. Работы занимают общего строителя и требуют получения после таймера. Они не входят в обязательный бюджет следующего дома. Чертежи и постоянные предметы относятся к отдельной системе находок.</p>
+      <p className={styles.hint}>Лодка доступна со старта. Корпус I восстанавливается сразу. Последующие уровни каждого узла заказывают по очереди за монеты. Строитель освобождается после получения готовой работы у причала.</p>
     </div></details>}
     <details className={styles.chain}><summary>Все новые рецепты: {unlock.recipes.length}</summary><div className={styles.chainBody}><ul className={styles.unlockRecipes}>{unlock.recipes.map(id => {
       const recipe = recipeById.get(id);

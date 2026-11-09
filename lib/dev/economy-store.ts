@@ -201,7 +201,7 @@ function commit(owner: string, value: Profile, next: EconomyState, command: Rece
   persistItemUnlocks(owner, value.state, next);
   bump(value); value.state = next;
   if (!["grant_currency", "grant_item", "grant_fishing_gear", "grant_wardrobe", "grant_upgrade_cost", "set_building_level", "finish_jobs", "apply_settlement",
-    "prepare_boat", "grant_boat_upgrade_cost", "finish_boat_work", "finish_boat_travel", "set_boat_blueprint"].includes(command.action))
+    "prepare_boat", "grant_boat_upgrade_cost", "finish_boat_work", "finish_boat_travel", "set_boat_blueprint", "set_boat_module_level"].includes(command.action))
     awardDevEconomyAchievements(owner, next, now);
   value.receipts.set(receiptKey(command), {
     signature: scope + commandSignature(command),
@@ -253,6 +253,7 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
     case "grant_boat_upgrade_cost":
     case "finish_boat_work":
     case "finish_boat_travel":
+    case "set_boat_module_level":
     case "set_boat_blueprint":
       message = applyDevBoatCommand(next, command, now);
       break;
@@ -593,6 +594,17 @@ function commandDevMarket(token: string | undefined, input: MarketCommand, now: 
 }
 
 /** Achievement reads must not initialize an economy, mint conversion grants or expose the private cast seed. */
+/** Read confirmed species weights directly from saves, including profiles created before rankings existed. */
+export function* devFishingRecordWeights() {
+  const profiles = globalStore.__zhivDevEconomyStore?.profiles;
+  if (!profiles) return;
+  for (const [ownerPublicId, profile] of profiles) {
+    for (const [fishId, record] of Object.entries(profile.state.boat?.records ?? {})) {
+      yield { ownerPublicId, fishId, weightGrams: record.weightGrams };
+    }
+  }
+}
+
 export function getDevEconomyAchievementState(owner: string): Pick<EconomyState, "completedExplorations" | "buildings" | "fishing" | "progression" | "residentOrders"> | null {
   const state = store().profiles.get(owner)?.state;
   if (!state) return null;

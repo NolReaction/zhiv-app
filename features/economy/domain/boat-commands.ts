@@ -44,6 +44,12 @@ function transition(state: EconomyState, command: EconomyCommand, now: number, i
     if (reason) return fail("ECONOMY_BOAT_UPGRADE", reason);
     const upgrade = config.upgrades.find(entry => entry.id === command.targetId)!;
     services.debit(state, upgrade.cost);
+    if (upgrade.id === "repair" && upgrade.seconds === 0) {
+      boat.modules = { ...boatModules(boat), hull: 1 };
+      boat.level = 1;
+      state.boat = boat;
+      return "Лодка восстановлена. Можно выходить на воду";
+    }
     boat.work = { id: id(), upgradeId: upgrade.id, startedAt: iso(now), finishesAt: iso(now + upgrade.seconds * 1000), cost: structuredClone(upgrade.cost) };
     state.boat = boat;
     return upgrade.id === "repair" ? "Начат ремонт лодки" : "Улучшение лодки началось";

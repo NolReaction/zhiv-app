@@ -390,14 +390,15 @@ test("restored landmarks gate real routes while future proposals cannot gate act
   assert(!getPrerequisiteIds(graph, "leaderboard").has("taps"), "Rating flow is not an unlock gate");
 });
 
-test("the working boat follows catalog repair gates independently of shore and port progression", () => {
+test("the boat is available from the start independently of house, shore and port progression", () => {
   const repair = catalog.boat.upgrades.find(upgrade => upgrade.id === "repair"), boat = node("boat");
   assert.equal(boat.status, "active");
   assert(hasEdge("boat", "fishing_catches", "flow"));
-  assert.deepEqual(plain(boat.requirements), { home: repair.requiredHomeLevel, ...repair.requiredBuildings });
+  assert.deepEqual(plain(boat.requirements), {});
   assert.deepEqual(plain(boat.cost), repair.cost);
   assert.equal(boat.seconds, repair.seconds);
-  assert(hasEdge("b:home:1", "boat", "requirement"));
+  assert(hasEdge("start", "boat", "flow"));
+  assert(!hasEdge("b:home:1", "boat", "requirement"));
   assert(!hasEdge("b:workshop:1", "boat", "requirement"));
   assert(!getPrerequisiteIds(graph, "boat").has("shore_site"));
   assert(!graph.edges.some(edge => edge.source === "shore_site" && edge.target === "boat"));
@@ -405,13 +406,6 @@ test("the working boat follows catalog repair gates independently of shore and p
   assert(hasEdge("b:lighthouse:1", "port", "requirement"));
   assert(!getPrerequisiteIds(graph, "ships").has("boat"));
   assert(!getPrerequisiteIds(graph, "b:home:5").has("boat"));
-  const changed = structuredClone(catalog), upgradedRepair = changed.boat.upgrades.find(upgrade => upgrade.id === "repair");
-  upgradedRepair.requiredHomeLevel = 3; upgradedRepair.requiredBuildings = { workshop: 2 }; upgradedRepair.cost.coins = 475;
-  const changedGraph = buildProgressionGraph(changed), changedBoat = changedGraph.nodes.find(value => value.id === "boat");
-  assert.equal(changedBoat.cost.coins, 475);
-  assert.deepEqual(plain(changedBoat.requirements), { home: 3, workshop: 2 });
-  assert(changedGraph.edges.some(edge => edge.source === "b:home:3" && edge.target === "boat" && edge.kind === "requirement"));
-  assert(!changedGraph.edges.some(edge => edge.source === "b:home:2" && edge.target === "boat"));
 });
 
 test("a paused release keeps the boat in planning while shore fishing and the port remain available", t => {
@@ -422,7 +416,7 @@ test("a paused release keeps the boat in planning while shore fishing and the po
   const boat = paused.nodes.find(node => node.id === "boat");
   assert.equal(boat.status, "plan");
   assert.match(boat.description, /выходы на лодке временно закрыты/i);
-  assert(paused.edges.some(edge => edge.source === "b:home:1" && edge.target === "boat" && edge.kind === "plan"));
+  assert(paused.edges.some(edge => edge.source === "start" && edge.target === "boat" && edge.kind === "plan"));
   assert.equal(paused.nodes.find(node => node.id === "port").status, "active");
 });
 

@@ -66,7 +66,7 @@
 | Очередь/повторы | [game-sync.ts](../../features/game/game-sync.ts), [game-sync-journal.ts](../../features/game/game-sync-journal.ts), [game-tab-inbox.ts](../../features/game/game-tab-inbox.ts) | Пакеты, подтверждения, сохранение, передача между вкладками |
 | Контракт HTTP | [game-api.ts](../../features/game/game-api.ts) | Zod-схемы, таймауты, `Retry-After`, endpoints |
 | Награды и UI | [game-rewards.ts](../../features/game/game-rewards.ts), [game-achievements.tsx](../../features/game/game-achievements.tsx), [game-levels-button.tsx](../../features/game/game-levels-button.tsx), [game-leaderboard.tsx](../../features/game/game-leaderboard.tsx) | Представление наград, достижений и рейтинга |
-| Сервер | Ktor `game/`, [db/JdbcGameRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcGameRepository.kt), [db/GameAchievementWrites.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/GameAchievementWrites.kt) | Принятие пакетов, серия, начисления, видимость рейтинга |
+| Сервер | Ktor `game/`, [db/JdbcGameRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcGameRepository.kt), [db/GameAchievementWrites.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/GameAchievementWrites.kt) | Принятие пакетов, серия, начисления, автоматический рейтинг по подтверждённым результатам |
 
 Уровень определяется подтверждённым `lifetimeTaps`, отдельного XP нет. Тапы продолжают увеличивать игровой счёт, серии и достижения, но больше не начисляют искры или валюту новой экономики. Монеты и товары выдаются только через подтверждённые сервером экономические действия; правила — в [каталоге экономики](../../apps/api/src/main/resources/world/economy-catalog.json).
 

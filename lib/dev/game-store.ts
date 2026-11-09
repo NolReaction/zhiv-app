@@ -62,7 +62,7 @@ export function getDevGameLeaderboard(token: string | undefined, scope: GameLead
   const eligible = [...store().profiles.values()].flatMap(candidate => {
     const monthly = candidate.monthlyTaps.get(month);
     const taps = metric === "best_series" ? candidate.bestSeries : monthly?.taps ?? 0;
-    if (!candidate.leaderboardOptIn || taps === 0 || (friends && !friends.has(candidate.ownerPublicId))) return [];
+    if (taps === 0 || (friends && !friends.has(candidate.ownerPublicId))) return [];
     const found = lookupDevUser(token, candidate.ownerPublicId);
     if (found.kind !== "ok") return [];
     return [{ ownerPublicId: candidate.ownerPublicId, displayName: found.value.user.displayName, taps, updatedAt: metric === "best_series" ? 0 : monthly!.updatedAt }];
@@ -76,7 +76,7 @@ export function getDevGameLeaderboard(token: string | undefined, scope: GameLead
     })),
     myRank: position < 0 ? null : rankAt(position),
     monthlyTaps: own.monthlyTaps.get(month)?.taps ?? 0,
-    leaderboardOptIn: own.leaderboardOptIn,
+    leaderboardOptIn: true,
   } };
 }
 

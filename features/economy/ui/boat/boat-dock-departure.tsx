@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { ArrowRight, Clock3, Fish, FishingRod, Fuel, Sailboat } from "lucide-react";
+import { Fish, Fuel, X } from "lucide-react";
 import { boatConfig, boatDepartureReason, boatFuelStatus, boatState, boatTripStats } from "@/features/economy/domain/boat-fishing";
-import { fishingState } from "@/features/economy/domain/fishing";
 import { formatPearls } from "@/features/economy/domain/money";
 import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
-import { WorldTacklePicker } from "@/features/economy/ui/fishing/world-tackle-picker";
+import { BoatDepartureReview } from "./boat-departure-review";
 import { BoatCountdown } from "./boat-countdown";
 import { worldDuration } from "@/features/economy/ui/shared/world-stations";
 import { ItemIcon } from "@/features/items/item-icon";
@@ -27,29 +26,20 @@ export function BoatDockDeparture({ economy, disabled, send }: { economy: ReadyE
         <div className={styles.cells} aria-hidden="true">{Array.from({ length: capacity }, (_, index) => <i key={index} data-filled={index < cells || undefined} />)}</div>
         <small>{nextAt !== null ? <>+1 через <BoatCountdown until={nextAt} now={economy.now} readClock={economy.readServerNow} /></> : `+1 каждые ${worldDuration(config.fuel.regenSeconds)}`}</small>
       </div>
-      <button className={shared.primary} type="button" disabled={disabled || Boolean(reason)} onClick={() => send("depart_boat", config.routeId)}>
-        <Sailboat size={16} /><span>Отправиться на рыбалку<small>1 ячейка бензина</small></span><ArrowRight size={15} />
-      </button>
-    </div>
-    {cells === 0 && !boat.work && <div className={styles.refill} data-fuel-refill>
-      <span>Можно дождаться заправки или купить одну ячейку.</span>
-      <div><small>Жемчуг в наличии: {formatPearls(state.wallet.pearls)}</small>
-        {quotedPrice === price ? <>
-          <button type="button" className={shared.secondary} onClick={() => setQuotedPrice(null)}>Отмена</button>
+      {boat.work ? <p className={styles.workNote}>{reason}</p> : cells === 0 ? <div className={styles.refill} data-fuel-refill>
+        <small>Жемчуг в наличии: {formatPearls(state.wallet.pearls)}</small>
+        <div>{quotedPrice === price ? <>
+          <button type="button" className={shared.secondary} aria-label="Отмена" onClick={() => setQuotedPrice(null)}><X size={15} /></button>
           <button type="button" className={shared.primary} disabled={disabled || state.wallet.pearls < price}
             aria-label={`Подтвердить заправку за ${formatPearls(price)} жемчужин`} onClick={() => {
               if (send("buy_boat_fuel", "fuel_cell")) setQuotedPrice(null);
-            }}>Заправить <ItemIcon itemId="pearls" size={15} />{formatPearls(price)}</button>
+            }}>Купить <ItemIcon itemId="pearls" size={15} />{formatPearls(price)}</button>
         </> : <button type="button" className={shared.secondary} disabled={disabled || state.wallet.pearls < price}
           aria-label={`Купить одну ячейку за ${formatPearls(price)} жемчужин`} onClick={() => setQuotedPrice(price)}>
           +1 ячейка <ItemIcon itemId="pearls" size={15} />{formatPearls(price)}
         </button>}</div>
-    </div>}
-    {reason && (cells > 0 || boat.work) && <p className={shared.note}>{reason}</p>}
-    <details className={shared.gear}><summary><FishingRod size={16} />Снасти перед выходом</summary>
-      <WorldTacklePicker state={state} economy={economy} disabled={disabled} onChoose={(kind, itemId) => send(kind === "rod" ? "equip_fishing_rod" : kind === "hook" ? "equip_fishing_hook" : "equip_fishing_bait", itemId)} />
-      <p className={shared.note}>{fishingState(state).equippedBaitId ? "Одна порция наживки на весь выход." : "Можно отправиться без наживки."}</p>
-      <p className={shared.note}><Clock3 size={12} /> Время на воде — {worldDuration(config.activeSeconds)}.</p>
-    </details>
+      </div> : <BoatDepartureReview economy={economy} disabled={disabled} reason={reason} send={send} />}
+    </div>
+    {reason && cells > 0 && !boat.work && <p className={shared.note}>{reason}</p>}
   </section>;
 }

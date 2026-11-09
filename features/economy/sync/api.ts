@@ -1,5 +1,4 @@
-import type { GameVisibilityRequest } from "@/features/game/game-api";
-import { fishingStandingsSchema, fishingVisibilitySchema, type FishingStandings } from "./boat-records-model";
+import { fishingStandingsSchema, type FishingStandings } from "./boat-records-model";
 import { gamePresenceHeaders, reportInactivePresence } from "@/features/activity/transport-state";
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
@@ -8,7 +7,7 @@ import { economyResultSchema, economyViewSchema, marketCommandSchema, marketView
 import type { EconomyDevCommand } from "@/features/economy/dev/dev-model";
 import { neighborCommandSchema, neighborResultSchema, neighborViewSchema, type NeighborCommand } from "@/features/economy/domain/neighbor-model";
 
-async function request<T>(path: string, schema: z.ZodType<T, unknown>, command?: EconomyCommand | MarketCommand | EconomyDevCommand | NeighborCommand | GameVisibilityRequest, signal?: AbortSignal): Promise<T> {
+async function request<T>(path: string, schema: z.ZodType<T, unknown>, command?: EconomyCommand | MarketCommand | EconomyDevCommand | NeighborCommand, signal?: AbortSignal): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (signal?.aborted) abort(); else signal?.addEventListener("abort", abort, { once: true });
@@ -76,11 +75,5 @@ export async function sendNeighborCommand(command: NeighborCommand, signal?: Abo
 export async function getFishingRecords(ownerPublicId: string, scope: FishingStandings["scope"], signal?: AbortSignal) {
   const result = await request(`/api/v1/game/fishing-records?scope=${scope}`, fishingStandingsSchema, undefined, signal);
   if (result.ownerPublicId !== ownerPublicId || result.scope !== scope) throw new ApiError("Рейтинг изменился. Откройте его заново.", 409);
-  return result;
-}
-
-export async function setFishingVisibility(body: GameVisibilityRequest, signal?: AbortSignal) {
-  const result = await request("/api/v1/game/fishing-records/visibility", fishingVisibilitySchema, body, signal);
-  if (result.ownerPublicId !== body.ownerPublicId) throw new ApiError("Аккаунт изменился. Откройте мастерскую заново.", 401);
   return result;
 }

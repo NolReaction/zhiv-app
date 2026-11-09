@@ -46,6 +46,7 @@ export function BoatGarage({ state, boat, config, now, disabled, children, onUpg
   const id = useId();
   const upgrade = boatModuleUpgrade(boat, selected, config);
   const level = levels[selected], working = Boolean(boat.work && workModule === selected);
+  const showWork = working || Boolean(boat.work && !workModule);
   const workReady = Boolean(boat.work && now >= Date.parse(boat.work.finishesAt));
   const reason = upgrade && !working ? boatUpgradeReason(state, upgrade.id, now) : null;
   const hasFuel = boatFuelStatus(boat, now, config).cells > 0;
@@ -53,6 +54,7 @@ export function BoatGarage({ state, boat, config, now, disabled, children, onUpg
     : !levels.hull ? "Нужен ремонт" : hasFuel ? "Готова к воде" : "Бак пуст";
   const selectedLabel = modules.find(module => module.id === selected)!.label;
   const isFree = Boolean(upgrade && upgrade.cost.coins === 0 && !Object.values(upgrade.cost.items).some(Boolean));
+  const actionLabel = upgrade?.id === "repair" ? `Восстановить ${isFree ? "бесплатно" : "лодку"}` : "Установить улучшение";
   return <section className={styles.garage} aria-label="Гараж лодки" data-boat-garage>
     <div className={styles.stage}>
       <span className={styles.readiness} data-ready={!boat.voyage && !boat.work && levels.hull > 0 && hasFuel || undefined}>
@@ -67,10 +69,8 @@ export function BoatGarage({ state, boat, config, now, disabled, children, onUpg
         </button>)}</div>
       </div></div>
     </div>
-    {children && <div className={styles.dock}>{children}</div>}
     <div className={styles.rail}>
-      <h3>Улучшения лодки</h3>
-      <div className={styles.modules} aria-label="Выбор модуля лодки">{modules.map((module, index) => {
+      <div className={styles.modules} role="group" aria-label="Выбор модуля лодки">{modules.map((module, index) => {
         const owned = levels[module.id], next = boatModuleUpgrade(boat, module.id, config);
         return <button key={module.id} type="button" className={styles.module} aria-pressed={selected === module.id} aria-controls={`${id}-details`}
           data-boat-module={module.id} onClick={() => setSelected(module.id)} onKeyDown={event => {
@@ -79,27 +79,29 @@ export function BoatGarage({ state, boat, config, now, disabled, children, onUpg
           }}>
           <BoatModuleThumbnail module={module.id} level={owned} className={styles.moduleImage} />
           <strong>{module.label}</strong>
-          <span className={styles.tier}>Ур. {owned} / {config.moduleEffects[module.id].length - 1}</span>
+          <span className={styles.tier}>{workModule === module.id ? workReady ? "Установить" : "В работе" : `Ур. ${owned} / ${config.moduleEffects[module.id].length - 1}`}</span>
           <span className={styles.level} aria-hidden="true">{config.moduleEffects[module.id].slice(1).map((_, i) => <i key={i} data-complete={i < owned || undefined} />)}</span>
-          <span className={styles.cardHint}>{workModule === module.id ? workReady ? "Забрать" : "В работе" : !next ? "Максимум" : next.cost.coins ? `${number(next.cost.coins)} мон.` : "Бесплатно"}</span>
+          <span className={styles.cardHint}>{!next ? "Максимум" : next.cost.coins ? `${number(next.cost.coins)} мон.` : "Бесплатно"}</span>
         </button>;
       })}</div>
     </div>
     <section id={`${id}-details`} className={styles.inspector} aria-labelledby={`${id}-module`} data-boat-upgrade={selected}>
       <div className={styles.inspectorTop}><h3 id={`${id}-module`}>{selectedLabel}</h3>
         <span>{working ? workReady ? "Можно установить" : "В работе" : upgrade ? `Ур. ${level} → ${upgrade.tier}` : "Максимум"}</span></div>
-      {upgrade && <p className={styles.description}>{upgrade.description}</p>}
+      {upgrade && <p className={styles.description}>{upgrade.id === "repair" && isFree ? "Восстановите корпус, чтобы выйти на реку." : upgrade.description}</p>}
       <div className={styles.effect}><small>{effectLabels[selected]}</small><div><span>{effectValue(selected, level, config)}</span>
         {upgrade && <><ArrowRight size={14} aria-label="После улучшения" /><strong>{effectValue(selected, level + 1, config)}</strong></>}
       </div></div>
-      {working ? <BoatWork boat={boat} config={config} now={now} disabled={disabled} onClaim={onClaim} /> : upgrade && <>
-        <div className={styles.costHeading}><span>Материалы и работа</span><span><Clock3 size={13} />{workDuration(upgrade.seconds)}</span></div>
-        {isFree ? <p className={styles.free}>Бесплатно</p> : <BoatCost state={state} cost={upgrade.cost} />}
+      {showWork ? <BoatWork boat={boat} config={config} now={now} disabled={disabled} onClaim={onClaim} /> : upgrade && <>
+        <div className={styles.costHeading}>{isFree ? <span className={styles.free}>Бесплатно</span> : <BoatCost state={state} cost={upgrade.cost} />}
+          <span><Clock3 size={13} />{upgrade.seconds ? workDuration(upgrade.seconds) : "Сразу"}</span></div>
+        {workModule ? <button type="button" className={`${shared.secondary} ${styles.buy}`} onClick={() => setSelected(workModule)}>
+          <Hammer size={16} />К работе · {modules.find(module => module.id === workModule)?.label}</button> :
         <button type="button" className={`${shared.primary} ${styles.buy}`} disabled={disabled || Boolean(reason)} onClick={() => onUpgrade(upgrade.id)}>
-          <Hammer size={16} />{upgrade.id === "repair" ? "Восстановить лодку" : "Установить улучшение"}</button>
-        {reason && <p className={styles.reason}><LockKeyhole size={12} />{reason}</p>}
+          <Hammer size={16} />{actionLabel}</button>}
+        {reason && !workModule && <p className={styles.reason}><LockKeyhole size={12} />{reason}</p>}
       </>}
     </section>
-    {boat.work && !working && <BoatWork boat={boat} config={config} now={now} disabled={disabled} onClaim={onClaim} />}
+    {children && <div className={styles.dock}>{children}</div>}
   </section>;
 }

@@ -40,7 +40,7 @@ object EconomyBoats {
     private fun upgradeReason(state: EconomyState, id: String): String? {
         val b = state.boat ?: EconomyBoatState()
         val u = config.upgrades.find { it.id == id } ?: return "Улучшение не найдено"
-        if (b.work != null || state.jobs.any { it.kind == "construction" }) return "Строитель занят. Сначала завершите текущую работу"
+        if (b.work != null || (u.seconds > 0 && state.jobs.any { it.kind == "construction" })) return "Строитель занят. Сначала завершите текущую работу"
         if (b.voyage != null) return "Сначала вернитесь и заберите улов"
         if (id == "repair" && b.level > 0) return "Лодка уже восстановлена"
         if (id != "repair" && b.level == 0) return "Сначала восстановите лодку"
@@ -49,10 +49,8 @@ object EconomyBoats {
             if (u.tier != current + 1) return if (checkNotNull(u.tier) <= current) "Улучшение уже готово" else "Сначала установите предыдущий уровень"
         }
         if (id in b.artifacts) return "Улучшение уже готово"
-        if ((state.buildings["home"] ?: 1) < u.requiredHomeLevel) return "Нужен дом уровня ${u.requiredHomeLevel}"
-        if (u.requiredBuildings.any { (building, level) -> (state.buildings[building] ?: 0) < level }) return "Сначала улучшите мастерскую"
         if (u.blueprint != null && b.blueprints.pages(u.blueprint) < 3) return "Соберите три страницы чертежа"
-        if (state.wallet.coins < u.cost.coins || u.cost.items.any { (item, count) -> (state.inventory[item] ?: 0L) < count }) return "Не хватает монет или материалов"
+        if (state.wallet.coins < u.cost.coins) return "Не хватает монет"
         return null
     }
     private fun departureReason(state: EconomyState, now: Instant): String? {
@@ -80,6 +78,8 @@ object EconomyBoats {
                 upgradeReason(state, command.targetId)?.let { economyFailure("ECONOMY_BOAT_UPGRADE", it) }
                 val u = config.upgrades.single { it.id == command.targetId }
                 val spent = EconomyRules.spend(state, u.cost)
+                if (u.id == "repair" && u.seconds == 0L) return spent.copy(boat = EconomyBoatWorkshop.install(b, u.id, now)) to
+                    "Лодка восстановлена. Можно выходить на воду"
                 return spent.copy(boat = b.copy(work = EconomyBoatWork(id(), u.id, now.toString(), now.plusSeconds(u.seconds).toString(), u.cost))) to
                     if (u.id == "repair") "Начат ремонт лодки" else "Улучшение лодки началось"
             }

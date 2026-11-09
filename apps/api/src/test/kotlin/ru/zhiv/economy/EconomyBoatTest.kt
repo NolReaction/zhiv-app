@@ -51,19 +51,30 @@ class EconomyBoatTest {
     }
     private fun failure(code: String, block: () -> Unit) = assertEquals(code, assertFailsWith<AuthFailure>(block = block).code)
 
-    @Test fun `repair reserves builder pays once and needs an explicit completed work claim`() {
-        val state = EconomyRules.initial(); val start = call(state, "start_boat_upgrade", "repair")
-        val work = start.boat!!.work!!
-        assertEquals(state.wallet, start.wallet)
-        assertEquals(state.inventory, start.inventory)
-        assertEquals(5L, Instant.parse(work.finishesAt).epochSecond - now.epochSecond)
-        failure("ECONOMY_BOAT_WORK_WAIT") { call(start, "claim_boat_upgrade", work.id) }
-        failure("ECONOMY_CONSTRUCTION_BUSY") { call(start.copy(buildings = funded().buildings), "start_construction", "garden") }
-        failure("ECONOMY_BOAT_UPGRADE") { call(start, "start_boat_upgrade", "repair") }
-        val repaired = call(start, "claim_boat_upgrade", work.id, now.plusSeconds(900))
-        assertEquals(1, repaired.boat!!.level); assertNull(repaired.boat!!.work)
-        failure("ECONOMY_BOAT_WORK_GONE") { call(repaired, "claim_boat_upgrade", work.id, now.plusSeconds(901)) }
+    @Test fun `starter repair is free even during construction and a legacy paid repair keeps its saved terms`() {
+        val job = EconomyJob(UUID.randomUUID().toString(), "construction", "woodlot", targetLevel = 1,
+            startedAt = now.toString(), finishesAt = now.plusSeconds(300).toString())
+        val state = EconomyRules.initial().copy(buildings = mapOf("home" to 1), jobs = listOf(job),
+            wallet = EconomyWallet(0, 0), inventory = emptyMap())
+        val repaired = call(state, "start_boat_upgrade", "repair")
+        assertEquals(state.wallet, repaired.wallet); assertEquals(state.inventory, repaired.inventory)
+        assertEquals(state.jobs, repaired.jobs); assertNull(repaired.boat!!.work)
+        assertEquals(1, repaired.boat!!.level); assertEquals(1, EconomyBoatWorkshop.modules(repaired.boat!!).hull)
         failure("ECONOMY_BOAT_UPGRADE") { call(repaired, "start_boat_upgrade", "repair") }
+        failure("ECONOMY_BOAT_UPGRADE") { call(repaired, "start_boat_upgrade", "tank_1") }
+        val work = EconomyBoatWork(UUID.randomUUID().toString(), "repair", now.toString(), now.plusSeconds(900).toString(),
+            EconomyCost(400, mapOf("planks" to 4L, "rope" to 2L)))
+        val old = state.copy(jobs = emptyList(), boat = EconomyBoatState(work = work))
+        failure("ECONOMY_BOAT_UPGRADE") { call(old, "start_boat_upgrade", "repair") }
+        failure("ECONOMY_BOAT_WORK_WAIT") { call(old, "claim_boat_upgrade", work.id, now.plusSeconds(899)) }
+        val delivered = call(old, "claim_boat_upgrade", work.id, now.plusSeconds(900))
+        assertEquals(1, delivered.boat!!.level); assertNull(delivered.boat!!.work)
+        assertEquals(old.wallet, delivered.wallet); assertEquals(old.inventory, delivered.inventory)
+        failure("ECONOMY_BOAT_WORK_GONE") { call(delivered, "claim_boat_upgrade", work.id, now.plusSeconds(901)) }
+    }
+
+    @Test fun `a legacy complete blueprint remains installable in the coin workshop`() {
+        val repaired = call(EconomyRules.initial(), "start_boat_upgrade", "repair")
         failure("ECONOMY_BOAT_UPGRADE") { call(repaired, "start_boat_upgrade", "landing_net") }
         val withPages = funded().copy(boat = repaired.boat!!.copy(blueprints = EconomyBoatBlueprints(3, 0)))
         val paid = call(withPages, "start_boat_upgrade", "landing_net")
