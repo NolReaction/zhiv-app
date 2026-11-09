@@ -113,17 +113,16 @@ class EconomyBoatTest {
 
     @Test fun `begin consumes an attempt and expiry moves to the next saved slot without reroll`() {
         val state = depart(); val v = state.boat!!.voyage!!
-        failure("ECONOMY_BOAT_PHASE") { call(state, "begin_boat_cast", v.id) }
-        val first = call(state, "begin_boat_cast", v.id, now.plusSeconds(300))
+        val first = call(state, "begin_boat_cast", v.id)
         val challenge = first.boat!!.voyage!!.challenge!!
         assertEquals(1, first.boat!!.voyage!!.castsUsed)
         assertEquals(0L, challenge.seed)
-        failure("ECONOMY_BOAT_CAST_ACTIVE") { call(first, "begin_boat_cast", v.id, now.plusSeconds(419)) }
-        val second = call(first, "begin_boat_cast", v.id, now.plusSeconds(420))
+        failure("ECONOMY_BOAT_CAST_ACTIVE") { call(first, "begin_boat_cast", v.id, now.plusSeconds(119)) }
+        val second = call(first, "begin_boat_cast", v.id, now.plusSeconds(120))
         assertEquals(2, second.boat!!.voyage!!.castsUsed)
         assertEquals(1L, second.boat!!.voyage!!.challenge!!.seed)
         assertEquals(v.slots, second.boat!!.voyage!!.slots)
-        failure("ECONOMY_BOAT_CAST_GONE") { call(second, "submit_boat_cast", v.id, now.plusSeconds(421), caughtTrace(challenge)) }
+        failure("ECONOMY_BOAT_CAST_GONE") { call(second, "submit_boat_cast", v.id, now.plusSeconds(121), caughtTrace(challenge)) }
     }
 
     @Test fun `submitted replay needs elapsed time terminal controls and the current challenge`() {

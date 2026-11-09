@@ -19,6 +19,8 @@ import { parseProductionJournal, productionJournalKey, productionProjection, res
 
 import { isBoatLanding, restoreBoatLanding, sameBoatAttempt } from "./boat-landing";
 
+const landingStorageMessage = "Для сохранения заброса освободите место в браузере или восстановите соединение.";
+
 type Transport = {
   get: (signal: AbortSignal) => Promise<EconomyView>;
   send: (command: EconomyCommand, signal: AbortSignal) => Promise<EconomyResult>;
@@ -241,12 +243,13 @@ export function createEconomySession(owner: string | null, transport: Transport,
       else return false;
       return true;
     } catch {
-      publish({ storageError: "Не удалось сохранить результат на устройстве. Освободите место и повторите." });
       return false;
     }
   }
   function remember(value: Pending | null) {
-    if (!value && pending?.kind === "economy" && durableLanding?.requestId === pending.command.requestId) {
+    if (!value && pending?.kind === "economy" && durableLanding && isBoatLanding(pending.command)
+      && isBoatLanding(durableLanding) && durableLanding.targetId === pending.command.targetId
+      && durableLanding.reel.challengeId === pending.command.reel.challengeId) {
       try { journalOptions?.storage.removeItem(landingKey); } catch { /* A surviving receipt safely replays on reload. */ }
       durableLanding = null;
     }
@@ -515,7 +518,10 @@ export function createEconomySession(owner: string | null, transport: Transport,
         }
         if (sameBoatAttempt(snapshot, value.command) && snapshot.revision > value.command.expectedRevision) {
           const next = { ...value.command, requestId: createUuidV4(), expectedRevision: snapshot.revision };
-          if (storeLanding(next)) remember({ kind: "economy", command: next });
+          // A live session may have no writable storage. Keep the new receipt
+          // in memory just as for any other online action.
+          storeLanding(next);
+          remember({ kind: "economy", command: next });
           publish({ uncertain: true, error: null, notice: "Обновили данные поездки. Отправляем результат." });
           return;
         }
@@ -599,10 +605,14 @@ export function createEconomySession(owner: string | null, transport: Transport,
           action, targetId, quantity: 1, totalPrice: 0, reel: { ...reel, inputs: reel.inputs.map(input => ({ ...input })) } };
         if (!sameBoatAttempt(view.snapshot, command)) return false;
         const canSend = available && view.directActionsAvailable && performance.now() >= blockedUntil;
-        if (!storeLanding(command) && !canSend) return false;
+        if (!storeLanding(command) && !canSend) {
+          publish({ storageError: landingStorageMessage });
+          return false;
+        }
         const receipt: Pending = { kind: "economy", command };
         remember(receipt);
-        publish({ uncertain: true, error: null, notice: canSend ? "Отправляем результат рыбалки." : "Результат сохранён и ждёт связи." });
+        publish({ uncertain: true, error: null, storageError: view.storageError === landingStorageMessage ? null : view.storageError,
+          notice: canSend ? "Отправляем результат рыбалки." : "Результат сохранён и ждёт связи." });
         if (canSend) void execute(receipt);
         return true;
       }

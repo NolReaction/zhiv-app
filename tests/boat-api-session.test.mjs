@@ -202,3 +202,36 @@ test("only a definite stale revision can replace an outstanding landing receipt 
   assert.deepEqual(sent[1].reel, sent[0].reel);
   assert.equal(session.getSnapshot().snapshot.boat.voyage.catches.length, 1); stop();
 });
+
+test("an unavailable receipt store rejects an offline landing visibly and permits an online revision retry", async () => {
+  const { p, voyage, cast, reel, late } = fishingAttempt();
+  const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
+  const sent = [];
+  const session = createEconomySession(cast.ownerPublicId, {
+    get: async () => read(p, late),
+    send: async command => {
+      sent.push(structuredClone(command));
+      if (sent.length === 1) throw new ApiError("Поменялась ревизия", 409, { code: "ECONOMY_REVISION_CONFLICT" });
+      return api.commandDevEconomy(p.token, command, late);
+    },
+  }, () => assert.fail());
+  const deactivate = session.activate();
+  await session.refresh();
+  const land = () => session.act("submit_boat_cast", voyage.id, 1, 0, undefined, undefined, reel);
+  session.setAvailable(false);
+  assert.equal(land(), false);
+  assert.match(session.getSnapshot().storageError, /восстановите соединение/);
+  assert.equal(session.getSnapshot().pendingBoatCastId, undefined);
+  assert.equal(sent.length, 0);
+  row(p).revision++;
+  session.setAvailable(true);
+  assert.equal(land(), true);
+  await flush();
+  await session.refreshSoft();
+  assert.equal(sent.length, 2);
+  assert.notEqual(sent[0].requestId, sent[1].requestId);
+  assert.deepEqual(sent[0].reel, sent[1].reel);
+  assert.equal(session.getSnapshot().snapshot.boat.voyage.catches.length, 1);
+  assert.equal(session.getSnapshot().storageError, null);
+  deactivate();
+});

@@ -473,7 +473,7 @@ object EconomyRules {
 
     private fun applyCurrent(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long>): Pair<EconomyState, String> {
         validateEconomyCommand(command)
-        if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "exchange_pearls_for_gold", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot", "buy_production_slot", "skip_ship_voyage") && command.totalPrice != 0L) invalidEconomy()
+        if (command.action !in setOf("speedup_construction", "buy_boat_fuel", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "exchange_pearls_for_gold", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot", "buy_production_slot", "skip_ship_voyage") && command.totalPrice != 0L) invalidEconomy()
         if (command.action !in setOf("start_production", "start_exploration", "claim_mining_batch", "sell", "sell_fish", "buy_fishing_item", "buy_leaftail_item", "load_ship_cargo") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
             in EconomyBoats.actions -> EconomyBoats.command(state, command, now, reservedItems)
