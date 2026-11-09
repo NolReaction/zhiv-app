@@ -131,6 +131,7 @@ export function createMailboxSession(owner: string | null, transport: Transport,
       const update = (message: MailMessage) => message.id === id ? { ...message, gift: result.gift } : message;
       publish({ messages: view.messages.map(update), selected: view.selected ? update(view.selected) : null, claimError: null });
       onReceived();
+      return result;
     } catch (error) {
       if (valid(token)) {
         fail(error);

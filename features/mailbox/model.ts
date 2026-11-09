@@ -27,7 +27,7 @@ export const mailboxPageSchema = z.object({
 export const mailReadResultSchema = z.object({
   ownerPublicId: owner, id: z.guid(), readAt: instant, unreadCount: z.number().int().nonnegative().safe(), serverTime: instant,
 });
-export const mailClaimResultSchema = z.object({ ownerPublicId: owner, id: z.guid(), gift: mailGiftSchema.extend({ claimedAt: instant }), serverTime: instant });
+export const mailClaimResultSchema = z.object({ ownerPublicId: owner, id: z.guid(), gift: mailGiftSchema.extend({ claimedAt: instant }), serverTime: instant, replayed: z.boolean().optional() });
 export type MailMessage = z.infer<typeof mailMessageSchema>;
 export type MailNotification = z.infer<typeof mailNotificationSchema>;
 export type MailboxPage = z.infer<typeof mailboxPageSchema>;

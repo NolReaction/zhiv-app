@@ -147,6 +147,8 @@ test("welcome open and read do not pay, explicit concurrent retries credit exact
   const results = await Promise.all(Array.from({ length: 8 }, () => claim(p, welcome.id)));
   const gifts = await Promise.all(results.map(async response => model.mailClaimResultSchema.parse(await (await status(response, 200)).json())));
   assert.ok(gifts.every(result => result.gift.pearls === 20 && result.gift.claimedAt === gifts[0].gift.claimedAt));
+  assert.equal(gifts.filter(result => result.replayed === false).length, 1);
+  assert.equal(gifts.filter(result => result.replayed === true).length, gifts.length - 1);
   const paid = economy.getDevEconomy(p.token);
   assert.equal(paid.wallet.pearls, before.wallet.pearls + 40); assert.equal(paid.revision, before.revision + 1);
   await claim(p, welcome.id); await inbox(p);

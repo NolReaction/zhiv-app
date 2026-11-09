@@ -144,12 +144,13 @@ class JdbcMailRepository(private val source: DataSource,private val adminConfig:
                 id,current.id,WELCOME_MAIL_SOURCE,read=::message).firstOrNull()
                 ?: mailFailure("MAIL_NOT_FOUND","Письмо с подарком не найдено",404)
             val at=now(c)
-            val claimedAt=letter.gift!!.claimedAt ?: run {
+            val gift=requireNotNull(letter.gift)
+            val claimedAt=gift.claimedAt ?: run {
                 ensureEconomyProfile(c,current.id)
                 val before=readEconomyProfile(c,current.id)
                 val normalized=EconomyMoney.redenominate(before.state)
                 // Same visible-to-stored conversion as administrative grants.
-                val units=letter.gift.pearls*2L
+                val units=gift.pearls*2L
                 if(normalized.wallet.pearls>ECONOMY_MAX_PEARLS-units)
                     mailFailure("ECONOMY_CAPACITY","В кошельке пока нет места для подарка",409)
                 saveEconomyProfile(c,current.id,normalized.copy(wallet=normalized.wallet.copy(pearls=normalized.wallet.pearls+units)))
@@ -159,7 +160,7 @@ class JdbcMailRepository(private val source: DataSource,private val adminConfig:
                     it.mailTime("welcome_claimed_at")!!
                 }.single()
             }
-            MailClaimResult(current.publicId,id.toString(),letter.gift.copy(claimedAt=claimedAt),at.toInstant().toString())
+            MailClaimResult(current.publicId,id.toString(),gift.copy(claimedAt=claimedAt),at.toInstant().toString(),replayed=gift.claimedAt!=null)
         }
     }
     override suspend fun read(sessionHash: ByteArray,expectedOwnerPublicId: String,id: UUID): MailReadResult {

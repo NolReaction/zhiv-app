@@ -35,7 +35,7 @@ const val WELCOME_MAIL_BODY = "Привет! Я очень рад, что ты �
 @Serializable data class MailReadRequest(val expectedOwnerPublicId: String)
 @Serializable data class MailReadResult(val ownerPublicId: String, val id: String, val readAt: String,
     val unreadCount: Long, val serverTime: String)
-@Serializable data class MailClaimResult(val ownerPublicId: String, val id: String, val gift: MailGift, val serverTime: String)
+@Serializable data class MailClaimResult(val ownerPublicId: String, val id: String, val gift: MailGift, val serverTime: String, val replayed: Boolean)
 @Serializable data class AdminMailBroadcastRequest(val requestId: String, val reason: String, val title: String, val body: String,
     val audience: String, val publicIds: List<String> = emptyList(), val notify: Boolean, val confirmation: String)
 @Serializable data class AdminMailBroadcastReceipt(val requestId: String, val recipientCount: Long, val createdAt: String, val changed: Boolean)

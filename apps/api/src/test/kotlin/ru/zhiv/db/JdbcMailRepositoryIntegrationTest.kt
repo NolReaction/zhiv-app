@@ -276,11 +276,13 @@ class JdbcMailRepositoryIntegrationTest {
         repository.read(a.hash,a.publicId,UUID.fromString(welcome.id))
         assertEquals(before.wallet.pearls,economy.snapshot(a.hash).wallet.pearls)
         val replies=coroutineScope { (1..8).map { async(Dispatchers.IO) { repository.claim(a.hash,a.publicId,UUID.fromString(welcome.id)) } }.awaitAll() }
+        assertEquals(1,replies.count { !it.replayed })
         assertEquals(1,replies.map { it.gift.claimedAt }.distinct().size);assertTrue(replies.all { it.gift.pearls==20L })
         val paid=economy.snapshot(a.hash)
         assertEquals(before.wallet.pearls+40L,paid.wallet.pearls);assertEquals(before.revision+1,paid.revision)
         assertEquals(1L,count("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key='mail:welcome:v1' AND pearls=40",a.id))
         val repeat=repository.claim(a.hash,a.publicId,UUID.fromString(welcome.id))
+        assertTrue(repeat.replayed)
         assertEquals(replies[0].gift,repeat.gift);assertEquals(paid.revision,economy.snapshot(a.hash).revision)
         assertEquals(welcome.id,repository.inbox(a.hash,a.publicId,null,20).messages.single().id)
     }

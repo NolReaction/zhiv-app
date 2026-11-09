@@ -57,7 +57,7 @@ export function claimDevMailGift(token: string | undefined, owner: string, id: s
     creditDevProgressionReward(token, owner, `mail:${id}`, { coins: 0, pearls: message.gift.pearls * PEARL_DISPLAY_DIVISOR, items: {} }, "welcome:v1", now);
     messages.set(id, { ...message, gift: { pearls: message.gift.pearls, claimedAt } });
   }
-  return { kind: "ok", value: { ownerPublicId: owner, id, gift: { pearls: message.gift.pearls, claimedAt }, serverTime: new Date(now).toISOString() } };
+  return { kind: "ok", value: { ownerPublicId: owner, id, gift: { pearls: message.gift.pearls, claimedAt }, serverTime: new Date(now).toISOString(), replayed: message.gift.claimedAt !== null } };
 }
 export function readDevMail(token: string | undefined, owner: string, id: string, now = Date.now()): DevMailResult<MailReadResult> {
   const session = actor(token, owner);
