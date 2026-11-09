@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { Anchor, Fish, Fuel, Settings2, Ship, X } from "lucide-react";
 import { getGarageNodeMatrix, getGarageParentMatrix, getGarageViewport, inverseGaragePoint, moveGaragePivot } from "./garage-scene-model.mjs";
 import { getGarageShortcut } from "./garage-editor-shortcuts.mjs";
@@ -8,7 +8,8 @@ import { garageLayerStack } from "./garage-layer-order.mjs";
 import { panGarageEditorView } from "./garage-editor-view.mjs";
 import { garageTransformHandles, pointInsideGarageNode, resizeGarageNode, rotateGarageNode, scaleGarageNodeAroundPivot } from "./garage-transform.mjs";
 import type { GarageNode, GaragePoint, GarageScene, GarageViewportMode, GarageWaterPreviewConfig } from "./garage-scene-types";
-import { GarageWaterBackground, GarageWaterContact, GarageWaterRig } from "./garage-water";
+import { GarageWaterBackground } from "./garage-water";
+import { GarageWaterPresentation } from "./garage-water-presentation";
 import { garageWaterEffects, garageWaterSetup } from "./garage-water-setup.mjs";
 import { GarageArtwork } from "./garage-artwork";
 import { GarageOcclusionOverlay } from "./garage-occlusion-overlay";
@@ -65,7 +66,6 @@ export function GarageStage({ scene, device, selectedId, tool, guides, clean, on
   }, []);
   const water = waterPreview ? garageWaterSetup({ ...scene, waterPreview: waterPreview.config }) : null;
   const waterEffects = garageWaterEffects(water?.config);
-  const waterId = useId().replace(/:/g, "");
   const selected = scene.nodes.find(node => node.id === selectedId);
   const selectedMatrix = selected ? getGarageNodeMatrix(scene, selected.id) : null;
   const transformHandles = selected ? garageTransformHandles(scene, selected.id, viewport.scale) : null;
@@ -225,21 +225,8 @@ export function GarageStage({ scene, device, selectedId, tool, guides, clean, on
           {editingView && <rect width={scene.canvas.width} height={scene.canvas.height} fill="#3d2c20" stroke="#758568" strokeWidth="1" vectorEffect="non-scaling-stroke" pointerEvents="none" />}
           {water && waterPreview ? <>
             <GarageWaterBackground width={scene.canvas.width} height={scene.canvas.height} running={waterPreview.running} />
-            <GarageWaterContact center={water.center} beam={water.config.beam} running={waterPreview.running} layer="shadow"
-              enabled={waterEffects.effectsEnabled} opacity={waterEffects.effectOpacity} offsetY={waterEffects.effectOffsetY} />
-            {waterEffects.immersionEnabled && <defs>
-              <linearGradient id={`${waterId}-immersion`} gradientUnits="userSpaceOnUse" x1="0" x2="0" y1={water.config.waterlineY - 12} y2={water.config.waterlineY + 60}>
-                <stop offset="0" stopColor="white" /><stop offset="1" stopColor="#777" />
-              </linearGradient>
-              <mask id={`${waterId}-submerged`} maskUnits="userSpaceOnUse" x="0" y="0" width={scene.canvas.width} height={scene.canvas.height}>
-                <rect width={scene.canvas.width} height={scene.canvas.height} fill={`url(#${waterId}-immersion)`} />
-              </mask>
-            </defs>}
-            <g mask={waterEffects.immersionEnabled ? `url(#${waterId}-submerged)` : undefined}>
-              <GarageWaterRig center={water.center} beam={water.config.beam} amplitude={water.config.amplitude} running={waterPreview.running}>{artwork}</GarageWaterRig>
-            </g>
-            <GarageWaterContact center={water.center} beam={water.config.beam} running={waterPreview.running} layer="surface"
-              enabled={waterEffects.effectsEnabled} opacity={waterEffects.effectOpacity} offsetY={waterEffects.effectOffsetY} />
+            <GarageWaterPresentation center={water.center} beam={water.config.beam} amplitude={water.config.amplitude}
+              running={waterPreview.running} width={scene.canvas.width} height={scene.canvas.height} {...waterEffects}>{artwork}</GarageWaterPresentation>
           </> : artwork}
           {!clean && guides && <rect x="280" y="180" width="1112" height="620" fill="none" stroke="#b7e4c0"
             strokeWidth="1" strokeDasharray="7 7" vectorEffect="non-scaling-stroke" pointerEvents="none" />}

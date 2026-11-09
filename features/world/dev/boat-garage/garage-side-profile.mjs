@@ -43,7 +43,7 @@ export function createGarageSideProfile(levels = {}) {
       node("side-tank", `Бак · L${selected.tank}`, `side-tank-l${selected.tank}`, "boat", 0, 0, 300, 230, 24,
         { socketId: "fuel", pivotX: .5, pivotY: 1 }),
     ],
-    waterPreview: { rootId: "boat", waterlineY: 633, beam: 1000, amplitude: 7,
-      effectsEnabled: false, immersionEnabled: false },
+    waterPreview: { rootId: "boat", waterlineY: 620.2, beam: 1000, amplitude: 7,
+      effectsEnabled: true, immersionEnabled: true },
   });
 }

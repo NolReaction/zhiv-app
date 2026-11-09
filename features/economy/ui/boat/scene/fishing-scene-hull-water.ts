@@ -1,4 +1,4 @@
-import { transformFishingBoatPoint, type FishingBoatTransform } from "./fishing-scene-buoyancy";
+import { fishingWaterWave, transformFishingBoatPoint, FISHING_BOAT_PIVOT, type FishingBoatTransform } from "./fishing-scene-buoyancy";
 import type { FishingScenePoint } from "./fishing-scene-types";
 
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
@@ -71,40 +71,60 @@ export function paintFishingHullImmersion(ctx: CanvasRenderingContext2D, time: n
   ctx.restore();
 }
 
-function outsideHull(amount: number, distance: number, time: number, still: boolean) {
-  const point = fishingHullContactPoint(amount, time, still);
-  const before = fishingHullContactPoint(amount - .002, time, still), after = fishingHullContactPoint(amount + .002, time, still);
-  const dx = after.x - before.x, dy = after.y - before.y, length = Math.max(.001, Math.hypot(dx, dy));
-  return { x: point.x - dy / length * distance, y: point.y + dx / length * distance };
+/** Presentation draft only; gameplay still uses the same server-owned fishing rig. */
+export const FISHING_BOAT_DRAFT = 18;
+export type FishingHullWaterStroke = { points: FishingScenePoint[]; opacity: number; width: number };
+export type FishingHullWaterSample = { local: FishingScenePoint; point: FishingScenePoint; depth: number };
+
+/** Solve a world-space water plane against the rolling hull, rather than attaching water to wood.
+ * Two iterations account for X moving a little when the hull rolls. */
+export function fishingBoatWaterSample(boat: FishingBoatTransform, localX: number, time: number, still = false,
+  surface = boat.y + (FISHING_BOAT_PIVOT.y - FISHING_BOAT_DRAFT) * boat.scale): FishingHullWaterSample {
+  const t = clock(time, still), roll = boat.roll ?? 0, cosine = Math.cos(roll), sine = Math.sin(roll);
+  let localY = FISHING_BOAT_PIVOT.y - FISHING_BOAT_DRAFT;
+  for (let iteration = 0; iteration < 2; iteration++) {
+    const world = transformFishingBoatPoint({ x: localX, y: localY }, boat);
+    const waterY = surface + fishingWaterWave(world.x, t, still).height;
+    localY = FISHING_BOAT_PIVOT.y + ((waterY - boat.y) / boat.scale - FISHING_BOAT_PIVOT.y - (localX - FISHING_BOAT_PIVOT.x) * sine) / cosine;
+  }
+  const local = { x: localX, y: localY }, point = transformFishingBoatPoint(local, boat);
+  const nativeX = localX / authoredScale;
+  const curve = nativeX <= flatEndX ? 0 : clamp((270 - Math.sqrt(Math.max(0, 270 ** 2 - 268 * (nativeX - flatEndX)))) / 134, 0, 1);
+  const keelY = nativeX < flatStartX ? fishingHullContactPoint(0).y : 185 + (560 - 2 * curve - 77 * curve * curve) * authoredScale;
+  return { local, point, depth: keelY - localY };
 }
 
-export type FishingHullWaterStroke = { points: FishingScenePoint[]; opacity: number; width: number };
-
-/** Open wavelets leave the actual displaced edge; there is no independent oval or filled hover shadow. */
-export function fishingHullWaterFrame(boat: FishingBoatTransform, time: number, still = false) {
-  const t = clock(time, still), at = (amount: number, distance: number) =>
-    transformFishingBoatPoint(outsideHull(amount, distance, t, still), boat);
-  const contact = Array.from({ length: 25 }, (_, index) => at(index / 24, 1.5));
+/** Open wavelets live on the sampled surface. A moving hull changes wetness and pressure,
+ * but cannot drag a detached ring or reflection down with its bob. */
+export function fishingHullWaterFrame(boat: FishingBoatTransform, time: number, still = false,
+  surface?: number, activity = 0) {
+  const t = clock(time, still), energy = clamp(Number.isFinite(activity) ? activity : 0, 0, 1);
+  const samples = Array.from({ length: 49 }, (_, index) => fishingBoatWaterSample(boat, 153 + index / 48 * 735, t, still, surface));
+  const wet = samples.filter(sample => sample.depth >= -.5);
+  const contact = wet.map(sample => sample.point);
   const ripples: FishingHullWaterStroke[] = [], reflections: FishingHullWaterStroke[] = [];
+  if (wet.length < 2) return { contact, ripples, reflections, samples };
+  const first = wet[0].local.x, last = wet.at(-1)!.local.x;
+  const at = (amount: number, distance: number) => {
+    const sample = fishingBoatWaterSample(boat, first + (last - first) * clamp(amount, 0, 1), t, still, surface);
+    return { x: sample.point.x, y: sample.point.y + distance * boat.scale };
+  };
   for (let index = 0; index < 6; index++) {
-    const center = .08 + index * .16;
+    const center = .05 + index * .18;
     const phase = (t * .22 + index * .173) % 1, pulse = Math.sin(Math.PI * phase) ** .8;
-    const distance = 2 + phase * 24;
-    const span = .038 + phase * .025;
+    const distance = 1.5 + phase * (16 + energy * 12), span = .025 + phase * .03;
     const points = Array.from({ length: 7 }, (_, sample) => {
-      const along = sample / 6, amount = clamp(center + (along - .5) * span * 2, 0, 1);
-      return at(amount, distance + Math.sin(along * Math.PI) * (1 + phase * 3));
+      const along = sample / 6;
+      return at(center + (along - .5) * span * 2, distance + Math.sin(along * Math.PI) * (1 + phase * 2));
     });
-    ripples.push({ points, opacity: pulse * (.19 + index % 2 * .025), width: 1.4 + boat.scale * 1.1 });
+    ripples.push({ points, opacity: pulse * (.1 + energy * .075), width: Math.max(.8, boat.scale * (1.1 + energy * .5)) });
     for (let ribbon = 0; ribbon < 2; ribbon++) {
       const shimmer = Math.sin(t * .82 + index * 1.7 + ribbon) * 1.4;
-      const reflectionSpan = .019 + index % 3 * .004;
-      reflections.push({ points: [at(center - reflectionSpan, 5 + ribbon * 6 + shimmer),
-        at(center, 6 + ribbon * 6 + shimmer), at(center + reflectionSpan, 5 + ribbon * 6 + shimmer)],
-      opacity: (.105 + index % 3 * .017) * (ribbon ? .52 : 1), width: (ribbon ? 2.5 : 4) * boat.scale });
+      reflections.push({ points: [at(center - .017, 3 + ribbon * 5 + shimmer), at(center, 4 + ribbon * 5 + shimmer),
+        at(center + .017, 3 + ribbon * 5 + shimmer)], opacity: (.065 + index % 3 * .012) * (ribbon ? .5 : 1), width: (ribbon ? 1.5 : 2.5) * boat.scale });
     }
   }
-  return { contact, ripples, reflections };
+  return { contact, ripples, reflections, samples };
 }
 
 function strokePoints(ctx: CanvasRenderingContext2D, points: readonly FishingScenePoint[]) {
@@ -114,19 +134,34 @@ function strokePoints(ctx: CanvasRenderingContext2D, points: readonly FishingSce
 }
 
 /** Paint in scene coordinates before the hull. The supplied transform includes its current bob and roll. */
-export function paintFishingBoatDisplacement(ctx: CanvasRenderingContext2D, boat: FishingBoatTransform, time: number, still = false) {
+export function paintFishingBoatDisplacement(ctx: CanvasRenderingContext2D, boat: FishingBoatTransform, time: number, still = false, surface?: number, activity = 0) {
   if (!(boat.scale > 0) || !Number.isFinite(boat.x + boat.y + boat.scale + (boat.roll ?? 0))) return;
-  const frame = fishingHullWaterFrame(boat, time, still);
+  const frame = fishingHullWaterFrame(boat, time, still, surface, activity);
   ctx.save(); ctx.lineCap = "round"; ctx.lineJoin = "round";
   for (const reflection of frame.reflections) {
     ctx.strokeStyle = `rgba(132,115,67,${reflection.opacity})`; ctx.lineWidth = Math.max(1, reflection.width);
     strokePoints(ctx, reflection.points);
   }
-  ctx.strokeStyle = "rgba(5,61,73,.24)"; ctx.lineWidth = Math.max(2, boat.scale * 5);
+  ctx.strokeStyle = "rgba(4,48,56,.28)"; ctx.lineWidth = Math.max(1.3, boat.scale * 3);
   strokePoints(ctx, frame.contact);
   for (const ripple of frame.ripples) {
     ctx.strokeStyle = `rgba(188,231,219,${ripple.opacity})`; ctx.lineWidth = ripple.width;
     strokePoints(ctx, ripple.points);
+  }
+  ctx.restore();
+}
+
+/** The near-side meniscus is drawn after the boat, at the water plane, with broken glints only. */
+export function paintFishingBoatSurfaceContact(ctx: CanvasRenderingContext2D, boat: FishingBoatTransform, time: number,
+  still = false, surface?: number, activity = 0) {
+  const frame = fishingHullWaterFrame(boat, time, still, surface, activity);
+  if (frame.contact.length < 2) return;
+  ctx.save(); ctx.lineCap = "round";
+  ctx.strokeStyle = "rgba(5,51,59,.4)"; ctx.lineWidth = Math.max(1, boat.scale * 2.3);
+  strokePoints(ctx, frame.contact);
+  for (let index = 1; index < frame.contact.length - 2; index += 6) {
+    ctx.strokeStyle = `rgba(188,224,211,${.12 + clamp(activity, 0, 1) * .08})`; ctx.lineWidth = Math.max(.75, boat.scale * 1.25);
+    strokePoints(ctx, frame.contact.slice(index, index + 3));
   }
   ctx.restore();
 }

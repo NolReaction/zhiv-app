@@ -1,0 +1,17 @@
+.page { min-height: 100dvh; max-width: 900px; margin: 0 auto; padding: 36px 20px; color: #d9dfcf; }
+.header { display: grid; gap: 12px; margin-bottom: 28px; }
+.badge { justify-self: start; padding: 4px 9px; border: 1px solid #a48b53; border-radius: 4px; color: #f0ce88; background: #3a3d27; font-size: 11px; letter-spacing: .12em; }
+.header h1 { margin: 0; color: #f1e3bb; font-size: clamp(24px,5vw,36px); }
+.header p, .instructions p, .instructions li { font-size: 14px; line-height: 1.65; }
+.header nav { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+.header a { color: #ddbc7f; text-underline-offset: 4px; }
+.instructions { padding: 22px; border: 1px solid #4b5b43; border-radius: 8px; background: #1d2b22; }
+.instructions h2 { margin: 0 0 14px; font-size: 18px; color: #e6d8af; }
+.instructions ol { padding-left: 22px; }
+.instructions li { padding-left: 5px; margin-bottom: 10px; }
+.status { color: #e9c886; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.actions button { min-height: 44px; padding: 10px 14px; border: 1px solid #a28b5e; border-radius: 5px; color: #f1e3c0; background: #33432c; }
+.actions button:disabled { opacity: .45; }
+.actions button:focus-visible, .header a:focus-visible { outline: 2px solid #f0d18d; outline-offset: 4px; }
+@media(max-width:480px) { .page { padding: 24px 12px; } .instructions { padding: 16px; } .actions button { flex: 1 1 100%; } }

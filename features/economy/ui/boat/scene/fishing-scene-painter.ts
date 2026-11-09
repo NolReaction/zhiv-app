@@ -7,10 +7,12 @@ import { fishingIslandLayout, paintFishingIslands } from "./fishing-scene-island
 import { paintFishingUnderwaterLife } from "./fishing-scene-schools";
 import { drawFishingRod } from "@/features/world/activities/fishing/fishing-rod-painter";
 import { BOAT_ASSEMBLY, boatArtworkLayers, type BoatArtLayer } from "@/features/world/objects/fishing-boat/fishing-boat-artwork";
-import { FISHING_WATER_TEXTURE, paintFishingLandscape, paintFishingBoatDisplacement, paintFishingRipples, paintFishingHullContact, paintFishingHullImmersion } from "./fishing-scene-background";
+import { FISHING_WATER_TEXTURE, paintFishingLandscape, paintFishingBoatDisplacement, paintFishingRipples } from "./fishing-scene-background";
 import { fishingBoatActorRig, paintFishingBoatArms, paintFishingBoatBody, paintFishingBoatPaws } from "./fishing-scene-actor";
 import { paintSceneFish } from "./fishing-scene-fish";
 import { fishingBoatMotion, transformFishingBoatPoint, FISHING_BOAT_PIVOT } from "./fishing-scene-buoyancy";
+import { FISHING_BOAT_DRAFT, paintFishingBoatSurfaceContact } from "./fishing-scene-hull-water";
+import { fishingBoatWaterArtwork, paintFishingBoatImmersion, paintFishingBoatReflection } from "./fishing-scene-water-artwork";
 import { fishingSceneComposition } from "./fishing-scene-composition";
 import { FISHING_SCENE_RIG, type FishingSceneFrame, type FishingScenePoint, type FishingSceneViewport, type FishingSceneVisual } from "./fishing-scene-types";
 
@@ -32,7 +34,7 @@ export function fishingSceneGeometry(width: number, height: number, frame: Fishi
     ?? fishingBoatMotion(waveTime, false, (composition.boatX + composition.boatWidth * .5) / scale, composition.boatWidth / scale * .55);
   const waterTop = composition.waterTop / scale, waterBottom = composition.waterBottom / scale;
   const surface = composition.surface / scale, boatScale = composition.boatWidth / scale / BOAT_ASSEMBLY.width;
-  const boat = { x: composition.boatX / scale + motion.surge, y: surface - BOAT_ASSEMBLY.waterline * boatScale + motion.bob,
+  const boat = { x: composition.boatX / scale + motion.surge, y: surface - (BOAT_ASSEMBLY.waterline - FISHING_BOAT_DRAFT) * boatScale + motion.bob,
     scale: boatScale, roll: motion.roll + composition.variant.roll };
   const onBoat = (point: FishingScenePoint) => transformFishingBoatPoint(point, boat);
   const castElapsed = visual.still || !frame.castKey ? FISHING_SCENE_RIG.cast.flightSeconds + 1 : Math.max(0, finite(visual.castElapsed, 0));
@@ -67,7 +69,8 @@ export function fishingSceneGeometry(width: number, height: number, frame: Fishi
     Object.assign(fish, pointMix(fish, { x: boat.x + boat.scale * 975, y: surface - 74 * boat.scale }, lift));
     Object.assign(hook, fish);
   }
-  return { width: viewWidth, height: viewHeight, scale, surface, boat, onBoat, grip, reel, tip, float, landing, hook, fish,
+  const waterActivity = visual.still ? 0 : clamp(Math.abs(motion.roll) * 13 + Math.abs(motion.surge) * .04 + actorRig.effort * .3, 0, 1);
+  return { width: viewWidth, height: viewHeight, scale, surface, waterActivity, waveTime, boat, onBoat, grip, reel, tip, float, landing, hook, fish,
     waterTop, waterBottom, tension, casting, castElapsed, time, composition, actorRig, bobber, actor: { foot: onBoat(FISHING_SCENE_RIG.actor.foot), size: FISHING_SCENE_RIG.actor.size * boat.scale } };
 }
 
@@ -98,12 +101,15 @@ function paintPart(ctx: CanvasRenderingContext2D, layer: BoatArtLayer, images: R
   ctx.drawImage(image, ...layer.crop, ...layer.box);
 }
 
-function paintBoat(ctx: CanvasRenderingContext2D, geometry: Geometry, frame: FishingSceneFrame, images: ReadonlyMap<string, HTMLImageElement>, still = false) {
+function paintBoat(ctx: CanvasRenderingContext2D, geometry: Geometry, frame: FishingSceneFrame, images: ReadonlyMap<string, HTMLImageElement>, waterArtwork: ReturnType<typeof fishingBoatWaterArtwork>) {
   const layers = boatArtworkLayers({ repaired: frame.boat.repaired, upgrades: frame.boat.upgrades.filter(id => id === "oars" || id === "crate") });
   if (!images.has(layers[0].src)) return false;
   ctx.save(); ctx.translate(geometry.boat.x, geometry.boat.y); ctx.scale(geometry.boat.scale, geometry.boat.scale);
   ctx.translate(FISHING_BOAT_PIVOT.x, FISHING_BOAT_PIVOT.y); ctx.rotate(geometry.boat.roll); ctx.translate(-FISHING_BOAT_PIVOT.x, -FISHING_BOAT_PIVOT.y);
-  layers.filter(layer => layer.id !== "oars").forEach(layer => paintPart(ctx, layer, images));
+  // Reuse the already cached rig while leaving the actor and hull-front occlusion as separate draws.
+  // Oars retain their authored foreground order, so their loadout uses the independent source layers.
+  if (waterArtwork && !layers.some(layer => layer.id === "oars")) ctx.drawImage(waterArtwork.plain, 0, 0);
+  else layers.filter(layer => layer.id !== "oars").forEach(layer => paintPart(ctx, layer, images));
   paintFishingBoatArms(ctx, geometry.actorRig, frame.appearance, false);
   paintFishingBoatBody(ctx, geometry.actorRig, frame.appearance);
   paintFishingBoatArms(ctx, geometry.actorRig, frame.appearance, true);
@@ -111,8 +117,6 @@ function paintBoat(ctx: CanvasRenderingContext2D, geometry: Geometry, frame: Fis
   ctx.save(); ctx.beginPath(); ctx.rect(0, BOAT_ASSEMBLY.foredeck, BOAT_ASSEMBLY.width, BOAT_ASSEMBLY.height); ctx.clip();
   paintPart(ctx, layers[0], images); ctx.restore();
   layers.filter(layer => layer.id === "oars").forEach(layer => paintPart(ctx, layer, images));
-  paintFishingHullImmersion(ctx, geometry.time, still);
-  paintFishingHullContact(ctx, geometry.time);
   ctx.restore(); return true;
 }
 
@@ -139,8 +143,15 @@ export function paintFishingScene(ctx: CanvasRenderingContext2D, frame: FishingS
   ]);
   paintFishingWaterEvents(ctx, width, height, time, frame.sceneKey, frame.ambience, [...exclusions.life, exclusions.play, ...islands]);
   paintFishingLanding(ctx, geometry, frame, visual);
-  paintFishingBoatDisplacement(ctx, geometry.boat, time, visual.still);
-  const boatReady = paintBoat(ctx, geometry, frame, images, visual.still);
+  const waterArtwork = fishingBoatWaterArtwork(boatArtworkLayers({ repaired: frame.boat.repaired,
+    upgrades: frame.boat.upgrades.filter(id => id === "oars" || id === "crate") }), images);
+  paintFishingBoatReflection(ctx, geometry.boat, waterArtwork, geometry.waveTime, visual.still, geometry.surface);
+  paintFishingBoatDisplacement(ctx, geometry.boat, geometry.waveTime, visual.still, geometry.surface, geometry.waterActivity);
+  const boatReady = paintBoat(ctx, geometry, frame, images, waterArtwork);
+  if (boatReady) {
+    paintFishingBoatImmersion(ctx, geometry.boat, waterArtwork, geometry.waveTime, visual.still, geometry.surface);
+    paintFishingBoatSurfaceContact(ctx, geometry.boat, geometry.waveTime, visual.still, geometry.surface, geometry.waterActivity);
+  }
   if (boatReady) {
     drawFishingRod(ctx, { grip: geometry.grip, tip: geometry.tip, reel: geometry.reel, size: FISHING_SCENE_RIG.rod.size * geometry.boat.scale,
       rodId: frame.rodId, tension: geometry.tension, side: 1, crank: time * 4 * geometry.actorRig.effort, detailScale: .68 });

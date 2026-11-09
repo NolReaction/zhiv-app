@@ -56,6 +56,9 @@ test("only the shipped modular SVG allowlist extends the raster-only import boun
 
 test("side-profile garage supports touch the keel and stay outside the floating rig", () => {
   const scene = createGarageSideProfile({ hull: 5, engine: 5, tank: 5 });
+  close(scene.waterPreview.waterlineY, 620.2);
+  assert.equal(scene.waterPreview.effectsEnabled, true);
+  assert.equal(scene.waterPreview.immersionEnabled, true);
   const floating = garageBranchIds(scene, "boat");
   for (const id of ["side-stand-left", "side-stand-right"]) {
     const stand = scene.nodes.find(node => node.id === id), matrix = getGarageNodeMatrix(scene, id);

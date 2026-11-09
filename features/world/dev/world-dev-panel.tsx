@@ -749,6 +749,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, m
         <a href="/prototype/tiled-world">Карта и маршруты ↗</a>
         <a href="/prototype/trade-ship">Торговый пароход · PNG ↗</a>
         <a href="/prototype/boat-garage">Лодочная мастерская · сборщик ↗</a>
+        <a href="/prototype/boat-workshop">Лодка · пробный ремонт и рыбалка ↗</a>
       </div>
       <Section title="О DEV и ограничениях">
         <p className={styles.scope}>Настройки вида действуют в этой вкладке и сбрасываются при перезагрузке. «Читы» меняют ресурсы и постройки тестового профиля на сервере. Сброс вида не отменяет читы и не удаляет память Мохлика.</p>

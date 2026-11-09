@@ -73,7 +73,7 @@ export function BoatWaterPreview() {
         <p>Демонстрационная сцена, без выдачи наград</p>
       </div>
       <nav className={styles.navigation} aria-label="Переходы">
-        <Link href="/prototype/boat-garage">Гараж</Link>
+        <Link href="/prototype/boat-workshop">Мастерская</Link>
         <Link href="/">В игру</Link>
       </nav>
     </header>

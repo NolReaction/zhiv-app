@@ -7,9 +7,9 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ root, configFile: false, appType: "custom", resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false, ws: false }, optimizeDeps: { noDiscovery: true, include: [] } });
 after(() => vite.close());
-const { fishingHullContactPoint, fishingHullWaterFrame, paintFishingBoatDisplacement, paintFishingHullImmersion } =
+const { fishingHullContactPoint, fishingHullWaterFrame, fishingBoatWaterSample, FISHING_BOAT_DRAFT, paintFishingBoatDisplacement, paintFishingHullImmersion } =
   await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-hull-water.ts");
-const { fishingBoatMotion, transformFishingBoatPoint } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-buoyancy.ts");
+const { fishingBoatMotion, fishingWaterWave } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-buoyancy.ts");
 const points = frame => [...frame.contact, ...frame.ripples.flatMap(stroke => stroke.points), ...frame.reflections.flatMap(stroke => stroke.points)];
 
 test("the wet seam follows the new side hull's real keel and stops below the raised dry bow", () => {
@@ -25,16 +25,21 @@ test("the wet seam follows the new side hull's real keel and stops below the rai
   }
 });
 
-test("displacement and reflections inherit the whole hull transform instead of sliding beneath a rolling boat", () => {
-  const untransformed = { x: 0, y: 0, scale: 1, roll: 0 };
+test("the contact stays on the sampled world water while the hull settles through it", () => {
+  const surface = 350, scale = .67;
+  const base = { x: 120, y: surface - (535 - FISHING_BOAT_DRAFT) * scale, scale, roll: 0 };
+  const settled = fishingBoatWaterSample(base, 500, 0, true, surface);
+  const raised = fishingBoatWaterSample({ ...base, y: base.y - 5 }, 500, 0, true, surface);
+  assert.equal(settled.depth, FISHING_BOAT_DRAFT);
+  assert.ok(Math.abs(settled.point.y - surface) < 1e-9);
+  assert.ok(Math.abs(raised.point.y - surface) < 1e-9, "water cannot be dragged upwards with the boat");
+  assert.ok(raised.depth < settled.depth, "a raised hull displaces less water");
   for (const time of [0, .1, 2.2, 18.7, 1000]) {
-    const motion = fishingBoatMotion(time, false), boat = { x: 120, y: 50 + motion.bob, scale: .67, roll: motion.roll };
-    const local = points(fishingHullWaterFrame(untransformed, time)), actual = points(fishingHullWaterFrame(boat, time));
-    assert.equal(actual.length, local.length);
-    for (let index = 0; index < actual.length; index++) {
-      const expected = transformFishingBoatPoint(local[index], boat);
-      assert.ok(Math.hypot(actual[index].x - expected.x, actual[index].y - expected.y) < 1e-8);
-    }
+    const motion = fishingBoatMotion(time, false), boat = { ...base, y: base.y + motion.bob, roll: motion.roll };
+    const frame = fishingHullWaterFrame(boat, time, false, surface);
+    assert.ok(frame.contact.length > 25 && frame.contact.length < frame.samples.length, "raised dry bow never gets a water outline");
+    for (const point of frame.contact) assert.ok(Math.abs(point.y - surface - fishingWaterWave(point.x, time).height) < 1e-4);
+    assert.ok(frame.samples.filter(sample => sample.depth < 0).every(sample => sample.local.x > 760), "dry samples are at the raised bow");
   }
 });
 
@@ -45,8 +50,11 @@ test("paused and reduced-motion hull water stays frozen while active wavelets ad
   assert.notDeepEqual(fishingHullWaterFrame(boat, 0), fishingHullWaterFrame(boat, .5));
   const first = fishingHullWaterFrame(boat, 0).ripples[0];
   assert.equal(first.opacity, 0);
-  assert.ok(fishingHullWaterFrame(boat, .5 / .22).ripples[0].opacity > .15);
+  assert.ok(fishingHullWaterFrame(boat, .5 / .22).ripples[0].opacity > .08);
   assert.ok(fishingHullWaterFrame(boat, (1 - 1e-6) / .22).ripples[0].opacity < .001);
+  const resting = fishingHullWaterFrame(boat, .5 / .22, false, undefined, 0).ripples[0];
+  const disturbed = fishingHullWaterFrame(boat, .5 / .22, false, undefined, 1).ripples[0];
+  assert.ok(disturbed.opacity > resting.opacity && disturbed.opacity < .2, "line effort increases pressure ripples without continuous speedboat foam");
   for (const time of [0, .5, 10, 500]) {
     const frame = fishingHullWaterFrame(boat, time);
     assert.ok(points(frame).every(point => Number.isFinite(point.x + point.y)));
@@ -91,4 +99,47 @@ test("immersion tints only the narrow authored hull lip, leaving the motor and o
   }
   assert.equal(result.stops[0][1], "rgba(22,117,119,0)", "the wetting fades into the dry planks");
   assert.deepEqual(result, record(500), "reduced motion freezes the small contact glints too");
+});
+
+test("decoded hull water masks are cached across frames and a loadout change cannot reuse stale modules", async () => {
+  const { fishingBoatWaterArtwork } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-water-artwork.ts");
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const made = [], gradient = { addColorStop() {} };
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { createElement() {
+    const canvas = { width: 0, height: 0, getContext: () => ({ drawImage() {}, fillRect() {}, createLinearGradient: () => gradient }) };
+    made.push(canvas); return canvas;
+  } } });
+  try {
+    const hull = { complete: true, naturalWidth: 1600 }, engine = { complete: true, naturalWidth: 260 };
+    const layers = [{ src: "hull", crop: [0, 0, 1600, 640], box: [0, 185, 1000, 400] },
+      { src: "engine", crop: [0, 0, 260, 570], box: [0, 219.375, 162.5, 356.25] }];
+    const images = new Map([["hull", hull], ["engine", engine]]);
+    const first = fishingBoatWaterArtwork(layers, images);
+    assert.ok(first && first.plain !== first.submerged, "the original and submerged-alpha masks remain separate");
+    for (let frame = 0; frame < 300; frame++) assert.equal(fishingBoatWaterArtwork(layers, images), first);
+    assert.equal(made.length, 2, "ordinary render frames allocate no new canvas or pixel buffer");
+    images.set("engine", { complete: false, naturalWidth: 0 });
+    assert.equal(fishingBoatWaterArtwork(layers, images), null, "an unfinished replacement cannot reuse another motor");
+    images.set("engine", { complete: true, naturalWidth: 260 });
+    assert.notEqual(fishingBoatWaterArtwork(layers, images), first);
+    assert.equal(made.length, 4);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "document", previous); else delete globalThis.document;
+  }
+});
+
+test("fragmented reflections use one clipped bitmap draw per frame", async () => {
+  const { paintFishingBoatReflection } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-water-artwork.ts");
+  const calls = [], plain = { width: 1000, height: 650 };
+  const ctx = new Proxy({ globalAlpha: 1 }, { get(target, key) {
+    if (key in target) return target[key];
+    return (...args) => calls.push({ key, args });
+  } });
+  const boat = { x: 100, y: -100, scale: .8, roll: .01 };
+  paintFishingBoatReflection(ctx, boat, { plain }, 2, false, -100 + (535 - FISHING_BOAT_DRAFT) * .8);
+  assert.equal(calls.filter(call => call.key === "drawImage").length, 1, "strip count must not multiply full bitmap draws");
+  assert.equal(calls.filter(call => call.key === "clip").length, 1);
+  assert.ok(calls.filter(call => call.key === "closePath").length > 2, "the single draw still has broken reflection strips");
+  assert.equal(calls.some(call => call.key === "createElement" || call.key === "getImageData"), false);
+  assert.ok(ctx.globalAlpha > 0 && ctx.globalAlpha <= .1);
 });

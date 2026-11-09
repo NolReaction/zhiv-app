@@ -1,6 +1,11 @@
-.water{pointer-events:none}.flow{animation:garage-water-flow 46s ease-in-out infinite}.glint{fill:none;stroke:#d6e9d5;stroke-width:1.2;stroke-linecap:round;opacity:.12;animation:garage-water-glint 13s ease-in-out infinite}.surface{fill:#156c7c;opacity:.19}.shadow{fill:#082c36;opacity:.38}.foam{fill:none;stroke:#9dded3;stroke-width:2;stroke-linecap:round;opacity:.43;stroke-dasharray:38 11 12 17;animation:garage-water-foam 8s linear infinite}.ripple{fill:none;stroke:#72c9c4;stroke-width:1.6;opacity:.24;transform-box:fill-box;transform-origin:center;animation:garage-water-ripple 5s ease-out infinite}.rippleLate{animation-delay:-2.5s}.water[data-active=false] .flow,.water[data-active=false] .glint,.water[data-active=false] .foam,.water[data-active=false] .ripple{animation-play-state:paused}
+.water{pointer-events:none}
+.flow{animation:garage-water-flow 46s ease-in-out infinite}
+.glint{fill:none;stroke:#d6e9d5;stroke-width:1.2;stroke-linecap:round;opacity:.12;animation:garage-water-glint 13s ease-in-out infinite}
+.water[data-active=false] .flow,.water[data-active=false] .glint{animation-play-state:paused}
+.waterPresentation{pointer-events:none}
+.editableRig{pointer-events:auto}
+.reflection,.immersion{pointer-events:none}
+.contactWavelets{fill:none;stroke:#aad7cc;stroke-width:1.45;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
 @keyframes garage-water-flow{0%,100%{transform:translate(-7px,3px)}45%{transform:translate(8px,-4px)}75%{transform:translate(1px,-8px)}}
 @keyframes garage-water-glint{0%,100%{opacity:.035}45%{opacity:.2}70%{opacity:.08}}
-@keyframes garage-water-foam{from{stroke-dashoffset:0}to{stroke-dashoffset:-156}}
-@keyframes garage-water-ripple{0%{transform:scale(.9,.85);opacity:.30}100%{transform:scale(1.16,1.8);opacity:0}}
-@media(prefers-reduced-motion:reduce){.flow,.glint,.foam,.ripple{animation:none!important}}
+@media(prefers-reduced-motion:reduce){.flow,.glint{animation:none!important}}

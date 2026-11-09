@@ -105,6 +105,31 @@ test("the surface bobber reacts to tension and catch distance while tracking sta
   assert.ok(airborne.casting); assert.ok(airborne.float.y < airborne.surface); assert.equal(landed.casting, false);
 });
 
+test("cached base artwork preserves the actor then foreground-hull occlusion order", () => {
+  const env = environment();
+  const gradient = { addColorStop() {} };
+  env.document.createElement = () => ({ width: 48, height: 48, getContext: () => new Proxy({}, {
+    get(target, key) { if (key in target) return target[key];
+      if (key === "createLinearGradient" || key === "createRadialGradient") return () => gradient;
+      return () => {};
+    },
+  }) });
+  try {
+    const value = { ...frame(), boat: { repaired: true, upgrades: [] } };
+    const layers = boatArtworkLayers(value.boat);
+    const images = new Map(layers.map(part => [part.src, { id: part.id, complete: true,
+      naturalWidth: part.source[0], naturalHeight: part.source[1] }]));
+    paintFishingScene(env.context, value, images, { width: 1200, height: 720, dpr: 1 }, visual);
+    const draws = env.calls.filter(call => call.method === "drawImage");
+    const actor = draws.findIndex(call => call.args[0].width === 48 && call.args[0].height === 48);
+    const hull = draws.findIndex(call => call.args[0].id === "repair");
+    const cached = draws.map((call, index) => ({ image: call.args[0], index })).filter(item => item.image.width === 1000);
+    assert.equal(cached.length, 3, "one reflection, one base rig and one underwater mask draw");
+    assert.ok(cached[1].index < actor && actor < hull && hull < cached[2].index, "cached base, seated actor, hull foreground, then sampled immersion");
+    assert.equal(draws.filter(call => call.args[0].id).length, 1, "only the exact hull foreground is repainted from SVG");
+  } finally { env.restore(); }
+});
+
 test("painting composes real hull modules around Mochlik and never substitutes a procedural boat", () => {
   const env = environment();
   try {
