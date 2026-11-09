@@ -18,34 +18,35 @@ test("boat artwork follows the installed loadout and invalidates a still scene o
     requests.push(src); return new Promise(resolve => finish.set(src, resolve));
   }, () => redraws++);
   art.update({ repaired: false }); art.update({ repaired: false });
-  assert.deepEqual(requests, [BOAT_BROKEN_HULL.src], "the same pending part is loaded once");
+  assert.deepEqual(requests, boatArtworkLayers({ repaired: false }).map(layer => layer.src), "the same pending parts are loaded once");
   art.update({ repaired: true, upgrades: ["crate"] });
   finish.get(BOAT_BROKEN_HULL.src)(valid(BOAT_BROKEN_HULL.src)); await flush();
   assert.equal(redraws, 0, "a replaced hull cannot invalidate the current scene");
-  for (const src of [BOAT_ART_PARTS.repair.src, BOAT_ART_PARTS.crate.src]) { finish.get(src)(valid(src)); await flush(); }
-  assert.equal(redraws, 2);
+  for (const layer of boatArtworkLayers({ repaired: true })) { finish.get(layer.src)(valid(layer.src)); await flush(); }
+  assert.equal(redraws, 4);
   art.update({ repaired: true, upgrades: ["crate"] });
-  assert.equal(requests.length, 3, "loaded parts are reused between frames");
-  assert.ok(art.getImages().has(BOAT_ART_PARTS.crate.src));
-  art.update(null); art.retry(); assert.equal(requests.length, 3);
+  assert.equal(requests.length, 5, "loaded parts are reused between frames");
+  assert.ok(art.getImages().has(BOAT_ART_PARTS.engine.src));
+  assert.ok(requests.every(src => !src.includes("crate")), "capacity never requests crate artwork");
+  art.update(null); art.retry(); assert.equal(requests.length, 5);
   art.dispose();
 });
 
 test("failed parts are throttled, explicit network retries work, and disposal ignores pending completions", async () => {
-  let now = 100, requests = 0, failures = 0, redraws = 0, complete;
-  const art = createFishingBoatArtwork(() => {
-    requests++;
-    if (requests === 1) return Promise.reject(new Error("offline"));
-    return new Promise(resolve => { complete = resolve; });
+  let now = 100, failures = 0, redraws = 0; const requests = [], complete = new Map();
+  const art = createFishingBoatArtwork(src => {
+    requests.push(src);
+    if (requests.filter(value => value === src).length === 1) return Promise.reject(new Error("offline"));
+    return new Promise(resolve => { complete.set(src, resolve); });
   }, () => redraws++, () => failures++, () => now);
   art.update({ repaired: true }); await flush();
-  assert.equal(failures, 1);
+  assert.equal(failures, 4);
   for (let frame = 0; frame < 100; frame++) { now++; art.update({ repaired: true }); }
-  assert.equal(requests, 1, "render frequency cannot create a request storm");
-  art.retry(); assert.equal(requests, 2, "an online/focus event can retry without waiting");
-  art.dispose(); complete(valid(BOAT_ART_PARTS.repair.src)); await flush();
+  assert.equal(requests.length, 4, "render frequency cannot create a request storm");
+  art.retry(); assert.equal(requests.length, 8, "an online/focus event can retry without waiting");
+  art.dispose(); for (const [src, finish] of complete) finish(valid(src)); await flush();
   assert.equal(redraws, 0); assert.equal(art.getImages().size, 0);
-  art.update({ repaired: true }); art.retry(); assert.equal(requests, 2);
+  art.update({ repaired: true }); art.retry(); assert.equal(requests.length, 8);
 });
 
 test("invalid decoded images are rejected and an inactive camera does not load a boat", async () => {
@@ -54,11 +55,11 @@ test("invalid decoded images are rejected and an inactive camera does not load a
     () => redraws++, () => failures++);
   art.update(null); assert.equal(requests, 0);
   art.update({ repaired: false }); await flush();
-  assert.equal(failures, 1); assert.equal(redraws, 0); assert.equal(art.getImages().size, 0);
+  assert.equal(failures, 4); assert.equal(redraws, 0); assert.equal(art.getImages().size, 0);
   art.dispose();
 });
 
-test("map boat draws the real installed raster modules and front hull without a procedural replacement", () => {
+test("map boat draws the real installed modules and front hull without a procedural replacement", () => {
   const calls = [];
   const ctx = new Proxy({ globalAlpha: 1 }, { get(target, key) {
     if (key in target) return target[key];
@@ -71,7 +72,7 @@ test("map boat draws the real installed raster modules and front hull without a 
     age: 1, width: 44, level: 1, ...loadout, gangway: { from: { x: 100, y: 180 }, to: { x: 100, y: 200 } } };
   drawFishingBoat(ctx, frame, undefined, 32, true, art);
   const draws = calls.filter(call => call.method === "drawImage");
-  assert.equal(draws.length, 6, "five parts plus the real front planks used as an occluder");
+  assert.equal(draws.length, layers.length + 1, "visible parts plus the real front planks used as an occluder");
   for (const layer of layers) {
     const draw = draws.find(call => call.args[0] === art.get(layer.src));
     assert.deepEqual(draw.args.slice(1), [...layer.crop, ...layer.box]);
@@ -82,4 +83,16 @@ test("map boat draws the real installed raster modules and front hull without a 
   calls.length = 0; drawFishingBoat(ctx, { ...frame, level: 0, upgrades: [], artifacts: [] }, undefined, 32, true,
     new Map([[BOAT_BROKEN_HULL.src, valid(BOAT_BROKEN_HULL.src)]]));
   assert.ok(calls.filter(call => call.method === "drawImage").every(call => call.args[0].src === BOAT_BROKEN_HULL.src));
+});
+
+
+test("capacity is non-visual for owned loadouts and fitting previews; all base parts use the same SVG transform", () => {
+  const baseline = boatArtworkLayers({ repaired: true });
+  for (const loadout of [{ repaired: true, upgrades: ["crate"] }, { repaired: true, previewModule: "crate" },
+    { repaired: true, upgrades: ["crate"], previewModule: "crate" }]) assert.deepEqual(boatArtworkLayers(loadout), baseline);
+  assert.deepEqual(baseline.map(layer => layer.id), ["repair", "fuel_hose", "engine", "tank"]);
+  assert.deepEqual(baseline[0].box, [0, 185, 1000, 400]);
+  assert.deepEqual(BOAT_ART_PARTS.engine.box, [0, 219.375, 162.5, 356.25]);
+  assert.deepEqual(BOAT_ART_PARTS.tank.box, [218.75, 222.5, 187.5, 143.75]);
+  for (const layer of baseline) assert.match(layer.src, /\/modular\/.*\.svg$/);
 });

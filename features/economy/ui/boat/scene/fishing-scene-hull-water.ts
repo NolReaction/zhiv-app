@@ -3,41 +3,72 @@ import type { FishingScenePoint } from "./fishing-scene-types";
 
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
 const clock = (time: number, still: boolean) => still || !Number.isFinite(time) ? 0 : Math.max(0, time);
-const cubic = (a: number, b: number, c: number, d: number, t: number) =>
-  (1 - t) ** 3 * a + 3 * (1 - t) ** 2 * t * b + 3 * (1 - t) * t * t * c + t ** 3 * d;
-// Lower silhouette sampled from the existing hull's crop/box, not the earlier line inside the wooden side.
-const edge = [[124, 564], [180, 566], [250, 563], [350, 558], [450, 550], [550, 541],
-  [650, 529], [750, 510], [834, 466], [880, 418], [920, 363], [946, 322]] as const;
+// The new side hull is authored in 1600×640, then placed in the shared 1000×650 rig.
+// Its protruding keel, rather than the inner planks, defines the actual wetted silhouette.
+const authoredScale = .625, authoredOffsetY = 185;
+const sternX = 245, flatStartX = 251, flatEndX = 1220;
+// Stop before the lifted bow. Painting foam up to the tip would put water on dry wood.
+const bowAmount = .45;
+const bowEndX = flatEndX + 270 * bowAmount - 67 * bowAmount ** 2;
+const authored = (x: number, y: number) => ({ x: x * authoredScale, y: y * authoredScale + authoredOffsetY });
+const sternAmount = (-4 + Math.sqrt(16 + 60 * (sternX - 234))) / 30;
+const sternY = 539 + 38 * sternAmount - 17 * sternAmount ** 2;
+const bowEndY = 560 - 2 * bowAmount - 77 * bowAmount ** 2;
 
-/** Both the wet lip and displacement share one authored hull edge in 1000×650 assembly space. */
-export function fishingHullWaterSwell(time: number, still = false) {
-  const t = clock(time, still);
-  return Math.sin(t * 1.05) * 1.15 + Math.sin(t * .57 + .7) * .35;
-}
-
-function contactSegment(index: number, time: number, still: boolean, offset = 0) {
-  const previous = edge[Math.max(0, index - 1)], start = edge[index], end = edge[index + 1], next = edge[Math.min(edge.length - 1, index + 2)];
-  const swell = fishingHullWaterSwell(time, still) + offset;
-  return { start: { x: start[0], y: start[1] + swell }, end: { x: end[0], y: end[1] + swell },
-    control1: { x: start[0] + (end[0] - previous[0]) / 6, y: start[1] + (end[1] - previous[1]) / 6 + swell },
-    control2: { x: end[0] - (next[0] - start[0]) / 6, y: end[1] - (next[1] - start[1]) / 6 + swell } };
-}
-
-export function fishingHullContactPoint(amount: number, time: number, still = false): FishingScenePoint {
-  const position = clamp(Number.isFinite(amount) ? amount : 0, 0, 1) * (edge.length - 1);
-  const index = Math.min(edge.length - 2, Math.floor(position)), t = position - index;
-  const { start, control1, control2, end } = contactSegment(index, time, still);
-  return { x: cubic(start.x, control1.x, control2.x, end.x, t), y: cubic(start.y, control1.y, control2.y, end.y, t) };
-}
-
-/** Local-space tracing uses the same continuous silhouette as world-space displacement. */
-export function traceFishingHullContact(ctx: CanvasRenderingContext2D, time: number, offset = 0) {
-  ctx.beginPath();
-  for (let index = 0; index < edge.length - 1; index++) {
-    const { start, control1, control2, end } = contactSegment(index, time, false, offset);
-    if (index === 0) ctx.moveTo(start.x, start.y);
-    ctx.bezierCurveTo(control1.x, control1.y, control2.x, control2.y, end.x, end.y);
+/** Exact lower keel in assembly space. The rig already carries the shared wave motion;
+ * no second local swell is added to wood/water contact. Clock arguments retain the painter contract. */
+export function fishingHullContactPoint(amount: number, time?: number, still?: boolean): FishingScenePoint {
+  // Existing callers pass presentation clocks; the silhouette itself must remain attached to the hull.
+  void time; void still;
+  const along = clamp(Number.isFinite(amount) ? amount : 0, 0, 1);
+  const x = sternX + (bowEndX - sternX) * along;
+  if (x < flatStartX) {
+    const t = (-4 + Math.sqrt(16 + 60 * (x - 234))) / 30;
+    return authored(x, 539 + 38 * t - 17 * t * t);
   }
+  if (x <= flatEndX) return authored(x, 560);
+  const t = (270 - Math.sqrt(270 ** 2 - 268 * (x - flatEndX))) / 134;
+  return authored(x, 560 - 2 * t - 77 * t * t);
+}
+
+/** Trace the same exact two keel curves and straight bottom used by displacement. */
+export function traceFishingHullContact(ctx: CanvasRenderingContext2D, _time: number, offset = 0) {
+  const from = authored(sternX, sternY), sternControl = authored(236 + 15 * sternAmount, 558 + 2 * sternAmount);
+  const flatStart = authored(flatStartX, 560), flatEnd = authored(flatEndX, 560);
+  const bowControl = authored(flatEndX + 135 * bowAmount, 560 - bowAmount), bowEnd = authored(bowEndX, bowEndY);
+  ctx.beginPath(); ctx.moveTo(from.x, from.y + offset);
+  ctx.quadraticCurveTo(sternControl.x, sternControl.y + offset, flatStart.x, flatStart.y + offset);
+  ctx.lineTo(flatEnd.x, flatEnd.y + offset);
+  ctx.quadraticCurveTo(bowControl.x, bowControl.y + offset, bowEnd.x, bowEnd.y + offset);
+}
+
+/** A translucent wetted lip stays inside the side hull, after its front planks.
+ * Only short glints touch the water outside; the motor and background are never tinted. */
+export function paintFishingHullImmersion(ctx: CanvasRenderingContext2D, time: number, still = false) {
+  const t = clock(time, still), start = .035, samples = 32, depth = 14;
+  ctx.save(); ctx.beginPath();
+  for (let index = 0; index <= samples; index++) {
+    const point = fishingHullContactPoint(start + (1 - start) * index / samples);
+    if (index === 0) ctx.moveTo(point.x, point.y - depth);
+    else ctx.lineTo(point.x, point.y - depth);
+  }
+  for (let index = samples; index >= 0; index--) {
+    const point = fishingHullContactPoint(start + (1 - start) * index / samples);
+    ctx.lineTo(point.x, point.y);
+  }
+  ctx.closePath();
+  const wet = ctx.createLinearGradient(0, 520, 0, 536);
+  wet.addColorStop(0, "rgba(22,117,119,0)"); wet.addColorStop(.45, "rgba(22,117,119,.08)");
+  wet.addColorStop(1, "rgba(22,117,119,.34)"); ctx.fillStyle = wet; ctx.fill();
+  ctx.lineCap = "round"; ctx.lineWidth = 1.5;
+  for (const [index, center] of [.075, .84, .945].entries()) {
+    const half = index === 1 ? .025 : .018;
+    const from = fishingHullContactPoint(center - half), mid = fishingHullContactPoint(center), to = fishingHullContactPoint(center + half);
+    ctx.strokeStyle = `rgba(184,230,216,${.12 + (Math.sin(t * .72 + index * 1.9) + 1) * .035})`;
+    ctx.beginPath(); ctx.moveTo(from.x, from.y + .6);
+    ctx.quadraticCurveTo(mid.x, mid.y + 2.4, to.x, to.y + .6); ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function outsideHull(amount: number, distance: number, time: number, still: boolean) {

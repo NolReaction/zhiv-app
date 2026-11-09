@@ -6,6 +6,11 @@ import type { GaragePoint } from "./garage-scene-types";
 import styles from "./garage-water.module.css";
 
 const MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+const waterGlints = Array.from({ length: 19 }, (_, index) => {
+  const seed = (n: number) => { const value = Math.sin(n * 127.1 + 311.7) * 43758.5453; return value - Math.floor(value); };
+  return { x: .06 + seed(index * 19 + 8) * .88, y: .06 + seed(index * 31 + 16) * .88,
+    width: 6 + seed(index * 13 + 41) * 15, delay: -seed(index * 17 + 53) * 13 };
+});
 function subscribeWaterActivity(listener: () => void) {
   const media = window.matchMedia(MOTION_QUERY);
   media.addEventListener("change", listener);
@@ -23,9 +28,6 @@ export function GarageWaterBackground({ width, height, running = true }: { width
   const id = useId().replace(/:/g, ""), active = useWaterAnimation(running);
   return <g className={styles.water} data-active={active} data-testid="garage-water-background" aria-hidden="true">
     <defs>
-      <pattern id={`${id}-texture`} width="256" height="192" patternUnits="userSpaceOnUse">
-        <image href="/world/boat/river-water.webp" width="256" height="192" />
-      </pattern>
       <linearGradient id={`${id}-depth`} x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stopColor="#163e53" stopOpacity=".36" /><stop offset=".5" stopColor="#0b8d98" stopOpacity=".05" /><stop offset="1" stopColor="#062e41" stopOpacity=".32" />
       </linearGradient>
@@ -33,7 +35,13 @@ export function GarageWaterBackground({ width, height, running = true }: { width
     </defs>
     <rect width={width} height={height} fill="#0b627b" />
     <g clipPath={`url(#${id}-clip)`}>
-      <g className={styles.flow}><rect x={-256} y={-192} width={width + 512} height={height + 384} fill={`url(#${id}-texture)`} /></g>
+      <g className={styles.flow}>
+        <image href="/world/boat/lake-water.webp?v=1" x={-width * .08} y={-height * .08}
+          width={width * 1.16} height={height * 1.16} preserveAspectRatio="xMidYMid slice" />
+      </g>
+      {waterGlints.map((glint, index) => <path key={index} className={styles.glint}
+        d={`M${width * glint.x} ${height * glint.y} q${glint.width * .5} -1 ${glint.width} 0`}
+        style={{ animationDelay: `${glint.delay}s` }} />)}
     </g>
     <rect width={width} height={height} fill={`url(#${id}-depth)`} />
   </g>;

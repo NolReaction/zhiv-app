@@ -14,10 +14,10 @@ import shared from "./boat-fishing.module.css";
 import styles from "./boat-garage.module.css";
 
 type GarageModuleId = Extract<BoatUpgradeId, "repair" | "oars" | "crate">;
-const modules: { id: GarageModuleId; label: string; x: number; y: number }[] = [
-  { id: "repair", label: "Корпус", x: 52, y: 64 },
-  { id: "oars", label: "Вёсла", x: 29, y: 68 },
-  { id: "crate", label: "Трюм", x: 65, y: 50 },
+const modules: { id: GarageModuleId; label: string; x?: number; y?: number }[] = [
+  { id: "repair", label: "Корпус", x: 59, y: 65 },
+  { id: "oars", label: "Вёсла", x: 79, y: 57 },
+  { id: "crate", label: "Трюм" },
 ];
 const ownsModule = (boat: BoatState, id: GarageModuleId) => id === "repair" ? boat.level > 0 : boat.upgrades.some(value => value === id);
 
@@ -49,9 +49,9 @@ export function BoatGarage({ state, boat, config, now, disabled, onUpgrade, onCl
     <div className={styles.stage} data-boat-preview={preview && !installed ? selected : undefined}>
       <div className={styles.stageHeading}><span>ЛОДОЧНАЯ МАСТЕРСКАЯ</span><strong>{preview && !installed ? "Примерка модуля" : boat.level ? "Ваша комплектация" : "Корпус под восстановление"}</strong></div>
       <div className={styles.assembly}><BoatArt repaired={boat.level > 0} crate={boat.upgrades.includes("crate")} oars={boat.upgrades.includes("oars")} selectedModule={selected} previewModule={preview && !installed ? selected : undefined} /></div>
-      <div className={styles.hotspots} aria-label="Модули на лодке">{modules.map((module, index) => <button key={module.id} type="button" className={styles.hotspot} style={{ left: `${module.x}%`, top: `${module.y}%` }} aria-label={`Выбрать: ${module.label}`} aria-pressed={selected === module.id} onClick={() => choose(module.id)}><span>{String(index + 1).padStart(2, "0")}</span><small>{module.label}</small></button>)}</div>
+      <div className={styles.hotspots} aria-label="Модули на лодке">{modules.map((module, index) => module.x === undefined || module.y === undefined ? null : <button key={module.id} type="button" className={styles.hotspot} style={{ left: `${module.x}%`, top: `${module.y}%` }} aria-label={`Выбрать: ${module.label}`} aria-pressed={selected === module.id} onClick={() => choose(module.id)}><span>{String(index + 1).padStart(2, "0")}</span><small>{module.label}</small></button>)}</div>
       <div className={styles.stageFoot}><span><Wrench size={13} />{modules.filter(module => ownsModule(boat, module.id)).length} / {modules.length} модулей готово</span>
-        {!installed && <button type="button" className={styles.preview} aria-pressed={preview} onClick={() => setPreview(value => !value)}><Eye size={14} />{preview ? "Показать текущую" : "Примерить модуль"}</button>}</div>
+        {!installed && selected !== "crate" && <button type="button" className={styles.preview} aria-pressed={preview} onClick={() => setPreview(value => !value)}><Eye size={14} />{preview ? "Показать текущую" : "Примерить модуль"}</button>}</div>
     </div>
     <div className={styles.rail}>
       <div className={styles.railHeading}><h3>Комплектация</h3><span>Выберите модуль для улучшения</span></div>
@@ -72,7 +72,7 @@ export function BoatGarage({ state, boat, config, now, disabled, onUpgrade, onCl
       <h3 id={`${id}-module`}>{upgrade.name}</h3>
       <p>{upgrade.description}</p>
       <div className={styles.effect}><small>{effect.label}</small><div>{!installed && <><span>{effect.from}</span><ArrowRight size={14} /></>}<strong>{effect.to}</strong></div></div>
-      {installed ? <div className={styles.installed}><Check size={17} /><span>Модуль установлен на лодке</span></div> : working ? <p className={styles.workNote}>Работа начата. После окончания таймера установите готовый модуль.</p> : <>
+      {installed ? <div className={styles.installed}><Check size={17} /><span>{selected === "crate" ? "Вместимость трюма увеличена" : "Модуль установлен на лодке"}</span></div> : working ? <p className={styles.workNote}>Работа начата. После окончания таймера установите готовый модуль.</p> : <>
         <div className={styles.purchase}><BoatCost state={state} cost={upgrade.cost} /><span className={styles.duration}><Clock3 size={13} />{worldDuration(upgrade.seconds)}</span>
           <button type="button" className={shared.primary} disabled={disabled || Boolean(reason)} onClick={() => onUpgrade(selected)}><Hammer size={16} />{selected === "repair" ? "Восстановить лодку" : "Установить улучшение"}</button>
           {reason && <p className={styles.reason}><LockKeyhole size={12} />{reason}</p>}

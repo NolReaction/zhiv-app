@@ -2,11 +2,11 @@ import { pixelSprite, pixelSpriteContact } from "@/features/mochlik/pixel-sprite
 import { drawGroundedHero } from "@/features/world/scene/grounding";
 import type { WorldState } from "@/features/world/domain/model";
 import type { ForestFishingBoatFrame } from "@/features/world/activities/fishing/forest-boat-travel";
-import { BOAT_ASSEMBLY, boatArtworkLayers, type BoatArtLayer } from "./fishing-boat-artwork";
+import { BOAT_ASSEMBLY, BOAT_PASSENGER_SEAT, boatArtworkLayers, type BoatArtLayer } from "./fishing-boat-artwork";
 
 const emptyArtwork: ReadonlyMap<string, HTMLImageElement> = new Map();
 
-/** The same independent raster modules used by the garage, anchored at their waterline. */
+/** The same independent artwork modules used by the garage, anchored at their waterline. */
 export function drawFishingBoat(ctx: CanvasRenderingContext2D, frame: ForestFishingBoatFrame,
   equipment: WorldState["equipment"] | undefined, size: number, still: boolean,
   artwork: ReadonlyMap<string, HTMLImageElement> = emptyArtwork) {
@@ -40,11 +40,11 @@ export function drawFishingBoat(ctx: CanvasRenderingContext2D, frame: ForestFish
   }
   layers.filter(layer => layer.id !== "oars").forEach(part);
   if (frame.passenger) {
-    ctx.save(); ctx.translate(BOAT_ASSEMBLY.width / 2, 0); ctx.scale(facing, 1);
+    ctx.save(); ctx.translate(BOAT_PASSENGER_SEAT.x, 0); ctx.scale(facing, 1);
     const sprite = pixelSprite("idle", "front", 0, equipment), contact = pixelSpriteContact(sprite)?.bottom ?? 45;
     const width = size / frame.width * BOAT_ASSEMBLY.width * .88;
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(sprite, -width / 2, BOAT_ASSEMBLY.waterline - contact / 48 * width, width, width);
+    ctx.drawImage(sprite, -width / 2, BOAT_PASSENGER_SEAT.y - contact / 48 * width, width, width);
     ctx.restore();
   }
   // Reuse the actual front planks to occlude a seated actor and module feet.

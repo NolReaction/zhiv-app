@@ -1,7 +1,7 @@
 .garage { position: relative; isolation: isolate; display: grid; grid-template-columns: minmax(0, 1fr) 271px; grid-template-areas: "stage inspector" "work work" "rail rail"; min-width: 0; overflow-anchor: none; }
 .garage::before { content: ''; grid-column: 1 / -1; grid-row: 1; z-index: -1; border: 1px solid #52604c; border-radius: 8px; background: #14201d; pointer-events: none; }
 .garage > [data-boat-work] { grid-area: work; }
-.stage { grid-area: stage; position: relative; min-width: 0; height: 380px; min-height: 0; margin: 1px 0 1px 1px; overflow: hidden; border-radius: 7px 0 0 7px; isolation: isolate; background: linear-gradient(180deg,#07100a12,#08120ce0),url('/world/boat/garage-background.webp') center/cover; }
+.stage { grid-area: stage; position: relative; min-width: 0; height: 380px; min-height: 0; margin: 1px 0 1px 1px; overflow: hidden; border-radius: 7px 0 0 7px; isolation: isolate; background: linear-gradient(180deg,#07100a05,#08120c45),url('/world/boat-garage/garage.webp?v=side-profile-2') center/cover; }
 .stage::after { content: ''; position: absolute; z-index: -1; inset: 0; background: radial-gradient(ellipse at 50% 26%,#ddbf7333,transparent 70%); pointer-events: none; }
 .stageHeading { position: absolute; z-index: 2; left: 18px; top: 15px; display: grid; gap: 4px; text-shadow: 0 2px 4px #000; }
 .stageHeading > span { font-size: 8px; color: #b8b995; letter-spacing: .16em; }

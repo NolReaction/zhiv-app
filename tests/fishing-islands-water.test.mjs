@@ -55,43 +55,25 @@ test("island painting is bounded and frozen-clock deterministic, with civil day/
   assert.notDeepEqual(draw(18.5,0),draw(23,0));
 });
 
-test("water uses native mirror pixels and paints every destination rectangle once with integral source sampling",()=>{
-  const previous=Object.getOwnPropertyDescriptor(globalThis,"document"),created=[],mirrorDraws=[],waterDraws=[];
-  const gradient={addColorStop(){}};
+test("one large lake crop fills every viewport without repeated seams, gaps or offscreen pixel work",()=>{
+  const waterDraws=[], gradient={addColorStop(){}};
   const context=new Proxy({globalAlpha:1},{get(target,key){
     if(key in target)return target[key];
     if(key==="createLinearGradient"||key==="createRadialGradient")return()=>gradient;
     if(key==="drawImage")return(...args)=>waterDraws.push(args);
     return()=>{};
   }});
-  const mirror=new Proxy({},{get(target,key){
-    if(key in target)return target[key];
-    if(key==="drawImage")return(...args)=>mirrorDraws.push(args);
-    return()=>{};
-  }});
-  Object.defineProperty(globalThis,"document",{configurable:true,value:{createElement(){const canvas={getContext:()=>mirror};created.push(canvas);return canvas;}}});
-  try{
-    const image={};paintFishingLandscape(context,1600,900,0,image);
-    assert.equal(created[0].width,512);assert.equal(created[0].height,384);
-    assert.equal(mirror.imageSmoothingEnabled,false);
-    assert.equal(mirrorDraws.length,4);
-    assert.ok(mirrorDraws.every(args=>args[3]===256&&args[4]===192),"no 1.5× intermediate upscale");
-    for(const time of [0,.2,1,17.4,800.2]){
-      waterDraws.length=0;paintFishingLandscape(context,1600,900,time,image);
-      const draws=waterDraws.filter(args=>args.length===9);
-      assert.ok(draws.length<40,"whole native tile blits replace dozens of fractional overlapping strips");
-      let area=0;
-      for(const [,sx,sy,sw,sh,dx,dy,dw,dh]of draws){
-        for(const value of [sx,sy,sw,sh,dx,dy,dw,dh])assert.ok(Number.isInteger(value));
-        assert.equal(sw,dw);assert.equal(sh,dh);assert.ok(sw>0&&sh>0);
-        assert.ok(sx>=0&&sy>=0&&sx+sw<=512&&sy+sh<=384);
-        assert.ok(dx>=0&&dy>=0&&dx+dw<=1600&&dy+dh<=900);
-        area+=dw*dh;
-      }
-      assert.equal(area,1600*900,"no overpainting, fractional overlap or blank bands");
-      assert.equal(created.length,1);
-    }
-  }finally{if(previous)Object.defineProperty(globalThis,"document",previous);else delete globalThis.document;}
+  const image={naturalWidth:1024,naturalHeight:1024};
+  for(const [width,height]of dimensions)for(const time of [0,.2,1,17.4,800.2,1e6]){
+    waterDraws.length=0;paintFishingLandscape(context,width,height,time,image);
+    assert.equal(waterDraws.length,1,"a single full-viewport blit has no pattern repeat or overlapping bands");
+    const [source,sx,sy,sw,sh,dx,dy,dw,dh]=waterDraws[0];
+    assert.equal(source,image,"the cached decoded master is the direct source");
+    assert.ok([sx,sy,sw,sh,dx,dy,dw,dh].every(Number.isFinite));
+    assert.ok(sx>=0&&sy>=0&&sw>0&&sh>0&&sx+sw<=1024&&sy+sh<=1024);
+    assert.deepEqual([dx,dy,dw,dh],[0,0,width,height]);
+    assert.ok(Math.abs(sw/sh-width/height)<1e-8,"cover cropping preserves the artwork aspect without stretching ripples");
+  }
 });
 
 test("islets remain present beside the actual hull and complete control corridor at common viewport sizes",async()=>{

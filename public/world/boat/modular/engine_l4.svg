@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="260" height="570" viewBox="0 0 260 570" role="img" aria-labelledby="engine-l4-title engine-l4-desc">
+  <title id="engine-l4-title">ImLive modular outboard motor — level 4</title>
+  <desc id="engine-l4-desc">Editable 2D side-view vector. Fixed local transom anchor 220,235. Position in 1600 by 640 scene: 0,55. No embedded raster images.</desc>
+  <defs>
+      <linearGradient id="engine-l4-paint" x1="0%" y1="0%" x2="85%" y2="100%"><stop offset="0" stop-color="#708f72"/><stop offset=".45" stop-color="#385e43"/><stop offset="1" stop-color="#223b2d"/></linearGradient>
+      <linearGradient id="engine-l4-metal" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0" stop-color="#6a6d60"/><stop offset=".24" stop-color="#c0bca0"/><stop offset=".5" stop-color="#8d9183"/><stop offset=".82" stop-color="#646d66"/><stop offset="1" stop-color="#414d47"/></linearGradient>
+      <linearGradient id="engine-l4-iron" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0" stop-color="#a8a68a"/><stop offset=".35" stop-color="#757a69"/><stop offset="1" stop-color="#434e46"/></linearGradient>
+      <linearGradient id="engine-l4-brass" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0" stop-color="#d1b16e"/><stop offset=".5" stop-color="#ac8b4b"/><stop offset="1" stop-color="#725833"/></linearGradient>
+      <linearGradient id="engine-l4-rubber" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0" stop-color="#645e4d"/><stop offset=".5" stop-color="#393d34"/><stop offset="1" stop-color="#262f2b"/></linearGradient>
+      <clipPath id="engine-l4-cowl-clip"><path d="M17 156 L20 82 Q23 45 58 28 L160 27 Q190 32 200 63 L210 156 L194 199 L36 199 Z"/></clipPath>
+      <clipPath id="engine-l4-shaft-clip"><path d="M83 217 L132 216 L128 444 Q127 477 143 500 L125 529 L92 528 L79 505 Q94 473 87 440 Z"/></clipPath>
+    </defs>
+  <g id="engine-l4-bracket" inkscape:groupmode="layer" inkscape:label="Bracket / common transom anchor 220,235">
+      <path d="M143 222 Q168 217 190 226 L205 240 L235 240 Q244 240 245 251 L246 335 Q246 344 236 347 L224 348 L222 256 L208 256 L207 326 L193 328 L190 251 L168 248 Z" fill="url(#engine-l4-iron)" stroke="#342b22" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M216 253 L235 252 L238 330 L225 334" fill="none" stroke="#d1c5a5" stroke-width="3" opacity=".65"/>
+      <path d="M197 262 L209 270 L208 321 L195 324 Z" fill="#4f5a4c" stroke="#342b22" stroke-width="3"/>
+      <rect x="220" y="280" width="33" height="9" rx="3" fill="#6d7062" stroke="#342b22" stroke-width="2.5"/>
+      <path d="M245 273 L245 296" stroke="#342b22" stroke-width="5" stroke-linecap="round"/>
+      <circle cx="162" cy="237" r="16" fill="url(#engine-l4-metal)" stroke="#342b22" stroke-width="3"/>
+      <circle cx="162" cy="237" r="8" fill="#646e5a" stroke="#342b22" stroke-width="2.5"/>
+      <g><circle cx="232" cy="259" r="5" fill="#b8ab8b" stroke="#342b22" stroke-width="2"/><path d="M229.75,260.0 l4.5,-2.0" stroke="#5d5547" stroke-width="1.6" stroke-linecap="round"/><path d="M229.75,256.75 l3.5,0" stroke="#e1d2ae" stroke-width="1.2" opacity=".65"/></g> <g><circle cx="232" cy="330" r="5" fill="#b8ab8b" stroke="#342b22" stroke-width="2"/><path d="M229.75,331.0 l4.5,-2.0" stroke="#5d5547" stroke-width="1.6" stroke-linecap="round"/><path d="M229.75,327.75 l3.5,0" stroke="#e1d2ae" stroke-width="1.2" opacity=".65"/></g>
+    </g>
+  <g id="engine-l4-shaft" inkscape:groupmode="layer" inkscape:label="Shaft / fixed lower geometry">
+      <path d="M83 217 L132 216 L128 444 Q127 477 143 500 L125 529 L92 528 L79 505 Q94 473 87 440 Z" fill="url(#engine-l4-metal)" stroke="#342b22" stroke-width="4.5" stroke-linejoin="round"/>
+      <path d="M96 230 L99 445 Q101 470 91 496" fill="none" stroke="#d2cbb0" stroke-width="5" opacity=".62"/>
+      <path d="M122 234 L118 442 Q115 471 130 497" fill="none" stroke="#4b5c50" stroke-width="4" opacity=".65"/>
+      <path d="M82 267 L132 267 L131 282 L84 282 Z" fill="url(#engine-l4-iron)" stroke="#342b22" stroke-width="3"/>
+      <g><circle cx="105" cy="274" r="4" fill="#b8ab8b" stroke="#342b22" stroke-width="2"/><path d="M103.2,274.8 l3.6,-1.6" stroke="#5d5547" stroke-width="1.6" stroke-linecap="round"/><path d="M103.2,272.2 l2.8,0" stroke="#e1d2ae" stroke-width="1.2" opacity=".65"/></g>
+      <path d="M76 435 L140 435 L145 446 L76 448 L67 443 Z" fill="url(#engine-l4-iron)" stroke="#342b22" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M69 443 L136 442" stroke="#c5bf9f" stroke-width="2"/>
+      <path d="M91 472 L131 471 L139 494 Q146 512 130 523 L98 523 L81 514 L76 500 Z" fill="url(#engine-l4-iron)" stroke="#342b22" stroke-width="4"/>
+      <path d="M131 514 L123 548 L103 544 L99 518" fill="url(#engine-l4-metal)" stroke="#342b22" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M97 485 Q115 477 132 493" fill="none" stroke="#d6ccb0" stroke-width="3" opacity=".65"/>
+      <path d="M68 496 L92 495 L92 512 L66 512 Z" fill="url(#engine-l4-metal)" stroke="#342b22" stroke-width="3"/>
+    <g id="engine-l4-shaft-work-jacket"><path d="M84 291 L130 291 L128 431 L87 431 Z" fill="#496548" stroke="#342b22" stroke-width="3"/><path d="M92 299 L94 422" stroke="#9eae8a" stroke-width="4" opacity=".7"/><path d="M120 297 L119 424" stroke="#253b2d" stroke-width="3"/>
+        <path d="M84 306 L130 306 L129 317 L85 317 Z M87 407 L128 407 L128 418 L87 418 Z" fill="url(#engine-l4-iron)" stroke="#342b22" stroke-width="2.4"/>
+        <rect x="99" y="340" width="18" height="39" rx="5" fill="url(#engine-l4-iron)" stroke="#342b22" stroke-width="2"/>
+        <g><circle cx="107" cy="348" r="3" fill="#aeb298" stroke="#342b22" stroke-width="1.8"/><path d="M105.65 348.6 l2.7 -1.2" stroke="#5d5547" stroke-width="1.5" stroke-linecap="round"/><path d="M105.8 346.8 l1.95 0" stroke="#e3d6af" stroke-width="1.1" opacity=".7"/></g><g><circle cx="107" cy="371" r="3" fill="#aeb298" stroke="#342b22" stroke-width="1.8"/><path d="M105.65 371.6 l2.7 -1.2" stroke="#5d5547" stroke-width="1.5" stroke-linecap="round"/><path d="M105.8 369.8 l1.95 0" stroke="#e3d6af" stroke-width="1.1" opacity=".7"/></g>
+        </g></g>
+  <g id="engine-l4-propeller" transform="translate(0 70)" inkscape:groupmode="layer" inkscape:label="Propeller">
+      <path d="M59 433 Q35 417 29 396 Q25 386 36 383 Q49 382 59 394 Q72 409 71 428 L70 439 Q81 454 79 473 Q77 483 66 482 Q50 478 48 460 Q46 447 59 433 Z" fill="url(#engine-l4-brass)" stroke="#342b22" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M35 393 Q37 408 56 422 M67 448 Q61 463 70 473" fill="none" stroke="#e1c384" stroke-width="3" opacity=".7" stroke-linecap="round"/>
+      <ellipse cx="66" cy="434" rx="15" ry="13" fill="url(#engine-l4-brass)" stroke="#342b22" stroke-width="3"/>
+      <circle cx="63" cy="432" r="5" fill="#e2c58a" stroke="#7b643d" stroke-width="2"/>
+    </g>
+  <g id="engine-l4-cowling" inkscape:groupmode="layer" inkscape:label="Cowling / level 4">
+      <path d="M34 177 Q118 189 199 175 L194 204 Q172 224 136 231 L84 232 Q51 225 39 208 Z" fill="url(#engine-l4-rubber)" stroke="#342b22" stroke-width="4.5"/>
+      <path d="M46 204 Q114 224 185 203" fill="none" stroke="#8b8469" stroke-width="3" opacity=".8"/>
+      <path d="M71 225 L143 225 L141 243 L79 243 Z" fill="url(#engine-l4-iron)" stroke="#342b22" stroke-width="3"/>
+      <path d="M78 234 L139 234" stroke="#454e43" stroke-width="3"/>
+      <path d="M167 201 Q190 193 211 202 L236 202 L240 214 L211 217 L187 211 L167 214 Z" fill="url(#engine-l4-iron)" stroke="#342b22" stroke-width="3.5"/>
+      <rect x="221" y="201" width="34" height="15" rx="6" fill="url(#engine-l4-rubber)" stroke="#342b22" stroke-width="3"/>
+      <path d="M229 204 L229 213 M236 204 L236 213 M243 204 L243 213" stroke="#7c7860" stroke-width="1.5"/>
+
+      <path d="M17 156 L20 82 Q23 45 58 28 L160 27 Q190 32 200 63 L210 156 L194 199 L36 199 Z" fill="url(#engine-l4-paint)" stroke="#342b22" stroke-width="4.5" stroke-linejoin="round"/>
+        <path d="M30 78 Q34 49 63 39 L155 38 Q177 42 186 63" fill="none" stroke="#aac29b" stroke-width="4.5" opacity=".75" stroke-linecap="round"/>
+        <path d="M23 66 L67 51 L157 51 L171 65" fill="none" stroke="#364e39" stroke-width="2.3"/>
+        <path d="M21 139 L66 151 L206 134 L208 163 L67 183 L21 167 Z" fill="url(#engine-l4-rubber)" stroke="#342b22" stroke-width="2.8"/>
+        <path d="M24 147 L68 160 L204 143" fill="none" stroke="#9aa88a" stroke-width="3"/>
+        <path d="M27 164 L68 175 L201 157" fill="none" stroke="#71836b" stroke-width="2"/>
+        <path d="M41 76 L113 76 L108 128 L35 126 Z" fill="#2c4531" stroke="#7c9776" stroke-width="2.2"/>
+        <path d="M45 86 L103 86 L100 92 L43 92 Z" fill="#152c24" stroke="#8a9b7b" stroke-width="1.5"/><path d="M45 99 L103 99 L100 105 L43 105 Z" fill="#152c24" stroke="#8a9b7b" stroke-width="1.5"/><path d="M45 112 L103 112 L100 118 L43 118 Z" fill="#152c24" stroke="#8a9b7b" stroke-width="1.5"/>
+        <path d="M134 67 L178 67 L189 117 L145 125 Z" fill="url(#engine-l4-iron)" stroke="#342b22" stroke-width="2.5"/>
+        <path d="M144 78 L170 76 M146 88 L172 86 M148 98 L174 96 M150 108 L176 106 M152 117 L178 115" stroke="#3b5240" stroke-width="3.7"/>
+        <path d="M78 185 L133 185 L133 198 L78 198 Z" fill="url(#engine-l4-brass)" stroke="#342b22" stroke-width="2"/>
+        <g><circle cx="36" cy="153" r="4" fill="#aeb298" stroke="#342b22" stroke-width="1.8"/><path d="M34.2 153.8 l3.6 -1.6" stroke="#5d5547" stroke-width="1.5" stroke-linecap="round"/><path d="M34.4 151.4 l2.6 0" stroke="#e3d6af" stroke-width="1.1" opacity=".7"/></g><g><circle cx="193" cy="150" r="4" fill="#aeb298" stroke="#342b22" stroke-width="1.8"/><path d="M191.2 150.8 l3.6 -1.6" stroke="#5d5547" stroke-width="1.5" stroke-linecap="round"/><path d="M191.4 148.4 l2.6 0" stroke="#e3d6af" stroke-width="1.1" opacity=".7"/></g><g><circle cx="85" cy="191" r="3" fill="#c3a968" stroke="#342b22" stroke-width="1.8"/><path d="M83.65 191.6 l2.7 -1.2" stroke="#5d5547" stroke-width="1.5" stroke-linecap="round"/><path d="M83.8 189.8 l1.95 0" stroke="#e3d6af" stroke-width="1.1" opacity=".7"/></g><g><circle cx="126" cy="191" r="3" fill="#c3a968" stroke="#342b22" stroke-width="1.8"/><path d="M124.65 191.6 l2.7 -1.2" stroke="#5d5547" stroke-width="1.5" stroke-linecap="round"/><path d="M124.8 189.8 l1.95 0" stroke="#e3d6af" stroke-width="1.1" opacity=".7"/></g>
+        </g>
+  <g id="engine-l4-wear" inkscape:groupmode="layer" inkscape:label="Minor wear / editable paths"><g clip-path="url(#engine-l4-cowl-clip)"><path d="M54 181 l8 -2 M157 187 l10 -2" fill="none" stroke="#c1b88e" stroke-width="1.2" opacity=".35" stroke-linecap="round"/></g></g>
+</svg>

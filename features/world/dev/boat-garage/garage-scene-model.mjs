@@ -10,6 +10,7 @@ import { garageOcclusionPolygonProblem, garageOcclusionTargetIds } from "./garag
 const IDENTITY = [1, 0, 0, 1, 0, 0];
 export const GARAGE_MAX_DEPTH = 100_000;
 const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/;
+const SHIPPED_SIDE_SOURCE_PATTERN = /^\/world\/boat\/modular\/(?:(?:hull|engine|tank)_l[0-5]|fuel_hose_aligned)\.svg$/;
 const SOURCE_PATTERN = /^\/world\/boat-garage\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9][a-zA-Z0-9._-]*\.(?:png|webp|jpe?g)$/i;
 
 /** @param {unknown} value @param {string} label @returns {Record<string, unknown>} */
@@ -72,7 +73,7 @@ export function validateGarageScene(input) {
   };
   const assets = list(scene.assets, "Изображения", 64).map((value, index) => {
     const asset = record(value, `Изображение ${index + 1}`), src = text(asset.src, "Путь изображения", 240);
-    if (!SOURCE_PATTERN.test(src) || src.includes("..")) throw new Error("Изображения должны находиться в /world/boat-garage/ и иметь формат PNG, WebP или JPEG.");
+    if ((!SOURCE_PATTERN.test(src) && !SHIPPED_SIDE_SOURCE_PATTERN.test(src)) || src.includes("..")) throw new Error("Изображения должны быть PNG, WebP или JPEG из /world/boat-garage/ либо готовыми SVG-модулями лодки.");
     return { id: id(asset.id, "ID изображения"), name: text(asset.name, "Название изображения"), src,
       width: number(asset.width, "Ширина изображения", 1, 20_000), height: number(asset.height, "Высота изображения", 1, 20_000) };
   });

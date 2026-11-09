@@ -11,8 +11,8 @@ const vite = await createServer({ root, configFile: false, appType: "custom", op
   plugins: [{ name: "scene-lifecycle-painter-probe", enforce: "pre", transform(code, id) {
     if (id.endsWith("/fishing-scene-fish.ts")) return code.slice(0, code.indexOf("export function paintSceneFish(")) +
       'export function paintSceneFish(ctx,point,frame){globalThis.__fishingFishPaints?.push({point:{...point},frame:{...frame}})}';
-    if (id.endsWith("/fishing-scene-runtime.ts")) return code.replace('import { paintFishingScene } from "./fishing-scene-painter";',
-      'function paintFishingScene(ctx,frame,images,viewport,visual){globalThis.__fishingScenePaints.push({frame,images:[...images.keys()],viewport:{...viewport},visual:{...visual}})}');
+    if (id.endsWith("/fishing-scene-runtime.ts")) return code.replace('import { fishingSceneGeometry, paintFishingScene } from "./fishing-scene-painter";',
+      'import { fishingSceneGeometry } from "./fishing-scene-painter";\nfunction paintFishingScene(ctx,frame,images,viewport,visual){globalThis.__fishingScenePaints.push({frame,images:[...images.keys()],viewport:{...viewport},visual:{...visual}})}');
   } }],
 });
 after(() => vite.close());
@@ -22,7 +22,7 @@ const { fishingBoatActorRig, fishingBoatActorPose } = await vite.ssrLoadModule("
 const { fishingSceneFishAppearance, fishingSceneFishMotion } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-fish.ts");
 const { mountFishingScene } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-runtime.ts");
 const { FishingSceneCanvas } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-canvas.tsx");
-const { BOAT_ART_PARTS } = await vite.ssrLoadModule("/features/world/objects/fishing-boat/fishing-boat-artwork.ts");
+const { BOAT_ART_PARTS, BOAT_ASSEMBLY, boatArtworkLayers } = await vite.ssrLoadModule("/features/world/objects/fishing-boat/fishing-boat-artwork.ts");
 const { FISHING_WATER_TEXTURE } = await vite.ssrLoadModule("/features/economy/ui/boat/scene/fishing-scene-background.ts");
 const frame = () => ({ stage: "reeling", castKey: "cast-one", held: false, reel: { bar: 5000, fish: 5500, progress: 2500, zoneWidth: 3200 },
   boat: { repaired: true, upgrades: ["crate", "oars"] }, rodId: "brook_rod" });
@@ -108,12 +108,16 @@ test("the surface bobber reacts to tension and catch distance while tracking sta
 test("painting composes real hull modules around Mochlik and never substitutes a procedural boat", () => {
   const env = environment();
   try {
-    const images = new Map(["repair", "crate", "oars"].map(id => [BOAT_ART_PARTS[id].src, { id, naturalWidth: 1536, naturalHeight: 1024 }]));
+    const value = frame();
+    const layers = boatArtworkLayers(value.boat);
+    const images = new Map(layers.map(part => [part.src, { id: part.id, naturalWidth: part.source[0], naturalHeight: part.source[1] }]));
     paintFishingScene(env.context, frame(), images, { width: 390, height: 844, dpr: 2 }, visual);
     const isActorOrBoat = call => call.method === "drawImage" &&
       (call.args[0].id || call.args[0].width === 48 && call.args[0].height === 48);
     const draws = env.calls.filter(isActorOrBoat);
-    assert.deepEqual(draws.map(call => call.args[0].id ?? "mochlik"), ["repair", "crate", "mochlik", "repair", "oars"]);
+    assert.deepEqual(draws.map(call => call.args[0].id ?? "mochlik"), ["repair", "fuel_hose", "engine", "tank", "mochlik", "repair", "oars"]);
+    assert.ok(value.boat.upgrades.includes("crate"), "the saved storage upgrade remains owned");
+    assert.equal(draws.some(call => call.args[0].id === "crate"), false, "storage has no visible crate or mounting layer");
     assert.deepEqual(draws[0].args.slice(1, 5), [...BOAT_ART_PARTS.repair.crop]);
     assert.ok(env.calls.some(call => call.method === "clip"), "front planks occlude the seated feet");
     env.calls.length = 0; paintFishingScene(env.context, frame(), new Map(), { width: 320, height: 568, dpr: 1 }, visual);
@@ -157,19 +161,18 @@ test("a confirmed fish lift keeps its line connected after the completed challen
   } finally { env.restore(); }
 });
 
-test("portrait water retains native CSS texels instead of shrinking with the boat assembly view", () => {
+test("portrait water fills CSS coordinates from one large lake crop before the boat view scale", () => {
   const env = environment();
   try {
-    paintFishingScene(env.context, frame(), new Map([[FISHING_WATER_TEXTURE, { naturalWidth: 256, naturalHeight: 192 }]]),
+    const water = { naturalWidth: 1024, naturalHeight: 1024 };
+    paintFishingScene(env.context, frame(), new Map([[FISHING_WATER_TEXTURE, water]]),
       { width: 390, height: 844, dpr: 2 }, visual);
-    const tiles = env.calls.filter(call => call.method === "drawImage" && call.args.length === 9 &&
-      call.args[0].width === 512 && call.args[0].height === 384);
-    assert.ok(tiles.length > 0);
-    assert.equal(tiles.reduce((sum, call) => sum + call.args[7] * call.args[8], 0), 390 * 844);
-    for (const { args } of tiles) {
-      assert.equal(args[3], args[7]); assert.equal(args[4], args[8]);
-      assert.ok(args.slice(1).every(Number.isInteger));
-    }
+    const covers = env.calls.filter(call => call.method === "drawImage" && call.args[0] === water);
+    assert.equal(covers.length, 1, "the raster itself has no repeated tile or fractional strip joins");
+    const [, sx, sy, sw, sh, dx, dy, dw, dh] = covers[0].args;
+    assert.deepEqual([dx, dy, dw, dh], [0, 0, 390, 844], "the cover is not shrunk by the assembly's logical scale");
+    assert.ok(sx >= 0 && sy >= 0 && sx + sw <= 1024 && sy + sh <= 1024);
+    assert.ok(Math.abs(sw / sh - 390 / 844) < 1e-8);
   } finally { env.restore(); }
 });
 
@@ -177,7 +180,9 @@ test("canvas runtime caps DPR/frame rate, pauses offscreen and cleans up late im
   const env = environment(), value = { ...frame(), stage: "waiting" }, runtime = mountFishingScene(env.canvas, value);
   try {
     assert.equal(env.canvas.width, 780); assert.equal(env.canvas.height, 1688);
-    assert.deepEqual(env.requests.map(image => image.path).sort(), [...["hull.webp", "module-crate.webp", "module-oars.webp"].map(name => "/world/boat/" + name), FISHING_WATER_TEXTURE].sort());
+    assert.deepEqual(env.requests.map(image => image.path).sort(), [...boatArtworkLayers(value.boat).map(part => part.src), FISHING_WATER_TEXTURE].sort());
+    assert.ok(value.boat.upgrades.includes("crate"));
+    assert.equal(env.requests.some(image => image.path.includes("module-crate")), false, "owned storage never loads an obsolete visible crate");
     for (let i = 0; i < 61; i++) env.step(1000 / 60);
     assert.ok(env.paints.length >= 28 && env.paints.length <= 32, "visible painting averages at most 30fps rather than following every RAF");
     const age = env.paints.at(-1).visual.castElapsed, count = env.paints.length;
@@ -186,8 +191,8 @@ test("canvas runtime caps DPR/frame rate, pauses offscreen and cleans up late im
       "hidden time cannot fast-forward a cast; the last unpainted RAF may add one frame");
     env.intersect(false); assert.equal(env.frames.size, 0); env.intersect(true); env.step();
     env.reduced(true); assert.equal(env.frames.size, 0); assert.equal(env.paints.at(-1).visual.still, true);
-    const staticCount = env.paints.length; env.finish("/world/boat/hull.webp"); assert.ok(env.paints.length > staticCount, "image arrival redraws a static scene");
-    env.finish("/world/boat/module-crate.webp", true); const failedCount = env.requests.length;
+    const staticCount = env.paints.length; env.finish(BOAT_ART_PARTS.repair.src); assert.ok(env.paints.length > staticCount, "image arrival redraws a static scene");
+    env.finish(BOAT_ART_PARTS.tank.src, true); const failedCount = env.requests.length;
     env.window.dispatch("online"); assert.equal(env.requests.length, failedCount + 1, "a failed part retries only on an explicit recovery event");
     env.resize(320, 568); assert.equal(env.canvas.width, 640); assert.equal(env.canvas.height, 1136);
     const late = env.requests.find(image => image.path.endsWith("module-oars.webp")).onload;
@@ -227,11 +232,14 @@ test("two compact arms remain below the face and share exact grip anchors throug
   assert.ok(pulling.tip.y < pulling.grip.y, "a real pull raises the same rod around its grip");
   for (const stage of ["waiting", "casting", "soaking", "bite", "reeling", "caught", "landed"]) for (const elapsed of [.1, .4, .8, 1.2, 2]) {
     const rig = fishingBoatActorRig(stage, elapsed, true, 3, false);
+    const faceBottom = rig.actor.foot.y - rig.actor.size * .22;
     for (const arm of [rig.nearArm, rig.farArm]) {
       assert.ok(arm.reachable, "hands never stretch a short arm beyond its two bones");
-      assert.ok(arm.hand.y > 430 && arm.elbow.y > 430, "visible forearms and palms stay below the face");
+      assert.ok(arm.hand.y > faceBottom && arm.elbow.y > faceBottom, "visible forearms and palms stay below the current face");
+      assert.ok(arm.hand.y < rig.actor.foot.y && arm.elbow.y < rig.actor.foot.y, "arms stay on the compact torso above the seated feet");
       assert.ok(Math.hypot(arm.hand.x - arm.shoulder.x, arm.hand.y - arm.shoulder.y) < rig.actor.size * .33);
     }
+    assert.ok(rig.actor.foot.y > BOAT_ASSEMBLY.foredeck, "the side hull's front planks occlude the seated feet");
     assert.deepEqual(rig.grip, rig.nearArm.hand);
     assert.ok(Math.hypot(rig.grip.x - waiting.grip.x, rig.grip.y - waiting.grip.y) < 4, "breathing and effort move the same handle only within the compact torso");
   }
@@ -308,9 +316,10 @@ test("authored cast has preparation, forward release and calm followthrough with
   for (const stage of ["casting", "soaking", "bite", "reeling", "caught", "landed"]) for (let index = 0; index <= 30; index++) {
     const age = index / 10, pose = fishingBoatActorPose(stage, age, index % 2 === 0, age, false, age);
     const rig = fishingBoatActorRig(stage, age, index % 2 === 0, age, false, pose, age);
+    const faceBottom = rig.actor.foot.y - rig.actor.size * .22;
     assert.ok(Number.isFinite(pose.angle) && Math.abs(pose.angle) < 2);
     assert.ok(rig.nearArm.reachable && rig.farArm.reachable);
-    for (const arm of [rig.nearArm, rig.farArm]) assert.ok(arm.hand.y > 430 && arm.elbow.y > 430);
+    for (const arm of [rig.nearArm, rig.farArm]) assert.ok(arm.hand.y > faceBottom && arm.elbow.y > faceBottom);
   }
 });
 
@@ -371,5 +380,129 @@ test("coarse server-clock updates still show a pre-bite nibble without starting 
     const lead = env.paints.at(-1).frame.biteLeadSeconds;
     env.visibility(true); env.step(5000); env.visibility(false); env.step(34);
     assert.ok(Math.abs(env.paints.at(-1).frame.biteLeadSeconds - lead) < .05, "hidden time is not replayed as a missed nibble");
+  } finally { runtime.dispose(); env.restore(); }
+});
+
+
+test("new visible casts and bites add one inertial response, while repeated keys never replay it", () => {
+  function response(action, repeated = false, fresh = true) {
+    const env = environment(), value = { ...frame(), stage: action === "bite" ? "soaking" : "waiting", held: false };
+    const runtime = mountFishingScene(env.canvas, value);
+    try {
+      env.step(34);
+      const next = { ...value, stage: action === "bite" ? "bite" : "casting", castKey: fresh ? "fresh-action" : value.castKey };
+      // A bite belongs to the existing soaked cast, unlike the beginning of a new flight.
+      if (action === "bite") next.castKey = value.castKey;
+      runtime.update(next); env.step(34);
+      if (repeated) {
+        if (action === "bite") runtime.update({ ...next, stage: "soaking" });
+        runtime.update({ ...next });
+      }
+      for (let index = 0; index < 8; index++) env.step(34);
+      return env.paints.at(-1).visual.boatMotion;
+    } finally { runtime.dispose(); env.restore(); }
+  }
+  for (const action of ["cast", "bite"]) assert.deepEqual(response(action, true), response(action, false));
+  const newCast = response("cast"), oldCast = response("cast", false, false);
+  assert.ok(Math.abs(newCast.bob - oldCast.bob) > .2, "a genuinely new cast visibly displaces the floating hull");
+  assert.ok(Math.abs(newCast.surge - oldCast.surge) > .2, "the cast also has a little horizontal recoil");
+});
+
+test("inertial heave, roll and surge freeze on pause and hidden resume; hidden actions cannot leave a delayed kick", () => {
+  const env = environment(), value = { ...frame(), held: true }, runtime = mountFishingScene(env.canvas, value);
+  try {
+    for (let index = 0; index < 20; index++) env.step(34);
+    const motion = env.paints.at(-1).visual.boatMotion;
+    runtime.update({ ...value, stage: "paused", held: false });
+    assert.deepEqual(env.paints.at(-1).visual.boatMotion, motion);
+    env.step(5000); runtime.update(value); env.step(34);
+    assert.deepEqual(env.paints.at(-1).visual.boatMotion, motion, "resuming starts with zero elapsed delta");
+    env.visibility(true); env.step(5000); env.visibility(false); env.step(34);
+    assert.deepEqual(env.paints.at(-1).visual.boatMotion, motion, "hidden time never advances or resets the stored spring");
+    env.reduced(true);
+    assert.deepEqual(env.paints.at(-1).visual.boatMotion, { bob: 0, roll: 0, surge: 0 });
+    assert.equal(env.frames.size, 0);
+    runtime.update({ ...value, held: false }); env.step(1000);
+    assert.deepEqual(env.paints.at(-1).visual.boatMotion, { bob: 0, roll: 0, surge: 0 });
+    assert.equal(env.frames.size, 0);
+  } finally { runtime.dispose(); env.restore(); }
+  function hiddenCast(fresh) {
+    const e = environment(), initial = { ...frame(), stage: "waiting", held: false }, mounted = mountFishingScene(e.canvas, initial);
+    try {
+      for (let tick = 0; tick < 5; tick++) e.step(34);
+      e.visibility(true); e.step(5000);
+      mounted.update({ ...initial, stage: "casting", castKey: fresh ? "hidden-new" : initial.castKey });
+      e.visibility(false);
+      for (let tick = 0; tick < 10; tick++) e.step(34);
+      return e.paints.at(-1).visual.boatMotion;
+    } finally { mounted.dispose(); e.restore(); }
+  }
+  assert.deepEqual(hiddenCast(true), hiddenCast(false), "a cast observed while hidden is marked seen without injecting a later recoil");
+});
+
+
+test("a live mid-cast pause freezes the airborne float through polling and resumes without a new inertial impulse", () => {
+  function castRun(pause) {
+    const env = environment(), value = { ...frame(), stage: "waiting", held: false }, runtime = mountFishingScene(env.canvas, value);
+    try {
+      env.resize(820, 390); env.step(34);
+      const cast = { ...value, stage: "casting", castKey: "live-flight" };
+      runtime.update(cast);
+      for (let tick = 0; tick < 8; tick++) env.step(34);
+      const before = env.paints.at(-1);
+      const geometry = painted => fishingSceneGeometry(painted.viewport.width, painted.viewport.height, painted.frame, painted.visual);
+      const airborne = geometry(before);
+      assert.ok(before.visual.castElapsed > .1 && before.visual.castElapsed < 1.2);
+      assert.ok(Math.hypot(airborne.float.x - airborne.hook.x, airborne.float.y - airborne.hook.y) > 2,
+        "the test pauses an actual airborne cast, not an already landed float");
+      if (pause) {
+        const paused = { ...cast, stage: "paused" };
+        runtime.update(paused);
+        const first = env.paints.at(-1);
+        assert.equal(env.frames.size, 0);
+        assert.equal(paused.stage, "paused", "presentation cannot change the controller's paused stage");
+        for (const key of ["castElapsed", "stageElapsed", "elapsed"]) assert.equal(first.visual[key], before.visual[key]);
+        assert.deepEqual(first.visual.boatMotion, before.visual.boatMotion);
+        assert.deepEqual(first.visual.pose, before.visual.pose);
+        for (const key of ["boat", "tip", "float", "hook"]) assert.deepEqual(geometry(first)[key], airborne[key], `${key} cannot jump when the cast is paused`);
+        env.step(5000); runtime.update({ ...paused });
+        assert.deepEqual(env.paints.at(-1).visual, first.visual, "repeated paused polling cannot force castElapsed to the settled pose");
+        assert.deepEqual(geometry(env.paints.at(-1)).float, airborne.float);
+        runtime.update(cast); env.step(34);
+        assert.deepEqual(env.paints.at(-1).visual, before.visual, "the first resumed tick has no catch-up delta or repeated kick");
+        assert.deepEqual(geometry(env.paints.at(-1)).float, airborne.float);
+      }
+      env.step(34);
+      const after = env.paints.at(-1);
+      return { motion: after.visual.boatMotion, castElapsed: after.visual.castElapsed, stageElapsed: after.visual.stageElapsed,
+        pose: after.visual.pose, float: geometry(after).float };
+    } finally { runtime.dispose(); env.restore(); }
+  }
+  assert.deepEqual(castRun(true), castRun(false), "pause/resume continues the original spring velocities and flight clock exactly");
+});
+
+test("a restored paused cast or a paused replacement key keeps its line in the water", () => {
+  const env = environment(), value = { ...frame(), stage: "paused", held: false, castKey: "restored-pause" };
+  const runtime = mountFishingScene(env.canvas, value);
+  const geometry = painted => fishingSceneGeometry(painted.viewport.width, painted.viewport.height, painted.frame, painted.visual);
+  try {
+    let painted = env.paints.at(-1);
+    assert.equal(env.frames.size, 0);
+    assert.ok(painted.visual.castElapsed >= 2);
+    assert.deepEqual(geometry(painted).float, geometry(painted).hook);
+    runtime.update({ ...value, stage: "casting", castKey: "visible-flight" });
+    for (let tick = 0; tick < 6; tick++) env.step(34);
+    painted = env.paints.at(-1);
+    assert.ok(painted.visual.castElapsed < 1.2);
+    const before = painted.visual.boatMotion;
+    const replaced = { ...value, castKey: "different-restored-pause" };
+    runtime.update(replaced);
+    painted = env.paints.at(-1);
+    assert.equal(painted.frame.stage, "paused", "a different key is a restored pause, never the preceding visual flight");
+    assert.ok(painted.visual.castElapsed >= 2);
+    assert.deepEqual(geometry(painted).float, geometry(painted).hook);
+    assert.deepEqual(painted.visual.boatMotion, before, "a paused replacement does not inject an action impulse");
+    runtime.update({ ...replaced });
+    assert.deepEqual(geometry(env.paints.at(-1)).float, geometry(painted).float);
   } finally { runtime.dispose(); env.restore(); }
 });

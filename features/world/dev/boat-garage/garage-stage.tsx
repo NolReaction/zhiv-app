@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type PointerEvent } from "react";
-import { Anchor, Box, Fuel, Settings2, Ship, X } from "lucide-react";
+import { Anchor, Fish, Fuel, Settings2, Ship, X } from "lucide-react";
 import { getGarageNodeMatrix, getGarageParentMatrix, getGarageViewport, inverseGaragePoint, moveGaragePivot } from "./garage-scene-model.mjs";
 import { getGarageShortcut } from "./garage-editor-shortcuts.mjs";
 import { garageLayerStack } from "./garage-layer-order.mjs";
@@ -262,9 +262,9 @@ export function GarageStage({ scene, device, selectedId, tool, guides, clean, on
       <section className={styles.gamePanel} aria-label="Макет панели улучшений">
         <div className={styles.gameEyebrow}>ВАША КОМПЛЕКТАЦИЯ</div>
         <div className={styles.moduleCards}>{[
-          [Ship, "Корпус"], [Settings2, "Мотор"], [Box, "Ящик"], [Fuel, "Бак"],
+          [Ship, "Корпус"], [Settings2, "Мотор"], [Fish, "Хранилище"], [Fuel, "Бак"],
         ].map(([Icon, label]) => { const PartIcon = Icon as typeof Ship; return <div key={String(label)} className={styles.moduleCard}>
-          <PartIcon size={24} /><span>{String(label)}</span><small>Слот модуля</small>
+          <PartIcon size={24} /><span>{String(label)}</span><small>{label === "Хранилище" ? "Без изменения рисунка" : "Слот модуля"}</small>
         </div>; })}</div>
         <h2>Собираем вашу лодку</h2>
         <p>Корпус, двигатель и снаряжение будут меняться отдельно. Здесь появятся характеристики выбранного улучшения.</p>

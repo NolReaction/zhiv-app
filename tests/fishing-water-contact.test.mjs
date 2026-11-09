@@ -13,11 +13,11 @@ const { paintFishingLandscape, paintFishingWake, paintFishingRipples, paintFishi
 test("the entire boat rig shares a bounded smooth buoyancy transform, with a stable reduced-motion pivot", () => {
   for (let time = 0; time < 100; time += .05) {
     const pose = fishingBoatMotion(time, false), next = fishingBoatMotion(time + .05, false);
-    assert.ok(Math.abs(pose.bob) <= 4.9 && Math.abs(pose.roll) <= .012);
-    assert.ok(Math.abs(next.bob - pose.bob) <= .25 && Math.abs(next.roll - pose.roll) <= .0005);
+    assert.ok(Math.abs(pose.bob) <= 12 && Math.abs(pose.roll) <= .032 && Math.abs(pose.surge) <= 3.6);
+    assert.ok(Math.abs(next.bob - pose.bob) <= .4 && Math.abs(next.roll - pose.roll) <= .0015);
   }
   assert.deepEqual(fishingBoatMotion(0, true), fishingBoatMotion(999, true));
-  assert.deepEqual(fishingBoatMotion(NaN, false), { bob: 0, roll: 0 });
+  assert.deepEqual(fishingBoatMotion(NaN, false), { bob: 0, roll: 0, surge: 0 });
   const boat = { x: 20, y: 40, scale: .5, roll: .009 }, pivot = transformFishingBoatPoint(FISHING_BOAT_PIVOT, boat);
   assert.deepEqual(pivot, { x: 270, y: 307.5 });
   const hand = transformFishingBoatPoint({ x: 515, y: 382 }, boat), grip = transformFishingBoatPoint({ x: 515, y: 382 }, boat);
@@ -26,29 +26,32 @@ test("the entire boat rig shares a bounded smooth buoyancy transform, with a sta
   assert.ok(Math.abs(Math.hypot(other.x - hand.x, other.y - hand.y) - 50) < 1e-8, "rolling preserves all local distances");
 });
 
-test("painted map waves actually move while cached texture creation and strip work stay bounded", () => {
-  const previous = Object.getOwnPropertyDescriptor(globalThis, "document"), creation = [], draws = [];
+test("one decoded lake surface moves without allocating per-frame canvases or repeating a tile", () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "document"), draws = [];
   const gradient = { addColorStop() {} };
+  let allocations = 0;
   const context = new Proxy({}, { get(target, key) {
     if (key in target) return target[key];
     if (key === "createRadialGradient" || key === "createLinearGradient") return () => gradient;
     if (key === "drawImage") return (...args) => draws.push(args);
     return () => {};
   } });
-  const texture = {};
-  Object.defineProperty(globalThis, "document", { configurable: true, value: { createElement() { const canvas = { getContext: () => context }; creation.push(canvas); return canvas; } } });
+  const texture = { naturalWidth: 1024, naturalHeight: 1024 };
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { createElement() { allocations++; throw Error("unexpected source canvas"); } } });
   try {
     paintFishingLandscape(context, 1600, 900, 0, texture);
-    const first = draws.filter(args => args.length === 9).map(args => args.slice(1));
+    assert.equal(draws.length, 1, "the whole viewport is a single source crop, so it has no tile/strip seams");
+    const first = draws[0].slice(1);
     draws.length = 0;
     paintFishingLandscape(context, 1600, 900, 1, texture);
-    const moving = draws.filter(args => args.length === 9).map(args => args.slice(1));
-    assert.equal(creation.length, 1, "one mirrored source per loaded image, never one per frame");
-    assert.ok(first.length > 0 && moving.length < 300, "strip count stays bounded at the largest supported scene size");
-    assert.notDeepEqual(moving, first, "the supplied raster water is refracted and advected, not left static below particles");
+    assert.equal(draws.length, 1);
+    assert.notDeepEqual(draws[0].slice(1), first, "the supplied artwork itself drifts rather than staying static below particles");
+    assert.deepEqual(draws[0].slice(5), [0, 0, 1600, 900]);
+    assert.equal(allocations, 0, "the runtime's cached decoded image is reused directly in every frame");
     draws.length = 0; paintFishingLandscape(context, 1600, 900, 0, texture);
-    assert.deepEqual(draws.filter(args => args.length === 9).map(args => args.slice(1)), first, "frozen clocks retain an identical texture pose");
-    for (const args of moving) { assert.ok(args[0] >= 0 && args[1] >= 0 && args[2] > 0 && args[3] > 0); }
+    assert.deepEqual(draws[0].slice(1), first, "frozen clocks retain an identical texture pose");
+    draws.length = 0; paintFishingLandscape(context, 1600, 900, 600, texture, undefined, .8, true);
+    assert.deepEqual(draws[0].slice(1), first, "reduced motion fixes the texture even if a caller supplies an advancing clock");
   } finally { if (previous) Object.defineProperty(globalThis, "document", previous); else delete globalThis.document; }
 });
 
@@ -56,7 +59,7 @@ test("water contact uses attached contours and open ripples without the detached
   const calls = [], context = new Proxy({}, { get(target, key) { if (key in target) return target[key]; return (...args) => calls.push({ key, args }); } });
   paintFishingWake(context, { x: 500, y: 535 }, 970, 2);
   paintFishingHullContact(context, 2);
-  assert.ok(calls.some(call => call.key === "bezierCurveTo"), "the water lip follows the authored hull rather than an ellipse below it");
+  assert.ok(calls.some(call => call.key === "quadraticCurveTo") && calls.some(call => call.key === "lineTo" && call.args[0] === 762.5 && call.args[1] === 535), "the water lip follows the new side hull keel rather than an ellipse below it");
   assert.equal(calls.some(call => call.key === "fill"), false);
   assert.ok(calls.filter(call => call.key === "stroke").length >= 5);
 });

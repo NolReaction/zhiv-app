@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Crosshair, Download, Expand, Eye, Focus, Hand, Keyboard, Layers, Maximize2, Minimize2, Minus, MousePointer2, PanelRight, Pause, Play, Plus, Redo2, RotateCw, Save, Scaling, Scan, Scissors, SlidersHorizontal, Undo2, X } from "lucide-react";
 import defaultScene from "./garage-scene-default.json";
 import exampleScene from "./garage-scene-example.json";
+import { createGarageSideProfile, GARAGE_SIDE_ASSETS, GARAGE_SIDE_LEVELS } from "./garage-side-profile.mjs";
 import { duplicateGarageNode, garageBranchIds, removeGarageNode, validateGarageScene } from "./garage-scene-model.mjs";
 import { changeGarageHistory, finishGarageHistoryGesture, getGarageShortcut, redoGarageHistory, undoGarageHistory } from "./garage-editor-shortcuts.mjs";
 import type { GarageAsset, GarageNode, GarageScene } from "./garage-scene-types";
@@ -60,7 +61,7 @@ export function GarageEditor() {
   const preview = useRef<HTMLDivElement>(null);
   const device = GARAGE_DEVICES.find(item => item.id === deviceId)!;
   const selected = scene.nodes.find(item => item.id === selectedId);
-  const libraryAssets = [...scene.assets, ...assemblyExample.assets.filter(asset => !scene.assets.some(item => item.id === asset.id))];
+  const libraryAssets = [...scene.assets, ...[...assemblyExample.assets, ...GARAGE_SIDE_ASSETS].filter(asset => !scene.assets.some(item => item.id === asset.id))];
   const cameraMode = device.width > device.height || device.width >= 700 ? "landscape" : "portrait";
   const camera = scene.cameras[cameraMode];
   const dirty = JSON.stringify(scene) !== saved;
@@ -375,6 +376,11 @@ export function GarageEditor() {
     <div className={styles.workspace} data-panel={openPanel ?? "canvas"} inert={busy || !ready}>
       {openPanel && <button type="button" className={styles.backdrop} aria-label="Вернуться на холст" onClick={() => setOpenPanel(null)} />}
       <aside ref={leftDock} className={styles.library} aria-label="Слои и изображения">
+        <label className={styles.sidePresets}><span>Лодка сбоку · L0–L5</span><select aria-label="Загрузить боковую сборку лодки" value="" disabled={!ready || busy || occlusionDraft} onChange={event => {
+          const level = Number(event.target.value), next = createGarageSideProfile({ hull: level, engine: level, tank: level });
+          change(next); fitScene(next, "boat"); setSelectedId("side-hull"); setInspectorTab("object");
+          setNotice(`Боковая сборка L${level} загружена. Детали меняются отдельно; вернуть прежнюю сцену — Ctrl/⌘ Z.`);
+        }}><option value="" disabled>Выбрать сборку…</option>{GARAGE_SIDE_LEVELS.map(level => <option key={level} value={level}>Лодка · L{level}</option>)}</select></label>
         <GarageLayersPanel scene={scene} assets={libraryAssets} selectedId={selectedId} onSelect={selectNode} onChange={change}
           onAdd={add} onUpload={uploadImage} onImport={importScene} />
       </aside>
