@@ -51,7 +51,7 @@ export function HomeUnlockCard({ unlock, onSelect }: { unlock: EconomyHomeUnlock
       {boatUpgrades.map(upgrade => <div className={styles.buildingCost} key={upgrade.id} data-boat-upgrade={upgrade.id}>
         <div><strong>{upgrade.name}</strong><span>{number(upgrade.cost.coins)} монет · {time(upgrade.seconds)}</span></div>
         <Ingredients items={upgrade.cost.items} onSelect={onSelect} /><p className={styles.hint}>{upgrade.description}</p>
-        <small>Нужны: {Object.entries(upgrade.requiredBuildings).map(([id, level]) => `${buildingLabels[id] ?? id} ${level}`).join(" · ")}</small>
+        {Object.keys(upgrade.requiredBuildings).length > 0 && <small>Нужны: {Object.entries(upgrade.requiredBuildings).map(([id, level]) => `${buildingLabels[id] ?? id} ${level}`).join(" · ")}</small>}
       </div>)}
       <p className={styles.hint}>Это отдельное развитие лодки у существующего причала. Работы занимают общего строителя и требуют получения после таймера. Они не входят в обязательный бюджет следующего дома. Чертежи и постоянные предметы относятся к отдельной системе находок.</p>
     </div></details>}

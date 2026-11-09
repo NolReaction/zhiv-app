@@ -101,7 +101,7 @@ internal class ObservedSecurityFailure(
 
 private val observedActions = setOf(
     "claim_tutorial_order", "claim_workshop_starter", "eat_food", "feed_builder", "cancel_meal", "complete_resident_order", "replace_resident_order", "accept_weekly_order",
-    "inspect_telescope", "start_boat_upgrade", "claim_boat_upgrade", "depart_boat", "begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat",
+    "inspect_telescope", "start_boat_upgrade", "claim_boat_upgrade", "buy_boat_fuel", "depart_boat", "begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat",
     "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage", "replace_ship_order", "expire_ship_voyage",
     "start_production", "start_tutorial_harvest", "buy_production_slot", "start_collection", "start_garden_collection", "start_exploration", "start_fishing",
     "cancel_production", "cancel_exploration", "start_tutorial_workshop", "start_construction", "speedup_construction",

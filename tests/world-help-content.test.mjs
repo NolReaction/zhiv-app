@@ -67,13 +67,15 @@ test("Leaftail help explains personal finds, delivery progress, permanent owners
 test("boat help links busy-player advice to real repair, attempts, delivery and current upgrade rules", () => {
   const boat = economyCatalog.boat, repair = boat.upgrades.find(upgrade => upgrade.id === "repair");
   assert.equal(topic("boat-fishing").group, "travel");
-  assert.deepEqual(topic("boat-fishing").action.target, { kind: "expeditions", sector: "coast" });
-  assert.ok(answer("boat-fishing").includes(`дом ${repair.requiredHomeLevel} и мастерская ${repair.requiredBuildings.workshop}`));
+  assert.deepEqual(topic("boat-fishing").action.target, { kind: "boat" });
+  assert.ok(answer("boat-fishing").includes(`С дома ${repair.requiredHomeLevel} можно бесплатно починить корпус`));
   assert.match(answer("boat-fishing"), /полной кладовой.*улов останется/);
   assert.match(answer("boat-fishing"), /Мохлик занят до получения улова/);
-  assert.ok(answer("boat-controls").includes(`${boat.maxCasts} заброса, с ящиком ${boat.maxCasts + 1}`));
+  assert.ok(answer("boat-controls").includes(`${boat.moduleEffects.storage[0]} рыб за ${boat.moduleEffects.storage[0] + boat.spareCasts} забросов`));
   assert.match(answer("boat-controls"), /Попытка тратится при забросе/);
-  assert.match(answer("boat-controls"), /Пауза.*не дольше/);
+  assert.match(answer("boat-controls"), /Пауза.*на устройстве/);
+  assert.ok(answer("boat-upgrades").includes(`за ${formatPearls(boat.fuel.refillPricePearls)} жемчужин`));
+  assert.ok(answer("boat-upgrades").includes(`за ${boat.fuel.regenSeconds / 60} минут`));
   assert.equal(topics.some(entry => entry.id === "boat-blueprints"), false);
   assert.doesNotMatch(answer("boat-fishing"), /Нажмите лодку у причала/);
   assert.doesNotMatch(answer("boat-upgrades"), /чертеж|подзорная труба/i);
@@ -412,13 +414,13 @@ test("fishing help quotes the real probability per fish class without promising 
 test("fishing guidance distinguishes an authoritative catch, class stock art and personal discoveries", () => {
   assert.match(answer("plesk"), /нынешние проценты с выбранной снастью в пяти строках/);
   assert.match(answer("plesk"), /Открытие не покупает снасть/);
-  assert.match(answer("fishing-result"), /Пока рыбалка идёт, видно только количество рыб/);
+  assert.match(answer("fishing-result"), /Вид и вес следующей рыбы раскроются после вываживания/);
   assert.match(answer("fishing-result"), /Когда игра подтвердит возвращение.*виды, редкость и количество/);
   assert.match(answer("fishing-result"), /Нажмите «Забрать».*текущие запасы по видам и классам.*навсегда откроются в вашей книге/);
   assert.match(answer("fishing-result"), /прежних вылазок могут остаться общие классы рыб/);
   assert.match(answer("fishing-result"), /Книга помнит прежние поимки, даже если рыба потрачена/);
   assert.match(answer("fishing-result"), /В холодильнике, у Плёски и в выборе ингредиентов показана только оставшаяся рыба/);
-  assert.deepEqual(topic("fishing-result").action.target, { kind: "expeditions", sector: "coast" });
+  assert.deepEqual(topic("fishing-result").action.target, { kind: "boat" });
   assert.ok(topic("collection").relatedIds.includes("fishing-result"));
 });
 

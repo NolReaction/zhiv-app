@@ -56,7 +56,7 @@ test("ordinary repair, claim, departure and cast run real rules against private 
   const demo = rehearsal(), before = demo.read();
   const repair = demo.command("start_boat_upgrade", "repair"), started = demo.send(repair);
   assert.equal(started.state.boat.level, 0);
-  assert.ok(started.state.wallet.coins < before.wallet.coins);
+  assert.equal(started.state.wallet.coins, before.wallet.coins, "first hull repair is free");
   assert.equal(demo.send(repair).replayed, true);
   assert.throws(() => demo.send({ ...repair, targetId: "oars" }), /другими параметрами/);
   assert.equal(demo.read().wallet.coins, started.state.wallet.coins);
@@ -65,9 +65,8 @@ test("ordinary repair, claim, departure and cast run real rules against private 
   const ready = demo.act("claim_boat_upgrade", started.state.boat.work.id).state;
   assert.equal(ready.boat.level, 1);
   const outward = demo.act("depart_boat", ready.catalog.boat.routeId).state;
-  assert.equal(boatPhase(outward.boat, at), "outbound");
+  assert.equal(boatPhase(outward.boat, at), "fishing");
   assert.equal(outward.boat.voyage.slots, undefined);
-  demo.actDev("finish_boat_travel", outward.boat.voyage.id);
   assert.equal(boatPhase(demo.read().boat, at), "fishing");
   const cast = demo.act("begin_boat_cast", outward.boat.voyage.id).state;
   assert.ok(cast.boat.voyage.challenge);

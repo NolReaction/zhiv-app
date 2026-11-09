@@ -8,7 +8,7 @@ export const BOAT_GARAGE_STAND_ASSET = {
  * @param {{boatScale?: number, boatX?: number, boatY?: number}} [placement]
  */
 export function boatGarageStandFrames({ boatScale = 1, boatX = 0, boatY = 0 } = {}) {
-  const contactY = boatY + 555 * boatScale, floorY = boatY + 687.5 * boatScale;
+  const contactY = boatY + 555 * boatScale, floorY = boatY + 755 * boatScale;
   return [480, 1100].map(x => ({
     x: boatX + x * boatScale, y: floorY, width: 320, height: 320,
     scale: (floorY - contactY) / (304 - 24), pivotX: .5, pivotY: .95,

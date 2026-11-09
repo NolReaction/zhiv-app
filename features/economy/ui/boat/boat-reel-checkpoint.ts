@@ -19,11 +19,12 @@ export function readBoatReelCheckpoint(storage: CheckpointStorage | null, key: s
   try {
     const raw = storage?.getItem(key);
     if (!raw || raw.length > 30000) return empty();
-    const saved = JSON.parse(raw) as { challengeId?: string; seed?: number; startedAt?: string; rulesVersion?: number; resistance?: string; fishRarity?: string; endTick?: number; inputs?: BoatReelInput[] };
+    const saved = JSON.parse(raw) as { challengeId?: string; seed?: number; startedAt?: string; rulesVersion?: number; resistance?: string; fishRarity?: string; motorResponse?: number; hullDamping?: number; endTick?: number; inputs?: BoatReelInput[] };
     if (saved.challengeId !== challenge.id || saved.seed !== challenge.seed || saved.startedAt !== challenge.startedAt
       || (saved.rulesVersion ?? 1) !== challenge.rulesVersion
       || challenge.rulesVersion >= 2 && saved.resistance !== challenge.resistance
       || challenge.rulesVersion >= 3 && saved.fishRarity !== challenge.fishRarity
+      || challenge.rulesVersion >= 5 && (saved.motorResponse !== challenge.motorResponse || saved.hullDamping !== challenge.hullDamping)
       || !Array.isArray(saved.inputs) || !Number.isInteger(saved.endTick)) return empty();
     const reel = replayBoatReel(challenge, saved.inputs, saved.endTick!);
     return { reel, inputs: saved.inputs.map(input => ({ tick: input.tick, held: input.held })) };
@@ -36,7 +37,7 @@ export function boatReelSubmission(challenge: BoatChallenge, reel: BoatReelState
 
 export function writeBoatReelCheckpoint(storage: CheckpointStorage | null, key: string, challenge: BoatChallenge, reel: BoatReelState, inputs: readonly BoatReelInput[]) {
   if (reel.tick < 1) return;
-  try { storage?.setItem(key, JSON.stringify({ ...boatReelSubmission(challenge, reel, inputs), seed: challenge.seed, startedAt: challenge.startedAt, rulesVersion: challenge.rulesVersion, resistance: challenge.resistance, ...(challenge.rulesVersion >= 3 ? { fishRarity: challenge.fishRarity } : {}) })); } catch { /* Fishing remains playable when browser storage is unavailable. */ }
+  try { storage?.setItem(key, JSON.stringify({ ...boatReelSubmission(challenge, reel, inputs), seed: challenge.seed, startedAt: challenge.startedAt, rulesVersion: challenge.rulesVersion, resistance: challenge.resistance, ...(challenge.rulesVersion >= 3 ? { fishRarity: challenge.fishRarity } : {}), ...(challenge.rulesVersion >= 5 ? { motorResponse: challenge.motorResponse, hullDamping: challenge.hullDamping } : {}) })); } catch { /* Fishing remains playable when browser storage is unavailable. */ }
 }
 
 /** Several events within one simulation tick still represent one final button state. */

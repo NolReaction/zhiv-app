@@ -1,5 +1,5 @@
 import { economyCatalog, type EconomyCatalog, type EconomyState } from "./model";
-import { boatPrivateStateSchema, type BoatState, type BoatPrivateState, type BoatVoyage, type BoatUpgradeId, type BoatCatalog } from "./boat-model";
+import { boatPrivateStateSchema, type BoatState, type BoatPrivateState, type BoatVoyage, type BoatUpgradeId, type BoatCatalog, type BoatModuleId } from "./boat-model";
 import { economyActorConflict } from "./actor-availability";
 import { fishingState, fishingBaitCompatible } from "./fishing";
 
@@ -10,6 +10,34 @@ export const boatConfig = (catalog: EconomyCatalog = economyCatalog): BoatCatalo
 };
 export const newBoatState = (): BoatPrivateState => boatPrivateStateSchema.parse({});
 export const boatState = (state: { boat?: BoatState }): BoatState => state.boat ?? newBoatState();
+/** Purchases made before module tiers retain their first-tier rights, including pending paid work on claim. */
+export function boatModules(boat: BoatState) {
+  return {
+    engine: Math.max(boat.modules?.engine ?? 0, Number(boat.upgrades.includes("oars"))),
+    tank: boat.modules?.tank ?? 0,
+    hull: Math.max(boat.level, boat.modules?.hull ?? 0),
+    storage: Math.max(boat.modules?.storage ?? 0, Number(boat.upgrades.includes("crate"))),
+  };
+}
+export function boatModuleUpgrade(boat: BoatState, module: BoatModuleId, config = boatConfig()) {
+  const nextTier = boatModules(boat)[module] + 1;
+  return config.upgrades.find(entry => entry.module === module && entry.tier === nextTier);
+}
+export function boatTripStats(boat: BoatState, config = boatConfig()) {
+  const maxCatches = config.moduleEffects.storage[boatModules(boat).storage];
+  return { outboundSeconds: config.outboundSeconds, inboundSeconds: config.inboundSeconds, maxCatches, maxCasts: maxCatches + config.spareCasts };
+}
+/** A snapshot keeps one absolute recharge deadline. Time spent full cannot accrue hidden cells. */
+export function boatFuelStatus(boat: BoatState, now: number, config = boatConfig()) {
+  const capacity = config.moduleEffects.tank[boatModules(boat).tank];
+  const interval = config.fuel.regenSeconds * 1000;
+  const initial = Math.min(capacity, boat.fuel?.cells ?? capacity);
+  if (initial === capacity) return { cells: capacity, capacity, nextAt: null };
+  const deadline = boat.fuel?.nextAt ? Date.parse(boat.fuel.nextAt) : now + interval;
+  const earned = Math.max(0, 1 + Math.floor((now - deadline) / interval));
+  const cells = Math.min(capacity, initial + earned);
+  return { cells, capacity, nextAt: cells === capacity ? null : deadline + earned * interval };
+}
 export function boatReturnStartedAt(voyage: BoatVoyage): number {
   return voyage.returnStartedAt ? Date.parse(voyage.returnStartedAt) : Date.parse(voyage.fishingUntil);
 }
@@ -27,6 +55,8 @@ export function boatPhase(boat: BoatState, now: number): "broken" | "repairing" 
 export function publicBoatState(value?: BoatState | null): BoatState {
   const boat = value ?? newBoatState(), voyage = boat.voyage;
   return { version: 1, level: boat.level, upgrades: [...boat.upgrades], blueprints: { ...boat.blueprints }, artifacts: [...boat.artifacts],
+    ...(boat.modules ? { modules: { ...boatModules(boat) } } : {}),
+    ...(boat.fuel ? { fuel: { cells: boat.fuel.cells, ...(boat.fuel.nextAt ? { nextAt: boat.fuel.nextAt } : {}) } } : {}),
     completedVoyages: boat.completedVoyages, qualifiedVoyages: boat.qualifiedVoyages,
     records: Object.fromEntries(Object.entries(boat.records).map(([id, record]) => [id, { weightGrams: record.weightGrams, caughtAt: record.caughtAt }])),
     ...(boat.work ? { work: { id: boat.work.id, upgradeId: boat.work.upgradeId, startedAt: boat.work.startedAt, finishesAt: boat.work.finishesAt,
@@ -35,23 +65,26 @@ export function publicBoatState(value?: BoatState | null): BoatState {
       ...(voyage.returnStartedAt ? { returnStartedAt: voyage.returnStartedAt } : {}), ...(voyage.returnsAt ? { returnsAt: voyage.returnsAt } : {}),
       maxCasts: voyage.maxCasts, maxCatches: voyage.maxCatches, castsUsed: voyage.castsUsed, outboundSeconds: voyage.outboundSeconds, inboundSeconds: voyage.inboundSeconds,
       loadout: { rodId: voyage.loadout.rodId, hookId: voyage.loadout.hookId, baitId: voyage.loadout.baitId },
-      catches: voyage.catches.map(caught => ({ castIndex: caught.castIndex, fishId: caught.fishId, weightGrams: caught.weightGrams, caughtAt: caught.caughtAt })),
+      catches: voyage.catches.map(caught => ({ castIndex: caught.castIndex, fishId: caught.fishId, weightGrams: caught.weightGrams, caughtAt: caught.caughtAt, ...(caught.reelSeconds != null ? { reelSeconds: caught.reelSeconds } : {}) })),
       ...(voyage.challenge ? { challenge: { id: voyage.challenge.id, rulesVersion: voyage.challenge.rulesVersion, seed: voyage.challenge.seed,
         tickMs: voyage.challenge.tickMs, maxTicks: voyage.challenge.maxTicks, zoneWidth: voyage.challenge.zoneWidth, difficulty: voyage.challenge.difficulty,
         startedAt: voyage.challenge.startedAt, expiresAt: voyage.challenge.expiresAt,
+        ...(voyage.challenge.rulesVersion === 5 ? { motorResponse: voyage.challenge.motorResponse, hullDamping: voyage.challenge.hullDamping } : {}),
         ...(voyage.challenge.resistance ? { resistance: voyage.challenge.resistance } : {}),
         ...(voyage.challenge.biteAt ? { biteAt: voyage.challenge.biteAt } : {}),
         ...(voyage.challenge.fishRarity ? { fishRarity: voyage.challenge.fishRarity } : {}) } } : {}) } } : {}) };
 }
-type BoatSource = Pick<EconomyState, "buildings" | "jobs" | "inventory" | "wallet" | "fishing"> & { boat?: BoatState };
+type BoatSource = Pick<EconomyState, "buildings" | "jobs" | "inventory" | "wallet" | "fishing"> & { boat?: BoatState; catalog?: EconomyCatalog };
 export function boatUpgradeReason(state: BoatSource, upgradeId: BoatUpgradeId | string, now = Date.now()): string | null {
   if (!Number.isFinite(now)) return "Обновите время хозяйства";
-  const boat = boatState(state), upgrade = boatConfig().upgrades.find(entry => entry.id === upgradeId);
+  const boat = boatState(state), upgrade = (state.catalog?.boat ?? boatConfig()).upgrades.find(entry => entry.id === upgradeId);
   if (!upgrade) return "Улучшение не найдено";
   if (boat.work || state.jobs.some(job => job.kind === "construction")) return "Строитель занят. Сначала завершите текущую работу";
   if (boat.voyage) return "Сначала вернитесь и заберите улов";
   if (upgradeId === "repair" ? boat.level > 0 : boat.level === 0) return upgradeId === "repair" ? "Лодка уже восстановлена" : "Сначала восстановите лодку";
-  if (boat.upgrades.some(id => id === upgradeId) || boat.artifacts.some(id => id === upgradeId)) return "Улучшение уже готово";
+  if (upgrade.module && upgrade.tier !== boatModules(boat)[upgrade.module] + 1)
+    return (upgrade.tier ?? 0) <= boatModules(boat)[upgrade.module] ? "Улучшение уже готово" : "Сначала установите предыдущий уровень";
+  if (boat.artifacts.some(id => id === upgradeId)) return "Улучшение уже готово";
   if ((state.buildings.home ?? 1) < upgrade.requiredHomeLevel) return `Нужен дом уровня ${upgrade.requiredHomeLevel}`;
   if (Object.entries(upgrade.requiredBuildings).some(([id, level]) => (state.buildings[id] ?? 0) < level)) return "Сначала улучшите мастерскую";
   if (upgrade.blueprint && boat.blueprints[upgrade.blueprint] < 3) return "Соберите три страницы чертежа";
@@ -63,6 +96,7 @@ export function boatDepartureReason(state: BoatSource, now: number): string | nu
   if (!boat.level) return "Сначала восстановите лодку";
   if (boat.work) return "Дождитесь улучшения лодки и заберите работу";
   if (boat.voyage) return "Сначала вернитесь и заберите улов";
+  if (boatFuelStatus(boat, now, state.catalog?.boat).cells === 0) return "Бак пуст. Дождитесь топлива или заправьтесь за жемчуг";
   const conflict = economyActorConflict(state.jobs, "departure", now);
   if (conflict) return conflict.message;
   if (!fishing || !tackle.ownedRods.includes(tackle.equippedRodId) || !fishing.rods.some(rod => rod.id === tackle.equippedRodId)
@@ -76,6 +110,8 @@ export function boatFishWeight(minGrams: number, maxGrams: number, first: number
 }
 export function boatClaimPracticeSeconds(before: BoatState | undefined, after: BoatState | undefined, action: string): number {
   const voyage = before?.voyage;
-  return action === "claim_boat" && voyage && !after?.voyage
-    ? Math.floor((voyage.outboundSeconds + voyage.inboundSeconds) * voyage.catches.length / voyage.maxCatches) : 0;
+  if (action !== "claim_boat" || !voyage || after?.voyage) return 0;
+  const travel = voyage.outboundSeconds + voyage.inboundSeconds;
+  return travel ? Math.floor(travel * voyage.catches.length / voyage.maxCatches)
+    : voyage.catches.reduce((total, caught) => total + (caught.reelSeconds ?? 0), 0);
 }

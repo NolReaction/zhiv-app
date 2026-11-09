@@ -36,10 +36,10 @@ const memory = () => { const values = new Map(); return { getItem: key => values
 test("opening a broken or docked boat is read-only and explains capped outings", () => {
   const value = state(), before = structuredClone(value), broken = render(value);
   assert.match(broken, /data-boat-phase="broken"/); assert.match(broken, /Восстановить лодку/);
-  assert.match(broken, /рыбалка на пирсе остаётся/); assert.deepEqual(value, before);
+  assert.doesNotMatch(broken, /рыбалка на пирсе остаётся/); assert.deepEqual(value, before);
   value.boat.level = 1;
-  assert.match(render(value), /4 заброса/); assert.match(render(value), /Отправиться на рыбалку/);
-  value.boat.upgrades.push("crate"); assert.match(render(value), /5 забросов/);
+  assert.match(render(value), /Забросов 6/); assert.match(render(value), /Отправиться на рыбалку/);
+  value.boat.upgrades.push("crate"); assert.match(render(value), /Забросов 7/);
 });
 
 test("a cached catalog without boats hides its entry and an already-open dialog remains read-only and recoverable", () => {
@@ -77,9 +77,12 @@ test("a paused release hides new outings and offers recovery for a paid voyage",
   assert.match(atDock, /Завершить выход/);
 });
 
-test("outbound, fishing, automatic return and arrival have distinct controls without starting casts", () => {
+test("saved trips with travel timers still show distinct journey phases without starting casts", () => {
   const value = state(); value.boat.level = 1; run(value, "depart_boat", "river_reach");
-  const voyage = value.boat.voyage, arrival = Date.parse(voyage.arrivesAt);
+  const voyage = value.boat.voyage;
+  voyage.outboundSeconds = 360; voyage.inboundSeconds = 240;
+  const arrival = at + voyage.outboundSeconds * 1000; voyage.arrivesAt = new Date(arrival).toISOString();
+  voyage.fishingUntil = new Date(arrival + 900000).toISOString();
   const outward = render(value);
   assert.match(outward, /data-boat-phase="outbound"/); assert.doesNotMatch(outward, /Забросить удочку/);
   const arrived = render(value, arrival);
@@ -109,7 +112,7 @@ test("boat menus show only physical upgrades and preserve legacy fragments and p
   const before = structuredClone(value), html = render(value);
   assert.equal([...html.matchAll(/role="tab"/g)].length, 3);
   assert.doesNotMatch(html, /Чертежи|Фрагменты схемы|Изготовить|data-boat-module="(?:landing_net|telescope)"/);
-  assert.match(html, /data-boat-module="repair"/); assert.match(html, /data-boat-module="oars"/); assert.match(html, /data-boat-module="crate"/);
+  for (const id of ["engine", "tank", "hull", "storage"]) assert.match(html, new RegExp(`data-boat-module="${id}"`));
   assert.deepEqual(value, before);
 });
 
@@ -181,4 +184,21 @@ test("directional feedback agrees with replay progress at both zone edges", asyn
   assert.equal(boatReelFeedback({ ...center, fish: 6000 }, 2000).inZone, true);
   assert.equal(boatReelFeedback({ ...center, fish: 6001 }, 2000).urgent, true);
   assert.equal(boatReelFeedback({ ...center, fish: 3999 }, 2000).direction, "ease");
+});
+
+test("docked fuel uses catalog units, empty-only purchases, timed recharge and insufficient balance", () => {
+  const value = state(); value.boat.level = 1; value.wallet.pearls = economyCatalog.boat.fuel.refillPricePearls;
+  value.boat.fuel = { cells: 0, nextAt: new Date(at + economyCatalog.boat.fuel.regenSeconds * 1000).toISOString() };
+  const before = structuredClone(value), empty = render(value);
+  assert.match(empty, /Бензин: 0 из 2/);
+  assert.match(empty, /Купить одну ячейку за 7 жемчужин/);
+  assert.match(empty, />30:00</); assert.match(empty, /Улов до 4/);
+  const funded = empty.match(/<button[^>]+aria-label="Купить одну ячейку[^>]+>/)?.[0];
+  assert.ok(funded); assert.doesNotMatch(funded, /disabled/);
+  assert.deepEqual(value, before);
+  value.wallet.pearls--;
+  const missing = render(value).match(/<button[^>]+aria-label="Купить одну ячейку[^>]+>/)?.[0];
+  assert.match(missing, /disabled/);
+  const recovered = render(value, Date.parse(value.boat.fuel.nextAt));
+  assert.match(recovered, /Бензин: 1 из 2/); assert.doesNotMatch(recovered, /data-fuel-refill/);
 });

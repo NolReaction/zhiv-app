@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Anchor, ArrowLeft, Check, Fish, FishingRod, Package, Sailboat, Waves } from "lucide-react";
-import { boatConfig, boatPhase, boatReturnStartedAt, boatReturnsAt, boatState } from "@/features/economy/domain/boat-fishing";
+import { boatConfig, boatModules, boatPhase, boatReturnStartedAt, boatReturnsAt, boatState } from "@/features/economy/domain/boat-fishing";
 import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { worldCountdown } from "@/features/economy/ui/shared/world-stations";
 import { BoatArt } from "./boat-art";
@@ -31,7 +31,7 @@ export function BoatVoyagePanel({ economy, disabled, send, onOpenPantry }: Props
   const returnHome = () => { if (send("return_boat", voyage.id)) setConfirmReturn(null); };
   return <>
     <div className={styles.layout}>
-      <div className={styles.boatView}><div className={styles.art}><BoatArt repaired={boat.level > 0} crate={boat.upgrades.includes("crate")} oars={boat.upgrades.includes("oars")} travelling={phase === "outbound" || phase === "returning"} /></div><div className={styles.caption}><span><Waves size={14} />{config.name}</span><span><Fish size={14} />{voyage.catches.length} на борту</span></div></div>
+      <div className={styles.boatView}><div className={styles.art}><BoatArt modules={boatModules(boat)} repaired={boat.level > 0} crate={boat.upgrades.includes("crate")} oars={boat.upgrades.includes("oars")} travelling={phase === "outbound" || phase === "returning"} /></div><div className={styles.caption}><span><Waves size={14} />{config.name}</span><span><Fish size={14} />{voyage.catches.length} на борту</span></div></div>
       <section className={styles.trip} aria-label="Состояние лодки">
         <span className={styles.eyebrow}><Anchor size={13} />{phase === "outbound" ? "Дорога к месту ловли" : phase === "returning" ? "Возвращение домой" : "Речной плёс"}</span>
         {phase === "outbound" || phase === "returning" ? <><h3>{phase === "outbound" ? "К месту ловли" : "Курс на причал"}</h3><div className={styles.travelLine}><Anchor size={19} /><span /><Sailboat size={28} /><span /><Fish size={20} /></div>

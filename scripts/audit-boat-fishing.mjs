@@ -5,30 +5,53 @@ import { createServer } from "vite";
 import { economicMath } from "./lib/economy-math.mjs";
 
 const rounded = value => Number(value.toFixed(6));
-const modes = [[], ["crate"], ["oars"], ["crate", "oars"]];
+const exchange = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/currency-exchange-catalog.json", import.meta.url), "utf8"));
 
-/** Economic ceiling: instant successful casts, no visits, input mistakes or latency.
- * This deliberately gives active fishing every advantage; it is not a playthrough.
- */
+// Apply an independent, assumed landing probability to each available attempt.
+// The final bucket is absorbing: the player stops once the hold is full.
+function expectedCatches(capacity, attempts, probability) {
+  const counts = new Array(capacity + 1).fill(0);
+  counts[0] = 1;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    for (let caught = capacity; caught > 0; caught--)
+      counts[caught] = counts[caught] * (caught === capacity ? 1 : 1 - probability) + counts[caught - 1] * probability;
+    counts[0] *= (1 - probability);
+  }
+  return counts.reduce((sum, frequency, caught) => sum + frequency * caught, 0);
+}
+
+/** Long-run free supply and finite outing budgets, independently of rendering and player timing. */
 export function auditBoatFishingBalance(catalog) {
   const boat = catalog.boat, fishing = catalog.fishing, math = economicMath(catalog);
   assert(boat && fishing, "Boat and fishing catalogs are required");
   const shore = catalog.explorations.find(route => route.id === "shore");
-  assert(shore?.seconds > 0 && shore.rewards.fish > 0, "The existing shore comparator must remain available");
-  assert.deepEqual([...boat.upgrades.map(upgrade => upgrade.id)].sort(), ["crate", "landing_net", "oars", "repair", "telescope"]);
+  assert(shore?.seconds > 0 && shore.rewards.fish > 0, "The historical baseline for comparing fish supply must be defined");
+  const { storage, tank } = boat.moduleEffects;
+  assert.deepEqual(boat.upgrades.filter(row => !row.module).map(row => row.id).sort(), ["landing_net", "telescope"]);
+  for (const moduleId of ["engine", "tank", "hull", "storage"]) {
+    const tiers = boat.upgrades.filter(row => row.module === moduleId).map(row => row.tier).sort((a, b) => a - b);
+    assert.deepEqual(tiers, [1, 2, 3, 4, 5], `${moduleId}: each tier must exist exactly once`);
+  }
+  for (const capacities of [storage, tank])
+    assert(capacities.length === 6 && capacities.every((n, i) => Number.isSafeInteger(n) && n > 0 && (!i || n > capacities[i - 1])));
+  const repair = boat.upgrades.find(row => row.id === "repair");
+  assert.deepEqual([repair?.requiredHomeLevel, repair?.requiredBuildings, repair?.cost], [1, {}, { coins: 0, items: {} }],
+    "Starter fishing must require no currency or locked source");
+  assert.equal(boat.fuel.baseCapacity, tank[0]);
   assert.deepEqual(Object.keys(boat.weights).sort(), fishing.fish.map(fish => fish.itemId).sort(), "Every collectible species has exactly one mass profile");
   for (const [id, weight] of Object.entries(boat.weights))
     assert(Number.isSafeInteger(weight.minGrams) && Number.isSafeInteger(weight.maxGrams) && weight.minGrams > 0 && weight.maxGrams > weight.minGrams,
       `${id}: integer mass bounds are ordered`);
-  assert(boat.outboundSeconds > 0 && boat.inboundSeconds > 0 && boat.oarsTravelSeconds > 0, "Both road legs remain positive");
-  assert(boat.maxCasts >= 1 && boat.maxCasts + 1 <= 10, "The crate adds one bounded attempt");
+  assert.deepEqual([boat.outboundSeconds, boat.inboundSeconds, boat.oarsTravelSeconds], [0, 0, 0]);
+  assert.equal(boat.maxCasts, storage[0]);
+  assert(Number.isSafeInteger(boat.spareCasts) && boat.spareCasts >= 0 && storage.at(-1) + boat.spareCasts <= 11);
   assert(boat.netZoneWidth > boat.zoneWidth && boat.netZoneWidth < 10000, "The net widens a bounded holding zone");
 
   const upgrades = boat.upgrades.map(upgrade => {
     const sourceHome = Math.max(1, ...Object.keys(upgrade.cost.items).map(id => math.sourceHome(id)));
     assert(upgrade.requiredHomeLevel >= sourceHome, `${upgrade.id}: material sources must exist by its advertised house`);
     assert(upgrade.seconds > 0 && upgrade.cost.coins >= 0);
-    return { id: upgrade.id, home: upgrade.requiredHomeLevel, seconds: upgrade.seconds, coins: upgrade.cost.coins,
+    return { id: upgrade.id, module: upgrade.module, tier: upgrade.tier, home: upgrade.requiredHomeLevel, seconds: upgrade.seconds, coins: upgrade.cost.coins,
       inputs: upgrade.cost.items, inputSaleValue: math.liquidation(upgrade.cost.items),
       totalForegoneSaleValue: upgrade.cost.coins + math.liquidation(upgrade.cost.items) };
   });
@@ -52,36 +75,35 @@ export function auditBoatFishingBalance(catalog) {
       shoreNetCoinsPerHour: (portfolio.expectedFishRevenue - baitCost) * 3600 / shore.seconds });
   }
   assert(loadouts.length > 0, "At least one owned loadout must remain usable");
-  const reports = modes.map(upgrades => {
-    const casts = boat.maxCasts + Number(upgrades.includes("crate"));
-    const travelSeconds = upgrades.includes("oars") ? boat.oarsTravelSeconds * 2 : boat.outboundSeconds + boat.inboundSeconds;
-    const fishPerHour = casts * 3600 / travelSeconds;
-    assert(fishPerHour <= shore.rewards.fish * 3600 / shore.seconds, "Boat attempt ceiling must not exceed the existing shore catch rate");
-    const rows = loadouts.map(loadout => {
-      const netCoinsPerHour = (casts * loadout.expectedValuePerFish - loadout.baitCost) * 3600 / travelSeconds;
-      assert(netCoinsPerHour <= loadout.shoreNetCoinsPerHour + 1e-9,
-        `${upgrades.join("+") || "base"}/${loadout.rodId}/${loadout.hookId}/${loadout.baitId}: boat exceeds the same shore loadout`);
-      return { ...loadout, netCoinsPerHour };
+  const tripsPerHour = 3600 / boat.fuel.regenSeconds;
+  const oldShoreRate = shore.rewards.fish * 3600 / shore.seconds;
+  const referenceCoinsPerRawPearl = Math.min(...exchange.offers.map(offer => offer.coins / offer.pearls));
+  const topFishPrice = Math.max(...fishing.classes.map(item => math.liquidation({ [item.itemId]: 1 })));
+  const refillAlternativeCoins = referenceCoinsPerRawPearl * boat.fuel.refillPricePearls;
+  assert(tripsPerHour > 0 && Number.isFinite(tripsPerHour));
+  assert(refillAlternativeCoins >= topFishPrice * storage.at(-1), "One emergency refill should not beat normal coin exchange even at maximum raw-fish sale");
+  const starter = loadouts.find(row => row.rodId === "reed_rod" && row.hookId === "bare_hook" && !row.baitId);
+  assert(starter, "A starter must be able to fish with no bait purchase");
+  const holds = storage.map((capacity, tier) => {
+    const attempts = capacity + boat.spareCasts;
+    const maxFishPerHour = tripsPerHour * capacity;
+    assert(maxFishPerHour <= oldShoreRate, "Free long-run supply exceeds the old shore route");
+    const best = Math.max(...loadouts.map(row => capacity * row.expectedValuePerFish - row.baitCost));
+    const sensitivity = [0.5, 0.75, 0.9].map(probability => {
+      const catches = expectedCatches(capacity, attempts, probability);
+      return { probability, expectedCatches: rounded(catches), expectedStarterSale: rounded(catches * starter.expectedValuePerFish) };
     });
-    const sorted = rows.toSorted((first, second) => first.netCoinsPerHour - second.netCoinsPerHour);
-    return { upgrades, casts, travelSeconds, maxFishPerHour: rounded(fishPerHour),
-      minNetCoinsPerHour: rounded(sorted[0].netCoinsPerHour), maxNetCoinsPerHour: rounded(sorted.at(-1).netCoinsPerHour),
-      bestLoadout: { rodId: sorted.at(-1).rodId, hookId: sorted.at(-1).hookId, baitId: sorted.at(-1).baitId },
-      maximumRatioToSameShoreLoadout: rounded(Math.max(...rows.map(row => row.netCoinsPerHour / row.shoreNetCoinsPerHour))) };
+    return { tier, capacity, attempts, maxFishPerHour, starterFullSale: rounded(capacity * starter.expectedValuePerFish),
+      bestExpectedFullNetSale: rounded(best), luckyFullSaleCeiling: capacity * topFishPrice, sensitivity };
   });
-  return { kind: "boat-economic-upper-bound", catalogVersion: catalog.version, boatVersion: boat.version,
-    legalLoadouts: loadouts.length, economicComparisons: loadouts.length * modes.length,
-    assumptions: ["Every fixed attempt succeeds instantly; active play adds no time in this upper bound.",
-      "One existing bait portion is consumed per voyage; no extra rarity or fish-sale bonus is assumed.",
-      "The same owned rod, hook and bait are compared with the existing short shore route.",
-      "Roads are not accelerated by food, skill, taps or pearls. Those runtime invariants are checked separately.",
-      "Repair, materials, failed casts, travel scheduling, full storage and player absence can only lower realized returns.",
-      "Boat claims preserve legacy blueprint pages and permanent items but award no new pages.",
-      "This audit does not simulate progression or certify a fair human-only leaderboard."],
-    shore: { seconds: shore.seconds, catches: shore.rewards.fish, maxFishPerHour: shore.rewards.fish * 3600 / shore.seconds,
-      minNetCoinsPerHour: rounded(Math.min(...loadouts.map(row => row.shoreNetCoinsPerHour))),
-      maxNetCoinsPerHour: rounded(Math.max(...loadouts.map(row => row.shoreNetCoinsPerHour))) },
-    modes: reports, upgrades, blueprints };
+  const tanks = tank.map((cells, tier) => ({ tier, cells, emptyToFullMinutes: cells * boat.fuel.regenSeconds / 60,
+    // Equal, short visits draining the stock, in steady state after the initial fill.
+    tripsAtDailyVisits: [1, 3, 6].map(visits => ({ visits, trips: visits * Math.min(cells, Math.floor(24 * tripsPerHour / visits)) })) }));
+  return { kind: "fuel-limited-boat", catalogVersion: catalog.version, boatVersion: boat.version,
+    legalLoadouts: loadouts.length, economicComparisons: loadouts.length * storage.length,
+    fuel: { regenSeconds: boat.fuel.regenSeconds, tripsPerHour, refillRawPearls: boat.fuel.refillPricePearls, refillAlternativeCoins },
+    historicalShore: { seconds: shore.seconds, catches: shore.rewards.fish, fishPerHour: oldShoreRate },
+    starterExpectedValuePerFish: rounded(starter.expectedValuePerFish), holds, tanks, upgrades, blueprints };
 }
 
 /** Deterministic two-dimensional integration of the real runtime mass sampler.

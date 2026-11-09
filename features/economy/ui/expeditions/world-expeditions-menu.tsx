@@ -3,7 +3,7 @@
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Sailboat, Check, ChevronDown, CircleHelp, Clock3, Compass, Fish, Footprints, Landmark, LockKeyhole, Mountain, Package, RefreshCw, TreePine, Trees, Waves, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, CircleHelp, Clock3, Compass, Fish, Footprints, Landmark, LockKeyhole, Mountain, Package, RefreshCw, TreePine, Trees, Waves, type LucideIcon } from "lucide-react";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import { WorldMealBoost } from "@/features/economy/ui/food/world-meal-boost";
 import { WorldStationSetup } from "@/features/economy/ui/construction/world-station-setup";
@@ -345,7 +345,8 @@ export function WorldExpeditionsMenu({ economy, onOpenBoat, onOpenPantry, onNavi
     setReportHistory(value => ({ ...value, dismissed: returned.id }));
     requestAnimationFrame(() => (content.current?.querySelector<HTMLElement>("[data-activity-heading], [data-sector-select], button[data-route], button") ?? content.current)?.focus({ preventScroll: true }));
   }
-  const currentSector = embeddedCaves ? "caves" : selectedSector === "caves" ? null : selectedSector;
+  const boatFishing = boatMode === "play" && !!onOpenBoat;
+  const currentSector = embeddedCaves ? "caves" : selectedSector === "caves" || (selectedSector === "shore" && boatFishing) ? null : selectedSector;
   const selectedActive = Boolean(state && hasActiveRoute(state, selectedRoute));
   // A saved trip replaces its preview. Drop that help/selection target once so
   // claiming it cannot unexpectedly reopen the old launch form.
@@ -398,6 +399,22 @@ export function WorldExpeditionsMenu({ economy, onOpenBoat, onOpenPantry, onNavi
   }
   const retry = <button type="button" className={styles.link} disabled={economy.busy || cooldown > 0} onClick={() => { if (!economy.busy && cooldown <= 0) void economy.retry(); }}><RefreshCw size={13} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Попробовать ещё раз"}</button>;
   if (activeOnly && !jobs.length && !returned) return null;
+  const boatEntry = state && boatMode && onOpenBoat && <button type="button" className={styles.boatEntry}
+    data-boat-entry={boatMode} data-guide-spotlight-item onClick={onOpenBoat}>
+    <span className={styles.boatLettering}>
+      <strong>{boatMode === "recover" ? "Возвращение к причалу" : "Лодочная рыбалка"}</strong>
+      <span>{state.boat?.voyage ? "Вернуться к поездке" : state.boat?.work ? "Открыть мастерскую" : state.boat?.level ? "Снарядить лодку и выйти на реку" : "Починить лодку в мастерской"}</span>
+      <ArrowRight size={17} aria-hidden="true" />
+    </span>
+    <svg viewBox="0 0 176 90" className={styles.boatIllustration} aria-hidden="true" focusable="false">
+      <g stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none">
+        <path d="M75 32q31-36 61-24 15 4 17 17m-1-1 6 23" />
+        <path d="M26 66q14 4 30 0t28 0m4 8q13 3 28 0t22-1m6-19q12 3 21-1" opacity=".6" />
+      </g>
+      <image href="/world/boat/modular/hull_l0.svg" x="-4" y="3" width="162" height="65" />
+      <path d="m155 47 4-1 2 6-4 1z" fill="#e9be76" />
+    </svg>
+  </button>;
   return <div ref={content} className={styles.content} tabIndex={-1} data-embedded={embeddedCaves || undefined}>
     {!state ? <div className={styles.loading}><Compass size={18} aria-hidden="true" /><p>{economy.error ?? "Открываем маршруты…"}</p>{economy.error && retry}</div> : <>
       {returned && <ExpeditionReturnReport gain={returned} state={state} onDismiss={dismissReturn} />}
@@ -406,24 +423,24 @@ export function WorldExpeditionsMenu({ economy, onOpenBoat, onOpenPantry, onNavi
         confirmationKey={confirmationKey} onConfirmation={setConfirmationKey} onCancellationSent={jobId => { cancellationSent.current = jobId; }} />)}
       {!embeddedCaves && !activeOnly && !currentSector && <>
         <header className={styles.chooserHeading}><span>Время приключений</span><h3>Чем займёмся?</h3><p>{jobs.length ? "Пока Мохлик в пути, можно выбрать следующий маршрут." : "Небольшая прогулка или целое приключение."}</p></header>
-        <div className={styles.activities} role="group" aria-label="Занятия леса" data-section-guide-target="expedition-activities" data-guide-spotlight-group>{expeditionSectors.filter(sector => sector.id !== "caves").map(({ id, name }) => {
+        <div className={styles.activities} role="group" aria-label="Занятия леса" data-section-guide-target="expedition-activities" data-guide-spotlight-group>{expeditionSectors.filter(sector => sector.id !== "caves" && !(sector.id === "shore" && boatFishing)).map(({ id, name }) => {
           const routes = sectorRoutes(state, id), durations = routes.map(route => routeSeconds(state, route, economy.now));
+          const shortest = Math.min(...durations), longest = Math.max(...durations);
+          const duration = !durations.length ? "Скоро" : shortest === longest ? worldDuration(shortest) : `${worldDuration(shortest)} – ${worldDuration(longest)}`;
           const description = id === "forest" ? "Материалы из леса и с берега" : "Улов и необычные находки";
           return <button type="button" key={id} className={styles.activity} data-sector-select={id} data-guide-spotlight-item data-activity={id} onClick={() => selectSector(id)}>
             <span className={styles.activityArt}><ExpeditionActivityArt sector={id} /></span>
-            <span className={styles.activityText}><strong>{name}</strong><span>{description}</span><small><Clock3 size={12} aria-hidden="true" />{durations.length ? `${worldDuration(Math.min(...durations))} - ${worldDuration(Math.max(...durations))}` : "Скоро"}</small></span>
+            <span className={styles.activityText}><strong>{name}</strong><span>{description}</span><small><Clock3 size={12} aria-hidden="true" />{duration}</small></span>
             <ArrowRight size={18} className={styles.activityArrow} aria-hidden="true" />
           </button>;
-        })}</div>
+        })}{boatEntry}</div>
         <p className={styles.activityNote}><Compass size={14} aria-hidden="true" />Мохлик выбирает одну вылазку; находки дождутся получения.</p>
       </>}
       {!embeddedCaves && !activeOnly && currentSector && !visibleRoute && <>
         <button ref={selectedSectorButton} type="button" className={styles.back} onClick={() => selectSector(null)}><ArrowLeft size={15} aria-hidden="true" />Все занятия</button>
         <header className={styles.activityHeading} data-activity={currentSector}><span className={styles.activityArt}><ExpeditionActivityArt sector={currentSector} /></span><h3 data-activity-heading tabIndex={-1}>{expeditionSectors.find(sector => sector.id === currentSector)!.name}</h3><p>{currentSector === "shore" ? "Выбери время у воды. Снасти настроим перед выходом." : "Выбери, что пригодится твоей полянке."}</p></header>
       </>}
-      {!embeddedCaves && !activeOnly && boatMode && onOpenBoat && (currentSector === "shore" || !currentSector) && <button type="button" className={styles.boatEntry} onClick={onOpenBoat}>
-        <Sailboat size={28} aria-hidden="true" /><span><strong>{boatMode === "recover" ? "Возвращение к причалу" : "Лодочная рыбалка"}</strong><small>{boatMode === "recover" ? (state.boat?.work ? "Завершить начатую работу" : "Завершить поездку и получить улов") : state.boat?.voyage ? "Вернуться к поездке" : state.boat?.level ? "Самостоятельно вываживай рыбу" : "Почини лодку и выйди на реку"}</small></span><ArrowRight size={17} aria-hidden="true" />
-      </button>}
+      {currentSector === "shore" && !activeOnly && boatEntry}
       {!activeOnly && currentSector && <WorldExpeditionSector isOnline={isOnline} sectorId={currentSector} selectedRoute={visibleRoute} onSelectRoute={setSelectedRoute} state={state} economy={economy} exploring={heroTrips.length > 0} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} onUpgradeQuarry={onUpgradeQuarry} onOpenHelp={onOpenHelp} />}
     </>}
   </div>;

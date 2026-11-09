@@ -126,7 +126,7 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
         marketSlots=maxOf(a.marketSlots,b.marketSlots),
         unlockedItems=(EconomyItemUnlocks.project(a)+EconomyItemUnlocks.project(b)).distinct().sorted(),
         familiarItems=(EconomyFamiliarItems.project(a)+EconomyFamiliarItems.project(b)).distinct().sorted(),
-        itemUnlockVersion=1, boat=EconomyBoats.merge(a.boat,b.boat),
+        itemUnlockVersion=1, boat=EconomyBoats.merge(a.boat,b.boat,now),
         productionSlots=(a.productionSlots.keys+b.productionSlots.keys).associateWith {
             maxOf(EconomyRules.productionSlotCount(a,it),EconomyRules.productionSlotCount(b,it)) },
         progression=EconomyCollectionProgress.merge(a.progression,b.progression),

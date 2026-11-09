@@ -9,7 +9,18 @@ class EconomyBoatReelV4Test {
         .bufferedReader().use { it.readText() }).jsonObject
 
     @Test fun `V4 inertia and terminal replay match independent shared integer vectors`() {
-        assertEquals(4, vectors.getValue("version").jsonPrimitive.int)
+        verifyCases(vectors, 4)
+    }
+
+    @Test fun `V5 shared terminal and checkpoint vectors freeze engine response and hull recovery damping`() {
+        val v5 = economyJson.parseToJsonElement(checkNotNull(javaClass.getResourceAsStream("/world/boat-reel-v5-vectors.json"))
+            .bufferedReader().use { it.readText() }).jsonObject
+        verifyCases(v5, 5)
+        verifySamples(v5)
+    }
+
+    private fun verifyCases(vectors: JsonObject, version: Int) {
+        assertEquals(version, vectors.getValue("version").jsonPrimitive.int)
         for (value in vectors.getValue("cases").jsonArray) {
             val row = value.jsonObject; val name = row.getValue("name").jsonPrimitive.content
             val challenge = economyJson.decodeFromJsonElement<EconomyBoatChallenge>(row.getValue("challenge"))
@@ -28,6 +39,10 @@ class EconomyBoatReelV4Test {
     }
 
     @Test fun `V4 lower bounce upper stop and directional momentum match independent boundary samples`() {
+        verifySamples(vectors)
+    }
+
+    private fun verifySamples(vectors: JsonObject) {
         for (value in vectors.getValue("controlSamples").jsonArray) {
             val row = value.jsonObject
             val challenge = economyJson.decodeFromJsonElement<EconomyBoatChallenge>(row.getValue("challenge"))

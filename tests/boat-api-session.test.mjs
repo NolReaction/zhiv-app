@@ -122,3 +122,83 @@ test("pending controls are copied, persisted and retried unchanged after a lost 
   assert.equal(restored.getSnapshot().uncertain, false);
   deactivate();
 });
+
+const store = () => {
+  const values = new Map();
+  return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
+};
+function fishingAttempt() {
+  const p = player(), voyage = send(p, "depart_boat", "river_reach").state.boat.voyage;
+  row(p).state.boat.voyage.slots[0].challengeSeed = 37;
+  const cast = send(p, "begin_boat_cast", voyage.id, Date.parse(voyage.arrivesAt)).state;
+  const challenge = cast.boat.voyage.challenge, reel = { ...trace(challenge, true), deferred: true };
+  return { p, voyage, cast, challenge, reel, late: Date.parse(challenge.expiresAt) + 3_600_000 };
+}
+
+test("the last issued cast accepts one late terminal replay with its original time budget", () => {
+  const { p, voyage, challenge, reel, late } = fishingAttempt();
+  const original = structuredClone(row(p).state.boat.voyage.challenge);
+  assert.throws(() => send(p, "submit_boat_cast", voyage.id, late, { reel: { ...reel, deferred: false } }), { code: "ECONOMY_BOAT_CAST_EXPIRED" });
+  assert.throws(() => send(p, "submit_boat_cast", voyage.id, Date.parse(challenge.expiresAt) + 86_400_001, { reel }), { code: "ECONOMY_BOAT_CAST_EXPIRED" });
+  row(p).state.boat.voyage.challenge.expiresAt = new Date(Date.parse(challenge.biteAt) + 60).toISOString();
+  assert.throws(() => send(p, "submit_boat_cast", voyage.id, late, { reel }), { code: "ECONOMY_BOAT_CAST_EXPIRED" });
+  row(p).state.boat.voyage.challenge = original;
+  const result = send(p, "submit_boat_cast", voyage.id, late, { reel });
+  assert.equal(result.state.boat.voyage.catches.length, 1);
+  assert.equal(result.state.boat.voyage.catches[0].caughtAt, challenge.expiresAt);
+  assert.deepEqual(result.state.inventory, {});
+  assert.throws(() => send(p, "submit_boat_cast", voyage.id, late, { reel }), { code: "ECONOMY_BOAT_CAST_GONE" });
+});
+
+test("offline landing is saved before any network call and delivered from a fresh tab after the voyage timer", async () => {
+  const { p, voyage, cast, challenge, reel, late } = fishingAttempt();
+  const disk = store(), transport = { get: async () => cast, send: async () => assert.fail("offline") };
+  const journal = { storage: disk, coordinate: async () => () => {} };
+  const first = createEconomySession(cast.ownerPublicId, transport, () => assert.fail(), store(), journal);
+  const stop = first.activate(); await first.refresh();
+  first.setAvailable(false); first.setDirectActionsAvailable(false);
+  const sendLocal = () => first.act("submit_boat_cast", voyage.id, 1, 0, undefined, undefined, reel);
+  assert.equal(sendLocal(), true); assert.equal(sendLocal(), false);
+  assert.equal(first.getSnapshot().pendingBoatCastId, challenge.id);
+  assert.equal(first.getSnapshot().snapshot.boat.voyage.catches.length, 0);
+  stop();
+  const sent = [];
+  const second = createEconomySession(cast.ownerPublicId, { get: async () => read(p, late), send: async command => {
+    sent.push(structuredClone(command));
+    const result = api.commandDevEconomy(p.token, command, late);
+    if (sent.length === 1) throw Error("lost ACK");
+    return result;
+  } }, () => assert.fail(), store(), journal);
+  const stopSecond = second.activate(); await second.refresh();
+  assert.equal(second.getSnapshot().pendingBoatCastId, challenge.id);
+  stopSecond();
+  const third = createEconomySession(cast.ownerPublicId, { get: async () => read(p, late), send: async command => {
+    sent.push(structuredClone(command)); return api.commandDevEconomy(p.token, command, late);
+  } }, () => assert.fail(), store(), journal);
+  const stopThird = third.activate(); await third.refresh();
+  assert.equal(sent.length, 2); assert.deepEqual(sent[0], sent[1]);
+  assert.equal(third.getSnapshot().pendingBoatCastId, undefined);
+  assert.equal(third.getSnapshot().snapshot.boat.voyage.catches.length, 1);
+  assert.equal(disk.getItem("zhiv:economy:boat-landing:v1:" + cast.ownerPublicId), null);
+  stopThird();
+});
+
+test("only a definite stale revision can replace an outstanding landing receipt for the same challenge", async () => {
+  const { p, voyage, cast, reel, late } = fishingAttempt();
+  const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
+  const sent = [], snapshotAt = () => read(p, late);
+  const session = createEconomySession(cast.ownerPublicId, { get: async () => snapshotAt(), send: async command => {
+    sent.push(structuredClone(command));
+    if (sent.length === 1) throw new ApiError("Поменялась ревизия", 409, { code: "ECONOMY_REVISION_CONFLICT" });
+    return api.commandDevEconomy(p.token, command, late);
+  } }, () => assert.fail(), store());
+  const stop = session.activate(); await session.refresh();
+  row(p).revision++;
+  const accepted = session.act("submit_boat_cast", voyage.id, 1, 0, undefined, undefined, reel);
+  assert.equal(accepted, true); await flush();
+  await session.refreshSoft();
+  assert.equal(sent.length, 2); assert.notEqual(sent[0].requestId, sent[1].requestId);
+  assert.equal(sent[1].expectedRevision, sent[0].expectedRevision + 1);
+  assert.deepEqual(sent[1].reel, sent[0].reel);
+  assert.equal(session.getSnapshot().snapshot.boat.voyage.catches.length, 1); stop();
+});

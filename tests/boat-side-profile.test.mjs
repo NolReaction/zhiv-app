@@ -64,7 +64,8 @@ test("side-profile garage supports touch the keel and stay outside the floating 
     const stand = scene.nodes.find(node => node.id === id), matrix = getGarageNodeMatrix(scene, id);
     const top = transformGaragePoint(matrix, garageNodeContactPoint(stand, "contact"));
     const foot = transformGaragePoint(matrix, garageNodeContactPoint(stand, "foot"));
-    close(top.y, 185 + 560 * .8 - 4); close(foot.y, 735);
+    close(top.y, 185 + 560 * .8 - 4); close(foot.y, 789);
+    close(foot.y - top.y, 160);
     close(matrix[0], matrix[3]); close(matrix[1], 0); close(matrix[2], 0);
     assert.equal(scene.assets.find(asset => asset.id === stand.assetId).src, "/world/boat-garage/stand-side.svg");
     assert.equal(stand.parentId, null); assert.equal(floating.has(id), false);

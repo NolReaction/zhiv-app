@@ -101,8 +101,8 @@ function paintPart(ctx: CanvasRenderingContext2D, layer: BoatArtLayer, images: R
   ctx.drawImage(image, ...layer.crop, ...layer.box);
 }
 
-function paintBoat(ctx: CanvasRenderingContext2D, geometry: Geometry, frame: FishingSceneFrame, images: ReadonlyMap<string, HTMLImageElement>, waterArtwork: ReturnType<typeof fishingBoatWaterArtwork>) {
-  const layers = boatArtworkLayers({ repaired: frame.boat.repaired, upgrades: frame.boat.upgrades.filter(id => id === "oars" || id === "crate") });
+function paintBoat(ctx: CanvasRenderingContext2D, geometry: Geometry, frame: FishingSceneFrame, layers: readonly BoatArtLayer[],
+  images: ReadonlyMap<string, HTMLImageElement>, waterArtwork: ReturnType<typeof fishingBoatWaterArtwork>) {
   if (!images.has(layers[0].src)) return false;
   ctx.save(); ctx.translate(geometry.boat.x, geometry.boat.y); ctx.scale(geometry.boat.scale, geometry.boat.scale);
   ctx.translate(FISHING_BOAT_PIVOT.x, FISHING_BOAT_PIVOT.y); ctx.rotate(geometry.boat.roll); ctx.translate(-FISHING_BOAT_PIVOT.x, -FISHING_BOAT_PIVOT.y);
@@ -143,11 +143,12 @@ export function paintFishingScene(ctx: CanvasRenderingContext2D, frame: FishingS
   ]);
   paintFishingWaterEvents(ctx, width, height, time, frame.sceneKey, frame.ambience, [...exclusions.life, exclusions.play, ...islands]);
   paintFishingLanding(ctx, geometry, frame, visual);
-  const waterArtwork = fishingBoatWaterArtwork(boatArtworkLayers({ repaired: frame.boat.repaired,
-    upgrades: frame.boat.upgrades.filter(id => id === "oars" || id === "crate") }), images);
+  const layers = boatArtworkLayers({ repaired: frame.boat.repaired, modules: frame.boat.modules,
+    upgrades: frame.boat.upgrades.filter(id => id === "oars" || id === "crate") });
+  const waterArtwork = fishingBoatWaterArtwork(layers, images);
   paintFishingBoatReflection(ctx, geometry.boat, waterArtwork, geometry.waveTime, visual.still, geometry.surface);
   paintFishingBoatDisplacement(ctx, geometry.boat, geometry.waveTime, visual.still, geometry.surface, geometry.waterActivity);
-  const boatReady = paintBoat(ctx, geometry, frame, images, waterArtwork);
+  const boatReady = paintBoat(ctx, geometry, frame, layers, images, waterArtwork);
   if (boatReady) {
     paintFishingBoatImmersion(ctx, geometry.boat, waterArtwork, geometry.waveTime, visual.still, geometry.surface);
     paintFishingBoatSurfaceContact(ctx, geometry.boat, geometry.waveTime, visual.still, geometry.surface, geometry.waterActivity);

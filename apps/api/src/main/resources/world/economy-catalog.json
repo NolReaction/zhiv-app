@@ -10388,36 +10388,33 @@
     "version": 1,
     "routeId": "river_reach",
     "name": "Речной плёс",
-    "outboundSeconds": 300,
-    "inboundSeconds": 300,
+    "outboundSeconds": 0,
+    "inboundSeconds": 0,
     "maxCasts": 4,
     "activeSeconds": 1800,
     "castExpirySeconds": 120,
     "zoneWidth": 3200,
     "netZoneWidth": 4000,
-    "oarsTravelSeconds": 240,
+    "oarsTravelSeconds": 0,
     "upgrades": [
       {
         "id": "repair",
         "name": "Ремонт лодки",
         "description": "Открывает рыбалку на речном плёсе.",
         "cost": {
-          "coins": 400,
-          "items": {
-            "planks": 4,
-            "rope": 2
-          }
+          "coins": 0,
+          "items": {}
         },
-        "seconds": 900,
-        "requiredHomeLevel": 2,
-        "requiredBuildings": {
-          "workshop": 1
-        }
+        "seconds": 5,
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "module": "hull",
+        "tier": 1
       },
       {
         "id": "crate",
-        "name": "Рыбный ящик",
-        "description": "Ещё один заброс за поездку.",
+        "name": "Хранилище I",
+        "description": "Увеличивает вместимость трюма и число доступных забросов.",
         "cost": {
           "coins": 600,
           "items": {
@@ -10429,12 +10426,14 @@
         "requiredHomeLevel": 2,
         "requiredBuildings": {
           "workshop": 1
-        }
+        },
+        "module": "storage",
+        "tier": 1
       },
       {
         "id": "oars",
-        "name": "Новые вёсла",
-        "description": "Дорога в каждую сторону занимает четыре минуты.",
+        "name": "Двигатель I",
+        "description": "Снасть быстрее меняет направление при смене тяги.",
         "cost": {
           "coins": 1200,
           "items": {
@@ -10446,7 +10445,9 @@
         "requiredHomeLevel": 3,
         "requiredBuildings": {
           "workshop": 2
-        }
+        },
+        "module": "engine",
+        "tier": 1
       },
       {
         "id": "landing_net",
@@ -10484,6 +10485,342 @@
           "workshop": 3
         },
         "blueprint": "telescope"
+      },
+      {
+        "id": "engine_2",
+        "name": "Двигатель II",
+        "description": "Снасть быстрее меняет направление при смене тяги.",
+        "cost": {
+          "coins": 1500,
+          "items": {
+            "metal_parts": 2,
+            "hardwood": 2
+          }
+        },
+        "seconds": 900,
+        "requiredHomeLevel": 3,
+        "requiredBuildings": {
+          "workshop": 2
+        },
+        "module": "engine",
+        "tier": 2
+      },
+      {
+        "id": "engine_3",
+        "name": "Двигатель III",
+        "description": "Снасть быстрее меняет направление при смене тяги.",
+        "cost": {
+          "coins": 1800,
+          "items": {
+            "metal_parts": 3,
+            "iron_ingot": 2
+          }
+        },
+        "seconds": 1200,
+        "requiredHomeLevel": 3,
+        "requiredBuildings": {
+          "workshop": 2
+        },
+        "module": "engine",
+        "tier": 3
+      },
+      {
+        "id": "engine_4",
+        "name": "Двигатель IV",
+        "description": "Снасть быстрее меняет направление при смене тяги.",
+        "cost": {
+          "coins": 3200,
+          "items": {
+            "tools": 2,
+            "metal_parts": 4,
+            "iron_ingot": 2
+          }
+        },
+        "seconds": 1800,
+        "requiredHomeLevel": 4,
+        "requiredBuildings": {
+          "workshop": 3
+        },
+        "module": "engine",
+        "tier": 4
+      },
+      {
+        "id": "engine_5",
+        "name": "Двигатель V",
+        "description": "Снасть быстрее меняет направление при смене тяги.",
+        "cost": {
+          "coins": 5200,
+          "items": {
+            "reinforced_parts": 3,
+            "tools": 2,
+            "iron_ingot": 3
+          }
+        },
+        "seconds": 2700,
+        "requiredHomeLevel": 5,
+        "requiredBuildings": {
+          "workshop": 4
+        },
+        "module": "engine",
+        "tier": 5
+      },
+      {
+        "id": "hull_2",
+        "name": "Корпус II",
+        "description": "Снижает максимальную скорость рывков рыбы.",
+        "cost": {
+          "coins": 900,
+          "items": {
+            "planks": 4,
+            "rope": 2,
+            "resin": 1
+          }
+        },
+        "seconds": 900,
+        "requiredHomeLevel": 3,
+        "requiredBuildings": {
+          "workshop": 2
+        },
+        "module": "hull",
+        "tier": 2
+      },
+      {
+        "id": "hull_3",
+        "name": "Корпус III",
+        "description": "Снижает максимальную скорость рывков рыбы.",
+        "cost": {
+          "coins": 1800,
+          "items": {
+            "planks": 6,
+            "hardwood": 2,
+            "resin": 2
+          }
+        },
+        "seconds": 1200,
+        "requiredHomeLevel": 3,
+        "requiredBuildings": {
+          "workshop": 2
+        },
+        "module": "hull",
+        "tier": 3
+      },
+      {
+        "id": "hull_4",
+        "name": "Корпус IV",
+        "description": "Снижает максимальную скорость рывков рыбы.",
+        "cost": {
+          "coins": 3200,
+          "items": {
+            "beams": 2,
+            "hardwood": 4,
+            "metal_parts": 2
+          }
+        },
+        "seconds": 1800,
+        "requiredHomeLevel": 4,
+        "requiredBuildings": {
+          "workshop": 3
+        },
+        "module": "hull",
+        "tier": 4
+      },
+      {
+        "id": "hull_5",
+        "name": "Корпус V",
+        "description": "Снижает максимальную скорость рывков рыбы.",
+        "cost": {
+          "coins": 5200,
+          "items": {
+            "reinforced_parts": 2,
+            "beams": 3,
+            "resin": 3
+          }
+        },
+        "seconds": 2700,
+        "requiredHomeLevel": 5,
+        "requiredBuildings": {
+          "workshop": 4
+        },
+        "module": "hull",
+        "tier": 5
+      },
+      {
+        "id": "tank_1",
+        "name": "Бак I",
+        "description": "Позволяет накопить ещё одну ячейку топлива.",
+        "cost": {
+          "coins": 350,
+          "items": {
+            "planks": 2,
+            "rope": 1
+          }
+        },
+        "seconds": 600,
+        "requiredHomeLevel": 2,
+        "requiredBuildings": {
+          "workshop": 1
+        },
+        "module": "tank",
+        "tier": 1
+      },
+      {
+        "id": "tank_2",
+        "name": "Бак II",
+        "description": "Позволяет накопить ещё одну ячейку топлива.",
+        "cost": {
+          "coins": 900,
+          "items": {
+            "planks": 3,
+            "resin": 1,
+            "rope": 2
+          }
+        },
+        "seconds": 900,
+        "requiredHomeLevel": 3,
+        "requiredBuildings": {
+          "workshop": 2
+        },
+        "module": "tank",
+        "tier": 2
+      },
+      {
+        "id": "tank_3",
+        "name": "Бак III",
+        "description": "Позволяет накопить ещё одну ячейку топлива.",
+        "cost": {
+          "coins": 1800,
+          "items": {
+            "metal_parts": 2,
+            "resin": 2,
+            "rope": 2
+          }
+        },
+        "seconds": 1200,
+        "requiredHomeLevel": 3,
+        "requiredBuildings": {
+          "workshop": 2
+        },
+        "module": "tank",
+        "tier": 3
+      },
+      {
+        "id": "tank_4",
+        "name": "Бак IV",
+        "description": "Позволяет накопить ещё одну ячейку топлива.",
+        "cost": {
+          "coins": 3200,
+          "items": {
+            "metal_parts": 3,
+            "hardwood": 4,
+            "resin": 2
+          }
+        },
+        "seconds": 1800,
+        "requiredHomeLevel": 4,
+        "requiredBuildings": {
+          "workshop": 3
+        },
+        "module": "tank",
+        "tier": 4
+      },
+      {
+        "id": "tank_5",
+        "name": "Бак V",
+        "description": "Позволяет накопить ещё одну ячейку топлива.",
+        "cost": {
+          "coins": 5200,
+          "items": {
+            "reinforced_parts": 2,
+            "resin": 3,
+            "metal_parts": 3
+          }
+        },
+        "seconds": 2700,
+        "requiredHomeLevel": 5,
+        "requiredBuildings": {
+          "workshop": 4
+        },
+        "module": "tank",
+        "tier": 5
+      },
+      {
+        "id": "storage_2",
+        "name": "Хранилище II",
+        "description": "Увеличивает вместимость трюма и число доступных забросов.",
+        "cost": {
+          "coins": 900,
+          "items": {
+            "planks": 5,
+            "rope": 3
+          }
+        },
+        "seconds": 900,
+        "requiredHomeLevel": 3,
+        "requiredBuildings": {
+          "workshop": 2
+        },
+        "module": "storage",
+        "tier": 2
+      },
+      {
+        "id": "storage_3",
+        "name": "Хранилище III",
+        "description": "Увеличивает вместимость трюма и число доступных забросов.",
+        "cost": {
+          "coins": 1800,
+          "items": {
+            "planks": 6,
+            "rope": 3,
+            "cloth": 1
+          }
+        },
+        "seconds": 1200,
+        "requiredHomeLevel": 3,
+        "requiredBuildings": {
+          "workshop": 2
+        },
+        "module": "storage",
+        "tier": 3
+      },
+      {
+        "id": "storage_4",
+        "name": "Хранилище IV",
+        "description": "Увеличивает вместимость трюма и число доступных забросов.",
+        "cost": {
+          "coins": 3200,
+          "items": {
+            "beams": 3,
+            "rope": 4,
+            "cloth": 2
+          }
+        },
+        "seconds": 1800,
+        "requiredHomeLevel": 4,
+        "requiredBuildings": {
+          "workshop": 3
+        },
+        "module": "storage",
+        "tier": 4
+      },
+      {
+        "id": "storage_5",
+        "name": "Хранилище V",
+        "description": "Увеличивает вместимость трюма и число доступных забросов.",
+        "cost": {
+          "coins": 5200,
+          "items": {
+            "beams": 4,
+            "cloth": 3,
+            "reinforced_parts": 1
+          }
+        },
+        "seconds": 2700,
+        "requiredHomeLevel": 5,
+        "requiredBuildings": {
+          "workshop": 4
+        },
+        "module": "storage",
+        "tier": 5
       }
     ],
     "blueprints": [
@@ -10555,6 +10892,46 @@
         "minGrams": 5000,
         "maxGrams": 90000
       }
-    }
+    },
+    "fuel": {
+      "baseCapacity": 2,
+      "regenSeconds": 1800,
+      "refillPricePearls": 14
+    },
+    "moduleEffects": {
+      "engine": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "tank": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "hull": [
+        0,
+        0,
+        5,
+        10,
+        15,
+        20
+      ],
+      "storage": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    "spareCasts": 2
   }
 }

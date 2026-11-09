@@ -12,7 +12,7 @@ test("initial garage images match scene dimensions and the support keeps transpa
     const metadata = await sharp(await readFile(file)).metadata();
     assert.equal(metadata.width, asset.width, `${asset.id}: real raster width`);
     assert.equal(metadata.height, asset.height, `${asset.id}: real raster height`);
-    if (asset.id === "stand") {
+    if (asset.id === "stand" || asset.id === "side-stand") {
       assert.equal(metadata.hasAlpha, true);
       const stats = await sharp(await readFile(file)).stats();
       assert.equal(stats.channels[3].min, 0, "the stand must have fully transparent background pixels");

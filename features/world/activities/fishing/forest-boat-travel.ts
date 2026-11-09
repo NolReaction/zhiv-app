@@ -87,7 +87,7 @@ export function syncForestBoatTravel(state: ForestSessionState, scene: FixedWorl
   return true;
 }
 export type ForestFishingBoatFrame = { x: number; y: number; heading: number; opacity: number; passenger: boolean; moving: boolean;
-  age: number; width: number; level: number; upgrades: readonly string[]; artifacts: readonly string[];
+  age: number; width: number; level: number; modules?: EconomySceneBoatFishing["modules"]; upgrades: readonly string[]; artifacts: readonly string[];
   gangway: { from: WorldPoint; to: WorldPoint }; crossing?: WorldPoint & { inward: boolean; frame: number } };
 export function forestFishingBoatFrame(state: ForestSessionState | undefined, scene: FixedWorldScene,
   boat: EconomySceneBoatFishing | null | undefined, now: number, still = false): ForestFishingBoatFrame | null {
@@ -96,7 +96,9 @@ export function forestFishingBoatFrame(state: ForestSessionState | undefined, sc
   const travel = state?.boatTravel, active = travel && travel.id === boat.voyage?.id || travel && !boat.voyage && travel.phase !== "complete" ? travel : undefined;
   const age = state?.director.elapsed ?? 0;
   const result: ForestFishingBoatFrame = { ...route.dock, heading: 0, opacity: 1, passenger: false, moving: false, age,
-    width: 44 * Math.min(scene.width, scene.height) / 1254, level: boat.level, upgrades: boat.upgrades ?? [], artifacts: boat.artifacts ?? [],
+    width: 44 * Math.min(scene.width, scene.height) / 1254, level: boat.level,
+    modules: boat.modules ?? { hull: boat.level, engine: Number(Boolean(boat.upgrades?.includes("oars"))), tank: 0 },
+    upgrades: boat.upgrades ?? [], artifacts: boat.artifacts ?? [],
     gangway: { from: route.land, to: route.dock } };
   const timing = economySceneBoatTiming(active?.boat ?? boat, now);
   if (active?.phase === "boarding" || active?.phase === "landing") {

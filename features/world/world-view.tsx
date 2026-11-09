@@ -552,6 +552,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
       && !(target.kind === "food" && target.tab === "orders");
     switch (target.kind) {
       case "pantry": openQuick("pantry"); break;
+      case "boat": openQuick("boat"); break;
       case "expeditions": openExpeditions(target.sector === "coast" ? "shore" : target.sector); break;
       case "station": openStation(target.stationId, target.recipeId); break;
       case "upgrade": setPanel(null); openUpgrade(target.stationId); break;
@@ -699,7 +700,7 @@ export default function WorldView({ open, suspended = false, world, economy, mai
       }} />
     <WorldResidentDialog guideRoot={pleskGuideRoot} guide={open ? <SectionGuide key={`${ownerPublicId}:plesk`} owner={ownerPublicId} section="plesk" enabled={sectionsReady && residentOpen && residentId === "plesk"} targetRoot={pleskGuideRoot} /> : undefined} open={residentOpen && residentOwner === ownerPublicId && residentId === "plesk"} economy={economy} onClose={closeResident} onBack={residentFromCharacters ? closeResident : undefined}
       onOpenOrders={() => leaveResident(() => openOrders("plesk"))}
-      onFishing={() => leaveResident(() => openQuick("expeditions", "shore"))}
+      onFishing={() => leaveResident(() => boatMode === "play" ? openQuick("boat") : openQuick("expeditions", "shore"))}
       onOpenPantry={() => leaveResident(() => openQuick("pantry"))}
       onCloseAutoFocus={event => {
         event.preventDefault();

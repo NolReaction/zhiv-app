@@ -1,6 +1,7 @@
 /** Public timing only. The map cannot reveal fish, cast outcomes or grant cargo. */
 export type EconomySceneBoatFishing = {
   level: number;
+  modules?: Readonly<Record<"hull" | "engine" | "tank", number>>;
   upgrades?: readonly string[];
   artifacts?: readonly string[];
   voyage?: {

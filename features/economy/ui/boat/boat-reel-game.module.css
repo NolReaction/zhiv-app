@@ -7,7 +7,7 @@
 .feedback { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 2px 5px; align-items: center; padding: 4px 7px; min-height: 42px; border-left: 2px solid #94c9a5; border-radius: 5px; color: #c7e5bd; background: #91b68613; }
 .feedback svg { grid-row: span 2; }
 .feedback strong { font-size: 11px; line-height: 1.2; }
-.feedback > span { color: #c1d4c4; font-size: 10px; line-height: 1.25; }
+.feedback > span { min-height: 2.5em; color: #c1d4c4; font-size: 10px; line-height: 1.25; }
 .feedback[data-feedback='chase'] { color: #f0cd90; border-color: #e2bc77; background: #bd955315; }
 .feedback[data-feedback='danger'] { color: #ffd2b9; border-color: #f4a88b; background: #b65c391f; }
 .actions { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 7px; }
@@ -24,6 +24,6 @@
 @media (max-width: 360px) { .body { grid-template-columns: 68px minmax(0, 1fr); gap: 9px; }.actions { gap: 5px; }.actions .input { font-size: 11px; }.actions .input > span:first-child { display: none; } }
 @media (max-height: 500px) {
   .attempt.attempt { gap: 4px; }.heading { min-height: 18px; }.body { grid-template-columns: 62px minmax(0, 1fr); gap: 10px; }.actionPanel { gap: 4px; }
-  .progress { font-size: 8px; }.feedback { min-height: 22px; padding: 2px 6px; grid-template-columns: 14px minmax(0, 1fr); gap: 3px; }.feedback svg { width: 13px; height: 13px; grid-row: auto; }.feedback strong { display: none; }.feedback > span { font-size: 9px; line-height: 1.2; }
+  .progress { font-size: 8px; }.feedback { min-height: 22px; padding: 2px 6px; grid-template-columns: 14px minmax(0, 1fr); gap: 3px; }.feedback svg { width: 13px; height: 13px; grid-row: auto; }.feedback strong { display: none; }.feedback > span { min-height: 2.4em; font-size: 9px; line-height: 1.2; }
   .actions .input, .actions .pause { min-height: 44px !important; padding: 5px 9px; }.instruction { font-size: 9px !important; }.terminal > button { min-height: 44px; }
 }

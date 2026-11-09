@@ -44,7 +44,7 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
   const controlCoachText = feedback.inZone && !feedback.urgent ? coachText : null;
   const FeedbackIcon = feedback.inZone ? Check : feedback.direction === "lift" ? ArrowUp : ArrowDown;
   const showMeter = !expired && castStage === "bite";
-  const action = waitingForConfirmation ? <p role="status" className={gameStyles.instruction}>Проверяем улов. Рыба появится на борту после подтверждения.</p>
+  const action = waitingForConfirmation ? <p role="status" className={gameStyles.instruction}>{props.queued ? "Результат записан. Улов появится на борту после синхронизации." : "Проверяем улов. Рыба появится на борту после подтверждения."}</p>
     : !expired && reel.status === "active" && castStage !== "bite" ? <p className={styles.waitingBite} role="status">{coachText ?? (castStage === "casting" ? "Поплавок летит к воде." : "Снасть в воде. Следите за поплавком — подсечка появится при поклёвке.")}</p>
     : !expired && reel.status === "active" ? <>
       {!playing && <p className={`${gameStyles.instruction} ${coachText ? coachStyles.prompt : ""}`} data-fishing-coach={coachText ? "strike" : undefined}>{coachText ?? "Держите метку рыбы в зелёной зоне. Зажмите — зона вверх, отпустите — вниз."}</p>}
@@ -64,7 +64,7 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
       : <p>Время этого заброса истекло. Оставшиеся забросы сохранены.</p>;
   return <section className={`${styles.attempt} ${gameStyles.attempt}`} data-boat-reel={challenge.id} data-reel-status={stage}
     data-reel-tick={reel.tick} data-reel-progress={reel.progress} aria-label="Вываживание рыбы">
-    <div className={`${styles.attemptHeading} ${gameStyles.heading}`}><strong role="status"><span className={styles.phaseMark} data-phase={stage} aria-hidden="true"><span /></span>{heading}</strong><span className={resistanceStyles.clock}>{playing && feedback.phaseLabel && <span className={resistanceStyles.phase} data-resistance-phase={resistancePhase}>{feedback.phaseLabel}</span>}<span>{seconds} с</span></span></div>
+    <div className={`${styles.attemptHeading} ${gameStyles.heading}`}><strong role="status"><span className={styles.phaseMark} data-phase={stage} aria-hidden="true"><span /></span>{heading}</strong><span className={resistanceStyles.clock}><span className={resistanceStyles.phase} data-resistance-phase={playing && feedback.phaseLabel ? resistancePhase : undefined} aria-hidden={!playing || !feedback.phaseLabel}>{playing ? feedback.phaseLabel : null}</span><span>{seconds} с</span></span></div>
     {showMeter ? <div className={gameStyles.body}>
       <BoatReelMeter reel={{ bar: reel.bar, fish: reel.fish, zoneWidth: challenge.zoneWidth }} held={held} paused={!playing || suspended} danger={feedback.urgent} />
       <div className={gameStyles.actionPanel}>

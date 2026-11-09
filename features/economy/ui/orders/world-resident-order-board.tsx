@@ -62,7 +62,7 @@ function materialAction(economy: ReadyEconomy, itemId: string, navigation: Order
     && state.catalog.explorations.some(route => route.id === source.targetId && explorationActorId(route) === "miner"))
     return () => navigation.onNavigateStation?.("quarry");
   if (source?.kind === "exploration" && navigation.onNavigateExpeditions) {
-    const sector = /shore|coastal/.test(source.targetId) ? "shore" : /cave|quarry/.test(source.targetId) ? "caves" : "forest";
+    const sector = state.catalog.fishing?.routeIds.includes(source.targetId) ? "shore" : /cave|quarry/.test(source.targetId) ? "caves" : "forest";
     return () => navigation.onNavigateExpeditions?.(sector);
   }
   return null;

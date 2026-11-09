@@ -143,11 +143,6 @@
 @media (forced-colors: active) { .dialog, .trip, .upgrade, .blueprint, .record, .game, .reelTrack, .reelZone { border-color: CanvasText; }.reelFish { color: Highlight; }.reelZone { background: Highlight; opacity: .5; } }
 
 .wallet { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid #756c44; border-radius: 5px; color: #e4c178; background: #1a231b; font-size: 15px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.departure { display: grid; gap: 9px; margin-top: 18px; padding-top: 16px; border-top: 1px solid #4b5a4466; }
-.departureRow { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
-.departureStats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 7px; font-size: 11px; color: #c2cfb2; }
-.departureStats > span { display: inline-flex; align-items: center; gap: 5px; }
-.dockNote { margin: 15px 0 0 !important; color: #96a68f; font-size: 10px; }
 @media (max-width: 640px) {
   .wallet { padding: 7px; gap: 4px; font-size: 12px; }
   .wallet svg { width: 14px; height: 14px; }
@@ -157,5 +152,8 @@
   .header small { font-size: 8px; }
   .body { padding: 10px; }
   .tabs { padding: 6px 10px; }
-  .departureRow { flex-direction: column; align-items: stretch; gap: 12px; }
+}
+@media (max-width: 390px) {
+  .header { gap: 7px; padding: 9px 10px; }
+  .header h2 { white-space: normal; text-wrap: balance; font-size: 15px; }
 }

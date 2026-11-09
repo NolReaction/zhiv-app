@@ -1,11 +1,15 @@
 package ru.zhiv.economy
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import ru.zhiv.http.parseCanonicalUuidV4
 import kotlin.math.abs
 
 @Serializable data class EconomyBoatReelInput(val tick: Int, val held: Boolean)
-@Serializable data class EconomyBoatReelSubmission(val challengeId: String, val inputs: List<EconomyBoatReelInput>, val endTick: Int) {
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable data class EconomyBoatReelSubmission(val challengeId: String, val inputs: List<EconomyBoatReelInput>, val endTick: Int,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val deferred: Boolean = false) {
     init {
         require(parseCanonicalUuidV4(challengeId) != null && endTick in 1..600 && inputs.size <= 600)
         require(inputs.all { it.tick in 0 until endTick } && inputs.zipWithNext().all { (a, b) -> a.tick < b.tick })
@@ -111,14 +115,20 @@ object EconomyBoatReel {
 
     /** The old signature keeps V1 tools and vectors readable. New attempts dispatch through their saved version. */
     fun step(frame: Frame, held: Boolean, seed: Long, zoneWidth: Int, difficulty: Int,
-        rulesVersion: Int = 1, resistance: String? = null, fishRarity: String? = null): Frame {
+        rulesVersion: Int = 1, resistance: String? = null, fishRarity: String? = null, motorResponse: Int = 0, hullDamping: Int = 0): Frame {
         require(seed in 0L..0xffff_ffffL && zoneWidth in setOf(3200, 4000) && difficulty in 1..5)
-        require(rulesVersion in setOf(1, 2, 3, 4))
+        require(rulesVersion in 1..5 && motorResponse in 0..5 && hullDamping in 0..20)
         if (frame.status != "active") return frame
         val half = zoneWidth / 2
-        val modernControl = rulesVersion == 4
-        var velocity = (frame.velocity * (if (modernControl) 96 else 94) / 100 +
-            if (held) { if (modernControl) 22 else 26 } else { if (modernControl) -18 else -20 }).coerceIn(-220, 220)
+        val modernControl = rulesVersion >= 4
+        val acceleration = if (held) { if (modernControl) 22 else 26 } else { if (modernControl) -18 else -20 }
+        val assist = when {
+            rulesVersion < 5 -> 0
+            held && frame.velocity < 0 -> motorResponse
+            !held && frame.velocity > 0 -> -motorResponse
+            else -> 0
+        }
+        var velocity = (frame.velocity * (if (modernControl) 96 else 94) / 100 + acceleration + assist).coerceIn(-220, 220)
         val freeBar = frame.bar + velocity
         val bar = freeBar.coerceIn(half, 10000 - half)
         // V4 has a damped bottom rebound; slow contacts settle and the upper stop clamps.
@@ -126,7 +136,8 @@ object EconomyBoatReel {
         val movement = if (rulesVersion >= 3) motionV3(seed, frame.tick, difficulty, requireNotNull(resistance), requireNotNull(fishRarity))
             else if (rulesVersion == 2) motion(seed, frame.tick, difficulty, requireNotNull(resistance))
             else Motion(500 + (hash(seed, frame.tick / (60 - 6 * difficulty)) % 9001).toInt(), 35 + 7 * difficulty, 10)
-        val fish = (frame.fish + ((movement.target - frame.fish) / movement.divisor).coerceIn(-movement.limit, movement.limit)).coerceIn(0, 10000)
+        val limit = if (rulesVersion == 5) movement.limit * (100 - hullDamping) / 100 else movement.limit
+        val fish = (frame.fish + ((movement.target - frame.fish) / movement.divisor).coerceIn(-limit, limit)).coerceIn(0, 10000)
         val progress = (frame.progress + if (abs(fish - bar) <= half) 32 else -45).coerceIn(0, 10000)
         val tick = frame.tick + 1
         return Frame(tick, bar, velocity, fish, progress,
@@ -134,7 +145,8 @@ object EconomyBoatReel {
     }
 
     fun step(frame: Frame, held: Boolean, challenge: EconomyBoatChallenge): Frame =
-        step(frame, held, challenge.seed, challenge.zoneWidth, challenge.difficulty, challenge.rulesVersion, challenge.resistance, challenge.fishRarity)
+        step(frame, held, challenge.seed, challenge.zoneWidth, challenge.difficulty, challenge.rulesVersion, challenge.resistance,
+            challenge.fishRarity, challenge.motorResponse ?: 0, challenge.hullDamping ?: 0)
 
     /** A prefix or a trace containing input after an earlier terminal frame is invalid. */
     fun replay(challenge: EconomyBoatChallenge, submission: EconomyBoatReelSubmission): Frame {

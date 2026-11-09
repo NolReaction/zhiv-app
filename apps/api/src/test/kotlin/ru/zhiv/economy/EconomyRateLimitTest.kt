@@ -73,7 +73,7 @@ class EconomyRateLimitTest {
         assertEquals(HttpStatusCode.PayloadTooLarge, send(boundaryBody + " ").status)
         assertEquals(0, fixture.commands, "One byte over the limit cannot reach the repository")
         checkPlay(boundaryBody)
-        for (action in listOf("start_boat_upgrade", "depart_boat", "begin_boat_cast")) {
+        for (action in listOf("start_boat_upgrade", "depart_boat", "begin_boat_cast", "buy_boat_fuel")) {
             checkPlay(economyJson.encodeToString(command.copy(action = action, reel = null, expectedRevision = fixture.commands.toLong())))
         }
         val beforeRecovery = fixture.commands

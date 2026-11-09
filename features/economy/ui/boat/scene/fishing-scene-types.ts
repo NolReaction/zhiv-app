@@ -1,3 +1,5 @@
+import type { BoatVisualLevels } from "@/features/world/objects/fishing-boat/fishing-boat-artwork";
+
 /** Presentation-only input. Reel positions use the existing 0..10000 integer scale. */
 export type FishingSceneFrame = {
   stage: "waiting" | "casting" | "soaking" | "landed" | "bite" | "reeling" | "paused" | "caught" | "escaped" | "expired" | "pending";
@@ -17,7 +19,7 @@ export type FishingSceneFrame = {
   ambience?: { now: number; timeZone: string };
   held: boolean;
   reel?: { bar: number; fish: number; progress: number; zoneWidth: number; velocity?: number };
-  boat: { repaired: boolean; upgrades: readonly string[] };
+  boat: { repaired: boolean; modules?: BoatVisualLevels; upgrades: readonly string[] };
   rodId?: string;
   appearance?: { palette: string; head: string | null; neck: string | null };
 };
@@ -33,7 +35,7 @@ export type FishingScenePoint = { x: number; y: number };
 export const FISHING_SCENE_RIG = {
   reference: { width: 1600, height: 900 },
   boat: { minimumWidth: 570, maximumWidth: 750, marginRatio: .035, surfaceRatio: .43 },
-  actor: { foot: { x: 600, y: 400 }, size: 216, pivot: { x: 24, y: 44 } },
+  actor: { foot: { x: 600, y: 384 }, size: 216, pivot: { x: 24, y: 44 } },
   hands: { grip: { x: 515, y: 382 }, reel: { x: 490, y: 408 },
     nearShoulder: { x: 464, y: 396 }, nearElbow: { x: 489, y: 412 },
     farShoulder: { x: 422, y: 402 }, farElbow: { x: 456, y: 425 } },

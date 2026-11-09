@@ -106,8 +106,9 @@ test("preparing a repaired boat preserves earned progress and assets, checks own
   cheat(building, "grant_upgrade_cost", "workshop");
   normal(building, "start_construction", "workshop");
   const pendingBuilding = read(building);
-  assert.throws(() => cheat(building, "prepare_boat", "boat"), { code: "ECONOMY_BOAT_BUSY" });
-  assert.deepEqual(read(building), pendingBuilding, "Preparing the boat cannot bypass or overwrite paid workshop construction");
+  const preparedDuringWork = cheat(building, "prepare_boat", "boat").state;
+  assert.deepEqual(preparedDuringWork.jobs, pendingBuilding.jobs, "Starter access cannot overwrite paid workshop construction");
+  assert.deepEqual(preparedDuringWork.buildings, pendingBuilding.buildings);
   const p = player(), other = player();
   row(p).state.boat = { ...boats.newBoatState(), upgrades: ["crate"], blueprints: { landing_net: 2, telescope: 1 },
     completedVoyages: 7, qualifiedVoyages: 5, records: { fish_dace: { weightGrams: 100, caughtAt: new Date(now).toISOString() } } };
@@ -118,7 +119,7 @@ test("preparing a repaired boat preserves earned progress and assets, checks own
   const prepared = api.commandDevEconomyCheat(p.token, command, now);
   assert.deepEqual(prepared.state.boat, { ...before.boat, level: 1 });
   assert.equal(prepared.state.buildings.home, 4);
-  assert.ok(prepared.state.buildings.workshop >= 1);
+  assert.deepEqual(prepared.state.buildings, before.buildings);
   assert.deepEqual(prepared.state.wallet, before.wallet); assert.deepEqual(prepared.state.inventory, before.inventory);
   const replay = api.commandDevEconomyCheat(p.token, command, now + 1000);
   assert.equal(replay.replayed, true); assert.equal(replay.acceptedRevision, prepared.acceptedRevision);
@@ -134,7 +135,7 @@ test("missing-only boat upgrade funding retains building gates and same-millisec
   const funded = cheat(p, "grant_boat_upgrade_cost", "repair").state;
   assert.deepEqual(cheat(p, "grant_boat_upgrade_cost", "repair").state.inventory, funded.inventory);
   assert.equal(cheat(p, "grant_boat_upgrade_cost", "repair").state.wallet.coins, funded.wallet.coins);
-  assert.throws(() => normal(p, "start_boat_upgrade", "repair"), { code: "ECONOMY_BOAT_UPGRADE" });
+  assert.throws(() => normal(p, "start_boat_upgrade", "tank_1"), { code: "ECONOMY_BOAT_UPGRADE" });
   const work = paidRepair(p), paid = read(p), finish = request(p, "finish_boat_work", work.id);
   assert.throws(() => cheat(p, "prepare_boat", "boat"), { code: "ECONOMY_BOAT_BUSY" });
   assert.throws(() => cheat(p, "finish_boat_work", crypto.randomUUID()), { code: "ECONOMY_BOAT_WORK_GONE" });
@@ -165,7 +166,13 @@ test("the shared construction and all-jobs controls include boat work without cl
 
 test("DEV travel skips retain private draws and catches, leave full fishing time, and award only through ordinary delivery", () => {
   const p = player(); cheat(p, "prepare_boat", "boat"); row(p).state.inventory = {};
-  const initial = normal(p, "depart_boat", "river_reach").state.boat.voyage;
+  normal(p, "depart_boat", "river_reach");
+  // Imported timed voyage from before the introduction of instant travel.
+  const saved = row(p).state.boat.voyage;
+  saved.outboundSeconds = 300; saved.inboundSeconds = 300;
+  saved.arrivesAt = new Date(now + 300000).toISOString();
+  saved.fishingUntil = new Date(now + 2100000).toISOString();
+  const initial = structuredClone(saved);
   row(p).state.boat.voyage.slots[0].challengeSeed = 37;
   row(p).state.boat.voyage.slots[0].difficulty = 1;
   const savedSlots = structuredClone(row(p).state.boat.voyage.slots), before = read(p);
@@ -210,6 +217,7 @@ test("blueprint controls inspect every puzzle stage without manufacturing the it
     assert.equal(result.boat.qualifiedVoyages, before.boat.qualifiedVoyages);
     assert.deepEqual(result.wallet, before.wallet); assert.deepEqual(result.inventory, before.inventory);
   }
+  cheat(p, "set_building_level", "home", 2); cheat(p, "set_building_level", "workshop", 1);
   cheat(p, "set_boat_blueprint", "landing_net", 3); cheat(p, "grant_boat_upgrade_cost", "landing_net");
   const work = normal(p, "start_boat_upgrade", "landing_net").state.boat.work;
   const pending = read(p);

@@ -28,7 +28,8 @@ fun validateEconomyCommand(command: EconomyCommand) {
         if (command.reel == null) invalidEconomy()
     } else if (command.reel != null) invalidEconomy()
     if (command.action == "inspect_telescope" && (command.quantity != 1L || command.totalPrice != 0L || command.fishSelection != null)) invalidEconomy()
-    if (command.action in EconomyBoats.actions && (command.quantity != 1L || command.totalPrice != 0L || command.fishSelection != null)) invalidEconomy()
+    if (command.action in EconomyBoats.actions && (command.quantity != 1L ||
+        (command.action != "buy_boat_fuel" && command.totalPrice != 0L) || command.fishSelection != null)) invalidEconomy()
     command.fishSelection?.let { selection ->
         if (command.action !in setOf("start_production", "complete_resident_order", "sell", "sell_fish", "create_listing") || selection.size > 100 ||
             selection.keys.any { it.length !in 1..80 }) invalidEconomy()
@@ -60,7 +61,11 @@ fun decodeEconomyCommand(element: JsonElement, validator: (EconomyCommand) -> Un
     }
     value["reel"]?.takeUnless { it == JsonNull }?.let { supplied ->
         val reel = supplied as? JsonObject ?: invalidEconomy()
-        if (reel.keys != setOf("challengeId", "inputs", "endTick") || (reel["challengeId"] as? JsonPrimitive)?.isString != true) invalidEconomy()
+        if (reel.keys - "deferred" != setOf("challengeId", "inputs", "endTick") || (reel["challengeId"] as? JsonPrimitive)?.isString != true) invalidEconomy()
+        reel["deferred"]?.let {
+            val flag = it as? JsonPrimitive ?: invalidEconomy()
+            if (flag.isString || flag.booleanOrNull == null) invalidEconomy()
+        }
         val end = reel["endTick"] as? JsonPrimitive ?: invalidEconomy()
         if (end.isString || end.intOrNull == null) invalidEconomy()
         val inputs = reel["inputs"] as? JsonArray ?: invalidEconomy()

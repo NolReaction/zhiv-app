@@ -59,7 +59,7 @@ test("boat defaults preserve old profiles and public projection never reveals se
 });
 test("repair and ordinary construction share one builder, ready work remains reserved", () => {
   const state = fresh(); run(state, "start_boat_upgrade", "repair");
-  assert.equal(state.wallet.coins, 99600); assert.equal(state.inventory.planks, 8); assert.equal(state.inventory.rope, 10);
+  assert.equal(state.wallet.coins, 100000); assert.equal(state.inventory.planks, 12); assert.equal(state.inventory.rope, 12);
   assert.throws(() => run(state, "start_construction", "woodlot"), { code: "ECONOMY_CONSTRUCTION_BUSY" });
   const work = state.boat.work;
   assert.throws(() => run(state, "claim_boat_upgrade", work.id), { code: "ECONOMY_BOAT_WORK_WAIT" });
@@ -69,10 +69,10 @@ test("repair and ordinary construction share one builder, ready work remains res
 test("departures snapshot fixed times, loadout and every draw; consume one bait for the whole trip", () => {
   const state = ready(); state.inventory.crumb_bait = 2; state.fishing.equippedBaitId = "crumb_bait";
   state.boat.upgrades = ["crate", "oars"]; const voyage = depart(state);
-  assert.equal(voyage.maxCasts, 5); assert.equal(voyage.outboundSeconds, 240); assert.equal(voyage.inboundSeconds, 240);
-  assert.equal(voyage.slots.length, 5); assert.equal(state.inventory.crumb_bait, 1);
+  assert.equal(voyage.maxCatches, 5); assert.equal(voyage.maxCasts, 7); assert.equal(voyage.outboundSeconds, 0); assert.equal(voyage.inboundSeconds, 0);
+  assert.equal(voyage.slots.length, 7); assert.equal(state.inventory.crumb_bait, 1);
   state.fishing.equippedBaitId = null; assert.equal(voyage.loadout.baitId, "crumb_bait");
-  assert.equal(Date.parse(voyage.arrivesAt) - at, 240000); assert.equal(Date.parse(voyage.fishingUntil) - Date.parse(voyage.arrivesAt), 1800000);
+  assert.equal(Date.parse(voyage.arrivesAt) - at, 0); assert.equal(Date.parse(voyage.fishingUntil) - Date.parse(voyage.arrivesAt), 1800000);
   for (const slot of voyage.slots) { const range = model.economyCatalog.boat.weights[slot.fishId]; assert.ok(slot.weightGrams >= range.minGrams && slot.weightGrams <= range.maxGrams); }
 });
 test("food, skills and landing net cannot change travel caps or the preselected mass", () => {
@@ -134,7 +134,7 @@ test("expired or escaped casts consume one fixed slot, never reset attempts", ()
 });
 test("automatic return is a pure time projection; empty arrival gives no skill or fragment", () => {
   const state = ready(), voyage = depart(state), before = structuredClone(state), end = boats.boatReturnsAt(voyage);
-  assert.equal(boats.boatPhase(state.boat, Date.parse(voyage.fishingUntil)), "returning");
+  assert.equal(boats.boatPhase(state.boat, Date.parse(voyage.fishingUntil)), "ready");
   assert.equal(boats.boatPhase(state.boat, end), "ready"); assert.deepEqual(state, before);
   const skill = state.progression.skills.fishingSeconds; run(state, "claim_boat", voyage.id, end);
   assert.equal(state.progression.skills.fishingSeconds, skill); assert.equal(state.boat.qualifiedVoyages, 0); assert.equal(state.boat.blueprints.landing_net, 0);
@@ -145,14 +145,15 @@ test("qualifying and partial voyages preserve legacy pages and permanent items w
   state.boat.artifacts = ["landing_net", "telescope"];
   const pages = structuredClone(state.boat.blueprints), artifacts = [...state.boat.artifacts];
   for (let trip = 1; trip <= 14; trip++) {
+    now += boats.boatConfig().fuel.regenSeconds * 1000;
     const voyage = depart(state, now); now = Date.parse(voyage.arrivesAt);
-    for (let i = 0; i < voyage.maxCasts; i++) now = catchOne(state, now + 1);
+    for (let i = 0; i < voyage.maxCatches; i++) now = catchOne(state, now + 1);
     run(state, "return_boat", voyage.id, now); now += voyage.inboundSeconds * 1000;
     run(state, "claim_boat", voyage.id, now); state.inventory = {};
     assert.deepEqual(state.boat.blueprints, pages);
     assert.deepEqual(state.boat.artifacts, artifacts);
   }
-  const voyage = depart(state, now); now = catchOne(state, Date.parse(voyage.arrivesAt));
+  const voyage = depart(state, now + 1800000); now = catchOne(state, Date.parse(voyage.arrivesAt));
   run(state, "return_boat", voyage.id, now); now += voyage.inboundSeconds * 1000; run(state, "claim_boat", voyage.id, now);
   assert.equal(state.boat.completedVoyages, 15); assert.equal(state.boat.qualifiedVoyages, 14);
   assert.deepEqual(state.boat.blueprints, pages);
@@ -174,7 +175,7 @@ test("a saved paid artifact job remains claimable once without a second cost or 
 });
 test("full storage failure is atomic, then claim awards once including species, mass and bounded practice", () => {
   const state = ready(), voyage = depart(state); let now = Date.parse(voyage.arrivesAt);
-  for (let i = 0; i < voyage.maxCasts; i++) now = catchOne(state, now + 1);
+  for (let i = 0; i < voyage.maxCatches; i++) now = catchOne(state, now + 1);
   run(state, "return_boat", voyage.id, now); now += voyage.inboundSeconds * 1000;
   const delivery = structuredClone(state.boat.voyage.catches), skill = state.progression.skills.fishingSeconds;
   state.inventory = { wood: rules.economyStorage(state).capacity }; const before = structuredClone(state);
@@ -184,7 +185,7 @@ test("full storage failure is atomic, then claim awards once including species, 
   assert.equal(Object.values(state.fishing.catches).reduce((a, b) => a + b, 0), 4);
   assert.equal(Object.values(state.fishing.stock).reduce((a, b) => a + b, 0), 4);
   assert.deepEqual(state.boat.blueprints, { landing_net: 0, telescope: 0 }); assert.equal(state.boat.qualifiedVoyages, 1);
-  assert.equal(state.progression.skills.fishingSeconds - skill, 600);
+  assert.equal(state.progression.skills.fishingSeconds - skill, delivery.reduce((sum, fish) => sum + fish.reelSeconds, 0));
   for (const fish of delivery) assert.ok(state.boat.records[fish.fishId].weightGrams >= fish.weightGrams);
   const claimed = structuredClone(state); assert.throws(() => run(state, "claim_boat", voyage.id, now), { code: "ECONOMY_BOAT_VOYAGE_GONE" }); assert.deepEqual(state, claimed);
 });
@@ -231,4 +232,73 @@ test("legacy attempts stay playable without bite metadata and a too-late new cas
   assert.deepEqual(state, before);
   assert.equal(schema.boatChallengeSchema.safeParse({ ...challenge, biteAt: challenge.expiresAt }).success, false);
   assert.equal(schema.boatChallengeSchema.safeParse({ ...challenge, fishRarity: "invented" }).success, false);
+});
+
+test("fuel clocks cap at full, keep partial time on emergency refill and charge one cell per confirmed departure", () => {
+  const state = ready(), interval = boats.boatConfig().fuel.regenSeconds * 1000;
+  const trip = time => { const v = depart(state, time); run(state, "return_boat", v.id, time); run(state, "claim_boat", v.id, time); };
+  const buy = (time, totalPrice = 14) => run(state, "buy_boat_fuel", "fuel_cell", time, { totalPrice });
+  state.wallet.pearls = 13;
+  assert.deepEqual(boats.boatFuelStatus(state.boat, at), { cells: 2, capacity: 2, nextAt: null });
+  trip(at); trip(at + 1000);
+  const empty = structuredClone(state);
+  assert.throws(() => depart(state, at + 1000), { code: "ECONOMY_BOAT_DEPARTURE" });
+  assert.throws(() => buy(at + 1000, 7), { code: "ECONOMY_BOAT_FUEL_PRICE" });
+  assert.throws(() => buy(at + 1000), { code: "ECONOMY_PEARLS" });
+  assert.deepEqual(state, empty);
+  state.wallet.pearls = 28;
+  buy(at + interval - 1);
+  assert.equal(state.wallet.pearls, 14);
+  assert.deepEqual(boats.boatFuelStatus(state.boat, at + interval - 1), { cells: 1, capacity: 2, nextAt: at + interval });
+  assert.throws(() => buy(at + interval), { code: "ECONOMY_BOAT_FUEL" });
+  assert.deepEqual(boats.boatFuelStatus(state.boat, at + interval * 20), { cells: 2, capacity: 2, nextAt: null });
+  const later = at + interval * 20; trip(later);
+  assert.deepEqual(boats.boatFuelStatus(state.boat, later), { cells: 1, capacity: 2, nextAt: later + interval });
+});
+
+test("an expanded tank starts its extra cell from claim time and retains progress already earned in an incomplete tank", () => {
+  for (const empty of [false, true]) {
+    const state = ready(); state.inventory = { planks: 2, rope: 1 };
+    if (empty) state.boat.fuel = { cells: 0, nextAt: new Date(at + 1000000).toISOString() };
+    run(state, "start_boat_upgrade", "tank_1");
+    const work = state.boat.work, done = Date.parse(work.finishesAt);
+    run(state, "claim_boat_upgrade", work.id, done);
+    const status = boats.boatFuelStatus(state.boat, done);
+    assert.deepEqual(status, { capacity: 3, cells: empty ? 0 : 2, nextAt: empty ? at + 1000000 : done + 1800000 });
+  }
+});
+
+test("paid three-module legacy loadouts map once and all twenty sequential tiers affect play", () => {
+  const state = ready(); state.boat.upgrades = ["oars", "crate"]; state.buildings.home = 5; state.buildings.workshop = 4;
+  assert.deepEqual(boats.boatModules(state.boat), { engine: 1, storage: 1, hull: 1, tank: 0 });
+  assert.throws(() => run(state, "start_boat_upgrade", "engine_3"), { code: "ECONOMY_BOAT_UPGRADE" });
+  for (const moduleId of schema.boatModuleIds) {
+    let upgrade;
+    while ((upgrade = boats.boatModuleUpgrade(state.boat, moduleId))) {
+      state.inventory = structuredClone(upgrade.cost.items);
+      run(state, "start_boat_upgrade", upgrade.id);
+      const work = state.boat.work; run(state, "claim_boat_upgrade", work.id, Date.parse(work.finishesAt));
+      assert.equal(boats.boatModules(state.boat)[moduleId], upgrade.tier);
+      assert.throws(() => run(state, "start_boat_upgrade", upgrade.id), { code: "ECONOMY_BOAT_UPGRADE" });
+    }
+  }
+  const v = depart(state); assert.equal(v.maxCatches, 9); assert.equal(v.maxCasts, 11);
+  run(state, "begin_boat_cast", v.id);
+  const c = state.boat.voyage.challenge, view = schema.boatStateSchema.parse(boats.publicBoatState(state.boat));
+  assert.equal(c.rulesVersion, 5); assert.equal(c.motorResponse, 5); assert.equal(c.hullDamping, 20);
+  assert.deepEqual(view.voyage.challenge, c); assert.equal(view.voyage.slots, undefined);
+  const unassisted = { ...c, rulesVersion: 4 };
+  const turning = { ...physics.initialBoatReel(c), velocity: -100 };
+  assert.equal(physics.stepBoatReel(c, turning, true).velocity - physics.stepBoatReel(unassisted, turning, true).velocity, 5);
+  const completed = play(c); assert.equal(completed.result.status, "caught");
+  assert.deepEqual(physics.replayBoatReel(c, completed.inputs, completed.endTick), completed.result);
+});
+
+test("old workshop catalogs cannot quote new work and malformed present-day prices stay invalid", () => {
+  const catalog = structuredClone(model.economyCatalog);
+  delete catalog.boat.moduleEffects; delete catalog.boat.fuel; delete catalog.boat.spareCasts;
+  catalog.boat.upgrades = catalog.boat.upgrades.slice(0, 5);
+  catalog.boat.outboundSeconds = catalog.boat.inboundSeconds = 300;
+  assert.equal(model.economyCatalogSchema.parse(catalog).boat, undefined);
+  assert.equal(model.economyCatalogSchema.safeParse({ ...catalog, boat: { ...catalog.boat, fuel: {} } }).success, false);
 });

@@ -530,6 +530,22 @@ test("a repaired boat can depart through the economy API", async () => {
   assert.ok((await response.json()).state.boat.voyage.id);
 });
 
+test("concurrent emergency fuel requests charge one quoted cell and a lost response replays without a second debit", async () => {
+  const p = player(), request = { ...command(p), action: "buy_boat_fuel", targetId: "fuel_cell", totalPrice: model.economyCatalog.boat.fuel.refillPricePearls };
+  const profile = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  const nextAt = new Date(Date.now() + 900000).toISOString();
+  profile.state.boat.level = 1; profile.state.boat.fuel = { cells: 0, nextAt }; profile.state.wallet.pearls = 100;
+  const calls = [request, { ...request, requestId: crypto.randomUUID() }];
+  const results = await Promise.all(calls.map(input => POST(post(input))));
+  assert.deepEqual(results.map(response => response.status).sort(), [200, 409]);
+  const accepted = calls[results.findIndex(response => response.status === 200)];
+  const replay = await (await POST(post(accepted))).json();
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.state.wallet.pearls, 100 - request.totalPrice);
+  assert.deepEqual(replay.state.boat.fuel, { cells: 1, nextAt });
+  assert.equal(profile.revision, request.expectedRevision + 1);
+});
+
 test("paused boat commands leave saved state untouched; pending repairs and returning cargo remain claimable", async t => {
   const { default: features } = await vite.ssrLoadModule("/apps/api/src/main/resources/world/release-features.json");
   const configured = features.boatFishingEnabled;
@@ -547,7 +563,7 @@ test("paused boat commands leave saved state untouched; pending repairs and retu
   profile.state.boat.voyage.castsUsed = 1;
   profile.state.boat.voyage.catches = [{ castIndex: 0, fishId: slot.fishId, weightGrams: slot.weightGrams, caughtAt: oldVoyage.arrivesAt }];
   const saved = structuredClone(profile.state.boat);
-  for (const [action, targetId] of [["depart_boat", "river_reach"], ["start_boat_upgrade", "oars"], ["begin_boat_cast", oldVoyage.id]]) {
+  for (const [action, targetId] of [["depart_boat", "river_reach"], ["start_boat_upgrade", "oars"], ["buy_boat_fuel", "fuel_cell"], ["begin_boat_cast", oldVoyage.id]]) {
     const cmd = { ...command(p), action, targetId }, before = profile.revision;
     const response = await POST(post(cmd));
     assert.equal(response.status, 409);

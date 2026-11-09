@@ -1,5 +1,6 @@
 "use client";
 
+import { boatAccess } from "@/features/economy/ui/boat/boat-access";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Anchor, ArrowRight, BookOpen, Bug, Check, Clock3, Fish, FishingRod, Package, RefreshCw, Store } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
@@ -372,6 +373,7 @@ export function PleskTackleCounter({ economy, state, catalog, onOpenOrders, guid
 
 export type PleskFishingShopProps = { economy: EconomyController; onFishing: () => void; onOpenPantry: () => void; onOpenOrders?: () => void };
 export function PleskFishingShop({ economy, onFishing, onOpenPantry, onOpenOrders }: PleskFishingShopProps) {
+  const byBoat = boatAccess(economy.snapshot) === "play";
   const [tab, setTab] = useState<ShopTab>("tackle"), id = useId(), tabButtons = useRef<Array<HTMLButtonElement | null>>([]);
   function changeTab(next: ShopTab) {
     if (next === tab) return;
@@ -422,6 +424,6 @@ export function PleskFishingShop({ economy, onFishing, onOpenPantry, onOpenOrder
         {tab === "fish" ? <FishCounter economy={economy} state={state} catalog={catalog} /> : tab === "tackle" ? <PleskTackleCounter key={guideRequest?.sequence ?? 0} economy={economy} state={state} catalog={catalog} onOpenOrders={onOpenOrders} guideKind={guideRequest?.stepId === "rods" ? "rod" : guideRequest?.stepId === "bait" ? "bait" : undefined} /> : <PleskFishingCollection state={state} catalog={catalog} />}
       </div>
     </>}
-    <div className={styles.departure}><button type="button" className={styles.fishingButton} onClick={onFishing}><FishingRod size={22} aria-hidden="true" /><span><strong>На рыбалку</strong><small>Выбрать маршрут и снасти</small></span><ArrowRight size={18} aria-hidden="true" /></button><button type="button" className={styles.pantryLink} onClick={onOpenPantry}><Package size={15} aria-hidden="true" />Другие запасы<ArrowRight size={13} aria-hidden="true" /></button></div>
+    <div className={styles.departure}><button type="button" className={styles.fishingButton} onClick={onFishing}><FishingRod size={22} aria-hidden="true" /><span><strong>{byBoat ? "Лодочная рыбалка" : "На рыбалку"}</strong><small>{byBoat ? "К лодке и снастям" : "Выбрать маршрут и снасти"}</small></span><ArrowRight size={18} aria-hidden="true" /></button><button type="button" className={styles.pantryLink} onClick={onOpenPantry}><Package size={15} aria-hidden="true" />Другие запасы<ArrowRight size={13} aria-hidden="true" /></button></div>
   </div>;
 }

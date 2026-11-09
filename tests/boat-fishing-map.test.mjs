@@ -152,7 +152,13 @@ function fixture({ outbound = false, dev = false } = {}) {
   const apply = command => { const next = structuredClone(state); applyEconomyCommand(next, command, time, () => crypto.randomUUID(), {}, maximum => 37 % maximum); state = next; revision++; commands.push(command); };
   const command = (action, targetId, reel) => economyCommandSchema.parse({ requestId: crypto.randomUUID(), ownerPublicId: "0000-0000-0000", expectedRevision: revision, action, targetId, quantity: 1, totalPrice: 0, ...(reel ? { reel } : {}) });
   apply(command("depart_boat", economyCatalog.boat.routeId));
-  if (!outbound) { const difference = Date.parse(state.boat.voyage.arrivesAt) - time; time += difference; clock += difference; }
+  if (outbound) {
+    // A voyage saved before the fuel update keeps its original schedule.
+    const voyage = state.boat.voyage;
+    voyage.outboundSeconds = 300; voyage.inboundSeconds = 300;
+    voyage.arrivesAt = new Date(time + 300_000).toISOString();
+    voyage.fishingUntil = new Date(Date.parse(voyage.fishingUntil) + 300_000).toISOString();
+  }
   const view = () => ({ ...state, ownerPublicId: "0000-0000-0000", revision, serverTime: new Date(time).toISOString(), catalog: economyCatalog,
     boat: publicBoatState(state.boat), ship: economyShipSchema.parse(state.ship), storage: economyStorage(state) });
   const render = () => {
@@ -180,7 +186,10 @@ function fixture({ outbound = false, dev = false } = {}) {
     hold(value, input = "keyboard") { const button = byAction("hold"); assert(button); if (input === "pointer") button.props[value ? "onPointerDown" : "onPointerUp"](event(button));
       else button.props[value ? "onKeyDown" : "onKeyUp"](event(button)); render(); },
     playToResult() {
-      while (hooks.inspectReel()?.status === "active") { const reel = hooks.inspectReel(); this.hold(reel.fish > reel.bar + reel.velocity * 4); frame(50); }
+      for (let i = 0; i <= state.boat.voyage.challenge.maxTicks && hooks.inspectReel()?.status === "active"; i++) {
+        const reel = hooks.inspectReel(); this.hold(reel.fish > reel.bar + reel.velocity * 4); frame(50);
+      }
+      assert.notEqual(hooks.inspectReel()?.status, "active", "local fight reaches a terminal tick");
       return hooks.inspectReel();
     },
   };
@@ -296,7 +305,7 @@ test("caught UI explicitly submits one replay verified trace then credits invent
 
 test("escaped or expired attempts never give local fish and the real cast budget survives scene remounts", () => {
   const f = fixture(); f.cast(); f.play();
-  while (hooks.inspectReel().status === "active") f.frame(50);
+  for (let i = 0; i <= f.state.boat.voyage.challenge.maxTicks && hooks.inspectReel().status === "active"; i++) f.frame(50);
   assert.equal(hooks.inspectReel().status, "escaped"); f.click(f.byAction("submit")); f.flush();
   assert.equal(f.state.boat.voyage.catches.length, 0); assert.equal(f.state.boat.voyage.castsUsed, 1);
   f.cast(); const id = f.state.boat.voyage.challenge.id, expiry = Date.parse(f.state.boat.voyage.challenge.expiresAt);
@@ -369,7 +378,7 @@ test("the final confirmed fish keeps a prominent direct return action and then s
   assert.equal(f.find(node => node.props.role === "alertdialog"), undefined);
   assert.equal(f.pending.filter(command => command.action === "return_boat").length, 1);
   f.flush(); assert.equal(f.find(node => node.props["data-boat-map-view"]), undefined);
-  assert.deepEqual(f.state.inventory, inventory, "returning is travel, not unloading");
+  assert.deepEqual(f.state.inventory, inventory, "returning preserves the catch until unloading");
   assert.equal(f.commands.filter(command => command.action === "claim_boat").length, 0);
 });
 

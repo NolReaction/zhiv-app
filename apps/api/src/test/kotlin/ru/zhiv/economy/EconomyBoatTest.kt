@@ -24,6 +24,15 @@ class EconomyBoatTest {
         return started.copy(boat = b.copy(voyage = v.copy(slots = v.slots.mapIndexed { i, slot ->
             slot.copy(fishId = "fish_silverfin", weightGrams = 500 + i, challengeSeed = i.toLong(), difficulty = 1) })))
     }
+    // Prior releases persisted complete journeys (including durations, cap and private slots).
+    private fun legacyDepart(): EconomyState {
+        val departed = depart()
+        val boat = checkNotNull(departed.boat)
+        val voyage = checkNotNull(boat.voyage)
+        return departed.copy(boat = boat.copy(fuel = null, voyage = voyage.copy(
+            arrivesAt = now.plusSeconds(300).toString(), fishingUntil = now.plusSeconds(2100).toString(),
+            maxCasts = 4, maxCatches = 4, slots = voyage.slots.take(4), outboundSeconds = 300, inboundSeconds = 300)))
+    }
     private fun caughtTrace(challenge: EconomyBoatChallenge): EconomyBoatReelSubmission {
         var frame = EconomyBoatReel.Frame(); var held = false
         val inputs = mutableListOf<EconomyBoatReelInput>()
@@ -36,27 +45,27 @@ class EconomyBoatTest {
         return EconomyBoatReelSubmission(challenge.id, inputs, frame.tick)
     }
     private fun ready(castsUsed: Int = 4): EconomyState {
-        val state = depart(); val b = state.boat!!; val v = b.voyage!!
+        val state = legacyDepart(); val b = state.boat!!; val v = b.voyage!!
         return state.copy(boat = b.copy(voyage = v.copy(castsUsed = castsUsed,
             catches = listOf(EconomyBoatCatch(0, "fish_silverfin", 500, now.plusSeconds(320).toString())))))
     }
     private fun failure(code: String, block: () -> Unit) = assertEquals(code, assertFailsWith<AuthFailure>(block = block).code)
 
     @Test fun `repair reserves builder pays once and needs an explicit completed work claim`() {
-        val state = funded(); val start = call(state, "start_boat_upgrade", "repair")
+        val state = EconomyRules.initial(); val start = call(state, "start_boat_upgrade", "repair")
         val work = start.boat!!.work!!
-        assertEquals(state.wallet.coins - 400, start.wallet.coins)
-        assertEquals(16L, start.inventory["planks"])
-        assertEquals(900L, Instant.parse(work.finishesAt).epochSecond - now.epochSecond)
+        assertEquals(state.wallet, start.wallet)
+        assertEquals(state.inventory, start.inventory)
+        assertEquals(5L, Instant.parse(work.finishesAt).epochSecond - now.epochSecond)
         failure("ECONOMY_BOAT_WORK_WAIT") { call(start, "claim_boat_upgrade", work.id) }
-        failure("ECONOMY_CONSTRUCTION_BUSY") { call(start, "start_construction", "garden") }
+        failure("ECONOMY_CONSTRUCTION_BUSY") { call(start.copy(buildings = funded().buildings), "start_construction", "garden") }
         failure("ECONOMY_BOAT_UPGRADE") { call(start, "start_boat_upgrade", "repair") }
         val repaired = call(start, "claim_boat_upgrade", work.id, now.plusSeconds(900))
         assertEquals(1, repaired.boat!!.level); assertNull(repaired.boat!!.work)
         failure("ECONOMY_BOAT_WORK_GONE") { call(repaired, "claim_boat_upgrade", work.id, now.plusSeconds(901)) }
         failure("ECONOMY_BOAT_UPGRADE") { call(repaired, "start_boat_upgrade", "repair") }
         failure("ECONOMY_BOAT_UPGRADE") { call(repaired, "start_boat_upgrade", "landing_net") }
-        val withPages = repaired.copy(boat = repaired.boat!!.copy(blueprints = EconomyBoatBlueprints(3, 0)))
+        val withPages = funded().copy(boat = repaired.boat!!.copy(blueprints = EconomyBoatBlueprints(3, 0)))
         val paid = call(withPages, "start_boat_upgrade", "landing_net")
         val saved = economyJson.decodeFromString<EconomyState>(economyJson.encodeToString(paid))
         val artifactWork = saved.boat!!.work!!
@@ -76,9 +85,9 @@ class EconomyBoatTest {
             progression = EconomyProgression(skills = EconomyCraftSkills(fishingSeconds = 31_536_000, travelSeconds = 31_536_000)),
             fishing = EconomyFishing(equippedBaitId = bait))
         val started = depart(state); val v = started.boat!!.voyage!!
-        assertEquals(2L, started.inventory[bait]); assertEquals(5, v.maxCasts); assertEquals(5, v.slots.size)
-        assertEquals(240L, v.outboundSeconds); assertEquals(240L, v.inboundSeconds)
-        assertEquals(now.plusSeconds(240), Instant.parse(v.arrivesAt)); assertEquals(state.food, started.food)
+        assertEquals(2L, started.inventory[bait]); assertEquals(7, v.maxCasts); assertEquals(5, v.maxCatches); assertEquals(7, v.slots.size)
+        assertEquals(0L, v.outboundSeconds); assertEquals(0L, v.inboundSeconds)
+        assertEquals(now, Instant.parse(v.arrivesAt)); assertEquals(state.food, started.food)
         assertEquals(setOf(4000), v.slots.map { it.zoneWidth }.toSet())
         val serialized = economyJson.encodeToString(started)
         assertEquals(started, economyJson.decodeFromString<EconomyState>(serialized))
@@ -89,7 +98,7 @@ class EconomyBoatTest {
     }
 
     @Test fun `read only phases use saved times and explicit return cannot skip the inbound journey`() {
-        val state = depart(); val b = state.boat!!; val v = b.voyage!!
+        val state = legacyDepart(); val b = state.boat!!; val v = b.voyage!!
         val saved = economyJson.encodeToString(state)
         assertEquals("outbound", EconomyBoats.phase(b, now))
         assertEquals("fishing", EconomyBoats.phase(b, now.plusSeconds(300)))
@@ -130,6 +139,34 @@ class EconomyBoatTest {
         assertFalse("fish_common" in caught.inventory, "Cargo is not yet in the warehouse")
         assertNull(caught.boat!!.voyage!!.challenge)
         failure("ECONOMY_BOAT_CAST_GONE") { call(caught, "submit_boat_cast", id, now.plusSeconds(320), reel) }
+    }
+
+    @Test fun `deferred terminal trace reconciles only the still pending cast within a day`() {
+        val issued = depart(); val voyage = issued.boat!!.voyage!!
+        val fishing = call(issued, "begin_boat_cast", voyage.id)
+        val challenge = fishing.boat!!.voyage!!.challenge!!
+        val legacyTrace = caughtTrace(challenge)
+        assertFalse("deferred" in economyJson.encodeToString(legacyTrace))
+        val trace = legacyTrace.copy(deferred = true)
+        val deadline = Instant.parse(challenge.expiresAt)
+        val late = deadline.plusSeconds(86_400)
+        failure("ECONOMY_BOAT_CAST_EXPIRED") { call(fishing, "submit_boat_cast", voyage.id, late, legacyTrace) }
+        failure("ECONOMY_BOAT_CAST_EXPIRED") { call(fishing, "submit_boat_cast", voyage.id, late.plusMillis(1), trace) }
+        val replayed = call(fishing, "submit_boat_cast", voyage.id, late, trace)
+        val fish = replayed.boat!!.voyage!!.catches.single()
+        assertEquals(deadline, Instant.parse(fish.caughtAt))
+        assertEquals(trace.endTick * 50 / 1000, fish.reelSeconds)
+        failure("ECONOMY_BOAT_CAST_GONE") { call(replayed, "submit_boat_cast", voyage.id, late, trace) }
+        val claimed = call(replayed, "claim_boat", voyage.id, late)
+        assertEquals(1L, claimed.inventory["fish_common"])
+        assertEquals(fish.reelSeconds!!.toLong(), claimed.progression.skills!!.fishingSeconds)
+
+        val second = call(fishing, "begin_boat_cast", voyage.id, deadline)
+        failure("ECONOMY_BOAT_CAST_GONE") { call(second, "submit_boat_cast", voyage.id, late, trace) }
+        val c = challenge.copy(expiresAt = Instant.parse(challenge.biteAt).plusMillis(50).toString())
+        val boat = fishing.boat!!
+        val short = fishing.copy(boat = boat.copy(voyage = boat.voyage!!.copy(challenge = c)))
+        failure("ECONOMY_BOAT_CAST_EXPIRED") { call(short, "submit_boat_cast", voyage.id, late.minusSeconds(1000), trace) }
     }
 
     @Test fun `cast waits before replay and exposes only current rarity with legacy fallback`() {

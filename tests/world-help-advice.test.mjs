@@ -66,10 +66,10 @@ test("single-item recipe advice uses exact ingredients without substituting rare
   assert.deepEqual(advice({ inventory: { fish_common: 1 } }, { context: foodContext }), []);
   const selected = advice({ inventory: {} }, { context: foodContext });
   assert.equal(selected[0].id, "missing:fish_common"); assert.match(selected[0].message, /Есть 0, нужно 1/);
-  assert.deepEqual(selected[0].action.target, { kind: "expeditions", sector: "coast" });
+  assert.deepEqual(selected[0].action.target, { kind: "boat" });
   const rarerStock = advice({ inventory: { fish_uncommon: 2, wood: 2 } }, { context: foodContext });
   assert.equal(rarerStock[0].id, "missing:fish_common");
-  assert.deepEqual(rarerStock[0].action.target, { kind: "expeditions", sector: "coast" });
+  assert.deepEqual(rarerStock[0].action.target, { kind: "boat" });
   for (const bad of [{ recipeId: "unknown" }, { quantity: 0 }, { quantity: 1.1 }, { stationId: "kiln" }, { fishItemId: "fish_shark" }])
     assert.deepEqual(advice({}, { context: { ...context, ...bad } }), []);
 });
@@ -122,7 +122,7 @@ test("recipe advice distinguishes personal catches from owned fish and leads to 
     progression: { recipes: { cook_grilled_fish: 1 } } };
   const result = advice(patch, { context });
   assert.match(result[0].message, /Поймайте и заберите любую рыбу: 0 \/ 8/);
-  assert.deepEqual(result[0].action.target, { kind: "expeditions", sector: "coast" });
+  assert.deepEqual(result[0].action.target, { kind: "boat" });
   const species = economyCatalog.fishing.fish[0];
   assert.deepEqual(advice({ ...patch, fishing: { catches: { [species.itemId]: 8 } } }, { context }), []);
   const incoming = job({ kind: "exploration", targetId: economyCatalog.fishing.routeIds[0], recipeId: null,

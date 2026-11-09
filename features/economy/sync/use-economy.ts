@@ -37,7 +37,7 @@ export function useEconomy(owner: string | null, onSessionLost: () => void, enab
       if (!document.hidden) {
         setNow(session.now());
         if (navigator.onLine) {
-          if (session.getSnapshot().pendingProductionCount > 0) void session.refreshSoft();
+          if (session.getSnapshot().pendingBoatCastId || session.getSnapshot().pendingProductionCount > 0) void session.refreshSoft();
           else void session.retryThrottled();
         }
       }

@@ -7,13 +7,13 @@ import { boatReelCheckpointKey, boatReelSubmission, changeBoatReelInput, readBoa
 import { boatCastStage } from "./boat-cast-timing";
 
 export type BoatReelControllerProps = { owner: string; voyageId: string; challenge: BoatChallenge; now: number;
-  disabled: boolean; uncertain?: boolean; onSubmit: (submission: BoatReelCommand) => boolean };
+  disabled: boolean; queued?: boolean; uncertain?: boolean; onSubmit: (submission: BoatReelCommand) => boolean };
 // Input drafts belong to this tab. A second tab must not overwrite an in-progress trace.
 const storage = () => { try { return window.sessionStorage; } catch { return null; } };
 
 /** Owns one immutable attempt. The caller MUST key its component by owner + voyage + challenge id.
  * Repainting or replaying local controls never awards fish; the server confirms the submitted trace. */
-export function useBoatReelController({ owner, voyageId, challenge: incomingChallenge, now, disabled, uncertain = false, onSubmit }: BoatReelControllerProps) {
+export function useBoatReelController({ owner, voyageId, challenge: incomingChallenge, now, disabled, queued = false, uncertain = false, onSubmit }: BoatReelControllerProps) {
   // A server attempt is immutable. Background snapshots must not reset its local controls.
   const [challenge] = useState(() => Object.freeze({ ...incomingChallenge }));
   const key = boatReelCheckpointKey(owner, voyageId, challenge.id);
@@ -26,7 +26,7 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
   const submission = useRef(false);
   const focusFrame = useRef<number | null>(null);
   const holdButton = useRef<HTMLButtonElement>(null), finishButton = useRef<HTMLButtonElement>(null);
-  const waitingForConfirmation = disabled && (submitted || uncertain && reel.status !== "active");
+  const waitingForConfirmation = queued || disabled && (submitted || uncertain && reel.status !== "active");
   const expired = !waitingForConfirmation && (deadlineReached || now >= Date.parse(challenge.expiresAt));
   useEffect(() => { current.current = { now, observedAt: performance.now() }; }, [now]);
   useEffect(() => {

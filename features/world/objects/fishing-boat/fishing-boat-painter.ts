@@ -32,7 +32,7 @@ export function drawFishingBoat(ctx: CanvasRenderingContext2D, frame: ForestFish
   }
   ctx.scale(44 / BOAT_ASSEMBLY.width, 44 / BOAT_ASSEMBLY.width);
   ctx.translate(-BOAT_ASSEMBLY.width / 2, -BOAT_ASSEMBLY.waterline);
-  const layers = boatArtworkLayers({ repaired: frame.level > 0, upgrades: frame.upgrades, artifacts: frame.artifacts });
+  const layers = boatArtworkLayers({ repaired: frame.level > 0, modules: frame.modules, upgrades: frame.upgrades, artifacts: frame.artifacts });
   function part(layer: BoatArtLayer) {
     const image = artwork.get(layer.src); if (!image) return;
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";

@@ -1,4 +1,4 @@
-import { BOAT_SIDE_VIEWPORT, boatArtworkLayers, type BoatArtLayer, type BoatArtModule } from "@/features/world/objects/fishing-boat/fishing-boat-artwork";
+import { BOAT_SIDE_VIEWPORT, boatArtworkLayers, type BoatArtLayer, type BoatArtModule, type BoatArtPartId, type BoatVisualLevels } from "@/features/world/objects/fishing-boat/fishing-boat-artwork";
 import styles from "./boat-art.module.css";
 
 /** A viewport preserves each source SVG's canvas and its common authored transform. */
@@ -10,13 +10,13 @@ function ArtworkPart({ layer }: { layer: BoatArtLayer }) {
 }
 
 export type BoatArtProps = {
-  repaired?: boolean; crate?: boolean; oars?: boolean; net?: boolean; telescope?: boolean; travelling?: boolean;
-  selectedModule?: BoatArtModule; previewModule?: BoatArtModule;
+  modules?: BoatVisualLevels; repaired?: boolean; crate?: boolean; oars?: boolean; net?: boolean; telescope?: boolean; travelling?: boolean;
+  selectedModule?: BoatArtPartId | "crate"; previewModule?: BoatArtModule;
 };
 
-export function BoatArtAssembly({ repaired = true, crate = false, oars = false, net = false, telescope = false,
+export function BoatArtAssembly({ repaired = true, modules, crate = false, oars = false, net = false, telescope = false,
   selectedModule, previewModule }: BoatArtProps) {
-  const layers = boatArtworkLayers({ repaired, upgrades: [crate && "crate", oars && "oars"].filter(Boolean) as string[],
+  const layers = boatArtworkLayers({ repaired, modules, upgrades: [crate && "crate", oars && "oars"].filter(Boolean) as string[],
     artifacts: [net && "landing_net", telescope && "telescope"].filter(Boolean) as string[], previewModule });
   return <g className={styles.assembly}>{layers.map(layer => <g key={layer.id} data-boat-part={layer.id} className={styles.part}
     data-selected={selectedModule === layer.id || undefined} data-preview={previewModule === layer.id || undefined}><ArtworkPart layer={layer} /></g>)}</g>;

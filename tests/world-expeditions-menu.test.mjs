@@ -160,6 +160,31 @@ test("travel starts with two decorated hero activities and no mine or premature 
   assert.equal(disabled(button(route(supplies, "forest"), "Подготовиться: Лесная разведка")), false);
 });
 
+test("boat fishing replaces ordinary shore launches, opens directly, and leaves old catch collection available", () => {
+  let tree, opened = 0;
+  const saved = job({ targetId: "shore", finishesAt: new Date(now).toISOString(), rewards: { fish: 1 } });
+  const economy = controller({ snapshot: snapshot({ jobs: [saved] }), act() { assert.fail("Opening an activity must not spend or claim"); } });
+  function Probe() {
+    tree = WorldExpeditionsMenu({ economy, initialSector: "shore", onOpenBoat: () => opened++, onOpenPantry() {} });
+    return tree;
+  }
+  const html = renderToStaticMarkup(createElement(Probe));
+  assert.match(html, /data-boat-entry="play"/);
+  assert.match(html, /data-sector-select="forest"/);
+  assert.doesNotMatch(html, /data-sector-select="shore"|data-route="shore(?:_camp)?"|>На рыбалку</);
+  assert.match(html, /Текущая вылазка: Рыбалка на берегу/);
+  assert.match(html, /Забрать находки/);
+  function visit(element) {
+    if (!isValidElement(element)) return;
+    if (element.props["data-boat-entry"]) element.props.onClick();
+    Children.forEach(element.props.children, visit);
+  }
+  visit(tree);
+  assert.equal(opened, 1);
+  const advanced = snapshot({ buildings: { home: 3, warehouse: 5, dryer: 2, kiln: 2 } });
+  assert.match(renderSector("forest", controller({ snapshot: advanced })), /data-route="coastal_deposits"/);
+});
+
 test("activity and route spotlights belong to actual cards instead of headings or list wrappers", () => {
   const activities = render();
   assert.match(activities, /data-section-guide-target="expedition-activities" data-guide-spotlight-group="true"/);

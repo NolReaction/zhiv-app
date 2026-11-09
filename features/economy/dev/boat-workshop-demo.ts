@@ -6,7 +6,7 @@ import { ApiError } from "@/lib/check-in-api";
 import { economyDevCommandSchema, type EconomyDevCommand } from "./dev-model";
 import { applyDevBoatCommand } from "./dev-boat";
 
-const playerActions = new Set(["start_boat_upgrade", "claim_boat_upgrade", "depart_boat", "begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat",
+const playerActions = new Set(["buy_boat_fuel", "start_boat_upgrade", "claim_boat_upgrade", "depart_boat", "begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat",
   "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait"]);
 const reject = (code: string, message: string, status = 409) => new ApiError(message, status, { code, message });
 const demoOwner = () => {
@@ -19,7 +19,7 @@ const demoOwner = () => {
 export function createBoatWorkshopDemo({ ownerPublicId = demoOwner(), now = () => Date.now() }:
   { ownerPublicId?: string; now?: () => number } = {}) {
   let state = newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 4, workshopLevel: 3 });
-  state.wallet.coins = 100000; state.inventory = { planks: 20, rope: 20, hardwood: 12 }; state.buildings.warehouse = 5;
+  state.wallet.pearls = economyCatalog.boat!.fuel.refillPricePearls * 3; state.wallet.coins = 100000; state.inventory = { planks: 12, rope: 10, hardwood: 6, metal_parts: 3 }; state.buildings.warehouse = 5;
   let revision = 1;
   const receipts = new Map<string, { signature: string; result: EconomyResult }>();
   const read = () => economyViewSchema.parse({ ...state, ownerPublicId, revision,

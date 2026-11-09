@@ -19,7 +19,7 @@ function closePoint(actual, expected) { close([actual.x, actual.y], [expected.x,
 
 test("default workshop scene has two independent stands and empty boat sockets", () => {
   const scene = validateGarageScene(base);
-  assert.equal(scene.nodes.filter(value => value.assetId === "stand").length, 2);
+  assert.equal(scene.nodes.filter(value => value.assetId === "side-stand").length, 2);
   assert.equal(scene.nodes.find(value => value.id === "garage").locked, true);
   const boat = scene.nodes.find(value => value.id === "boat");
   assert.equal(boat.assetId, null);

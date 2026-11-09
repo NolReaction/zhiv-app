@@ -1,4 +1,4 @@
-import { boatStateSchema, boatCatalogSchema, boatReelCommandSchema, type BoatState } from "./boat-model";
+import { boatStateSchema, compatibleBoatCatalogSchema, boatReelCommandSchema, type BoatState } from "./boat-model";
 import { z } from "zod";
 import { craftSkillsSchema, craftSkillsCatalogSchema } from "./craft-skill-model";
 import { playerProgressionSchema } from "./player-progression-model";
@@ -213,7 +213,7 @@ export const economyCatalogSchema = z.object({
   skills: craftSkillsCatalogSchema.nullish(),
   rareDrops: economyRareDropsSchema.optional(),
   fishing: economyFishingCatalogSchema.optional(),
-  boat: boatCatalogSchema.optional(),
+  boat: compatibleBoatCatalogSchema,
   food: economyFoodCatalogSchema.nullish(),
   tradeRelations: economyTradeRelationsCatalogSchema.optional(),
   localBuyer: z.object({ payoutBps: count.positive().max(10_000), unitPrices: z.record(id, balance.positive()).optional() }).optional(),
@@ -469,7 +469,7 @@ const commandBase = {
   quantity: z.number().int().min(1).max(10_000).prefault(1), totalPrice: balance.prefault(0),
 };
 export const economyCommandSchema = z.object({ ...commandBase,
-  action: z.enum(["start_production", "start_tutorial_harvest", "cancel_production", "buy_production_slot", "buy_market_slot", "start_collection", "start_garden_collection", "claim_garden_collection", "claim_production", "start_exploration", "cancel_exploration", "start_construction", "start_tutorial_workshop", "speedup_construction", "claim_job", "claim_mining_batch", "claim_workshop_starter", "claim_tutorial_order", "sell", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell_fish", "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait", "start_fishing", "eat_food", "feed_builder", "cancel_meal", "complete_resident_order", "replace_resident_order", "accept_weekly_order", "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage", "replace_ship_order", "expire_ship_voyage", "exchange_pearls_for_gold", "start_boat_upgrade", "claim_boat_upgrade", "depart_boat", "begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat", "inspect_telescope"]),
+  action: z.enum(["start_production", "start_tutorial_harvest", "cancel_production", "buy_production_slot", "buy_market_slot", "start_collection", "start_garden_collection", "claim_garden_collection", "claim_production", "start_exploration", "cancel_exploration", "start_construction", "start_tutorial_workshop", "speedup_construction", "claim_job", "claim_mining_batch", "claim_workshop_starter", "claim_tutorial_order", "sell", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell_fish", "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait", "start_fishing", "eat_food", "feed_builder", "cancel_meal", "complete_resident_order", "replace_resident_order", "accept_weekly_order", "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage", "replace_ship_order", "expire_ship_voyage", "exchange_pearls_for_gold", "start_boat_upgrade", "claim_boat_upgrade", "buy_boat_fuel", "depart_boat", "begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat", "inspect_telescope"]),
   fishSelection: quantities.nullish(),
   voyageId: uuid.nullish(), orderId: id.nullish(), itemId: id.nullish(),
   reel: boatReelCommandSchema.optional(),

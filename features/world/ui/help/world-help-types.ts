@@ -1,5 +1,6 @@
 export type WorldHelpTarget =
   | { kind: "pantry" }
+  | { kind: "boat" }
   | { kind: "expeditions"; sector?: "forest" | "coast" | "caves" }
   | { kind: "station"; stationId: string; recipeId?: string }
   | { kind: "upgrade"; stationId: string }

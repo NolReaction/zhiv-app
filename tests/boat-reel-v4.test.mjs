@@ -27,15 +27,15 @@ function follow(challenge, everyTicks) {
   return { frame, inputs };
 }
 
-test("V4 independent integer vectors cover inertial control, lower rebound, public fish motion and terminal results", () => {
-  assert.equal(vectors.version, 4);
-  for (const vector of vectors.cases) {
+const assistedVectors = JSON.parse(readFileSync(new URL("../apps/api/src/test/resources/world/boat-reel-v5-vectors.json", import.meta.url), "utf8"));
+for (const suite of [vectors, assistedVectors]) test(`V${suite.version} independent integer vectors cover control, fish motion and terminal results`, () => {
+  for (const vector of suite.cases) {
     const challenge = boatChallengeSchema.parse(vector.challenge);
     assert.deepEqual(physics.replayBoatReel(challenge, vector.inputs, vector.endTick), vector.expected, vector.name);
     for (const saved of vector.checkpoints) assert.deepEqual(physics.replayBoatReel(challenge,
       vector.inputs.filter(input => input.tick < saved.tick), saved.tick), saved, `${vector.name}@${saved.tick}`);
   }
-  for (const vector of vectors.controlSamples) assert.deepEqual(
+  for (const vector of suite.controlSamples) assert.deepEqual(
     physics.stepBoatReel(boatChallengeSchema.parse(vector.challenge), vector.before, vector.held), vector.expected, vector.name);
 });
 

@@ -59,22 +59,28 @@ function play(challenge) {
   return { status: reel.status, command: { challengeId: challenge.id, inputs, endTick: reel.tick } };
 }
 
-test("all legal existing tackle and every boat upgrade combination stay below the same shore income ceiling", () => {
+test("every hold and legal tackle fit the renewable fish budget and emergency pearl benchmark", () => {
   const report = auditBoatFishingBalance(catalog);
   assert.equal(report.legalLoadouts, 1104);
-  assert.equal(report.economicComparisons, 4416);
-  assert.deepEqual(report.modes.map(mode => mode.maxFishPerHour), [24, 30, 30, 37.5]);
-  assert.equal(report.shore.maxFishPerHour, 40);
-  assert(report.modes.every(mode => mode.maximumRatioToSameShoreLoadout < 1));
-  assert.equal(report.upgrades.find(upgrade => upgrade.id === "repair").totalForegoneSaleValue, 700);
+  assert.equal(report.economicComparisons, 1104 * 6);
+  assert.deepEqual(report.holds.map(hold => hold.maxFishPerHour), [8, 10, 12, 14, 16, 18]);
+  assert.equal(report.historicalShore.fishPerHour, 40);
+  assert.deepEqual(report.tanks.map(tank => tank.emptyToFullMinutes), [60, 90, 120, 150, 180, 210]);
+  assert.equal(report.tanks[0].tripsAtDailyVisits[1].trips, 6);
+  assert.equal(report.tanks.at(-1).tripsAtDailyVisits[1].trips, 21);
+  assert.equal(report.fuel.refillAlternativeCoins, 350);
+  assert.equal(report.holds.at(-1).luckyFullSaleCeiling, 342);
+  assert.equal(report.holds[0].sensitivity[0].expectedCatches, 2.875);
+  assert.equal(report.upgrades.find(upgrade => upgrade.id === "repair").totalForegoneSaleValue, 0);
   assert.equal(report.upgrades.find(upgrade => upgrade.id === "telescope").totalForegoneSaleValue, 2080);
   assert(report.blueprints.every(blueprint => blueprint.awardedByBoat === false && !("guaranteedAtQualifiedVoyage" in blueprint)));
 });
 
-test("the audit rejects inflation, missing species, unreachable materials and duplicate blueprint milestones", () => {
-  for (const mutate of [copy => { copy.boat.maxCasts = 8; }, copy => { copy.boat.oarsTravelSeconds = 60; },
-    copy => { delete copy.boat.weights.fish; }, copy => { copy.boat.blueprints[0].milestones = [1, 1, 3]; },
-    copy => { copy.boat.upgrades.find(upgrade => upgrade.id === "repair").cost.items.lens = 1; }]) {
+test("the audit rejects inflation, unbounded casts, overpriced raw-fish output, unreachable materials and invalid legacy data", () => {
+  for (const mutate of [copy => { copy.boat.spareCasts = 100; }, copy => { copy.boat.fuel.regenSeconds = 300; },
+    copy => { copy.boat.fuel.refillPricePearls = 2; }, copy => { delete copy.boat.weights.fish; },
+    copy => { copy.boat.blueprints[0].milestones = [1, 1, 3]; },
+    copy => { copy.boat.upgrades.find(upgrade => upgrade.id === "tank_1").cost.items.lens = 1; }]) {
     const changed = structuredClone(catalog); mutate(changed);
     assert.throws(() => auditBoatFishingBalance(changed));
   }
@@ -90,6 +96,35 @@ test("runtime mass has an independently measured rare tail for every species ins
   }
   assert.throws(() => auditBoatFishWeights(catalog, (min, max, first, second) => min
     + (first && second ? Math.floor((max - min) * first / 10000) : 0)), /not uniformly spread/);
+});
+
+test("a fresh house-one player reaches a delivered fish using only starting tackle and free fuel", async () => {
+  const { newEconomyState, applyEconomyCommand } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+  const current = newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
+  const originalWallet = structuredClone(current.wallet);
+  let sequence = 0, at = epoch;
+  const createId = () => uuid(++sequence);
+  const run = (action, targetId, extra = {}) => applyEconomyCommand(current, {
+    requestId: createId(), ownerPublicId: "0000-0000-0001", expectedRevision: 0, action, targetId,
+    quantity: 1, totalPrice: 0, ...extra,
+  }, at, createId, {}, () => 0);
+  run("start_boat_upgrade", "repair");
+  at = Date.parse(current.boat.work.finishesAt);
+  run("claim_boat_upgrade", current.boat.work.id);
+  run("depart_boat", catalog.boat.routeId);
+  const voyage = current.boat.voyage;
+  assert.equal(Date.parse(voyage.arrivesAt), at);
+  assert.deepEqual(voyage.loadout, { rodId: "reed_rod", hookId: "bare_hook", baitId: null });
+  run("begin_boat_cast", voyage.id);
+  const challenge = current.boat.voyage.challenge, trace = play(challenge);
+  assert.equal(trace.status, "caught");
+  at = Date.parse(challenge.biteAt) + trace.command.endTick * challenge.tickMs;
+  run("submit_boat_cast", voyage.id, { reel: trace.command });
+  run("return_boat", voyage.id);
+  run("claim_boat", voyage.id);
+  assert.equal(Object.values(current.fishing.stock).reduce((sum, fish) => sum + fish, 0), 1);
+  assert.deepEqual(current.wallet, originalWallet);
+  assert.equal(current.boat.fuel.cells, 1);
 });
 
 test("every legally owned old rod, hook and compatible bait remains usable without repurchasing", () => {
@@ -112,10 +147,10 @@ test("real departures freeze caps and mass, spend one bait, and gain no road or 
     departure(plain); departure(helped);
     for (const current of [plain, helped]) {
       assert.equal(current.inventory.crumb_bait, 9);
-      assert.equal(current.boat.voyage.maxCasts, 4 + Number(upgrades.includes("crate")));
-      assert.equal(current.boat.voyage.maxCatches, current.boat.voyage.maxCasts);
+      assert.equal(current.boat.voyage.maxCatches, 4 + Number(upgrades.includes("crate")));
+      assert.equal(current.boat.voyage.maxCasts, current.boat.voyage.maxCatches + 2);
       assert.equal(current.boat.voyage.slots.length, current.boat.voyage.maxCasts);
-      assert.equal(current.boat.voyage.outboundSeconds, upgrades.includes("oars") ? 240 : 300);
+      assert.equal(current.boat.voyage.outboundSeconds, 0);
       assert.equal(current.boat.voyage.inboundSeconds, current.boat.voyage.outboundSeconds);
     }
     const masses = current => current.boat.voyage.slots.map(({ fishId, weightGrams }) => ({ fishId, weightGrams }));
@@ -182,15 +217,16 @@ test("full qualifying voyages cross all legacy thresholds without creating pages
     at = Date.parse(voyage.arrivesAt);
     // Supplied persisted outcome isolates delivery and qualification from control skill.
     voyage.castsUsed = voyage.maxCasts;
-    voyage.catches = [{ castIndex: 0, fishId: slot.fishId, weightGrams: slot.weightGrams, caughtAt: new Date(at).toISOString() }];
+    voyage.catches = [{ castIndex: 0, fishId: slot.fishId, weightGrams: slot.weightGrams, caughtAt: new Date(at).toISOString(), reelSeconds: 12 }];
     run("return_boat", id, at); at = Date.parse(current.boat.voyage.returnsAt);
     const before = structuredClone(current.boat);
     run("claim_boat", id, at);
-    assert.equal(boatClaimPracticeSeconds(before, current.boat, "claim_boat"), 150);
+    assert.equal(boatClaimPracticeSeconds(before, current.boat, "claim_boat"), 12);
     assert.deepEqual(current.boat.blueprints, { landing_net: 0, telescope: 0 });
     const claimed = structuredClone(current);
     assert.throws(() => run("claim_boat", id, at), { code: "ECONOMY_BOAT_VOYAGE_GONE" });
     assert.deepEqual(current, claimed);
+    at += catalog.boat.fuel.regenSeconds * 1000;
   }
   assert.equal(current.boat.qualifiedVoyages, 16);
   assert.deepEqual(current.boat.blueprints, { landing_net: 0, telescope: 0 });

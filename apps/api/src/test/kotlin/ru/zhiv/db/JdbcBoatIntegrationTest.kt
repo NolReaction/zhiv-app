@@ -1,6 +1,8 @@
 package ru.zhiv.db
 
 import com.zaxxer.hikari.HikariDataSource
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.jsonObject
@@ -53,9 +55,9 @@ class JdbcBoatIntegrationTest {
         put(p, state(p).copy(boat = EconomyBoatState(level = 1), inventory = mapOf(bait to 2L), fishing = EconomyFishing(equippedBaitId = bait)))
         val request = command(p, economy.snapshot(p.hash), "depart_boat", "river_reach")
         val first = economy.command(p.hash, request)
-        assertEquals(1L, first.state.inventory[bait]); assertNotNull(first.state.boat.voyage)
+        assertEquals(1, first.state.boat.fuel!!.cells); assertEquals(1L, first.state.inventory[bait]); assertNotNull(first.state.boat.voyage)
         val saved = raw(p); val privateSlots = state(p).boat!!.voyage!!.slots
-        assertEquals(4, privateSlots.size)
+        assertEquals(6, privateSlots.size)
         assertTrue(JdbcEconomyRepository(source).command(p.hash, request).replayed)
         assertEquals(saved, raw(p)); assertEquals(privateSlots, state(p).boat!!.voyage!!.slots)
         val admin = source.connection.use { readAdminEconomyPlayer(it, p.publicId, OffsetDateTime.now()) }!!.economy!!
@@ -70,6 +72,25 @@ class JdbcBoatIntegrationTest {
             assertEquals(first.state.boat, view.boat)
         }
         assertEquals(saved, raw(p), "Public observations do not advance or reselect the voyage")
+    }
+
+    @Test fun `concurrent refill and exact replay after restart debit one cell once`() = runBlocking<Unit> {
+        val p = player()
+        val price = EconomyRules.catalog.boat!!.fuel.refillPricePearls
+        val recharge = Instant.now().plusSeconds(1200).toString()
+        put(p, state(p).copy(boat = EconomyBoatState(level = 1, fuel = EconomyBoatFuel(0, recharge)), wallet = EconomyWallet(100, 100)))
+        val request = command(p, economy.snapshot(p.hash), "buy_boat_fuel", "fuel_cell").copy(totalPrice = price)
+        val results = listOf(async { economy.command(p.hash, request) }, async { economy.command(p.hash, request) }).awaitAll()
+        assertEquals(1, results.count { it.replayed })
+        val snapshot = economy.snapshot(p.hash)
+        assertEquals(100 - price, snapshot.wallet.pearls)
+        assertEquals(EconomyBoatFuel(1, recharge), snapshot.boat.fuel)
+        assertEquals(snapshot.boat.fuel, state(p).boat!!.fuel)
+        val replayed = JdbcEconomyRepository(source).command(p.hash, request)
+        assertTrue(replayed.replayed); assertEquals(snapshot.wallet, replayed.state.wallet)
+        assertEquals((-price).toString(), scalar("SELECT sum(pearls) FROM economy_ledger WHERE user_id=? AND kind='buy_boat_fuel'", p.id))
+        val second = command(p, snapshot, "buy_boat_fuel", "fuel_cell").copy(totalPrice = price)
+        assertEquals("ECONOMY_BOAT_FUEL", assertFailsWith<AuthFailure> { economy.command(p.hash, second) }.code)
     }
 
     @Test fun `ready claim persists exact fish and legacy fragments once and the receipt replays after reconnect`() = runBlocking<Unit> {

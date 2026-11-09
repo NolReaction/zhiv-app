@@ -193,7 +193,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
     throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Груз не используется в этом действии", 400);
   if (command.fishSelection != null && !["start_production", "complete_resident_order", "sell", "sell_fish"].includes(command.action))
     throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Выбор рыбы не используется в этом действии", 400);
-  if (!["speedup_construction", "buy_market_slot", "buy_production_slot", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell", "replace_resident_order", "skip_ship_voyage", "exchange_pearls_for_gold"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
+  if (!["speedup_construction", "buy_market_slot", "buy_production_slot", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell", "replace_resident_order", "skip_ship_voyage", "exchange_pearls_for_gold", "buy_boat_fuel"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
   const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop" | "meal" | "actorId" | "tradeSpeedBps" | "expeditionFinds" | "miningBatch" | "cooking" | "skillWorkSeconds" | "skillSpeedBps">, seconds: number, cost: EconomyCost | null, id = jobId(), fishSelection?: FishSelection, exactSpecies = false, expedition?: Pick<EconomyCatalog["explorations"][number], "finds" | "loot">) => {
     if (state.jobs.length >= 18) fail("ECONOMY_JOBS_CAPACITY", "Сначала заберите результат одной из текущих работ");
     if (Object.values(job.rewards).reduce((total, quantity) => total + quantity, 0) + (expedition ? expeditionMaximumBonus(expedition) : 0) > economyStorage(state).capacity)
@@ -210,6 +210,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
   switch (command.action) {
     case "start_boat_upgrade":
     case "claim_boat_upgrade":
+    case "buy_boat_fuel":
     case "depart_boat":
     case "begin_boat_cast":
     case "submit_boat_cast":

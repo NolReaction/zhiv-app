@@ -222,8 +222,29 @@
 .packedLoot strong { font-size: 12px; }
 .packedLoot small { font-size: 11px; line-height: 1.5; color: #647259; }
 
-.boatEntry { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 15px; margin: 8px 0; border: 1px solid #9ba78b; border-radius: 12px; color: var(--forest-ink, #394d3e); background: #e5ead1; text-align: left; cursor: pointer; }
-.boatEntry > span { display: grid; flex: 1; gap: 3px; }
-.boatEntry strong { font-size: 14px; }
-.boatEntry small { font-size: 11px; color: var(--forest-muted, #59624d); }
-.boatEntry:focus-visible { outline: 2px solid #597953; outline-offset: 3px; }
+.content.content .boatEntry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(80px, 32%);
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 113px;
+  padding: 15px 11px 13px 17px;
+  overflow: hidden;
+  border: 1px solid #52786a;
+  border-radius: 17px;
+  color: #f9edc8;
+  background: linear-gradient(115deg, #173d37, #295c56 72%, #3b6b62);
+  text-align: left;
+  box-shadow: inset 0 0 0 2px #d0bb7922;
+}
+.content.content .boatEntry:hover:not(:disabled) {
+  border-color: #dfbf76;
+  background: linear-gradient(115deg, #1c4940, #2b645c 72%, #40756b);
+}
+.content.content .boatEntry:focus-visible { outline: 3px solid #426b52; outline-offset: 3px; }
+.boatLettering { display: grid; gap: 5px; min-width: 0; }
+.boatLettering strong { font-size: 18px; line-height: 1.15; letter-spacing: -.025em; }
+.boatLettering > span { color: #d0ddc7; font-size: 12px; line-height: 1.4; }
+.boatLettering > svg { margin-top: 3px; color: #e8c57e; }
+.boatIllustration { display: block; width: 100%; max-width: 170px; justify-self: end; color: #cfc290; }

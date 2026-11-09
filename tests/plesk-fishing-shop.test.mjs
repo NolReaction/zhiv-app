@@ -336,7 +336,7 @@ test("shop provides keyboard tab navigation and fishing/pantry navigation withou
   for (const key of ["ArrowRight", "ArrowLeft", "Home", "End"]) {
     let prevented = false; buttons[0].props.onKeyDown({ key, preventDefault() { prevented = true; } }); assert.equal(prevented, true);
   }
-  view.control("На рыбалку").props.onClick(); view.control("Другие запасы").props.onClick();
+  view.control("Лодочная рыбалка").props.onClick(); view.control("Другие запасы").props.onClick();
   assert.deepEqual(nav, ["fish_common", "pantry"]); assert.deepEqual(calls, []);
   assert.match(view.html, /role="tabpanel"/);
   assert.match(view.html, /Новые товары через/);

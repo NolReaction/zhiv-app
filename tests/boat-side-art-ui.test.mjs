@@ -41,7 +41,7 @@ test("side-profile BoatArt shows SVG baseline parts with no crate for owned or p
 });
 
 test("storage thumbnail uses a capacity symbol without a crate image", () => {
-  const result = html(BoatModuleThumbnail, { module: "crate" });
+  const result = html(BoatModuleThumbnail, { module: "storage", level: 2 });
   assert.match(result, /data-boat-capacity-icon/); assert.doesNotMatch(result, /<image|module-crate/);
 });
 
@@ -55,21 +55,21 @@ test("garage keeps the storage upgrade rail and bonus but removes its spatial ma
   const result = html(BoatGarage, { state, boat: state.boat, config: economyCatalog.boat,
     now: Date.parse("2026-11-09T15:05:00Z"), disabled: false,
     onUpgrade() { assert.fail("Rendering must not spend materials"); }, onClaim() { assert.fail("Rendering must not claim an upgrade"); } });
-  assert.match(result, /data-boat-module="crate"/); assert.match(result, />Трюм</);
+  assert.match(result, /data-boat-module="storage"/); assert.match(result, />Хранилище</);
   assert.match(result, /data-boat-garage-art/);
   assert.equal([...result.matchAll(/href="\/world\/boat-garage\/stand-side\.svg"/g)].length, 2);
-  assert.match(result, /Рыбы за один выход/); assert.match(result, />5</);
-  assert.doesNotMatch(result, /Выбрать: Трюм|Примерить модуль|module-crate|data-boat-part="crate"/);
+  assert.match(result, /Рыб за один выход/); assert.match(result, />5</);
+  assert.doesNotMatch(result, /Выбрать: Хранилище|Примерить модуль|module-crate|data-boat-part="crate"/);
   assert.deepEqual(state, before);
 });
 
-test("garage keeps a funded purchase disabled while the economy request is pending", () => {
+test("garage keeps a free starter repair disabled while the economy request is pending", () => {
   const state = garageState(), before = structuredClone(state);
   const enabled = renderGarage(state), pending = renderGarage(state, { disabled: true });
   const buy = result => [...result.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(match => match[0]).find(button => button.includes("Восстановить лодку"));
   assert.doesNotMatch(buy(enabled), /disabled=""/);
   assert.match(buy(pending), /disabled=""/);
-  assert.equal([...pending.matchAll(/data-boat-module="/g)].length, 3);
+  assert.equal([...pending.matchAll(/data-boat-module="/g)].length, 4);
   assert.match(pending, /После улучшения/);
   assert.deepEqual(state, before);
 });
@@ -87,7 +87,7 @@ test("elapsed garage work remains uninstalled until its single claim action is u
   assert.deepEqual(state, before);
 });
 
-test("legacy artifact work remains claimable outside the three-module garage rail", () => {
+test("legacy artifact work remains claimable outside the four-module garage rail", () => {
   const state = garageState(); state.boat.level = 1;
   const upgrade = economyCatalog.boat.upgrades.find(entry => entry.id === "landing_net");
   state.boat.work = { id: "00000000-0000-4000-8000-000000000003", upgradeId: "landing_net", cost: upgrade.cost,
@@ -95,7 +95,7 @@ test("legacy artifact work remains claimable outside the three-module garage rai
   const before = structuredClone(state), result = renderGarage(state);
   assert.equal([...result.matchAll(/data-boat-work="/g)].length, 1);
   assert.match(result, /Завершить работу/);
-  assert.doesNotMatch(result, /data-boat-module="(?:landing_net|telescope|engine|fuel)"/);
+  assert.doesNotMatch(result, /data-boat-module="(?:landing_net|telescope)"/);
   assert.deepEqual(state, before);
 });
 
@@ -113,11 +113,22 @@ test("garage readiness waits for paid work to be claimed even after the hull is 
   assert.match(installed, /Готова к воде/); assert.match(installed, /data-ready="true"/);
 });
 
-test("installed garage modules show the current outcome without offering another purchase", () => {
-  const state = garageState(); state.boat.level = 1; state.boat.upgrades = ["oars", "crate"];
+test("only installed tiers are drawn even after browsing the next upgrade", () => {
+  const state = garageState(); state.boat.level = 1; state.boat.modules = { hull: 3, engine: 2, tank: 1, storage: 4 };
   const before = structuredClone(state), result = renderGarage(state);
-  assert.match(result, /3 \/ 3 улучшений установлено/);
-  assert.match(result, /Модуль установлен на лодке/);
-  assert.doesNotMatch(result, /Установить улучшение|Восстановить лодку|Примерить модуль|После улучшения/);
+  for (const asset of ["hull_l3", "engine_l2", "tank_l1"]) assert.match(result, new RegExp(asset));
+  assert.doesNotMatch(result, /hull_l4|engine_l3|tank_l2|module-crate|Примерить модуль/);
+  assert.match(result, /Ур. 2 → 3/);
   assert.deepEqual(state, before);
+});
+
+test("legacy first-tier rights show their current parts and all-maxed modules have no purchase", () => {
+  const state = garageState(); state.boat.level = 1; state.boat.upgrades = ["oars", "crate"];
+  const legacy = renderGarage(state);
+  assert.match(legacy, /engine_l1/); assert.doesNotMatch(legacy, /module-oars|engine_l2/);
+  state.boat.modules = { hull: 5, engine: 5, tank: 5, storage: 5 };
+  const result = renderGarage(state);
+  assert.equal([...result.matchAll(/data-boat-module=/g)].length, 4);
+  assert.match(result, /Максимум/);
+  assert.doesNotMatch(result, /Установить улучшение|Восстановить лодку|После улучшения/);
 });

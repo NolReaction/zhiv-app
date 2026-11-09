@@ -1,5 +1,6 @@
 import { economyActorConflict, economyMinerConflict, explorationActorId, isMinerJob } from "@/features/economy/domain/actor-availability";
-import { fishingBaitCompatible, fishingState, fishingTripCost } from "@/features/economy/domain/fishing";
+import { boatAccess } from "@/features/economy/ui/boat/boat-access";
+import { fishClassForItem, fishingBaitCompatible, fishingState, fishingTripCost } from "@/features/economy/domain/fishing";
 import { recipeWithFish } from "@/features/economy/domain/food";
 import type { EconomyCost, EconomyJob, EconomyView } from "@/features/economy/domain/model";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
@@ -20,16 +21,18 @@ type AdviceInput = {
   isOnline?: boolean;
 };
 const boatBusyAdvice = (): WorldHelpSuggestion => ({ id: "boat:busy", title: "Мохлик на рыбалке", topicId: "boat-fishing", severity: "problem",
-  message: "Откройте «В путь» → «На рыбалку». После возвращения заберите улов, чтобы отправить Мохлика в другое занятие." });
+  message: "Откройте лодку в меню «В путь». После возвращения заберите улов, чтобы отправить Мохлика в другое занятие.",
+  action: { label: "Открыть лодку", target: { kind: "boat" } } });
 const itemName = (state: EconomyView, id: string) => state.catalog.items.find(item => item.id === id)?.name ?? "Материал";
 const stationName = (state: EconomyView, id: string) => state.catalog.buildings.find(building => building.id === id)?.name ?? "Постройка";
 const itemCount = (items: Record<string, number>) => Object.values(items).reduce((sum, count) => sum + count, 0);
 const freeCost = (cost: EconomyCost) => cost.coins === 0 && itemCount(cost.items) === 0;
-const sector = (routeId: string): "forest" | "coast" | "caves" => routeId.includes("shore") || routeId.includes("coastal") ? "coast"
+const sector = (routeId: string): "forest" | "coast" | "caves" => routeId.includes("shore") ? "coast"
   : routeId.includes("cave") || routeId.includes("quarry") ? "caves" : "forest";
 // Legacy underground jobs retain Mochlik as owner, but are received at the mine.
 const mineMenuJob = (job: EconomyJob) => isMinerJob(job) || job.targetId === "quarry"
   || job.kind === "exploration" && sector(job.targetId) === "caves";
+const fishingTarget = (state: EconomyView): WorldHelpTarget => boatAccess(state) === "play" ? { kind: "boat" } : { kind: "expeditions", sector: "coast" };
 const jobTarget = (job: EconomyJob): WorldHelpTarget => job.kind === "construction" ? { kind: "upgrade", stationId: job.targetId }
   : mineMenuJob(job) ? { kind: "station", stationId: "quarry" }
   : job.kind === "exploration" ? { kind: "expeditions", sector: sector(job.targetId) }
@@ -108,6 +111,11 @@ function costAdvice(state: EconomyView, cost: EconomyCost, now: number, quantity
     target = { kind: "station", stationId: source.stationId, recipeId: source.targetId };
     instruction = source.stationId === "dryer" ? "Откройте рецепт в книге костра, проверьте ингредиенты и подтвердите приготовление."
       : `Источник: ${stationName(state, source.stationId)}. В карточке предмета показаны материалы для запуска.`;
+  } else if (fishClassForItem(missing.id, state.catalog.fishing)) {
+    const conflict = economyActorConflict(state.jobs, "departure", now, state.boat);
+    if (conflict) return conflict.job ? jobAdvice(state, conflict.job, now) : boatBusyAdvice();
+    target = fishingTarget(state);
+    instruction = "Рыбу этого класса можно поймать с подходящей удочкой. Проверьте выбранные снасти перед отправлением.";
   } else if (source?.kind === "exploration") {
     const mining = state.catalog.explorations.some(route => route.id === source.targetId && explorationActorId(route) === "miner");
     const conflict = mining ? economyMinerConflict(state.jobs, now) : economyActorConflict(state.jobs, "departure", now, state.boat);
@@ -115,15 +123,10 @@ function costAdvice(state: EconomyView, cost: EconomyCost, now: number, quantity
     target = mining ? { kind: "station", stationId: "quarry", recipeId: source.targetId } : { kind: "expeditions", sector: sector(source.targetId) };
     instruction = mining ? "Этот материал добывает шахта. Откройте её и выберите работу; Мохлик может заниматься другими делами."
       : "Этот материал есть в наградах доступной вылазки. Откройте маршрут и проверьте припасы.";
-  } else if (state.catalog.fishing?.classes.some(group => group.itemId === missing.id)) {
-    const conflict = economyActorConflict(state.jobs, "departure", now, state.boat);
-    if (conflict) return conflict.job ? jobAdvice(state, conflict.job, now) : boatBusyAdvice();
-    target = { kind: "expeditions", sector: "coast" };
-    instruction = "Рыбу этого класса можно поймать на побережье. Проверьте шансы класса с выбранными снастями перед отправлением.";
   }
   return { id: `missing:${missing.id}`, title: `Не хватает: ${itemName(state, missing.id)}`, topicId: "production", severity: "problem",
     message: `Есть ${missing.available}, нужно ${missing.required}. ${instruction}`,
-    ...(target ? { action: { label: source?.kind === "production" ? "Открыть рецепт" : target.kind === "station" ? "Открыть шахту" : "Выбрать вылазку", target } } : {}),
+    ...(target ? { action: { label: source?.kind === "production" ? "Открыть рецепт" : target.kind === "station" ? "Открыть шахту" : target.kind === "boat" ? "К лодке" : "Выбрать вылазку", target } } : {}),
   };
 }
 
@@ -222,7 +225,7 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
       message: route ? `Завершите и заберите «${route.name}»: ${unlock.current} / ${unlock.required}. ${mining ? "Считается каждая полученная единица добычи." : "Считаются полученные результаты похода, а не случайные находки."}`
         : `Поймайте и заберите любую рыбу: ${unlock.current} / ${unlock.required}. Купленная рыба не засчитывается; редкий вид не нужен.`,
       action: mining ? { label: "Открыть шахту", target: { kind: "station", stationId: "quarry", recipeId: route.id } }
-        : { label: route ? "К походам" : "На рыбалку", target: { kind: "expeditions", sector: route ? sector(route.id) : "coast" } } };
+        : { label: route ? "К походам" : "На рыбалку", target: route ? { kind: "expeditions", sector: sector(route.id) } : fishingTarget(state) } };
   }
   const buildingWork = state.jobs.find(job => job.kind === "construction" && job.targetId === recipe.buildingId);
   if (buildingWork) return jobAdvice(state, buildingWork, now);

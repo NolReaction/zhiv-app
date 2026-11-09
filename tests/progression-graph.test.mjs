@@ -397,8 +397,8 @@ test("the working boat follows catalog repair gates independently of shore and p
   assert.deepEqual(plain(boat.requirements), { home: repair.requiredHomeLevel, ...repair.requiredBuildings });
   assert.deepEqual(plain(boat.cost), repair.cost);
   assert.equal(boat.seconds, repair.seconds);
-  assert(hasEdge("b:home:2", "boat", "requirement"));
-  assert(hasEdge("b:workshop:1", "boat", "requirement"));
+  assert(hasEdge("b:home:1", "boat", "requirement"));
+  assert(!hasEdge("b:workshop:1", "boat", "requirement"));
   assert(!getPrerequisiteIds(graph, "boat").has("shore_site"));
   assert(!graph.edges.some(edge => edge.source === "shore_site" && edge.target === "boat"));
   assert.equal(node("port").status, "active");
@@ -422,7 +422,7 @@ test("a paused release keeps the boat in planning while shore fishing and the po
   const boat = paused.nodes.find(node => node.id === "boat");
   assert.equal(boat.status, "plan");
   assert.match(boat.description, /выходы на лодке временно закрыты/i);
-  assert(paused.edges.some(edge => edge.source === "b:workshop:1" && edge.target === "boat" && edge.kind === "plan"));
+  assert(paused.edges.some(edge => edge.source === "b:home:1" && edge.target === "boat" && edge.kind === "plan"));
   assert.equal(paused.nodes.find(node => node.id === "port").status, "active");
 });
 

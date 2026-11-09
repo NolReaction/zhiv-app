@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertDialog, Dialog } from "radix-ui";
 import { ArrowLeft, BookOpen, CircleHelp, Clock3, Fish, FishingRod, Sailboat, X } from "lucide-react";
-import { boatConfig, boatState } from "@/features/economy/domain/boat-fishing";
+import { boatConfig, boatModules, boatState } from "@/features/economy/domain/boat-fishing";
 import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { worldCountdown } from "@/features/economy/ui/shared/world-stations";
 import { BoatDevControls } from "@/features/economy/dev/boat-dev-controls";
@@ -32,12 +32,18 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
   const state = economy.snapshot, boat = boatState(state), config = boatConfig(state.catalog), voyage = boat.voyage!;
   const challenge = voyage.challenge;
   const coach = useBoatFishingCoach(state.ownerPublicId);
-  const [visual, setVisual] = useState<BoatReelVisualState | null>(null);
+  const [stageSample, setStageSample] = useState<Pick<BoatReelVisualState, "challengeId" | "stage"> | null>(null);
+  const [feed] = useState(createRiverFeed);
   const [showAlbum, setShowAlbum] = useState(false);
   const [confirmReturn, setConfirmReturn] = useState(false), [showCatch, setShowCatch] = useState(false), [showDev, setShowDev] = useState(false);
-  const publishVisual = useCallback((next: BoatReelVisualState) => setVisual(next), []);
+  const publishVisual = useCallback((next: BoatReelVisualState) => {
+    if (feed.publish(next)) {
+      setStageSample({ challengeId: next.challengeId, stage: next.stage });
+    }
+  }, [feed]);
   const remaining = Math.max(0, voyage.maxCasts - voyage.castsUsed);
-  const expired = challenge && economy.now >= Date.parse(challenge.expiresAt);
+  const queued = Boolean(challenge && economy.pendingBoatCastId === challenge.id);
+  const expired = challenge && !queued && economy.now >= Date.parse(challenge.expiresAt);
   const liveChallenge = Boolean(challenge && !expired);
   const full = voyage.catches.length >= voyage.maxCatches;
   const usableCasts = full ? 0 : remaining;
@@ -46,23 +52,17 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
   const lastPresentation = lastCatch ? boatCatchPresentation(state, lastCatch) : undefined;
   const landed = !challenge && lastCatch && economy.now >= Date.parse(lastCatch.caughtAt) && economy.now - Date.parse(lastCatch.caughtAt) < (lastPresentation?.revealMs ?? 3500) ? lastCatch : undefined;
   const fishRarity = landed ? state.catalog.fishing?.fish.find(fish => fish.itemId === landed.fishId)?.rarity : undefined;
-  const activeVisual = visual?.challengeId === challenge?.id ? visual : null;
-  const hasBite = challenge && !expired && !["casting", "soaking"].includes(activeVisual?.stage ?? boatCastStage(challenge, economy.now));
-  const frame = useMemo<FishingSceneFrame>(() => ({ stage: suspended ? "paused" : challenge ? expired ? "expired" : activeVisual?.stage ?? boatCastStage(challenge, economy.now) : landed ? "landed" : "waiting",
-    sceneKey: voyage.id, resistance: challenge?.resistance, resistancePhase: expired ? undefined : activeVisual?.resistancePhase,
+  const stage = suspended ? "paused" : challenge ? queued ? "pending" : expired ? "expired" : stageSample?.challengeId === challenge.id ? stageSample.stage : boatCastStage(challenge, economy.now) : landed ? "landed" : "waiting";
+  const localDisabled = suspended || economy.busy || economy.uncertain || (economy.pendingProductionCount ?? 0) > 0;
+  const frame = useMemo<FishingSceneFrame>(() => ({ stage, sceneKey: voyage.id, castKey: challenge?.id, resistance: challenge?.resistance,
     ambience: { now: economy.now, timeZone }, biteLeadSeconds: challenge ? Math.max(0, (Date.parse(challenge.biteAt ?? challenge.startedAt) - economy.now) / 1000) : undefined,
     fishSizeScale: landed ? lastPresentation?.sizeScale : undefined, catchKey: landed ? `${state.ownerPublicId}.${voyage.id}.${landed.castIndex}` : undefined,
-    fishRarity, fishId: landed?.fishId, held: !expired && (activeVisual?.held ?? false), castKey: challenge?.id, reel: hasBite ? activeVisual?.reel : undefined,
-    boat: { repaired: true, upgrades: boat.upgrades }, rodId: voyage.loadout.rodId, appearance }),
-  [suspended, challenge, economy.now, timeZone, state.ownerPublicId, voyage.id, landed, lastPresentation?.sizeScale, fishRarity, hasBite, activeVisual, expired, boat.upgrades, voyage.loadout.rodId, appearance]);
-  useFishingAudio({ ownerPublicId: state.ownerPublicId, voyageId: voyage.id, stage: frame.stage, castKey: frame.castKey,
-    held: frame.held, progress: frame.reel?.progress ?? 0,
-    inZone: Boolean(frame.reel && Math.abs(frame.reel.bar - frame.reel.fish) <= frame.reel.zoneWidth / 2),
-    caughtCount: voyage.catches.length, ambience: frame.ambience, suspended });
+    fishRarity, fishId: landed?.fishId, held: false, boat: { repaired: true, upgrades: boat.upgrades, modules: boatModules(boat) }, rodId: voyage.loadout.rodId, appearance }),
+  [stage, challenge, economy.now, timeZone, state.ownerPublicId, voyage.id, landed, lastPresentation?.sizeScale, fishRarity, boat, voyage.loadout.rodId, appearance]);
   const finishReturn = () => { if (!disabled && !suspended && send("return_boat", voyage.id)) setConfirmReturn(false); };
   const requestReturn = () => { if (!disabled && !suspended) { if (completed) finishReturn(); else setConfirmReturn(true); } };
   return <section className={styles.map} data-boat-map data-fishing-stage={frame.stage} aria-label="Карта речной рыбалки">
-    <FishingSceneCanvas frame={frame} className={styles.canvas} />
+    <RiverScene base={frame} owner={state.ownerPublicId} voyageId={voyage.id} count={voyage.catches.length} feed={feed} suspended={suspended} />
     <header className={styles.header}><div className={styles.location}><span>РЕЧНАЯ РЫБАЛКА</span><h2>{config.name}</h2><small>{completed ? <><Sailboat size={13} />Можно возвращаться домой</> : <><Clock3 size={13} /><span className={styles.returnLabel}>До возвращения</span><time>{worldCountdown(Math.max(0, Math.ceil((Date.parse(voyage.fishingUntil) - economy.now) / 1000)))}</time></>}</small></div>
       <div className={styles.headerActions}><span className={styles.counter}><FishingRod size={16} />{remaining}<small>забросов</small></span><span className={styles.counter}><Fish size={16} />{voyage.catches.length} / {voyage.maxCatches}<small>на борту</small></span>
         <button type="button" className={styles.close} onClick={onClose} aria-label="К поляне, сохранить рыбалку"><X size={22} /></button></div></header>
@@ -72,12 +72,12 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
       {process.env.NODE_ENV === "development" && economy.devAvailable && <button type="button" className={styles.tool} onClick={() => setShowDev(value => !value)} aria-expanded={showDev}>DEV</button>}</div>
     {showCatch && <aside className={styles.catchTray}><button type="button" className={styles.trayClose} onClick={() => setShowCatch(false)} aria-label="Закрыть улов"><X size={18} /></button><BoatCatchList state={state} boat={boat} /></aside>}
     {showDev && <aside className={styles.devTray}><button type="button" className={styles.trayClose} onClick={() => setShowDev(false)} aria-label="Закрыть DEV рыбалки"><X size={18} /></button><BoatDevControls economy={economy} compact /></aside>}
-    {economy.error && <p className={styles.error} role="alert">{economy.error}</p>}
-    {economy.uncertain && <div className={styles.recovery}><span>Проверяем последнее действие.</span><button type="button" disabled={economy.busy} onClick={() => economy.retry()}>Проверить результат</button></div>}
+    {economy.error && !economy.pendingBoatCastId && <p className={styles.error} role="alert">{economy.error}</p>}
+    {economy.uncertain && !economy.pendingBoatCastId && <div className={styles.recovery}><span>Проверяем последнее действие.</span><button type="button" disabled={economy.busy} onClick={() => economy.retry()}>Проверить результат</button></div>}
     <div className={styles.bottom}>
       <div className={styles.controls} data-control-stage={frame.stage} data-fishing-finished={completed || undefined}>
-        {challenge && !completed ? <BoatReelGame owner={state.ownerPublicId} voyageId={voyage.id} challenge={challenge} now={economy.now} disabled={disabled || suspended}
-          uncertain={economy.uncertain} coachView={coach.view} onCoachObservation={coach.observe} suspended={suspended || showCatch || showDev || showAlbum || confirmReturn} onVisualState={publishVisual} onSubmit={reel => send("submit_boat_cast", voyage.id, reel)} />
+        {challenge && !completed ? <BoatReelGame owner={state.ownerPublicId} voyageId={voyage.id} challenge={challenge} now={economy.now} disabled={localDisabled}
+          queued={queued} uncertain={economy.uncertain} coachView={coach.view} onCoachObservation={coach.observe} suspended={suspended || showCatch || showDev || showAlbum || confirmReturn} onVisualState={publishVisual} onSubmit={reel => send("submit_boat_cast", voyage.id, { ...reel, deferred: true })} />
           : <div className={styles.waiting} key={landed ? `landed-${landed.castIndex}` : "ready"}>
             {landed ? <BoatCatchCard state={state} caught={landed} /> : completed ? <BoatFishingCompletion receipt={createBoatTripReceipt(state, voyage)} full={full} onShowCatch={() => setShowCatch(true)} /> : <><span className={styles.eyebrow}><Sailboat size={15} />Мохлик на речном плёсе</span><h3>Пора забросить удочку</h3><p className={!coach.view.completed ? coachStyles.prompt : undefined} data-fishing-coach={!coach.view.completed ? "cast" : undefined}>{boatCoachInstruction(coach.view, "waiting") ?? "Забросьте удочку. Следите за поплавком и удерживайте рыбу в зоне снасти."}</p></>}
           </div>}
@@ -101,4 +101,39 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
       </AlertDialog.Content>
     </AlertDialog.Portal></AlertDialog.Root>
   </section>;
+}
+
+function createRiverFeed() {
+  let latest: BoatReelVisualState | null = null;
+  let listener: ((sample: BoatReelVisualState) => void) | null = null;
+  return {
+    publish(next: BoatReelVisualState) {
+      const stageChanged = latest?.challengeId !== next.challengeId || latest.stage !== next.stage;
+      latest = next;
+      listener?.(next);
+      return stageChanged;
+    },
+    read: () => latest,
+    subscribe(notify: (sample: BoatReelVisualState) => void) {
+      listener = notify;
+      if (latest) notify(latest);
+      return () => { listener = null; };
+    },
+  };
+}
+
+/** Only the rendering/audio bridge subscribes at reel speed. Header, timers, overlays
+ * and inventory stay on the normal snapshot clock throughout a pull. */
+function RiverScene({ base, feed, owner, voyageId, count, suspended }: { base: FishingSceneFrame;
+  feed: ReturnType<typeof createRiverFeed>;
+  owner: string; voyageId: string; count: number; suspended: boolean }) {
+  const [sample, setSample] = useState(feed.read);
+  useEffect(() => feed.subscribe(setSample), [feed]);
+  const visual = sample?.challengeId === base.castKey && !suspended && base.stage !== "expired" ? sample : null;
+  const frame = useMemo<FishingSceneFrame>(() => ({ ...base, held: visual?.held ?? false, resistancePhase: visual?.resistancePhase,
+    reel: visual && !["casting", "soaking"].includes(visual.stage) ? visual.reel : undefined }), [base, visual]);
+  useFishingAudio({ ownerPublicId: owner, voyageId, stage: frame.stage, castKey: frame.castKey, held: frame.held,
+    progress: frame.reel?.progress ?? 0, inZone: Boolean(frame.reel && Math.abs(frame.reel.bar - frame.reel.fish) <= frame.reel.zoneWidth / 2),
+    caughtCount: count, ambience: frame.ambience, suspended });
+  return <FishingSceneCanvas frame={frame} className={styles.canvas} />;
 }

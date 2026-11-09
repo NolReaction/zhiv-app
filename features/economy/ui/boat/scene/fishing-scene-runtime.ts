@@ -82,7 +82,7 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
   }
   function loadParts() {
     if (disposed) return;
-    const parts = boatArtworkLayers({ repaired: frame.boat.repaired,
+    const parts = boatArtworkLayers({ repaired: frame.boat.repaired, modules: frame.boat.modules,
       upgrades: frame.boat.upgrades.filter(id => id === "oars" || id === "crate") });
     for (const src of [FISHING_WATER_TEXTURE, ...parts.map(part => part.src)]) {
       if (images.has(src) || pending.has(src) || failed.has(src)) continue;
@@ -164,9 +164,11 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
       if (next.stage === "soaking") castElapsed = Math.max(castElapsed, 1.2);
       if (next.stage === "paused" && !pausingFlight || next.stage === "bite") castElapsed = Math.max(castElapsed, 2);
       pausedFlightKey = pausingFlight ? next.castKey : undefined;
+      const boatChanged = next.boat !== frame.boat;
       frame = next;
       if (sceneChanged) refreshWaterLayout();
-      loadParts(); redraw();
+      if (boatChanged) loadParts();
+      redraw();
     },
     dispose() {
       if (disposed) return;

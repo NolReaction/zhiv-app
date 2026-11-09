@@ -17,6 +17,8 @@ import type { ProductionStart } from "@/features/economy/domain/production-start
 import { parseProductionJournal, productionJournalKey, productionProjection, reserveProduction, safeProductionRecipe,
   PRODUCTION_JOURNAL_LIMIT, type ProductionIntent, type JournalStorage, type JournalCoordinator } from "./production-journal";
 
+import { isBoatLanding, restoreBoatLanding, sameBoatAttempt } from "./boat-landing";
+
 type Transport = {
   get: (signal: AbortSignal) => Promise<EconomyView>;
   send: (command: EconomyCommand, signal: AbortSignal) => Promise<EconomyResult>;
@@ -45,6 +47,7 @@ type View = {
   completedConstructions: readonly ConstructionCompletion[];
   directActionsAvailable: boolean;
   snapshotConfirmed: boolean;
+  pendingBoatCastId?: string;
   productionSnapshot: EconomyView | null;
   pendingProductionIds: readonly string[];
   pendingProductionCount: number;
@@ -87,6 +90,8 @@ export function createEconomySession(owner: string | null, transport: Transport,
   let lastReadAt = -Infinity, blockedUntil = 0, marketBlockedUntil = 0, failures = 0, successfulReads = 0;
   let serverClock = Date.now(), localClock = performance.now();
   const storageKey = gameplayStorageKey(`zhiv:economy:pending:v1:${owner}`);
+  const landingKey = gameplayStorageKey(`zhiv:economy:boat-landing:v1:${owner}`);
+  let durableLanding: EconomyCommand | null = null;
   const listeners = new Set<() => void>(), requests = new Set<AbortController>();
   const inventoryReceipts = new Set<string>();
   const xpReceipts = new Set<string>();
@@ -99,6 +104,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
     view = { ...view, productionSnapshot: productionProjection(view.snapshot, productionEntries),
       pendingProductionIds: Object.freeze(productionEntries.map(entry => entry.requestId)), pendingProductionCount: productionEntries.length,
       productionQueueAvailable: journalReady && !journalFault && localActionsAvailable,
+      pendingBoatCastId: pending?.kind === "economy" && isBoatLanding(pending.command) ? pending.command.reel.challengeId : undefined,
       syncPending: Boolean(pending) || productionEntries.length > 0 };
     listeners.forEach(listener => listener());
   };
@@ -129,6 +135,8 @@ export function createEconomySession(owner: string | null, transport: Transport,
       const key = productionJournalKey(owner), raw = journalOptions.storage.getItem(key);
       const restored = parseProductionJournal(raw, owner);
       journalReady = true;
+      durableLanding = restoreBoatLanding(journalOptions.storage.getItem(landingKey), owner);
+      recoverLanding();
       if (restored) {
         productionEntries = restored.entries;
         if (!view.snapshotConfirmed && (!view.snapshot || restored.snapshot.revision > view.snapshot.revision)) {
@@ -217,7 +225,31 @@ export function createEconomySession(owner: string | null, transport: Transport,
   const productionStarts = (id: string): readonly ProductionStart[] => Object.freeze([
     ...(view.productionStarts ?? []), Object.freeze({ id, ownerPublicId: owner!, occurredAt: Date.now() }),
   ].slice(-16));
+  function recoverLanding() {
+    if (!durableLanding || pending) return;
+    remember({ kind: "economy", command: durableLanding });
+    publish({ uncertain: true, notice: "Результат рыбалки ожидает отправки." });
+  }
+  function storeLanding(command: EconomyCommand) {
+    // The production journal already owns the account-wide Web Lock. Other tabs use
+    // their existing per-tab receipt and cannot overwrite the durable owner's result.
+    try {
+      if (journalReady && journalOptions) {
+        journalOptions.storage.setItem(landingKey, JSON.stringify(command));
+        durableLanding = command;
+      } else if (storage) storage.setItem(storageKey, JSON.stringify({ kind: "economy", command }));
+      else return false;
+      return true;
+    } catch {
+      publish({ storageError: "Не удалось сохранить результат на устройстве. Освободите место и повторите." });
+      return false;
+    }
+  }
   function remember(value: Pending | null) {
+    if (!value && pending?.kind === "economy" && durableLanding?.requestId === pending.command.requestId) {
+      try { journalOptions?.storage.removeItem(landingKey); } catch { /* A surviving receipt safely replays on reload. */ }
+      durableLanding = null;
+    }
     pending = value;
     if (!value) { localExplorationIntent = null; localLeaftailPurchaseIntent = null; localXpIntent = null; }
     try { if (value) storage?.setItem(storageKey, JSON.stringify(value)); else storage?.removeItem(storageKey); } catch { /* Receipt remains in memory if browser storage is unavailable. */ }
@@ -259,6 +291,8 @@ export function createEconomySession(owner: string | null, transport: Transport,
   }
   function refresh(force = true): Promise<void> {
     if (journalInitializing && journalInitialization) return journalInitialization.then(() => refresh(force));
+    recoverLanding();
+    if (pending?.kind === "economy" && isBoatLanding(pending.command)) return execute(pending);
     if (productionEntries.length) return drainProduction();
     if (!active || !available || !owner || view.busy || performance.now() < blockedUntil) return Promise.resolve();
     if (reading) return reading;
@@ -469,7 +503,29 @@ export function createEconomySession(owner: string | null, transport: Transport,
       const throttled = error instanceof ApiError && error.status === 429;
       const definitive = error instanceof ApiError && error.status >= 400 && error.status < 500
         && ![401, 408, 425, 429].includes(error.status) && error.body?.code !== "GAME_SESSION_INACTIVE";
+      const deferred = value.kind === "economy" && isBoatLanding(value.command);
+      if (deferred && error instanceof ApiError && error.body?.code === "ECONOMY_REVISION_CONFLICT") {
+        // This ID was definitively rejected. Rebase only if the exact server challenge
+        // still exists. Uncertain deliveries always retain the original ID and revision.
+        const snapshot = await transport.get(request.signal).catch(() => null);
+        if (!valid(generation)) return;
+        if (!snapshot || !adopt(snapshot)) {
+          publish({ uncertain: true, syncError: "Связь прервалась при проверке сохранённого заброса." });
+          return;
+        }
+        if (sameBoatAttempt(snapshot, value.command) && snapshot.revision > value.command.expectedRevision) {
+          const next = { ...value.command, requestId: createUuidV4(), expectedRevision: snapshot.revision };
+          if (storeLanding(next)) remember({ kind: "economy", command: next });
+          publish({ uncertain: true, error: null, notice: "Обновили данные поездки. Отправляем результат." });
+          return;
+        }
+      }
       if (definitive) remember(null);
+      if (deferred && !definitive && !throttled) {
+        const delay = Math.min(30_000, 1000 * 2 ** Math.min(failures++, 5));
+        blockedUntil = performance.now() + delay;
+        publish({ retryAt: now() + delay });
+      }
       if (throttled) {
         const delay = Math.max(1000, error.retryAfterMs ?? 60_000);
         blockedUntil = performance.now() + delay;
@@ -510,6 +566,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
     if (!active || !owner || performance.now() < blockedUntil) return false;
     if (journalInitialization) await journalInitialization;
     if (pending) await execute(pending);
+    recoverLanding();
     if (productionEntries.length) await drainProduction();
     if (pending || productionEntries.length || !active || !available) return false;
     await refresh();
@@ -536,6 +593,19 @@ export function createEconomySession(owner: string | null, transport: Transport,
     },
     refresh, refreshTapBoost, refreshSoft: () => refresh(false), refreshMarket, refreshBarter, refreshNeighbor,
     act(action: EconomyCommand["action"], targetId: string, quantity = 1, totalPrice = 0, fishSelection?: Record<string, number>, shipCargo?: { voyageId: string; orderId: string; itemId: string }, reel?: EconomyCommand["reel"]) {
+      if (action === "submit_boat_cast" && reel?.deferred) {
+        if (!owner || !view.snapshot || !active || !localActionsAvailable || pending || productionEntries.length || view.busy) return false;
+        const command: EconomyCommand = { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision,
+          action, targetId, quantity: 1, totalPrice: 0, reel: { ...reel, inputs: reel.inputs.map(input => ({ ...input })) } };
+        if (!sameBoatAttempt(view.snapshot, command)) return false;
+        const canSend = available && view.directActionsAvailable && performance.now() >= blockedUntil;
+        if (!storeLanding(command) && !canSend) return false;
+        const receipt: Pending = { kind: "economy", command };
+        remember(receipt);
+        publish({ uncertain: true, error: null, notice: canSend ? "Отправляем результат рыбалки." : "Результат сохранён и ждёт связи." });
+        if (canSend) void execute(receipt);
+        return true;
+      }
       if (action === "start_production" && journalReady && !journalFault && view.snapshot && safeProductionRecipe(view.snapshot, targetId) && quantity === 1 && totalPrice === 0 && fishSelection == null) {
         if (!owner || !view.snapshot || !active || !localActionsAvailable || pending || view.busy || productionEntries.length >= PRODUCTION_JOURNAL_LIMIT) return false;
         const entry = { requestId: createUuidV4(), targetId };

@@ -26,7 +26,7 @@ export function BoatRecoveryDialog({ economy, onClose, onOpenPantry }: Props) {
       <header className={styles.header}><Anchor size={25} /><Dialog.Title>Возвращение к причалу</Dialog.Title>
         <button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть"><X size={22} /></button></header>
       <div className={styles.body}>
-        <Dialog.Description id={description}>Лодочная рыбалка временно закрыта. На берегу можно рыбачить как обычно.</Dialog.Description>
+        <Dialog.Description id={description}>Можно завершить оплаченную работу или забрать улов прежнего выхода.</Dialog.Description>
         {voyage && <section className={styles.trip}>
           {phase === "ready" ? <>
             <button type="button" className={styles.primary} disabled={disabled} onClick={() => send("claim_boat", voyage.id)}>{voyage.catches.length ? "Забрать улов" : "Завершить выход"}</button>
@@ -37,7 +37,7 @@ export function BoatRecoveryDialog({ economy, onClose, onOpenPantry }: Props) {
           </>}
           <BoatCatchList state={state} boat={boat} />
         </section>}
-        <BoatWork boat={boat} config={boatConfig(state.catalog)} now={economy.now} disabled={disabled} onClaim={id => send("claim_boat_upgrade", id)} />
+        <BoatWork boat={boat} config={state.catalog.boat ?? boatConfig()} now={economy.now} disabled={disabled} onClaim={id => send("claim_boat_upgrade", id)} />
         {economy.error && <p className={styles.error} role="alert">{economy.error}</p>}
         {economy.uncertain && <button type="button" className={styles.secondary} disabled={economy.busy} onClick={() => economy.retry()}>Проверить последнее действие</button>}
       </div>

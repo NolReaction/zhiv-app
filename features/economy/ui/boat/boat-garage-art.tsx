@@ -9,7 +9,7 @@ export function BoatGarageArt(props: BoatArtProps) {
   return <svg viewBox="0 185 1000 490" className={styles.art} role="img"
     aria-label="Рыбацкая лодка на двух винтовых подставках" data-boat-garage-art>
     <g data-garage-supports aria-hidden="true">{stands.map((stand, index) => <g key={index}>
-      <ellipse cx={stand.x} cy={stand.y + 1} rx={112 * stand.scale} ry={9 * stand.scale} fill="#291d12" opacity=".35" />
+      <ellipse cx={stand.x} cy={stand.y + 1} rx={153 * stand.scale} ry={9 * stand.scale} fill="#291d12" opacity=".35" />
       <g transform={`translate(${stand.x} ${stand.y}) scale(${stand.scale}) translate(-160 -304)`}>
         <image href={BOAT_GARAGE_STAND_ASSET.src} width={stand.width} height={stand.height} />
       </g>
