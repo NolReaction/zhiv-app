@@ -6,6 +6,8 @@ import { FISHING_WATER_TEXTURE } from "./fishing-scene-background";
 import type { FishingSceneFrame, FishingSceneViewport } from "./fishing-scene-types";
 
 const frameInterval = 1000 / 30;
+// Only the decorative river is rasterized at this resolution. Controls stay at native device resolution.
+const scenePixelBudgets = [1_400_000, 900_000, 560_000] as const;
 
 /** Owns presentation clocks and resources only. It cannot submit input or award a catch. */
 export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSceneFrame): { update(frame: FishingSceneFrame): void; dispose(): void } {
@@ -21,6 +23,7 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
   let water = { centerX: 500, supportSpan: 440, phase: 0 };
   let biteLead = initial.biteLeadSeconds, biteLeadClock = elapsed;
   const currentBiteLead = () => biteLead === undefined ? undefined : Math.max(0, biteLead - (elapsed - biteLeadClock));
+  let quality = 0, lateFrames = 0, paintedLastFrame = false;
   let viewport: FishingSceneViewport = { width: 0, height: 0, dpr: 1 };
   const images = new Map<string, HTMLImageElement>(), pending = new Map<string, HTMLImageElement>();
   const failed = new Set<string>(), seenCasts = new Set(initial.castKey ? [initial.castKey] : []);
@@ -41,7 +44,7 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
     water = { centerX: (geometry.composition.boatX + geometry.composition.boatWidth * .5) / geometry.scale,
       supportSpan: geometry.composition.boatWidth / geometry.scale * .55, phase: geometry.composition.variant.currentPhase };
   }
-  function stop() { if (raf) cancelAnimationFrame(raf); raf = 0; lastClock = null; lastPaint = null; }
+  function stop() { if (raf) cancelAnimationFrame(raf); raf = 0; lastClock = null; lastPaint = null; paintedLastFrame = false; lateFrames = 0; }
   function paint() {
     if (!present()) return;
     if (!inertia.ready && !media?.matches) advanceFishingBoatInertia(inertia, 0, buoyancyInput());
@@ -59,7 +62,11 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
     raf = 0;
     if (!animated()) { lastClock = null; if (dirty) paint(); return; }
     // Hidden tabs and a resumed event loop never invent missed visual motion.
-    const dt = lastClock === null ? 0 : Math.min(.1, Math.max(0, (time - lastClock) / 1000));
+    const interval = lastClock === null ? 0 : Math.max(0, time - lastClock);
+    const dt = Math.min(.1, interval / 1000);
+    // Canvas rasterization can block the next browser frame even when the JS painter was fast.
+    // Discard isolated stalls. Under sustained load, lower only the river's backing resolution.
+    if (interval > 40) lateFrames++; else if (interval > 0) lateFrames = Math.max(0, lateFrames - .25);
     lastClock = time; elapsed += dt; castElapsed += dt; stageElapsed += dt;
     advanceFishingBoatInertia(inertia, dt, buoyancyInput());
     const target = fishingBoatActorPose(frame.stage, castElapsed, frame.held, elapsed, false, stageElapsed, currentBiteLead());
@@ -67,8 +74,15 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
     pose = { angle: pose.angle + (target.angle - pose.angle) * blend,
       effort: pose.effort + (target.effort - pose.effort) * blend, lean: pose.lean + (target.lean - pose.lean) * blend };
     const continuing = animated();
-    if (lastPaint === null || time - lastPaint >= frameInterval || !continuing) {
-      paint();
+    // Leave a presentation opportunity between heavy scenery draws so pointer/HUD updates can land.
+    const yieldToInput = paintedLastFrame && interval > 40;
+    paintedLastFrame = false;
+    if (!continuing || (!yieldToInput && (lastPaint === null || time - lastPaint >= frameInterval))) {
+      if (lateFrames >= 5 && quality < scenePixelBudgets.length - 1) {
+        quality++; lateFrames = 0;
+        sizeBackingStore(viewport.width, viewport.height);
+      }
+      paint(); paintedLastFrame = true;
       lastPaint = lastPaint === null ? time : time - ((time - lastPaint) % frameInterval);
     }
     if (continuing) raf = requestAnimationFrame(tick);
@@ -98,17 +112,18 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
       image.onload = () => complete(true); image.onerror = () => complete(false); image.src = src;
     }
   }
+  function sizeBackingStore(width: number, height: number) {
+    const ratio = Number.isFinite(window.devicePixelRatio) ? window.devicePixelRatio : 1;
+    const dpr = Math.min(Math.max(1, ratio), 2, Math.sqrt(scenePixelBudgets[quality] / Math.max(1, width * height)));
+    viewport = { width, height, dpr };
+    const pixelWidth = Math.max(1, Math.round(width * dpr)), pixelHeight = Math.max(1, Math.round(height * dpr));
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) { canvas.width = pixelWidth; canvas.height = pixelHeight; }
+  }
   function resize() {
     if (disposed) return;
     const rect = canvas.getBoundingClientRect();
-    const width = Math.max(0, rect.width), height = Math.max(0, rect.height);
-    const ratio = Number.isFinite(window.devicePixelRatio) ? window.devicePixelRatio : 1;
-    const dpr = Math.max(1, Math.min(2, ratio));
-    viewport = { width, height, dpr };
-    refreshWaterLayout();
-    const pixelWidth = Math.max(1, Math.round(width * dpr)), pixelHeight = Math.max(1, Math.round(height * dpr));
-    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) { canvas.width = pixelWidth; canvas.height = pixelHeight; }
-    redraw();
+    sizeBackingStore(Math.max(0, rect.width), Math.max(0, rect.height));
+    refreshWaterLayout(); redraw();
   }
   function visibility() { stop(); if (present()) { resize(); loadParts(); } }
   function retry() { if (disposed) return; failed.clear(); loadParts(); redraw(); }

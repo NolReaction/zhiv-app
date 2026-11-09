@@ -117,12 +117,12 @@ test("decoded hull water masks are cached across frames and a loadout change can
     const first = fishingBoatWaterArtwork(layers, images);
     assert.ok(first && first.plain !== first.submerged, "the original and submerged-alpha masks remain separate");
     for (let frame = 0; frame < 300; frame++) assert.equal(fishingBoatWaterArtwork(layers, images), first);
-    assert.equal(made.length, 2, "ordinary render frames allocate no new canvas or pixel buffer");
+    assert.equal(made.length, 3, "ordinary render frames allocate no new canvas or pixel buffer");
     images.set("engine", { complete: false, naturalWidth: 0 });
     assert.equal(fishingBoatWaterArtwork(layers, images), null, "an unfinished replacement cannot reuse another motor");
     images.set("engine", { complete: true, naturalWidth: 260 });
     assert.notEqual(fishingBoatWaterArtwork(layers, images), first);
-    assert.equal(made.length, 4);
+    assert.equal(made.length, 6);
   } finally {
     if (previous) Object.defineProperty(globalThis, "document", previous); else delete globalThis.document;
   }

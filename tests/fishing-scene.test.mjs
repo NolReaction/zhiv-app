@@ -122,11 +122,11 @@ test("cached base artwork preserves the actor then foreground-hull occlusion ord
     paintFishingScene(env.context, value, images, { width: 1200, height: 720, dpr: 1 }, visual);
     const draws = env.calls.filter(call => call.method === "drawImage");
     const actor = draws.findIndex(call => call.args[0].width === 48 && call.args[0].height === 48);
-    const hull = draws.findIndex(call => call.args[0].id === "repair");
-    const cached = draws.map((call, index) => ({ image: call.args[0], index })).filter(item => item.image.width === 1000);
+    const hull = draws.findIndex(call => call.args[0].height === BOAT_ASSEMBLY.height - BOAT_ASSEMBLY.foredeck);
+    const cached = draws.map((call, index) => ({ image: call.args[0], index })).filter(item => item.image.width === BOAT_ASSEMBLY.width && item.image.height === BOAT_ASSEMBLY.height);
     assert.equal(cached.length, 3, "one reflection, one base rig and one underwater mask draw");
     assert.ok(cached[1].index < actor && actor < hull && hull < cached[2].index, "cached base, seated actor, hull foreground, then sampled immersion");
-    assert.equal(draws.filter(call => call.args[0].id).length, 1, "only the exact hull foreground is repainted from SVG");
+    assert.equal(draws.filter(call => call.args[0].id).length, 0, "even the foreground hull is drawn from its cached crop");
   } finally { env.restore(); }
 });
 
@@ -201,6 +201,23 @@ test("portrait water fills CSS coordinates from one large lake crop before the b
   } finally { env.restore(); }
 });
 
+test("busy browser frames lower only the scene raster and reserve opportunities for pointer input", () => {
+  const env = environment(), runtime = mountFishingScene(env.canvas, { ...frame(), stage: "waiting" });
+  try {
+    env.resize(1440, 900); env.step();
+    const pixelCount = () => env.canvas.width * env.canvas.height;
+    const initial = pixelCount();
+    env.step(100); env.step(17);
+    assert.equal(pixelCount(), initial, "a single missed frame keeps the current detail");
+    const before = env.paints.length;
+    for (let i = 0; i < 24; i++) env.step(60);
+    assert.ok(pixelCount() < initial / 2);
+    assert.ok(env.paints.length > before && env.paints.length - before < 16, "input and HUD get frames between heavy scene draws");
+    const { viewport } = env.paints.at(-1);
+    assert.deepEqual([viewport.width, viewport.height], [1440, 900], "camera and HUD coordinates do not shrink");
+  } finally { runtime.dispose(); env.restore(); }
+});
+
 test("canvas runtime caps DPR/frame rate, pauses offscreen and cleans up late image completions", () => {
   const env = environment(), value = { ...frame(), stage: "waiting" }, runtime = mountFishingScene(env.canvas, value);
   try {
@@ -219,6 +236,9 @@ test("canvas runtime caps DPR/frame rate, pauses offscreen and cleans up late im
     const staticCount = env.paints.length; env.finish(BOAT_ART_PARTS.repair.src); assert.ok(env.paints.length > staticCount, "image arrival redraws a static scene");
     env.finish(BOAT_ART_PARTS.tank.src, true); const failedCount = env.requests.length;
     env.window.dispatch("online"); assert.equal(env.requests.length, failedCount + 1, "a failed part retries only on an explicit recovery event");
+    env.resize(1920, 1080);
+    assert.ok(env.canvas.width * env.canvas.height < 1_405_000, "the full-screen river keeps a bounded raster cost on a Retina monitor");
+    assert.ok(Math.abs(env.canvas.width / env.canvas.height - 16 / 9) < .005);
     env.resize(320, 568); assert.equal(env.canvas.width, 640); assert.equal(env.canvas.height, 1136);
     const late = env.requests.find(image => image.path.endsWith("module-oars.webp")).onload;
     runtime.dispose(); const disposedCount = env.paints.length; late(); env.step(1000);

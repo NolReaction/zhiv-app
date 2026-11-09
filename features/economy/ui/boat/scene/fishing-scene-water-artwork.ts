@@ -1,8 +1,8 @@
-import type { BoatArtLayer } from "@/features/world/objects/fishing-boat/fishing-boat-artwork";
+import { BOAT_ASSEMBLY, type BoatArtLayer } from "@/features/world/objects/fishing-boat/fishing-boat-artwork";
 import { FISHING_BOAT_PIVOT, type FishingBoatTransform } from "./fishing-scene-buoyancy";
 import { fishingBoatWaterSample, fishingHullWaterFrame } from "./fishing-scene-hull-water";
 
-type WaterArtwork = { plain: HTMLCanvasElement; submerged: HTMLCanvasElement; inputs: HTMLImageElement[] };
+type WaterArtwork = { hull: HTMLCanvasElement; plain: HTMLCanvasElement; submerged: HTMLCanvasElement; inputs: HTMLImageElement[] };
 const artwork = new WeakMap<HTMLImageElement, Map<string, WaterArtwork>>();
 
 /** Cache transparent artwork masks once per decoded loadout. Actors and scenery never enter this image. */
@@ -17,8 +17,12 @@ export function fishingBoatWaterArtwork(layers: readonly BoatArtLayer[], images:
   if (cached && cached.inputs.every((image, index) => image === ready[index])) return cached;
   const plain = document.createElement("canvas"), submerged = document.createElement("canvas");
   plain.width = submerged.width = 1000; plain.height = submerged.height = 650;
-  const source = plain.getContext("2d"), wet = submerged.getContext("2d");
-  if (!source || !wet) return null;
+  const hullFront = document.createElement("canvas");
+  hullFront.width = BOAT_ASSEMBLY.width; hullFront.height = BOAT_ASSEMBLY.height - BOAT_ASSEMBLY.foredeck;
+  const front = hullFront.getContext("2d"), source = plain.getContext("2d"), wet = submerged.getContext("2d");
+  if (!source || !wet || !front) return null;
+  const [x, y, width, height] = layers[0].box;
+  front.drawImage(hull, ...layers[0].crop, x, y - BOAT_ASSEMBLY.foredeck, width, height);
   layers.forEach((layer, index) => source.drawImage(ready[index], ...layer.crop, ...layer.box));
   wet.filter = "saturate(.48) contrast(.78)";
   wet.drawImage(plain, 0, 0); wet.filter = "none";
@@ -26,7 +30,7 @@ export function fishingBoatWaterArtwork(layers: readonly BoatArtLayer[], images:
   const depth = wet.createLinearGradient(0, 490, 0, 600);
   depth.addColorStop(0, "rgba(16,105,112,.45)"); depth.addColorStop(.5, "rgba(9,94,107,.66)");
   depth.addColorStop(1, "rgba(8,77,96,.86)"); wet.fillStyle = depth; wet.fillRect(0, 0, 1000, 650);
-  const result = { plain, submerged, inputs: ready };
+  const result = { hull: hullFront, plain, submerged, inputs: ready };
   if (variants.size >= 4) variants.delete(variants.keys().next().value!);
   variants.set(key, result);
   return result;

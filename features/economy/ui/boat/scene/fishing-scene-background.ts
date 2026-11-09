@@ -37,7 +37,7 @@ function paintMovingTexture(ctx: CanvasRenderingContext2D, image: HTMLImageEleme
   }
   const sample = fishingWaterSample(cached.view, time, still);
   // The runtime owns and caches the decoded Image. Resizing only updates this crop, never a source canvas.
-  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "low";
   ctx.drawImage(image, sample.x, sample.y, cached.view.sourceWidth, cached.view.sourceHeight, 0, 0, width, height);
 }
 
@@ -105,25 +105,57 @@ function paintSurfaceLight(ctx: CanvasRenderingContext2D, width: number, height:
   ctx.fillStyle = light; ctx.fillRect(0, 0, width, height);
 }
 
-/** A full lake surface with slow optical flow; no small map patch is repeated behind the rig. */
-export function paintFishingLandscape(ctx: CanvasRenderingContext2D, width: number, height: number, time: number,
-  image?: HTMLImageElement, ambience?: FishingSceneAmbience, scale = 1, still = false) {
-  if (!(width > 0 && height > 0) || !Number.isFinite(width + height)) return;
-  const t = finiteClock(time, still);
-  ctx.fillStyle = "#17677b"; ctx.fillRect(0, 0, width, height);
-  if (image) paintMovingTexture(ctx, image, width, height, t, still);
+type Mood = ReturnType<typeof fishingSceneAtmosphere>;
+
+function paintLakeLight(ctx: CanvasRenderingContext2D, width: number, height: number, t: number, mood: Mood) {
   paintSurfaceLight(ctx, width, height, t);
-  const mood = fishingSceneAtmosphere(ambience);
   if (mood.night > .01) { ctx.fillStyle = `rgba(8,24,57,${mood.night * .46})`; ctx.fillRect(0, 0, width, height); }
   if (mood.sunset > .01) {
     const sunset = ctx.createLinearGradient(width, 0, width * .1, height);
     sunset.addColorStop(0, `rgba(240,167,91,${mood.sunset * .19})`); sunset.addColorStop(.5, `rgba(170,117,111,${mood.sunset * .075})`);
     sunset.addColorStop(1, "rgba(63,89,113,0)"); ctx.fillStyle = sunset; ctx.fillRect(0, 0, width, height);
   }
+  ctx.fillStyle = surfaceLighting(ctx, width, height).vignette; ctx.fillRect(0, 0, width, height);
+}
+
+type LightMap = { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D; key?: string };
+const lightMaps = new WeakMap<CanvasRenderingContext2D, LightMap>();
+
+/** Lighting varies over hundreds of pixels and several seconds. Sample the washes in a small
+ * transparent light map; the original photo, waves and the rig still move on every scene frame. */
+function paintCachedLight(ctx: CanvasRenderingContext2D, width: number, height: number, t: number, mood: Mood) {
+  let layer = lightMaps.get(ctx);
+  if (!layer) {
+    const canvas = ctx.canvas?.ownerDocument?.createElement("canvas");
+    const context = canvas?.getContext("2d", { willReadFrequently: true });
+    if (!canvas || !context) { paintLakeLight(ctx, width, height, t, mood); return; }
+    layer = { canvas, context }; lightMaps.set(ctx, layer);
+  }
+  const scale = Math.min(1, 256 / Math.max(width, height));
+  const w = Math.max(1, Math.round(width * scale)), h = Math.max(1, Math.round(height * scale));
+  const key = [width, height, Math.floor(t / 2), Math.round(mood.night * 255), Math.round(mood.sunset * 255)].join("|");
+  if (key !== layer.key) {
+    if (layer.canvas.width !== w || layer.canvas.height !== h) { layer.canvas.width = w; layer.canvas.height = h; }
+    layer.context.setTransform(w / width, 0, 0, h / height, 0, 0);
+    layer.context.clearRect(0, 0, width, height);
+    paintLakeLight(layer.context, width, height, t, mood);
+    layer.key = key;
+  }
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "low";
+  ctx.drawImage(layer.canvas, 0, 0, width, height);
+}
+
+/** One opaque lake crop plus the moving water surface in the actual viewport. */
+export function paintFishingLandscape(ctx: CanvasRenderingContext2D, width: number, height: number, time: number,
+  image?: HTMLImageElement, ambience?: FishingSceneAmbience, scale = 1, still = false) {
+  if (!(width > 0 && height > 0) || !Number.isFinite(width + height)) return;
+  const t = finiteClock(time, still), mood = fishingSceneAtmosphere(ambience);
+  if (image) paintMovingTexture(ctx, image, width, height, t, still);
+  else { ctx.fillStyle = "#17677b"; ctx.fillRect(0, 0, width, height); }
+  paintCachedLight(ctx, width, height, t, mood);
   const surface = fishingWaterSurfaceFrame(width, height, t, scale, still, mood.night * .8 + mood.sunset * .3);
   surface.currents.forEach(current => drawWaterCurrent(ctx, current));
   surface.glints.forEach(glint => drawWaterGlint(ctx, glint));
-  ctx.fillStyle = surfaceLighting(ctx, width, height).vignette; ctx.fillRect(0, 0, width, height);
 }
 
 export function paintFishingRipples(ctx: CanvasRenderingContext2D, point: FishingScenePoint, time: number, strength = 1) {

@@ -114,8 +114,13 @@ function paintBoat(ctx: CanvasRenderingContext2D, geometry: Geometry, frame: Fis
   paintFishingBoatBody(ctx, geometry.actorRig, frame.appearance);
   paintFishingBoatArms(ctx, geometry.actorRig, frame.appearance, true);
   // Front planks cover the seated feet while preserving the original raster hull.
-  ctx.save(); ctx.beginPath(); ctx.rect(0, BOAT_ASSEMBLY.foredeck, BOAT_ASSEMBLY.width, BOAT_ASSEMBLY.height); ctx.clip();
-  paintPart(ctx, layers[0], images); ctx.restore();
+  if (waterArtwork) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(waterArtwork.hull, 0, BOAT_ASSEMBLY.foredeck);
+  } else {
+    ctx.save(); ctx.beginPath(); ctx.rect(0, BOAT_ASSEMBLY.foredeck, BOAT_ASSEMBLY.width, BOAT_ASSEMBLY.height); ctx.clip();
+    paintPart(ctx, layers[0], images); ctx.restore();
+  }
   layers.filter(layer => layer.id === "oars").forEach(layer => paintPart(ctx, layer, images));
   ctx.restore(); return true;
 }
@@ -129,7 +134,7 @@ function paintFishingLanding(ctx: CanvasRenderingContext2D, geometry: Geometry, 
 
 export function paintFishingScene(ctx: CanvasRenderingContext2D, frame: FishingSceneFrame, images: ReadonlyMap<string, HTMLImageElement>, viewport: FishingSceneViewport, visual: FishingSceneVisual) {
   const geometry = fishingSceneGeometry(viewport.width, viewport.height, frame, visual), { width, height, time } = geometry;
-  ctx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0); ctx.clearRect(0, 0, viewport.width, viewport.height);
+  ctx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
   // Water fills CSS coordinates first; shared waves use the authored scene scale beneath the boat.
   paintFishingLandscape(ctx, viewport.width, viewport.height, time + geometry.composition.variant.currentPhase, images.get(FISHING_WATER_TEXTURE), frame.ambience, geometry.scale, visual.still);
   ctx.save(); ctx.scale(geometry.scale, geometry.scale);

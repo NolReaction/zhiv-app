@@ -55,6 +55,32 @@ test("one decoded lake surface moves without allocating per-frame canvases or re
   } finally { if (previous) Object.defineProperty(globalThis, "document", previous); else delete globalThis.document; }
 });
 
+test("one bounded light map is reused while the original water texture keeps moving", () => {
+  const gradient = { addColorStop() {} };
+  const layers = [], textureDraws = [], refreshes = [];
+  const context = overrides => new Proxy(overrides, { get(target, name) {
+    if (name in target) return target[name];
+    if (name === "createRadialGradient" || name === "createLinearGradient") return () => gradient;
+    return () => {};
+  } });
+  const light = context({ clearRect: () => refreshes.push(true) });
+  const ownerDocument = { createElement() {
+    const canvas = { getContext: () => light }; layers.push(canvas); return canvas;
+  } };
+  const image = { naturalWidth: 1024, naturalHeight: 1024 };
+  const output = context({ canvas: { ownerDocument }, drawImage: (source, ...rects) => {
+    if (source === image) textureDraws.push(rects);
+  } });
+  for (const time of [0, .1, .4, 1.9, 2, 2.1]) paintFishingLandscape(output, 1440, 900, time, image);
+  assert.equal(layers.length, 1);
+  assert.deepEqual([layers[0].width, layers[0].height], [256, 160]);
+  assert.equal(refreshes.length, 2, "lighting is sampled independently of the scene frames");
+  assert.equal(new Set(textureDraws.map(draw => draw[0])).size, 6, "the single original crop still moves every frame");
+  paintFishingLandscape(output, 390, 844, 2.1, image);
+  assert.deepEqual([layers[0].width, layers[0].height], [118, 256], "resize reuses the raster and preserves aspect");
+  assert.equal(refreshes.length, 3);
+});
+
 test("water contact uses attached contours and open ripples without the detached filled hover shadow", () => {
   const calls = [], context = new Proxy({}, { get(target, key) { if (key in target) return target[key]; return (...args) => calls.push({ key, args }); } });
   paintFishingWake(context, { x: 500, y: 535 }, 970, 2);
