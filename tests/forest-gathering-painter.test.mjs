@@ -176,6 +176,35 @@ test("a half-size DEV hero rests instead of stretching to an unreachable full-si
   }
 });
 
+test("a coastal shovel stays rigid and both pixel paws hold it below the face on their own side", () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis,"document");
+  Object.defineProperty(globalThis,"document",{configurable:true,value:{createElement(){return {width:48,height:48,getContext:()=>context().ctx};}}});
+  try {
+    for (const seed of [0,1]) for (const age of [0,4,5.5,7,8.5,10,13,14,15,16.5,22]) {
+      const frame = makeFrame(age,seed), {handle,blade} = frame.shovel;
+      const inward = seed ? -1 : 1;
+      const length = Math.hypot(blade.x-handle.x, blade.y-handle.y);
+      assert.ok(Math.abs(length-.72)<1e-9, "the tool cannot grow or shrink while levering soil");
+      const draw = context();
+      drawForestGatheringHero(draw.ctx,frame);
+      const unit = frame.size/48;
+      const paws = draw.calls.filter(call => call.method === "fillRect" && call.fill === "#d8bf83" &&
+        Math.abs(call.args[2]-5*unit)<1e-9 && Math.abs(call.args[3]-4*unit)<1e-9)
+        .map(call => ({ x:(call.args[0]+2.5*unit-frame.x)/frame.size, y:(call.args[1]+2*unit-frame.y)/frame.size }));
+      assert.equal(paws.length,2);
+      const [trailing,forward] = seed ? [...paws].reverse() : paws;
+      assert.ok(trailing.x * inward < -.07 && forward.x * inward > .10, "neither arm crosses the other's shoulder");
+      for (const [paw,t] of [[trailing,0],[forward,.51]]) {
+        assert.ok(Math.hypot(paw.x-handle.x-(blade.x-handle.x)*t, paw.y-handle.y-(blade.y-handle.y)*t) <= Math.SQRT2/96 + 1e-8,
+          "each hand stays on its grip within half a source pixel per axis");
+        assert.ok(paw.y-2/48 > (27+frame.crouch-45)/48, "even the upper edge of the paw clears the mouth");
+      }
+    }
+  } finally {
+    if (previous) Object.defineProperty(globalThis,"document",previous); else delete globalThis.document;
+  }
+});
+
 test("shovel painter supports both facing directions, pauses and carrying without mutating its frame",()=>{
   const previous=Object.getOwnPropertyDescriptor(globalThis,"document");
   Object.defineProperty(globalThis,"document",{configurable:true,value:{createElement(){return {width:48,height:48,getContext:()=>context().ctx};}}});

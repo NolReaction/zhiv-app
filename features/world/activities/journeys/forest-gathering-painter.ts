@@ -1,8 +1,8 @@
 import { drawGroundedHero } from "@/features/world/scene/grounding";
-import { mossPalette } from "@/features/mochlik/appearance-palette";
-import { drawForestGardenBasket, drawForestGardenProps } from "@/features/world/activities/garden/forest-garden-painter";
-import type { WorldPoint } from "@/features/world/tiled/types";
-import type { ForestGatheringFrame } from "./forest-gathering";
+import { heroSourceAnchor } from "@/features/world/scene/hero-anchors";
+import { forestBasketArm } from "@/features/world/activities/garden/forest-basket-motion";
+import { drawForestGardenBasket, drawForestGardenProps, drawGardenArms } from "@/features/world/activities/garden/forest-garden-painter";
+import { coastalCarryShovel, type ForestGatheringFrame } from "./forest-gathering";
 import { forestGatheringBasketVisual } from "./forest-gathering-rig";
 
 /** Includes the leaning body, outstretched paws and held prop. A parked basket
@@ -25,36 +25,41 @@ export function drawForestGatheringBasket(ctx:CanvasRenderingContext2D, frame:Fo
   ctx.fillStyle="#a7ada0";ctx.fillRect(-5,-9,3,2);ctx.restore();
 }
 
-function gatheringArm(ctx:CanvasRenderingContext2D,frame:ForestGatheringFrame,sign:number,hand:WorldPoint,palette:ReturnType<typeof mossPalette>) {
-  const {x,y,size}=frame,rear=frame.direction==="back";
-  const shoulder={x:x+(sign*.18+frame.lean/48)*size,y:y+(-.33+frame.crouch/85)*size};
-  const elbow={x:(shoulder.x+hand.x)/2+sign*size*.04,y:(shoulder.y+hand.y)/2+size*.035};
-  ctx.lineCap="round";ctx.lineJoin="round";
-  for(const [width,color] of [[size*.064,rear?palette.mossDark:"#d8bf83"],[size*.039,rear?palette.moss:"#f4e4ae"]] as const) {
-    ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();ctx.moveTo(shoulder.x,shoulder.y);ctx.lineTo(elbow.x,elbow.y);ctx.lineTo(hand.x,hand.y);ctx.stroke();
-  }
-}
-
 function drawCoastalGatheringHero(ctx:CanvasRenderingContext2D,frame:ForestGatheringFrame,
   appearance:{palette:string;head:string|null;neck:string|null}|undefined,still:boolean,shadow:boolean) {
-  const {x,y,size}=frame,side=frame.direction==="left"?-1:1,rear=frame.direction==="back",palette=mossPalette(appearance?.palette);
+  const {x,y,size}=frame,side=frame.direction==="left"?-1:1,rear=frame.direction==="back";
   const carrying=frame.action==="walk"||frame.action==="ready";
-  const tool=carrying||!frame.shovel ? {handle:{x:side*.27,y:-.43},blade:{x:side*.41,y:-.04},soil:0} : frame.shovel;
+  const tool=carrying||!frame.shovel ? coastalCarryShovel(side) : frame.shovel;
   const handle={x:x+size*tool.handle.x,y:y+size*tool.handle.y},blade={x:x+size*tool.blade.x,y:y+size*tool.blade.y};
   const dx=blade.x-handle.x,dy=blade.y-handle.y,length=Math.max(.001,Math.hypot(dx,dy)),ux=dx/length,uy=dy/length;
   const point=(along:number,across=0)=>({x:blade.x+size*(ux*along-uy*across),y:blade.y+size*(uy*along+ux*across)});
-  const main={x:handle.x+dx*.04,y:handle.y+dy*.04},other={x:handle.x+dx*.48,y:handle.y+dy*.48};
+  const motion = { direction:frame.direction, pose:frame.pose, frame:still ? 0 : frame.frame };
+  const shoulders = [14, 34].map(px => heroSourceAnchor(frame, { x:px + Math.round(frame.lean), y:31 + frame.crouch / 2 }, motion));
+  const guide = { x:handle.x+dx*.51, y:handle.y+dy*.51 };
+  // Each paw grips the end nearest its own shoulder, including the mirrored pose.
+  const rig = { actor:frame, arms:shoulders.map((shoulder, index) => {
+    const armSide = index ? 1 : -1;
+    return forestBasketArm(shoulder, armSide === Math.sign(dx) ? guide : handle, armSide, size);
+  }) };
   const paintTool=()=>{
-    const neck=point(-.10),edge=[point(0),point(-.04,.06),point(-.13,.055),point(-.15,0),point(-.13,-.055),point(-.04,-.06)];
+    const neck = point(-.16);
+    const edge = [point(0), point(-.025,.050), point(-.073,.080), point(-.16,.086), point(-.152,.028),
+      point(-.195,.022), point(-.195,-.022), point(-.152,-.028), point(-.16,-.086), point(-.073,-.080), point(-.025,-.050)];
     ctx.lineCap="round";ctx.lineWidth=size*.045;ctx.strokeStyle="#513b29";
     ctx.beginPath();ctx.moveTo(handle.x,handle.y);ctx.lineTo(neck.x,neck.y);ctx.stroke();
     ctx.lineWidth=size*.024;ctx.strokeStyle="#bc915a";ctx.stroke();
     ctx.fillStyle="#536e68";ctx.strokeStyle="#344b48";ctx.lineWidth=size*.018;
     ctx.beginPath();ctx.moveTo(edge[0].x,edge[0].y);for(const p of edge.slice(1))ctx.lineTo(p.x,p.y);ctx.closePath();ctx.fill();ctx.stroke();
-    ctx.strokeStyle="#bbccc0";ctx.lineWidth=size*.014;ctx.beginPath();const seam=point(-.12);ctx.moveTo(seam.x,seam.y);ctx.lineTo(blade.x,blade.y);ctx.stroke();
+    const ridge = point(-.14), rim = point(-.139,-.065), tip = point(-.024);
+    ctx.fillStyle="#829c88"; ctx.beginPath(); ctx.moveTo(rim.x,rim.y); ctx.lineTo(ridge.x,ridge.y); ctx.lineTo(tip.x,tip.y); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle="#b7c5af"; ctx.lineWidth=size*.012; ctx.beginPath(); ctx.moveTo(ridge.x,ridge.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
     // A compact D grip, aligned with the shaft, remains visibly in the paw.
     ctx.strokeStyle="#735335";ctx.lineWidth=size*.026;ctx.beginPath();
-    ctx.moveTo(handle.x-uy*size*.045,handle.y+ux*size*.045);ctx.lineTo(handle.x+uy*size*.045,handle.y-ux*size*.045);ctx.stroke();
+    const gripWidth = size*.055;
+    ctx.moveTo(handle.x-uy*gripWidth,handle.y+ux*gripWidth);
+    ctx.lineTo(handle.x+uy*gripWidth,handle.y-ux*gripWidth);
+    ctx.lineTo(handle.x+ux*size*.085,handle.y+uy*size*.085);
+    ctx.closePath();ctx.stroke();
     if(tool.soil>0&&!carrying) {
       const load=point(-.065),amount=Math.max(0,Math.min(1,tool.soil));
       ctx.save();ctx.globalAlpha*=amount;ctx.fillStyle="#b5a77c";ctx.beginPath();ctx.ellipse(load.x,load.y,size*.047,size*.026,-.2,0,Math.PI*2);ctx.fill();
@@ -64,13 +69,16 @@ function drawCoastalGatheringHero(ctx:CanvasRenderingContext2D,frame:ForestGathe
       ctx.restore();
     }
   };
-  const arms=()=>{gatheringArm(ctx,frame,-side,other,palette);gatheringArm(ctx,frame,side,main,palette);};
-  const paws=()=>{ctx.fillStyle=rear?palette.moss:"#f4e4ae";for(const hand of [other,main]){ctx.beginPath();ctx.ellipse(hand.x,hand.y,size*.024,size*.025,0,0,Math.PI*2);ctx.fill();}};
+  const equipment = () => {
+    drawGardenArms(ctx,rig);
+    paintTool();
+    drawGardenArms(ctx,rig,true);
+  };
   ctx.save();
-  if(rear){arms();paintTool();paws();}
+  if(rear)equipment();
   drawGroundedHero(ctx,{x,y,size,pose:frame.pose,direction:frame.direction,frame:still?0:frame.frame,appearance,shadow,
     rig:{gardening:true,crouch:frame.crouch,lean:frame.lean}});
-  if(!rear){arms();paintTool();paws();}
+  if(!rear)equipment();
   ctx.restore();
 }
 

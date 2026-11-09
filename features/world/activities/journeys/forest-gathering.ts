@@ -31,16 +31,29 @@ export function gatheringSeed(id: string) {
   return value;
 }
 
-type DigKeyframe = { at: number; action: GatheringAction; handle: WorldPoint; blade: WorldPoint; crouch: number; lean: number; soil: number };
+// The handle is measured at the D-grip; the blade and both hands follow one rigid shaft.
+const shovelLength = .72;
+const carryAngle = .13;
+function shovelPose(handle: WorldPoint, side: number, angle: number, soil: number) {
+  return { handle, blade: { x: handle.x + side * Math.cos(angle) * shovelLength,
+    y: handle.y + Math.sin(angle) * shovelLength }, soil };
+}
+
+export function coastalCarryShovel(side: number) {
+  return shovelPose({ x: -side * .18, y: -.255 }, side, carryAngle, 0);
+}
+
+type DigKeyframe = { at: number; action: GatheringAction; handle: WorldPoint; angle: number; crouch: number; lean: number; soil: number };
+const resting = { handle: { x: -.19, y: -.285 }, angle: .41, crouch: 0, lean: 0, soil: 0 };
 const digging: readonly DigKeyframe[] = [
-  { at: 0, action: "look", handle: {x:.26,y:-.47}, blade: {x:.45,y:.015}, crouch: 0, lean: 0, soil: 0 },
-  { at: 4, action: "dig", handle: {x:.26,y:-.47}, blade: {x:.45,y:.015}, crouch: 0, lean: 0, soil: 0 },
-  { at: 7, action: "dig", handle: {x:.23,y:-.40}, blade: {x:.47,y:.025}, crouch: 6, lean: 2, soil: 0 },
-  { at: 10, action: "lift", handle: {x:.13,y:-.35}, blade: {x:.49,y:-.035}, crouch: 5, lean: 2.5, soil: 1 },
-  { at: 13, action: "shake", handle: {x:.20,y:-.48}, blade: {x:.49,y:-.20}, crouch: 1, lean: 0, soil: 1 },
-  { at: 15, action: "setdown", handle: {x:.26,y:-.46}, blade: {x:.58,y:-.20}, crouch: 0, lean: 0, soil: 0 },
-  { at: 18, action: "rest", handle: {x:.26,y:-.47}, blade: {x:.45,y:.015}, crouch: 0, lean: 0, soil: 0 },
-  { at: 28, action: "look", handle: {x:.26,y:-.47}, blade: {x:.45,y:.015}, crouch: 0, lean: 0, soil: 0 },
+  { at: 0, action: "look", ...resting },
+  { at: 4, action: "dig", ...resting },
+  { at: 7, action: "dig", handle: { x: -.115, y: -.18 }, angle: .30, crouch: 4, lean: 2, soil: 0 },
+  { at: 10, action: "lift", handle: { x: -.15, y: -.20 }, angle: .18, crouch: 3, lean: 2, soil: 1 },
+  { at: 13, action: "shake", handle: { x: -.19, y: -.28 }, angle: .08, crouch: 1, lean: 0, soil: 1 },
+  { at: 15, action: "setdown", handle: { x: -.13, y: -.24 }, angle: -.10, crouch: 0, lean: 0, soil: 0 },
+  { at: 18, action: "rest", ...resting },
+  { at: 28, action: "look", ...resting },
 ];
 
 /** A few slow shovel strokes, then a long inspection pause. The blade touches
@@ -50,11 +63,10 @@ export function coastalGatheringGesture(elapsed: number, seed: number, still=fal
   const index = Math.max(0, digging.findIndex((frame, i) => i < digging.length - 1 && local >= frame.at && local < digging[i + 1].at));
   const from = digging[index], to = digging[index + 1], progress = (local - from.at) / (to.at - from.at);
   const side = seed % 2 ? -1 : 1;
-  const position = (a: WorldPoint, b: WorldPoint) => ({x:side*mix(a.x,b.x,progress),y:mix(a.y,b.y,progress)});
-  const handle = position(from.handle, to.handle), blade = position(from.blade, to.blade);
+  const handle = { x: side * mix(from.handle.x, to.handle.x, progress), y: mix(from.handle.y, to.handle.y, progress) };
   return { tool:"shovel", action:from.action, progress, crouch:mix(from.crouch,to.crouch,progress),
     lean:side*mix(from.lean,to.lean,progress), hand:handle, item:"stone", itemVisible:false,
-    direction:side<0?"left":"right", shovel:{handle,blade,soil:mix(from.soil,to.soil,progress)} };
+    direction:side<0?"left":"right", shovel:shovelPose(handle, side, mix(from.angle,to.angle,progress), mix(from.soil,to.soil,progress)) };
 }
 
 /** Finish the currently displayed gesture without snapping a bent body upright. */
@@ -62,9 +74,13 @@ export function coastalGatheringStow(source: GatheringGesture, elapsed: number):
   const p=Math.max(0,Math.min(1,elapsed/GATHERING_PACK_SECONDS));
   if (source.tool === "shovel" && source.shovel) {
     const side=source.direction==="left"?-1:1;
-    const handle={x:mix(source.shovel.handle.x,side*.27,p),y:mix(source.shovel.handle.y,-.43,p)};
+    const carry = coastalCarryShovel(side);
+    const { handle: grip, blade, soil } = source.shovel;
+    const handle = { x: mix(grip.x, carry.handle.x, p), y: mix(grip.y, carry.handle.y, p) };
+    const angle = Math.atan2(blade.y - grip.y, side * (blade.x - grip.x));
+    const shovel = p === 0 ? source.shovel : p === 1 ? carry : shovelPose(handle, side, mix(angle, carryAngle, p), soil * (1 - smooth(p)));
     return {...source,action:"pack",progress:p,crouch:mix(source.crouch,0,p),lean:mix(source.lean,0,p),
-      hand:handle,itemVisible:false,shovel:{handle,blade:{x:mix(source.shovel.blade.x,side*.41,p),y:mix(source.shovel.blade.y,-.04,p)},soil:source.shovel.soil*(1-smooth(p))}};
+      hand:handle,itemVisible:false,shovel};
   }
   return { ...source, action: "pack", progress: p, itemVisible: false };
 }

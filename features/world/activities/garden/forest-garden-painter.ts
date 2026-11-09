@@ -236,7 +236,7 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
     actor, elapsed: t, still };
 }
 
-function drawGardenArms(ctx: CanvasRenderingContext2D, frame: ForestGardenVisualFrame, paws = false) {
+export function drawGardenArms(ctx: CanvasRenderingContext2D, frame: Pick<ForestGardenVisualFrame, "actor" | "arms">, paws = false) {
   const u = frame.actor.size / 48;
   const pixel = (point: WorldPoint) => ({ x: frame.actor.x + Math.round((point.x - frame.actor.x) / u) * u,
     y: frame.actor.y + Math.round((point.y - frame.actor.y) / u) * u });
