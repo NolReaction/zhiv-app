@@ -49,13 +49,13 @@ export function BoatGarage({ state, boat, config, now, disabled, children, onUpg
   const workReady = Boolean(boat.work && now >= Date.parse(boat.work.finishesAt));
   const reason = upgrade && !working ? boatUpgradeReason(state, upgrade.id, now) : null;
   const hasFuel = boatFuelStatus(boat, now, config).cells > 0;
-  const readiness = boat.work ? workReady ? "Заберите улучшение" : "Улучшение в работе"
+  const readiness = boat.voyage ? "У причала · выход завершён" : boat.work ? workReady ? "Заберите улучшение" : "Улучшение в работе"
     : !levels.hull ? "Нужен ремонт" : hasFuel ? "Готова к воде" : "Бак пуст";
   const selectedLabel = modules.find(module => module.id === selected)!.label;
   const isFree = Boolean(upgrade && upgrade.cost.coins === 0 && !Object.values(upgrade.cost.items).some(Boolean));
   return <section className={styles.garage} aria-label="Гараж лодки" data-boat-garage>
     <div className={styles.stage}>
-      <span className={styles.readiness} data-ready={!boat.work && levels.hull > 0 && hasFuel || undefined}>
+      <span className={styles.readiness} data-ready={!boat.voyage && !boat.work && levels.hull > 0 && hasFuel || undefined}>
         {boat.work ? <Hammer size={13} /> : levels.hull && hasFuel ? <Check size={13} /> : <Wrench size={13} />}{readiness}
       </span>
       <div className={styles.assembly}><div className={styles.rig}>

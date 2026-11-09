@@ -39,3 +39,15 @@ export function BoatTripSummary({ receipt, delivered = false }: Props) {
     {receipt.count > 0 && <p className={styles.note} data-trip-delivery-status>{delivered ? "Виды и лучшие веса доступны в альбоме рыбака." : "Улов пока на борту. Разгрузка добавит рыбу в запасы и сохранит рекорды; при полной кладовой рыба останется в лодке."}</p>}
   </section>;
 }
+
+/** The boat stays visible while its manifest can be inspected before or after unloading. */
+export function BoatDockReceipt({ receipt, delivered = false }: Props) {
+  return <div className={styles.dockReceipt}>
+    <p role={delivered ? "status" : undefined} data-boat-delivery={delivered || undefined}>
+      {delivered ? <Check size={17} aria-hidden="true" /> : <Anchor size={17} aria-hidden="true" />}
+      <strong>{delivered ? receipt.count ? "Улов доставлен" : "Выход завершён" : receipt.count ? "Улов на борту" : "Возвращение без улова"}</strong>
+      {receipt.count > 0 && <span>Рыб: {receipt.count} · {boatFishWeightLabel(receipt.totalWeightGrams)}</span>}
+    </p>
+    {receipt.count > 0 && <details><summary>Итоги рыбалки</summary><BoatTripSummary receipt={receipt} delivered={delivered} /></details>}
+  </div>;
+}

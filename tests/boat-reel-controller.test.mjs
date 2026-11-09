@@ -21,6 +21,11 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
           if (!Object.is(value, slots[index].value)) { slots[index].value = value; dirty = true; }
         }];
       }
+      export function useCallback(callback, dependencies) {
+        const index = cursor++, previous = slots[index];
+        if (!previous || dependencies.some((value, i) => !Object.is(value, previous.dependencies[i]))) slots[index] = { dependencies, callback };
+        return slots[index].callback;
+      }
       export function useEffect(callback, dependencies) {
         const index = cursor++, previous = slots[index];
         if (!previous || dependencies.some((value, i) => !Object.is(value, previous.dependencies[i]))) {
@@ -85,148 +90,123 @@ function saveTerminal(attempt, owner = "owner", voyageId = "voyage") {
   return reel;
 }
 
-test("mounting freezes its keyed challenge and never starts or submits without explicit input", () => {
-  const f = fixture(), original = structuredClone(f.props.challenge);
-  assert.equal(Object.isFrozen(f.value.challenge), true);
-  assert.equal(f.value.ready, false); f.value.togglePlay(); f.frame(0);
-  assert.equal(f.value.ready, true); assert.equal(f.value.playing, false); assert.equal(f.value.reel.tick, 0);
-  f.props.challenge.seed = 999;
-  f.render({ challenge: { ...original, seed: 101, expiresAt: new Date(at + 1000).toISOString() } });
-  assert.deepEqual(f.value.challenge, original);
-  f.frame(1000); assert.equal(f.value.reel.tick, 0); assert.equal(f.value.expired, false);
-  assert.deepEqual(f.submissions, []);
+test("a fresh attempt starts on the server bite without a click and never changes its issued rules", () => {
+  const attempt = { ...challenge(), biteAt: new Date(at + 4000).toISOString() };
+  const f = fixture({ challenge: attempt }); f.frame(0);
+  assert(Object.isFrozen(f.value.challenge)); assert.equal(f.value.castStage, "casting");
+  f.value.togglePlay(); f.frame(1200); assert.equal(f.value.castStage, "soaking");
+  f.frame(2799); assert.equal(f.value.playing, false); assert.equal(f.value.reel.tick, 0);
+  f.render({ challenge: { ...attempt, seed: 700 } });
+  f.frame(1); assert.equal(f.value.playing, true); assert.equal(f.value.reel.tick, 0);
+  assert.equal(f.value.challenge.seed, attempt.seed);
+  f.frame(50); assert.equal(f.value.reel.tick, 1); assert.deepEqual(f.submissions, []);
 });
 
-test("50ms sampling collapses same-tick controls and checkpoints replay the exact simulated state", () => {
-  const f = fixture(); f.frame(0); f.value.togglePlay(); f.frame(50);
+test("display frames share the exact tick clock, collapse same-tick input and replay the saved trace", () => {
+  const f = fixture(); f.frame(0); assert.equal(f.value.playing, true, "older challenges have no wait");
   f.value.changeHeld(true); f.value.changeHeld(false); f.value.changeHeld(true);
-  f.frame(49); assert.equal(f.value.reel.tick, 0); f.frame(1);
-  assert.deepEqual(f.value.reel, stepBoatReel(f.value.challenge, initialBoatReel(f.value.challenge), true));
+  f.frame(16); f.frame(16); f.frame(17); assert.equal(f.value.reel.tick, 0);
+  f.frame(1); assert.deepEqual(f.value.reel, stepBoatReel(f.value.challenge, initialBoatReel(f.value.challenge), true));
   f.value.changeHeld(false); f.frame(100); f.value.togglePlay(); f.render();
   const key = checkpoint.boatReelCheckpointKey("owner", "voyage", f.value.challenge.id), saved = JSON.parse(values.get(key));
   assert.deepEqual(saved.inputs, [{ tick: 0, held: true }, { tick: 1, held: false }]);
-  assert.equal(saved.endTick, 3);
-  assert.deepEqual(replayBoatReel(f.value.challenge, saved.inputs, saved.endTick), f.value.reel);
-  assert.equal(f.value.playing, false); assert.equal(f.value.held, false); assert.deepEqual(f.submissions, []);
+  assert.equal(saved.endTick, 3); assert.deepEqual(replayBoatReel(f.value.challenge, saved.inputs, saved.endTick), f.value.reel);
 });
 
-test("blur, hidden pages and long suspended frames pause without inventing time or held inputs", () => {
+test("blur, hidden pages, trays and long frames pause without inventing inputs or resuming by themselves", () => {
   const f = fixture(); f.frame(0);
-  for (const kind of ["blur", "hidden", "long"]) {
-    f.value.togglePlay(); f.frame(0); f.value.changeHeld(true); f.frame(50);
-    const tick = f.value.reel.tick;
+  for (const kind of ["blur", "hidden", "tray", "long"]) {
+    f.value.changeHeld(true); f.frame(50); const tick = f.value.reel.tick;
     if (kind === "blur") window.dispatchEvent(new Event("blur"));
     else if (kind === "hidden") { document.hidden = true; document.dispatchEvent(new Event("visibilitychange")); }
+    else if (kind === "tray") f.render({ suspended: true });
     else f.frame(501);
     f.render(); assert.equal(f.value.playing, false, kind); assert.equal(f.value.held, false, kind);
     f.frame(500); assert.equal(f.value.reel.tick, tick, kind);
-    document.hidden = false; document.dispatchEvent(new Event("visibilitychange")); f.frame(50);
-    assert.equal(f.value.playing, false, kind); assert.equal(f.value.reel.tick, tick, kind);
+    document.hidden = false; document.dispatchEvent(new Event("visibilitychange")); window.dispatchEvent(new Event("focus"));
+    f.render({ suspended: false }); f.frame(50); assert.equal(f.value.playing, false, kind);
+    f.value.togglePlay(); f.render(); assert.equal(f.value.playing, true, kind);
   }
   assert.deepEqual(f.submissions, []);
 });
 
-test("a complete live control trace pauses at its exact bounded result and submits only replayable input", () => {
-  const f = fixture({ challenge: { ...challenge(), seed: 37 } }); f.frame(0);
-  let focused = 0; f.value.finishButton.current = { focus() { focused++; } };
-  f.value.togglePlay(); f.frame(0);
-  while (f.value.reel.status === "active") {
-    const reel = f.value.reel;
-    f.value.changeHeld(reel.fish > reel.bar + reel.velocity * 4); f.frame(50);
-  }
-  assert.equal(f.value.reel.status, "caught"); assert(f.value.reel.tick <= 600);
-  assert.equal(f.value.playing, false); assert.equal(f.value.held, false); assert.equal(focused, 1);
-  const terminal = f.value.reel; f.frame(500); assert.deepEqual(f.value.reel, terminal);
-  f.value.submit(); f.value.submit(); assert.equal(f.submissions.length, 1);
-  const submission = f.submissions[0];
-  assert(submission.inputs.every(input => input.tick < submission.endTick));
-  assert.deepEqual(replayBoatReel(f.value.challenge, submission.inputs, submission.endTick), terminal);
+test("a bite while a tray or background tab obscures gameplay waits for its first visible frame", () => {
+  const f = fixture({ suspended: true }); f.frame(0); f.frame(500);
+  assert.equal(f.value.playing, false);
+  document.hidden = true; f.render({ suspended: false }); f.frame(500); assert.equal(f.value.playing, false);
+  document.hidden = false; f.frame(16); assert.equal(f.value.playing, true); assert.equal(f.value.reel.tick, 0);
 });
 
-test("reopening restores the tab trace paused, scopes drafts by owner/voyage and cancels every scheduled frame", () => {
-  const attempt = challenge(), f = fixture({ challenge: attempt }); f.frame(0); f.value.togglePlay(); f.frame(0);
-  f.value.changeHeld(true); f.frame(150); const previous = f.value.reel;
-  hooks.unmount(); assert.equal(frames.size, 0);
+test("a caught or escaped fish automatically dispatches its exact terminal trace once, even while waiting for a receipt", () => {
+  for (const steer of [true, false]) {
+    const f = fixture({ challenge: { ...challenge(), seed: 37 } }); f.frame(0);
+    while (f.value.reel.status === "active") {
+      const reel = f.value.reel; f.value.changeHeld(steer && reel.fish > reel.bar + reel.velocity * 4); f.frame(50);
+    }
+    assert.equal(f.value.reel.status, steer ? "caught" : "escaped"); assert(f.value.waitingForConfirmation);
+    f.frame(16); f.render(); f.value.submit(); f.render({ queued: true, disabled: true, uncertain: true });
+    assert.equal(f.submissions.length, 1);
+    const request = f.submissions[0]; assert.deepEqual(replayBoatReel(f.value.challenge, request.inputs, request.endTick), f.value.reel);
+    hooks.unmount(); assert.equal(frames.size, 0);
+  }
+});
+
+test("restored active drafts stay paused and never leak between owner, voyage and challenge", () => {
+  const attempt = challenge(), f = fixture({ challenge: attempt }); f.frame(0); f.value.changeHeld(true); f.frame(150);
+  const previous = f.value.reel; hooks.unmount(); assert.equal(frames.size, 0);
   const restored = fixture({ challenge: attempt }); restored.frame(0);
-  assert.deepEqual(restored.value.reel, previous); assert.equal(restored.value.playing, false); assert.equal(restored.value.held, false);
+  assert.deepEqual(restored.value.reel, previous); assert(restored.value.paused); assert.equal(restored.value.held, false);
   restored.frame(500); assert.deepEqual(restored.value.reel, previous); hooks.unmount();
   const foreign = fixture({ challenge: attempt, owner: "someone-else" }); foreign.frame(0);
   assert.equal(foreign.value.reel.tick, 0); hooks.unmount();
-  const nextVoyage = fixture({ challenge: attempt, voyageId: "next-voyage" }); nextVoyage.frame(0);
-  assert.equal(nextVoyage.value.reel.tick, 0);
+  const other = fixture({ challenge: attempt, voyageId: "another-voyage" }); other.frame(0);
+  assert.equal(other.value.reel.tick, 0);
   assert.equal(values.has(checkpoint.boatReelCheckpointKey("owner", "voyage", attempt.id)), false);
-  nextVoyage.value.togglePlay(); assert(frames.size > 1); hooks.unmount(); assert.equal(frames.size, 0);
 });
 
-test("terminal traces submit once even through reentrant stale handlers and retry only after the pending lifecycle settles", () => {
-  const attempt = challenge(), terminal = saveTerminal(attempt), calls = [];
-  let f;
-  f = fixture({ challenge: attempt, onSubmit(submission) { calls.push(structuredClone(submission)); f.value.submit(); return true; } });
-  f.frame(0); assert.deepEqual(f.value.reel, terminal);
-  const stale = f.value.submit; stale(); stale(); assert.equal(calls.length, 1);
-  assert.deepEqual(replayBoatReel(attempt, calls[0].inputs, calls[0].endTick), terminal);
-  f.render({ disabled: true }); assert.equal(f.value.waitingForConfirmation, true);
-  f.render({ disabled: false, uncertain: true }); f.value.submit(); assert.equal(calls.length, 1);
-  f.render({ disabled: false, uncertain: false }); f.value.submit(); assert.equal(calls.length, 2);
+test("a remounted terminal draft waits for permissions, and an already queued receipt never dispatches twice", () => {
+  const attempt = challenge(), terminal = saveTerminal(attempt);
+  const f = fixture({ challenge: attempt, queued: true }); f.frame(0);
+  assert.equal(f.submissions.length, 0); assert(f.value.waitingForConfirmation);
+  f.render({ queued: false, uncertain: true }); assert.equal(f.submissions.length, 0);
+  f.render({ disabled: true, uncertain: false }); assert.equal(f.submissions.length, 0);
+  f.render({ disabled: false }); assert.equal(f.submissions.length, 1);
+  assert.deepEqual(f.value.reel, terminal); f.render(); f.frame(0); assert.equal(f.submissions.length, 1);
 });
 
-test("a locally refused or throwing dispatch stays retryable without changing its completed trace", () => {
-  const attempt = challenge(); saveTerminal(attempt); let calls = 0;
-  const f = fixture({ challenge: attempt, onSubmit() { calls++; return false; } }); f.frame(0);
-  const completed = f.value.reel; f.value.submit(); f.value.submit(); assert.equal(calls, 2);
-  f.render({ onSubmit() { calls++; throw Error("Local dispatch unavailable"); } });
-  assert.throws(() => f.value.submit(), /Local dispatch unavailable/);
-  f.render({ onSubmit() { calls++; return true; } }); f.value.submit(); f.value.submit();
-  assert.equal(calls, 4); assert.deepEqual(f.value.reel, completed);
+test("a refused offline write preserves the finished draft and retries on reconnect, including synchronous re-entry", () => {
+  const attempt = challenge(); saveTerminal(attempt); let calls = 0, f;
+  f = fixture({ challenge: attempt, onSubmit() { calls++; f.value.submit(); return false; } }); f.frame(0);
+  assert.equal(calls, 1); assert(f.value.retryNeeded);
+  f.frame(16); f.frame(16); assert.equal(calls, 1, "no render retry loop");
+  const completed = f.value.reel;
+  f.render({ onSubmit() { calls++; throw Error("transport unavailable"); } });
+  f.value.submit(); assert.equal(calls, 2); assert(f.value.retryNeeded);
+  f.render({ onSubmit() { calls++; return true; } });
+  window.dispatchEvent(new Event("online")); f.render(); f.value.submit(); assert.equal(calls, 3);
+  assert.deepEqual(f.value.reel, completed); assert(f.value.waitingForConfirmation);
 });
 
-test("an idle committed render releases a local receipt when a fast refusal batches away the busy frame", () => {
-  const attempt = challenge(); saveTerminal(attempt); const f = fixture({ challenge: attempt }); f.frame(0);
-  const first = f.value.submit; first(); first(); assert.equal(f.submissions.length, 1);
-  f.render(); assert.equal(f.value.waitingForConfirmation, false);
-  f.value.submit(); f.value.submit(); assert.equal(f.submissions.length, 2);
-  assert.deepEqual(f.submissions[0], f.submissions[1], "An explicit retry must retain the same legal terminal trace");
+test("a definitive server rejection exposes a retry without manufacturing a second result", () => {
+  const attempt = challenge(); saveTerminal(attempt);
+  const f = fixture({ challenge: attempt }); f.frame(0); assert.equal(f.submissions.length, 1);
+  f.render({ disabled: true, queued: true }); f.render({ queued: false, disabled: false, error: "World changed" });
+  assert.equal(f.value.retryNeeded, true); assert.equal(f.submissions.length, 1);
+  f.render({ error: null }); f.value.submit(); f.render();
+  assert.deepEqual(f.submissions[0], f.submissions[1]);
 });
 
-test("deadline checks reject stale-clock submission before the next frame while uncertain receipts keep their pending state", () => {
-  const attempt = challenge(); saveTerminal(attempt); const f = fixture({ challenge: attempt }); f.frame(0);
-  clock += 120000; f.value.submit(); assert.deepEqual(f.submissions, []);
-  f.frame(0); assert.equal(f.value.expired, true); assert.equal(f.value.seconds, 0);
-  assert.equal(f.value.status, "Рыба ушла");
-  f.render({ disabled: true, uncertain: true, now: at + 120001 });
-  assert.equal(f.value.waitingForConfirmation, true); assert.equal(f.value.expired, false); assert.equal(f.value.status, "Проверяем результат");
-  f.value.submit(); assert.deepEqual(f.submissions, []);
+test("expiry rejects a stale terminal trace while an already-queued result can wait beyond its challenge deadline", () => {
+  const attempt = challenge(); saveTerminal(attempt);
+  const f = fixture({ challenge: attempt, disabled: true }); f.frame(0); clock += 120000;
+  f.render({ disabled: false }); f.value.submit(); f.frame(0); assert.deepEqual(f.submissions, []);
+  assert(f.value.expired);
+  f.render({ queued: true, uncertain: true, now: at + 120001 }); assert(f.value.waitingForConfirmation); assert.equal(f.value.expired, false);
 });
 
 test("denied session storage cannot stop play or fabricate a completed submission", () => {
   Object.defineProperty(window, "sessionStorage", { get() { throw Error("Storage denied"); } });
-  const f = fixture(); f.value.submit(); f.value.changeHeld(true); f.frame(0);
-  f.value.togglePlay(); f.frame(0); f.value.changeHeld(true); f.frame(50);
+  const f = fixture(); f.frame(0); f.value.changeHeld(true); f.frame(50);
   assert.equal(f.value.reel.tick, 1); assert.deepEqual(f.submissions, []);
-  f.value.togglePlay(); f.value.togglePlay(); hooks.unmount(); assert.equal(frames.size, 0);
-});
-
-test("unmount before the first frame and rapid start/pause/start both cancel every pending focus callback", () => {
-  fixture(); hooks.unmount(); assert.equal(frames.size, 0);
-  const f = fixture(); f.frame(0);
-  const toggle = f.value.togglePlay; toggle(); toggle(); toggle();
-  assert.equal(frames.size, 2, "Only the active simulation frame and latest focus request may remain");
   hooks.unmount(); assert.equal(frames.size, 0);
-});
-
-
-test("new casts wait through flight and soaking without accepting input; saved waits follow the same server bite time", () => {
-  const attempt = { ...challenge(), biteAt: new Date(at + 4000).toISOString(), fishRarity: "rare" };
-  const f = fixture({ challenge: attempt }); f.frame(0);
-  assert.equal(f.value.castStage, "casting"); f.value.togglePlay(); f.frame(1199);
-  assert.equal(f.value.playing, false); assert.equal(f.value.reel.tick, 0);
-  f.frame(1); assert.equal(f.value.castStage, "soaking");
-  f.value.togglePlay(); f.frame(2799); assert.equal(f.value.playing, false);
-  assert.equal(f.value.reel.tick, 0); assert.equal(f.value.castStage, "soaking");
-  f.frame(1); assert.equal(f.value.castStage, "bite"); assert.equal(f.value.playing, false);
-  f.value.togglePlay(); f.frame(0); f.frame(50); assert.equal(f.value.reel.tick, 1);
-  hooks.unmount();
-  const reopened = fixture({ challenge: attempt, now: at + 4200 }); reopened.frame(0);
-  assert.equal(reopened.value.castStage, "bite"); assert.equal(reopened.value.playing, false);
-  assert.equal(reopened.value.reel.tick, 1);
 });

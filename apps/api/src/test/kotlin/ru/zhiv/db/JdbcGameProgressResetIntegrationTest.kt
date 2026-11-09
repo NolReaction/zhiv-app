@@ -136,8 +136,9 @@ class JdbcGameProgressResetIntegrationTest {
                 INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision)
                   VALUES ('10000000-0000-4000-8000-000000000001','a0000000-0000-4000-8000-00000000000a',
                     '{"expectedRevision":39}','Old receipt predating an individual reset',40);
-                INSERT INTO game_profiles(user_id,lifetime_taps,best_series)
-                  VALUES ('10000000-0000-4000-8000-000000000001',5000,100);
+                UPDATE economy_profiles SET state = state || '{"boat":{"records":{"fish_dace":{"weightGrams":285,"caughtAt":"2026-11-10T00:00:00Z"}}}}'::jsonb;
+                INSERT INTO game_profiles(user_id,lifetime_taps,best_series,fishing_leaderboard_opt_in,fishing_visibility_version)
+                  VALUES ('10000000-0000-4000-8000-000000000001',5000,100,true,39);
                 INSERT INTO game_items(user_id,item_id) VALUES ('10000000-0000-4000-8000-000000000001','flower');
                 INSERT INTO game_achievements(user_id,achievement_id)
                   VALUES ('10000000-0000-4000-8000-000000000001','thousand_taps'),
@@ -235,17 +236,18 @@ class JdbcGameProgressResetIntegrationTest {
                 assertEquals(1L, connection.economyRows("SELECT count(*) FROM earth_sharing_recipients WHERE frozen") { it.getLong(1) }.single(),
                     "Recipient freeze choice is preserved separately from GPS rows")
             }
+            assertNotEquals("[]", before.getValue("game_fishing_records"), "An opted-in fisher has a published record before reset")
             val preview = reset()
             assertEquals(0, preview.exitCode, preview.stderr)
             assertEquals(before, snapshot(source), "No-argument SQL invocation must be read only")
 
-            execute(source, "UPDATE flyway_schema_history SET version='81' WHERE version='80'")
+            execute(source, "UPDATE flyway_schema_history SET version='82' WHERE version='81'")
             val unreviewed = snapshot(source)
             val wrongVersion = reset(true)
             assertNotEquals(0, wrongVersion.exitCode)
-            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V80"), wrongVersion.stderr)
+            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V81"), wrongVersion.stderr)
             assertEquals(unreviewed, snapshot(source), "An unreviewed migration must fail before deletion")
-            execute(source, "UPDATE flyway_schema_history SET version='80' WHERE version='81'")
+            execute(source, "UPDATE flyway_schema_history SET version='81' WHERE version='82'")
 
             execute(source, "CREATE TABLE ci_unreviewed_game_reset_guard(value text)")
             val unexpected = snapshot(source)
@@ -260,6 +262,11 @@ class JdbcGameProgressResetIntegrationTest {
             assertTrue(overflow.stderr.contains("exhausted revision fence"), overflow.stderr)
             assertEquals(exhausted, snapshot(source))
             execute(source, "UPDATE economy_profiles SET revision=10")
+            execute(source, "UPDATE game_profiles SET fishing_visibility_version=9007199254740990")
+            val staleFishingFence = snapshot(source)
+            assertNotEquals(0, reset(true).exitCode)
+            assertEquals(staleFishingFence, snapshot(source), "An exhausted fishing consent version rolls back the reset")
+            execute(source, "UPDATE game_profiles SET fishing_visibility_version=39")
 
             // A trigger silently modifying a kept row must cause a full rollback.
             execute(source, """
@@ -300,6 +307,11 @@ class JdbcGameProgressResetIntegrationTest {
                 assertEquals(EconomyRules.initial().tutorialOrder, fresh.state.tutorialOrder)
                 assertTrue(fresh.state.jobs.isEmpty())
                 connection.createStatement().use { statement ->
+                    statement.executeQuery("SELECT fishing_leaderboard_opt_in,fishing_visibility_version FROM game_profiles WHERE user_id='$user'").use { rows ->
+                        assertTrue(rows.next())
+                        assertEquals(false, rows.getBoolean(1))
+                        assertEquals(41L, rows.getLong(2))
+                    }
                     statement.executeQuery("SELECT state::text,revision FROM world_profiles").use { rows ->
                         assertTrue(rows.next())
                         assertEquals(WorldState(), worldJson.decodeFromString<WorldState>(rows.getString(1)))

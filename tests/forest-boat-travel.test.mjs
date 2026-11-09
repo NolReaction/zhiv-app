@@ -8,7 +8,6 @@ const { TILED_WORLD: scene } = await vite.ssrLoadModule("/features/world/scene/p
 const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
 const { syncForestBoatTravel: sync, forestBoatWalking: walking, forestBoatActorAway: away, forestFishingBoatFrame: frame } = await vite.ssrLoadModule("/features/world/activities/fishing/forest-boat-travel.ts");
 const { fishingBoatRoute: route, fishingBoatPathPoint: point } = await vite.ssrLoadModule("/features/world/objects/fishing-boat/fishing-boat-navigation.ts");
-const { fishingBoatMapObject } = await vite.ssrLoadModule("/features/world/objects/fishing-boat/fishing-boat-interaction.ts");
 const { economySceneBoatTiming: timing } = await vite.ssrLoadModule("/features/world/state/economy/economy-boat-fishing-state.ts");
 const { advanceClearingActivity } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
 const { canTraverse, isWalkable } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
@@ -34,7 +33,6 @@ test("actual map mooring and full water path fit the unchanged authored collisio
   assert.ok(Math.hypot(path.dock.x - 705, path.dock.y - 1102) > 300, "trade ship berth remains separate");
   for (let index = 1; index < path.sail.points.length; index++) assert.ok(canTraverse(path.water, path.sail.points[index - 1], path.sail.points[index]));
   for (let index = 0; index <= 100; index++) assert.ok(isWalkable(path.water, point(path.sail, index / 100)));
-  assert.equal(fishingBoatMapObject(scene).place, "fishing-boat");
   const changed = { ...scene, navigation: { ...scene.navigation, areas: [] } };
   assert.equal(route(changed), null, "invalid future map geometry cannot invent a crossing");
 });

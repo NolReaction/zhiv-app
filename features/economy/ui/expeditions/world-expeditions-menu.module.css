@@ -224,7 +224,7 @@
 
 .content.content .boatEntry {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(80px, 32%);
+  grid-template-columns: minmax(0, 1fr) minmax(78px, 35%);
   align-items: center;
   gap: 4px;
   width: 100%;
@@ -245,6 +245,9 @@
 .content.content .boatEntry:focus-visible { outline: 3px solid #426b52; outline-offset: 3px; }
 .boatLettering { display: grid; gap: 5px; min-width: 0; }
 .boatLettering strong { font-size: 18px; line-height: 1.15; letter-spacing: -.025em; }
-.boatLettering > span { color: #d0ddc7; font-size: 12px; line-height: 1.4; }
-.boatLettering > svg { margin-top: 3px; color: #e8c57e; }
-.boatIllustration { display: block; width: 100%; max-width: 170px; justify-self: end; color: #cfc290; }
+.boatAction { display: flex; align-items: center; gap: 5px; color: #d5e2d0; font-size: 12px; line-height: 1.4; }
+.boatAction svg { flex: none; color: #e8c57e; }
+.boatStats { display: flex; flex-wrap: wrap; gap: 3px 10px; margin-top: 2px; }
+.boatStats > span { display: inline-flex; align-items: center; gap: 4px; color: #eddbad; font-size: 11px; line-height: 1.4; font-variant-numeric: tabular-nums; }
+.boatStats:empty { display: none; }
+.boatIllustration { display: block; width: 100%; max-width: 170px; justify-self: end; filter: drop-shadow(0 3px 2px #10262170); }

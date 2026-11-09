@@ -182,7 +182,7 @@ function fixture({ outbound = false, dev = false } = {}) {
     advanceTo(next) { const elapsed = next - time; assert(elapsed >= 0); time = next; clock += elapsed; render(); },
     close() { open = false; render(); }, reopen() { open = true; render(); },
     cast() { click(byAction("cast")); flush(); frame(0); },
-    play() { const biteAt = Date.parse(state.boat.voyage.challenge.biteAt ?? state.boat.voyage.challenge.startedAt); if (time < biteAt) frame(biteAt - time); click(byAction("play")); frame(0); },
+    play() { const biteAt = Date.parse(state.boat.voyage.challenge.biteAt ?? state.boat.voyage.challenge.startedAt); if (time < biteAt) frame(biteAt - time); if (byAction("play")) click(byAction("play")); frame(0); assert(byAction("hold")); },
     hold(value, input = "keyboard") { const button = byAction("hold"); assert(button); if (input === "pointer") button.props[value ? "onPointerDown" : "onPointerUp"](event(button));
       else button.props[value ? "onKeyDown" : "onKeyUp"](event(button)); render(); },
     playToResult() {
@@ -216,8 +216,8 @@ test("actual root changes from timed outbound to one separate river scene withou
   f.frame(1200); assert.equal(f.find(node => node.tag === "canvas").props.frame.stage, "soaking");
   assert.equal(f.byAction("play"), undefined);
   f.frame(Date.parse(f.state.boat.voyage.challenge.biteAt) - Date.parse(f.view().serverTime));
-  assert.equal(f.find(node => node.tag === "canvas").props.frame.stage, "bite");
-  assert(f.byAction("play"));
+  assert.equal(f.find(node => node.tag === "canvas").props.frame.stage, "bite", "the bite cue and controls arrive together");
+  assert(f.byAction("hold")); f.frame(50); assert.equal(f.find(node => node.tag === "canvas").props.frame.stage, "reeling"); assert.equal(f.byAction("play"), undefined);
   assert.equal(f.find(node => node.tag === "canvas").props.frame.fishRarity, undefined, "the water scene cannot show the upcoming catch class");
   assert.equal(f.view().boat.voyage.challenge.fishId, undefined);
   assert.equal(f.view().boat.voyage.challenge.weightGrams, undefined);
@@ -260,7 +260,7 @@ test("close reopen and hidden events preserve the same tab checkpoint paused wit
   f.reopen(); f.frame(0);
   assert.equal(f.state.boat.voyage.id, voyageId); assert.equal(f.state.boat.voyage.challenge.id, challenge.id);
   assert.equal(hooks.inspectReel().tick, tick); assert(f.byAction("play")); assert.equal(frames.size, 1);
-  assert.equal(window.count(), 1); assert.equal(document.count(), 1);
+  assert.equal(window.count(), 2); assert.equal(document.count(), 1);
   f.play(); f.hold(true); f.frame(50); const beforeHidden = hooks.inspectReel().tick;
   document.hidden = true; document.dispatchEvent(new Event("visibilitychange")); f.render();
   f.frame(500); assert.equal(hooks.inspectReel().tick, beforeHidden); assert(f.byAction("play"));
@@ -269,13 +269,13 @@ test("close reopen and hidden events preserve the same tab checkpoint paused wit
   f.close(); assert.equal(frames.size, 0); assert.equal(window.count() + document.count(), 0);
 });
 
-test("caught UI explicitly submits one replay verified trace then credits inventory only after confirmed return and unloading", () => {
+test("caught UI automatically submits one replay verified trace then credits inventory only after confirmed return and unloading", () => {
   const f = fixture(); f.cast(); f.play(); const inventory = structuredClone(f.state.inventory), challenge = structuredClone(f.state.boat.voyage.challenge);
   const result = f.playToResult(); assert.equal(result.status, "caught");
   assert.equal(f.find(node => node.tag === "canvas").props.frame.stage, "caught");
   assert.deepEqual(f.state.inventory, inventory); assert.equal(f.state.boat.voyage.catches.length, 0);
   assert.equal(f.find(node => node.props["data-confirmed-catch"]), undefined);
-  const staleSubmit = f.byAction("submit"); f.click(staleSubmit); staleSubmit.props.onClick(event(staleSubmit));
+  assert.equal(f.byAction("submit"), undefined); f.frame(16); f.render();
   assert.equal(f.pending.length, 1); assert.equal(f.state.boat.voyage.catches.length, 0);
   assert(f.find(node => node.props["data-reel-status"] === "pending"));
   const request = f.pending[0]; assert.deepEqual(replayBoatReel(challenge, request.reel.inputs, request.reel.endTick), result);
@@ -291,6 +291,7 @@ test("caught UI explicitly submits one replay verified trace then credits invent
   assert.equal(f.find(node => node.props["data-boat-map-view"]), undefined); assert.equal(frames.size, 0);
   assert.deepEqual(f.state.inventory, inventory);
   f.advanceTo(returns);
+  assert(f.find(node => node.props["data-boat-garage"] !== undefined), "unload at the workshop");
   assert(f.find(node => node.props["data-boat-trip-summary"] && node.props["data-delivered"] === false));
   f.click(f.find(node => node.tag === "button" && text(node) === "Забрать улов"));
   assert.equal(f.find(node => node.props["data-boat-trip-summary"] && node.props["data-delivered"] === true), undefined, "a pending claim cannot claim delivery");
@@ -299,14 +300,16 @@ test("caught UI explicitly submits one replay verified trace then credits invent
   assert.equal(f.state.boat.voyage, undefined);
   assert.equal(Object.values(f.state.fishing.stock).reduce((sum, count) => sum + count, 0), 1);
   assert.equal(f.commands.filter(command => command.action === "claim_boat").length, 1);
-  f.click(f.find(node => node.props["data-boat-trip-done"]));
-  assert.equal(flatten(f.tree).length, 0);
+  assert(f.find(node => node.props["data-boat-garage"] !== undefined), "confirmed delivery keeps the workshop open");
+  assert(f.find(node => node.props["data-boat-delivery"] && node.props.role === "status"));
+  assert.equal(f.find(node => node.tag === "button" && text(node) === "Готово"), undefined);
+  f.close();
 });
 
 test("escaped or expired attempts never give local fish and the real cast budget survives scene remounts", () => {
   const f = fixture(); f.cast(); f.play();
   for (let i = 0; i <= f.state.boat.voyage.challenge.maxTicks && hooks.inspectReel().status === "active"; i++) f.frame(50);
-  assert.equal(hooks.inspectReel().status, "escaped"); f.click(f.byAction("submit")); f.flush();
+  assert.equal(hooks.inspectReel().status, "escaped"); assert.equal(f.byAction("submit"), undefined); f.flush();
   assert.equal(f.state.boat.voyage.catches.length, 0); assert.equal(f.state.boat.voyage.castsUsed, 1);
   f.cast(); const id = f.state.boat.voyage.challenge.id, expiry = Date.parse(f.state.boat.voyage.challenge.expiresAt);
   f.advanceTo(expiry); f.frame(0);
@@ -347,7 +350,7 @@ test("confirmed catch presentation celebrates a real weight record and never lea
   assert.equal(f.find(node => node.tag === "canvas").props.frame.fishSizeScale, undefined);
   f.play(); const result = f.playToResult(); assert.equal(result.status, "caught");
   assert.equal(f.find(node => node.props["data-confirmed-catch"]), undefined);
-  f.click(f.byAction("submit")); f.flush();
+  assert.equal(f.byAction("submit"), undefined); f.flush();
   const receipt = f.find(node => node.props["data-confirmed-catch"]);
   assert.match(text(receipt), /Личный рекорд!/); assert.match(text(receipt), /Прежний: 1 г/);
   assert.doesNotMatch(text(receipt), /Новый вид/);
@@ -362,7 +365,7 @@ test("the final confirmed fish keeps a prominent direct return action and then s
   const f = fixture(); f.state.boat.voyage.maxCasts = 1; f.state.boat.voyage.slots = f.state.boat.voyage.slots.slice(0, 1); f.state.boat.voyage.maxCatches = 1; f.render();
   f.cast(); f.play(); assert.equal(f.playToResult().status, "caught");
   assert.equal(f.find(node => node.props["data-fishing-finished"]), undefined, "unconfirmed client success is not a completed fishing trip");
-  f.click(f.byAction("submit")); f.flush();
+  assert.equal(f.byAction("submit"), undefined); f.flush();
   const caught = f.state.boat.voyage.catches[0], inventory = structuredClone(f.state.inventory);
   assert(f.find(node => node.props["data-confirmed-catch"] === caught.fishId), "preserve the last fish celebration");
   assert.equal(f.byAction("cast"), undefined);
@@ -414,7 +417,7 @@ test("a live final reel crossing expiry clears stale held fish and resistance be
 
 test("a full fish box blocks unusable extra casts and returns directly", () => {
   const f = fixture(); f.state.boat.voyage.maxCatches = 1; f.render(); f.cast(); f.play(); assert.equal(f.playToResult().status, "caught");
-  f.click(f.byAction("submit")); f.flush(); f.frame(6500);
+  assert.equal(f.byAction("submit"), undefined); f.flush(); f.frame(6500);
   assert(f.state.boat.voyage.castsUsed < f.state.boat.voyage.maxCasts); assert.equal(f.byAction("cast"), undefined);
   f.click(f.byAction("return")); assert.equal(f.find(node => node.props.role === "alertdialog"), undefined);
   assert.equal(f.pending.length, 1);

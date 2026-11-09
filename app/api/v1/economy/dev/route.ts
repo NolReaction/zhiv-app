@@ -1,3 +1,4 @@
+import { publishDevFishingRecords } from "@/lib/dev/fishing-records-store";
 import { economyDevCommandSchema } from "@/features/economy/dev/dev-model";
 import { commandDevEconomyCheat } from "@/lib/dev/economy-store";
 import { devEconomyContext, readDevEconomyBody, economyErrorResponse, respondDevEconomy } from "@/lib/dev/economy-route";
@@ -10,5 +11,9 @@ export async function POST(request: Request) {
   if (body.response) return body.response;
   const command = economyDevCommandSchema.safeParse(body.body);
   if (!command.success) return economyErrorResponse("INVALID_ECONOMY_COMMAND", "Некорректная DEV-команда");
-  return respondDevEconomy(() => commandDevEconomyCheat(context.token, command.data));
+  return respondDevEconomy(() => {
+    const result = commandDevEconomyCheat(context.token, command.data);
+    publishDevFishingRecords(result.state);
+    return result;
+  });
 }

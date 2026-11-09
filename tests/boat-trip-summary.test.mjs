@@ -10,7 +10,7 @@ const vite = await createServer({ root, configFile: false, appType: "custom", re
   server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
-const { newEconomyState } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { newEconomyState, economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { createBoatTripReceipt } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-trip-summary-data.ts");
 const { BoatTripSummary } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-trip-summary.tsx");
 const { BoatVoyagePanel } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-voyage-panel.tsx");
@@ -18,7 +18,7 @@ const instant = "2026-11-03T12:00:00.000Z";
 const caught = (castIndex, fishId, weightGrams) => ({ castIndex, fishId, weightGrams, caughtAt: instant });
 function fixture(catches = []) {
   const value = newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 4, workshopLevel: 3 });
-  const state = { ...value, catalog: economyCatalog };
+  const state = { ...value, catalog: economyCatalog, storage: economyStorage(value) };
   state.boat.level = 1;
   state.boat.voyage = { id: crypto.randomUUID(), routeId: "river_reach", departedAt: instant, arrivesAt: instant,
     fishingUntil: "2026-11-03T12:30:00.000Z", returnStartedAt: "2026-11-03T12:10:00.000Z", returnsAt: "2026-11-03T12:15:00.000Z",
@@ -52,14 +52,15 @@ test("a pre-claim receipt remains unchanged after acknowledged delivery changes 
   assert.equal(JSON.stringify(receipt), before);
   const delivered = renderToStaticMarkup(createElement(BoatTripSummary, { receipt, delivered: true }));
   assert.match(delivered, /Улов доставлен/); assert.match(delivered, /data-delivered="true"/);
-  assert.match(delivered, /300 г/); assert.doesNotMatch(delivered, /999|Разгрузка добавит/);
+  assert.match(delivered, /300 г/); assert.doesNotMatch(delivered, /999 г|Разгрузка добавит/);
 });
 
 test("returned trips show a summary while disabled claims and full-storage recovery retain the onboard manifest", () => {
   const state = fixture([caught(0, "fish_silverfin", 300)]), now = Date.parse(state.boat.voyage.returnsAt);
+  state.storage.available = 0;
   const economy = { snapshot: state, now, busy: false, uncertain: false, error: "Освободите место в кладовой" };
   const before = JSON.stringify(state);
-  const html = renderToStaticMarkup(createElement(BoatVoyagePanel, { economy, disabled: true, send() { assert.fail("Rendering cannot issue a claim"); }, onOpenPantry() {} }));
+  const html = renderToStaticMarkup(createElement(BoatVoyagePanel, { economy, disabled: false, send() { assert.fail("Rendering cannot issue a claim"); }, onOpenPantry() {} }));
   assert.match(html, /data-boat-trip-ready/); assert.match(html, /Улов прибыл домой/);
   assert.match(html, /Самая крупная/); assert.match(html, /Весь улов выхода/);
   assert.match(html, /Улов пока на борту/); assert.match(html, /при полной кладовой рыба останется в лодке/);

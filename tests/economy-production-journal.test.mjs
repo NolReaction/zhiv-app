@@ -77,7 +77,11 @@ test("browser coordination requires an exclusive Web Lock and releases on abort"
     try { await callback({ name: "lock" }); } finally { held = false; }
   } } } });
   try {
-    const first = new AbortController(), release = await browserJournalCoordinator(owner, first.signal);
+    const discarded = new AbortController(), canceled = browserJournalCoordinator(owner, discarded.signal);
+    discarded.abort();
+    const first = new AbortController(), acquiring = browserJournalCoordinator(owner, first.signal);
+    assert.equal(await canceled, null);
+    const release = await acquiring; assert.equal(calls, 1, "only the live mount requests the account lock");
     assert.equal(typeof release, "function");
     assert.equal(await browserJournalCoordinator(owner, new AbortController().signal), null);
     first.abort(); await new Promise(resolve => setImmediate(resolve));

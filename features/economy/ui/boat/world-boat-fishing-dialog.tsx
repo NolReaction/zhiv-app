@@ -10,12 +10,13 @@ import { BoatDockDeparture } from "./boat-dock-departure";
 import { BoatDevControls } from "@/features/economy/dev/boat-dev-controls";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { number } from "@/features/economy/ui/shared/world-economy-parts";
-import { BoatRecords, BoatWork } from "./boat-panels";
+import { BoatWork } from "./boat-panels";
+import { BoatRecords } from "./boat-records";
 import { BoatFishingAlbum } from "./boat-fishing-album";
 import { boatAccess } from "./boat-access";
 import { BoatRecoveryDialog } from "./boat-recovery-dialog";
 import { BoatGarage } from "./boat-garage";
-import { BoatTripSummary } from "./boat-trip-summary";
+import { BoatDockReceipt } from "./boat-trip-summary";
 import { createBoatTripReceipt, type BoatTripReceipt } from "./boat-trip-summary-data";
 import { BoatVoyagePanel } from "./boat-voyage-panel";
 import { BoatFishingMap } from "./boat-fishing-map";
@@ -24,7 +25,7 @@ import styles from "./boat-fishing.module.css";
 
 const tabs = [{ id: "boat", label: "Лодка", icon: Sailboat }, { id: "records", label: "Рекорды", icon: Trophy }, { id: "album", label: "Альбом", icon: BookOpen }] as const;
 type Tab = typeof tabs[number]["id"];
-type Props = { economy: ReadyEconomy; onClose: () => void; onOpenPantry?: () => void; suspended?: boolean; timeZone?: string; appearance?: { palette: string; head: string | null; neck: string | null } };
+type Props = { sharedRecordsAvailable?: boolean; economy: ReadyEconomy; onClose: () => void; onOpenPantry?: () => void; suspended?: boolean; timeZone?: string; appearance?: { palette: string; head: string | null; neck: string | null } };
 export type BoatSend = (action: EconomyCommand["action"], targetId: string, reel?: BoatReelCommand) => boolean;
 
 export function WorldBoatFishingDialog(props: Props) {
@@ -34,7 +35,8 @@ export function WorldBoatFishingDialog(props: Props) {
 
 export function PlayableBoatFishingDialog(props: Props) {
   if (!props.economy.snapshot.catalog.boat?.moduleEffects) return <BoatUnavailableDialog economy={props.economy} onClose={props.onClose} />;
-  const view = boatPhase(boatState(props.economy.snapshot), props.economy.now) === "fishing" ? "river" : "dock";
+  const phase = boatPhase(boatState(props.economy.snapshot), props.economy.now);
+  const view = phase === "fishing" ? "river" : phase === "outbound" || phase === "returning" ? "travelling" : "dock";
   return <BoatDialogSession key={`${props.economy.snapshot.ownerPublicId}.${view}`} {...props} />;
 }
 
@@ -54,7 +56,7 @@ function BoatUnavailableDialog({ economy, onClose }: Pick<Props, "economy" | "on
   </Dialog.Root>;
 }
 
-function BoatDialogSession({ economy, onClose, onOpenPantry, appearance, suspended = false, timeZone = "UTC" }: Props) {
+function BoatDialogSession({ sharedRecordsAvailable, economy, onClose, onOpenPantry, appearance, suspended = false, timeZone = "UTC" }: Props) {
   const state = economy.snapshot, boat = boatState(state), config = boatConfig(state.catalog), phase = boatPhase(boat, economy.now);
   const [tab, setTab] = useState<Tab>("boat");
   const [claimedTrip, setClaimedTrip] = useState<{ receipt: BoatTripReceipt; completedBefore: number; revisionBefore: number } | null>(null);
@@ -75,7 +77,11 @@ function BoatDialogSession({ economy, onClose, onOpenPantry, appearance, suspend
   };
   useEffect(() => { if (!economy.busy && !economy.uncertain) sent.current = false; }, [economy.busy, economy.uncertain, economy.error, state.revision, state.ownerPublicId]);
   useEffect(() => { if (challenge?.id) content.current?.scrollTo({ top: 0 }); }, [challenge?.id]);
-  useEffect(() => { if (deliveredTrip) content.current?.scrollTo({ top: 0 }); }, [deliveredTrip]);
+  useEffect(() => {
+    if (!deliveredTrip) return;
+    content.current?.scrollTo({ top: 0 });
+    if (document.activeElement === document.body) content.current?.focus({ preventScroll: true });
+  }, [deliveredTrip]);
   const send: BoatSend = (action, targetId, reel) => {
     const localLanding = action === "submit_boat_cast" && reel?.deferred === true;
     if ((!localLanding && disabled) || sent.current) return false;
@@ -101,7 +107,7 @@ function BoatDialogSession({ economy, onClose, onOpenPantry, appearance, suspend
         <Dialog.Description id={`${id}-description`} className={styles.srOnly}>Мохлик в лодке на речном плёсе. Забросьте удочку и удерживайте рыбу в зоне снасти.</Dialog.Description>
         <BoatFishingMap key={`${state.ownerPublicId}.${boat.voyage.id}`} economy={economy} disabled={disabled} send={send} onClose={requestClose} appearance={appearance} suspended={suspended || leaving} timeZone={timeZone} />
       </> : <>
-      <header className={styles.header}><Anchor size={25} strokeWidth={1.6} /><div><small>{phaseName}</small><Dialog.Title>{boat.voyage ? "Лодочная рыбалка" : "Лодочная мастерская"}</Dialog.Title></div><span className={styles.wallet} aria-label={`${number(state.wallet.coins)} монет`}><Coins size={17} /><strong>{number(state.wallet.coins)}</strong></span><button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть лодку"><X size={22} /></button></header>
+      <header className={styles.header}><Anchor size={25} strokeWidth={1.6} /><div><small>{phaseName}</small><Dialog.Title>{boat.voyage && phase !== "ready" ? "Лодочная рыбалка" : "Лодочная мастерская"}</Dialog.Title></div><span className={styles.wallet} aria-label={`${number(state.wallet.coins)} монет`}><Coins size={17} /><strong>{number(state.wallet.coins)}</strong></span><button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть лодку"><X size={22} /></button></header>
       <Dialog.Description id={`${id}-description`} className={styles.srOnly}>Лодочная рыбалка, ремонт, улучшения и личные рекорды.</Dialog.Description>
       <nav className={styles.tabs} role="tablist" aria-label="Разделы лодки">{tabs.map((entry, index) => <button key={entry.id} id={`${id}-${entry.id}`} type="button" role="tab" className={styles.tab} aria-selected={tab === entry.id} aria-controls={`${id}-panel`} tabIndex={tab === entry.id ? 0 : -1} onClick={() => setTab(entry.id)} onKeyDown={event => {
         const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
@@ -111,9 +117,12 @@ function BoatDialogSession({ economy, onClose, onOpenPantry, appearance, suspend
       {economy.uncertain && <div className={styles.recovery}><span>Проверим, сохранилось ли последнее действие.</span><button type="button" className={styles.secondary} disabled={economy.busy} onClick={() => economy.retry()}>Проверить</button></div>}
       <div ref={content} className={styles.body} id={`${id}-panel`} role="tabpanel" tabIndex={0} aria-labelledby={`${id}-${tab}`}>
         <BoatDevControls economy={economy} compact />
-        {tab === "album" ? <BoatFishingAlbum state={state} /> : tab === "records" ? <BoatRecords state={state} boat={boat} /> : deliveredTrip ? <><BoatTripSummary receipt={deliveredTrip} delivered /><button type="button" className={styles.primary} data-boat-trip-done onClick={() => { setClaimedTrip(null); onClose(); }}>Готово</button></> : boat.voyage ? <BoatVoyagePanel economy={economy} disabled={disabled} send={send} onOpenPantry={onOpenPantry} /> : <>
+        {tab === "album" ? <BoatFishingAlbum state={state} /> : tab === "records" ? <BoatRecords state={state} boat={boat} sharedRecordsAvailable={sharedRecordsAvailable} /> : boat.voyage && phase !== "ready" ? <BoatVoyagePanel economy={economy} disabled={disabled} send={send} onOpenPantry={onOpenPantry} /> : <>
             <BoatGarage state={state} boat={boat} config={config} now={economy.now} disabled={disabled} onUpgrade={upgrade} onClaim={workId => send("claim_boat_upgrade", workId)}>
-              {boat.level > 0 && <BoatDockDeparture economy={economy} disabled={disabled} send={send} />}
+              {phase === "ready" ? <BoatVoyagePanel economy={economy} disabled={disabled} send={send} onOpenPantry={onOpenPantry} /> : <>
+                {deliveredTrip && <BoatDockReceipt receipt={deliveredTrip} delivered />}
+                {boat.level > 0 && <BoatDockDeparture economy={economy} disabled={disabled} send={send} />}
+              </>}
             </BoatGarage>
           </>}
         {tab !== "boat" && <BoatWork boat={boat} config={config} now={economy.now} disabled={disabled} onClaim={workId => send("claim_boat_upgrade", workId)} />}

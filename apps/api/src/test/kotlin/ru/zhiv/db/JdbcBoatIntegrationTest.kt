@@ -1,5 +1,17 @@
 package ru.zhiv.db
 
+import io.ktor.client.request.cookie
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
+import io.ktor.server.testing.testApplication
+import ru.zhiv.installZhivApi
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -16,6 +28,11 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.config.AppConfig
 import ru.zhiv.economy.*
+import ru.zhiv.game.GameVisibilityRequest
+import ru.zhiv.relationships.DirectRequestActionSnapshot
+import ru.zhiv.relationships.DirectRequestMutationSnapshot
+import ru.zhiv.relationships.RelationshipResult
+import ru.zhiv.relationships.RequestAction
 import ru.zhiv.security.TokenCodec
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -37,8 +54,8 @@ class JdbcBoatIntegrationTest {
         DatabaseFactory.migrate(source); identities = JdbcZhivRepository(source); economy = JdbcEconomyRepository(source)
     }
     @AfterAll fun close() { source.close() }
-    private suspend fun player(): Player {
-        val token = tokens.issue(); val user = identities.bootstrap("Мохлик", tokens.issue().hash, token.hash, 365)
+    private suspend fun player(name: String = "Мохлик"): Player {
+        val token = tokens.issue(); val user = identities.bootstrap(name, tokens.issue().hash, token.hash, 365)
         economy.snapshot(token.hash)
         return Player(user.id, user.publicId, token.hash)
     }
@@ -113,6 +130,104 @@ class JdbcBoatIntegrationTest {
         assertTrue(replay.replayed); assertEquals(first.state.boat, replay.state.boat)
         assertEquals(after, raw(p))
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='claim_boat'", p.id))
+    }
+
+    @Test fun `confirmed species leaders respect direct friends opt-in ties and revocation`() = runBlocking<Unit> {
+        val viewer = player("Зритель"); val friend = player("Друг"); val stranger = player("Чужой"); val hidden = player("Скрытый")
+        val games = JdbcGameRepository(source)
+        val relationships = JdbcRelationshipRepository(source)
+        val sent = assertIs<RelationshipResult.Success<DirectRequestMutationSnapshot>>(
+            relationships.sendRequest(viewer.hash, friend.publicId, UUID.randomUUID())).value.request
+        val link = assertIs<RelationshipResult.Success<DirectRequestActionSnapshot>>(
+            relationships.actOnRequest(friend.hash, sent.requestId, RequestAction.ACCEPTED)).value
+        val now = Instant.now().toString()
+        val fish = "fish_silverfin"
+        fun record(owner: Player, weight: Int) {
+            put(owner, state(owner).copy(boat = EconomyBoatState(level = 1, records = mapOf(fish to EconomyBoatRecord(weight, now)))))
+        }
+        record(viewer, 500); record(friend, 500); record(stranger, 650); record(hidden, 900)
+        games.setVisibility(hidden.hash, true, 0, hidden.publicId) // The older tap ranking permission grants no access to fish.
+        suspend fun visibility(p: Player, visible: Boolean, version: Long) =
+            games.setFishingVisibility(p.hash, GameVisibilityRequest(visible, version, p.publicId))
+        val privateBoard = games.fishingRecords(viewer.hash, "friends")
+        assertFalse(privateBoard.leaderboardOptIn); assertEquals(0L, privateBoard.visibilityVersion)
+        assertTrue(privateBoard.entries.isEmpty())
+        visibility(friend, true, 0); visibility(stranger, true, 0)
+        val friendBest = games.fishingRecords(viewer.hash, "friends").entries.single()
+        assertEquals("Друг", friendBest.displayName); assertEquals(500, friendBest.weightGrams); assertFalse(friendBest.isMe)
+        val scope = "global"
+        val worldBest = games.fishingRecords(viewer.hash, scope).entries.single { it.fishId == fish }
+        assertEquals(650, worldBest.weightGrams); assertEquals("Чужой", worldBest.displayName)
+        val opted = visibility(viewer, true, 0)
+        assertEquals(opted, visibility(viewer, true, 0), "replaying a lost response cannot advance the version")
+        val tied = games.fishingRecords(viewer.hash, "friends").entries.single()
+        assertTrue(tied.isMe); assertEquals("Зритель", tied.displayName); assertEquals(2L, tied.tiedCount)
+        assertEquals("GAME_VISIBILITY_CONFLICT", assertFailsWith<AuthFailure> { visibility(viewer, false, 0) }.code)
+        assertEquals("GAME_OWNER_CHANGED", assertFailsWith<AuthFailure> {
+            games.setFishingVisibility(viewer.hash, GameVisibilityRequest(false, 1, stranger.publicId))
+        }.code)
+        assertEquals("INVALID_GAME_SCOPE", assertFailsWith<AuthFailure> { games.fishingRecords(viewer.hash, "self") }.code)
+        relationships.removePerson(viewer.hash, assertNotNull(link.person).circleId)
+        assertEquals(1L, games.fishingRecords(viewer.hash, "friends").entries.single().tiedCount)
+        execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Fishing moderation test' WHERE id=?", stranger.id)
+        assertEquals(500, games.fishingRecords(viewer.hash, scope).entries.single { it.fishId == fish }.weightGrams)
+        visibility(viewer, false, 1); visibility(friend, false, 1)
+        assertTrue(games.fishingRecords(viewer.hash, "friends").entries.isEmpty())
+        assertEquals(500, state(viewer).boat!!.records.getValue(fish).weightGrams)
+    }
+
+    @Test fun `fishing record routes require a session preserve privacy and reject competing scopes and untrusted writes`() = testApplication {
+        val config = AppConfig(source.jdbcUrl, "postgres", "", false, setOf("http://localhost"))
+        application { installZhivApi(identities, identities, config, games = JdbcGameRepository(source)) }
+        val token = tokens.issue()
+        val owner = identities.bootstrap("Рыболов", tokens.issue().hash, token.hash, 365)
+        val path = "/api/v1/game/fishing-records"
+        assertEquals(HttpStatusCode.Unauthorized, client.get(path).status)
+        assertEquals(HttpStatusCode.BadRequest, client.get("$path?scope=global&scope=friends") { cookie(config.cookieName, token.raw) }.status)
+        val privateBoardResponse = client.get("$path?scope=friends") { cookie(config.cookieName, token.raw) }
+        assertEquals(HttpStatusCode.OK, privateBoardResponse.status)
+        assertEquals("no-store", privateBoardResponse.headers[HttpHeaders.CacheControl])
+        val board = economyJson.decodeFromString<ru.zhiv.game.FishingRecordsBoard>(privateBoardResponse.bodyAsText())
+        assertEquals(owner.publicId, board.ownerPublicId); assertEquals("friends", board.scope); assertFalse(board.leaderboardOptIn)
+        suspend fun change(origin: String) = client.post("$path/visibility") {
+            cookie(config.cookieName, token.raw); header(HttpHeaders.Origin, origin); contentType(ContentType.Application.Json)
+            setBody(economyJson.encodeToString(GameVisibilityRequest(true, 0, owner.publicId)))
+        }
+        assertEquals(HttpStatusCode.Forbidden, change("https://elsewhere.test").status)
+        val response = change("http://localhost")
+        assertEquals(HttpStatusCode.OK, response.status)
+        val settings = economyJson.decodeFromString<ru.zhiv.game.FishingRecordVisibility>(response.bodyAsText())
+        assertTrue(settings.leaderboardOptIn); assertEquals(1L, settings.visibilityVersion)
+    }
+
+    @Test fun `publication and confirmed claim serialize on the owner including an opt-out racing another claim`() = runBlocking<Unit> {
+        val p = player()
+        val games = JdbcGameRepository(source)
+        val fish = "fish_silverfin"
+        val start = Instant.now().minusSeconds(2500)
+        suspend fun ready(weight: Int): EconomyCommand {
+            val before = state(p)
+            val b = before.boat ?: EconomyBoatState(level = 1)
+            val departed = EconomyBoats.command(before.copy(boat = b.copy(level = 1, fuel = EconomyBoatFuel(2))),
+                EconomyCommand(UUID.randomUUID().toString(), p.publicId, 0, "depart_boat", "river_reach"), start, random = { 0L }).first
+            val atRiver = departed.boat!!; val v = atRiver.voyage!!
+            put(p, departed.copy(boat = atRiver.copy(voyage = v.copy(castsUsed = v.maxCasts,
+                catches = listOf(EconomyBoatCatch(0, fish, weight, start.plusSeconds(330).toString()))))))
+            return command(p, economy.snapshot(p.hash), "claim_boat", v.id)
+        }
+        for ((i, publish) in listOf(true, false).withIndex()) {
+            val claim = ready(300 + i)
+            assertEquals(if (i == 0) null else 300, games.fishingRecords(p.hash, "friends").entries.singleOrNull()?.weightGrams)
+            val preference = async { games.setFishingVisibility(p.hash, GameVisibilityRequest(publish, i.toLong(), p.publicId)) }
+            val collecting = async { economy.command(p.hash, claim) }
+            preference.await(); collecting.await()
+            assertTrue(economy.command(p.hash, claim).replayed)
+            val board = games.fishingRecords(p.hash, "friends")
+            assertEquals(publish, board.leaderboardOptIn)
+            assertEquals(if (publish) 300 else null, board.entries.singleOrNull()?.weightGrams)
+            assertEquals(300 + i, state(p).boat!!.records.getValue(fish).weightGrams)
+            assertEquals(if (publish) "1" else "0", scalar("SELECT count(*) FROM game_fishing_records WHERE user_id=?", p.id))
+        }
     }
 
     @Test fun `merge review and mutation refuse active voyages and profile reset recreates an empty boat`() = runBlocking<Unit> {

@@ -30,9 +30,15 @@
 .catches small { display: block; margin-top: 2px; color: var(--trip-muted); font-size: 10px; }
 .catches li > span:last-child { color: #dbd6b1; font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .note { margin: 15px 0 0; color: #b1bea7; font-size: 11px; line-height: 1.5; }
-.actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 12px; }
-.actions > button { flex: 1 1 180px; }
 @keyframes tripReveal { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 600px) { .summary { padding: 14px; } .header { gap: 10px; margin-bottom: 15px; } .seal { flex-basis: 40px; width: 40px; height: 40px; } .stats { margin-bottom: 12px; } .stats > div { grid-template-columns: minmax(0, 1fr); justify-items: center; padding: 0 3px; } .stats strong { font-size: 15px; } .stats svg { width: 14px; } .stats span { font-size: 9px; } .featured { gap: 10px; padding: 10px; grid-template-columns: 60px minmax(0, 1fr); } .fishPortrait { width: 60px; height: 60px; } .fishPortrait > * { max-width: 58px; max-height: 58px; } .featured h4 { font-size: 15px; } .largestWeight { grid-column: 2; font-size: 18px; margin-top: -3px; } .catches { grid-template-columns: minmax(0, 1fr); margin-top: 12px; } }
 @media (max-height: 500px) { .header { margin-bottom: 12px; } .stats { padding: 8px 0; } .featured { padding: 9px; } .fishPortrait { width: 60px; height: 60px; } .fishPortrait > * { max-width: 58px; max-height: 58px; } }
 @media (prefers-reduced-motion: reduce) { .summary { animation: none; } }
+
+.dockReceipt { padding: 12px 15px; color: #e9e3c8; background: #203a31; }
+.dockReceipt > p { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 9px; margin: 0; }
+.dockReceipt > p svg { color: #e2c58d; }
+.dockReceipt > p span { color: #c5d5c1; font-size: 13px; }
+.dockReceipt summary { width: fit-content; padding: 8px 0; color: #e0c68f; cursor: pointer; font-size: 13px; }
+.unloading { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 15px 14px; background: #203a31; }
+.unloading > p { width: 100%; margin: 0; font-size: 13px; color: #f1d59b; }

@@ -49,7 +49,7 @@ test("completion is scoped per owner/device, replay is cosmetic and denied stora
   assert.doesNotThrow(() => first.restore(denied)); assert.doesNotThrow(() => first.reset(denied));
   assert.match(boatCoachInstruction(first.snapshot(), "waiting"), /Забросьте/);
   assert.match(boatCoachInstruction(first.snapshot(), "soaking"), /Дождитесь/);
-  assert.match(boatCoachInstruction(first.snapshot(), "bite"), /Подсечь/);
+  assert.match(boatCoachInstruction(first.snapshot(), "bite"), /Рыба на крючке/);
   assert.match(boatCoachInstruction(first.snapshot(), "reeling"), /Зажмите/);
 });
 

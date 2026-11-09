@@ -24,10 +24,10 @@ function WorkshopSession({ onReset }: { onReset: () => void }) {
   useEffect(() => {
     const deactivate = session.activate();
     void session.refresh();
-    const clock = window.setInterval(() => { if (!document.hidden) setNow(session.now()); }, 100);
+    const clock = window.setInterval(() => { if (!document.hidden) setNow(session.now()); }, 1000);
     return () => { window.clearInterval(clock); deactivate(); };
   }, [session]);
-  const economy: EconomyController = { ...view, ...session, now: now || session.now() };
+  const economy: EconomyController = { ...view, ...session, now: now || session.now(), readServerNow: session.now };
   const snapshot = economy.snapshot;
   const phase = snapshot ? boatPhase(snapshot.boat, economy.now) : "broken";
   const phaseName = { broken: "Нужен ремонт", repairing: "Идёт работа", docked: "Лодка у причала", outbound: "Дорога к месту ловли",
@@ -43,13 +43,13 @@ function WorkshopSession({ onReset }: { onReset: () => void }) {
       <ol><li>Восстановите корпус обычной кнопкой. Монеты и материалы уже выданы этому примеру.</li>
         <li>Внутри окна раскройте «Лодка · тестовое управление» и нажмите «Завершить таймер установки», затем получите готовую работу.</li>
         <li>Проверьте запас бензина и отправьтесь на рыбалку. Кнопка расходует одну ячейку и открывает речной плёс.</li>
-        <li>Забросьте удочку и проверьте подсечку, тягу, отпускание и паузу. Возвращение и получение улова работают обычными кнопками.</li></ol>
+        <li>Забросьте удочку, дождитесь начала вываживания и проверьте удержание, отпускание и паузу. После поимки вернитесь в мастерскую и заберите улов.</li></ol>
       <p>На реке тестовое управление открывается кнопкой DEV. После закрытия окна можно открыть его снова или начать новый пример.</p>
       <p className={styles.status} role="status">{snapshot ? phaseName : "Готовим демонстрационную лодку…"}</p>
       <div className={styles.actions}><button type="button" onClick={() => setOpen(true)} disabled={!snapshot || open}>Открыть мастерскую</button>
         <button type="button" onClick={onReset} disabled={open}>Начать пример заново</button></div>
     </section>
-    {open && snapshot && <WorldBoatFishingDialog economy={{ ...economy, snapshot }} onClose={() => setOpen(false)} timeZone="Europe/Moscow" />}
+    {open && snapshot && <WorldBoatFishingDialog sharedRecordsAvailable={false} economy={{ ...economy, snapshot }} onClose={() => setOpen(false)} timeZone="Europe/Moscow" />}
   </main>;
 }
 

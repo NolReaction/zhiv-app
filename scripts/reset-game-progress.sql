@@ -25,7 +25,7 @@ DECLARE
         'economy_market_daily_turnover',
         'economy_market_showcases', 'forest_memory_receipts',
         'game_achievement_tiers', 'game_daily_rewards', 'game_reward_claims', 'onboarding_progress',
-        'game_items', 'game_monthly_scores', 'game_presence_clients', 'game_presence_accounts', 'game_presence_daily',
+        'game_fishing_records', 'game_items', 'game_monthly_scores', 'game_presence_clients', 'game_presence_accounts', 'game_presence_daily',
         'game_sessions', 'game_tap_activity_minutes',
         'game_tap_activity_seconds', 'world_commands', 'world_ledger'
     ];
@@ -87,16 +87,16 @@ BEGIN
     -- V78 adds resident activity inside economy state. Replacing the entire JSON also clears
     -- progression XP, seasonal contribution and tap boosts without relying on a field allowlist.
     -- Every later migration still requires an explicit inventory/policy review.
-    -- V80 updates standard neighbor prices only; existing reset table classifications remain complete.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 80
+    -- V81 adds the shared fishing record index and separate game profile consent.
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 81
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,80) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,81) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL','71:SQL','72:SQL','73:SQL','74:SQL','75:SQL','76:SQL','77:SQL','78:SQL','79:SQL','80:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL','71:SQL','72:SQL','73:SQL','74:SQL','75:SQL','76:SQL','77:SQL','78:SQL','79:SQL','80:SQL','81:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V80. Game reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V81. Game reset cancelled.';
     END IF;
 
     IF apply_mode THEN
@@ -179,7 +179,7 @@ BEGIN
         SELECT user_id, revision::numeric FROM public.economy_profiles
         UNION ALL SELECT user_id, revision::numeric FROM public.world_profiles
         UNION ALL SELECT user_id, revision::numeric FROM public.forest_memory
-        UNION ALL SELECT user_id, visibility_version::numeric FROM public.game_profiles
+        UNION ALL SELECT user_id, greatest(visibility_version, fishing_visibility_version)::numeric FROM public.game_profiles
         UNION ALL SELECT user_id, accepted_revision::numeric FROM public.economy_commands
         UNION ALL SELECT user_id, accepted_revision::numeric FROM public.economy_market_receipts
         UNION ALL SELECT user_id, accepted_revision::numeric FROM public.economy_barter_receipts
@@ -216,8 +216,8 @@ BEGIN
     SELECT user_id, (previous_revision + 1)::bigint FROM game_reset_revision_fences;
     -- The ranking starts empty and private; an old visibility request cannot
     -- opt a player back in using the previous consent version.
-    INSERT INTO public.game_profiles(user_id, visibility_version)
-    SELECT user_id, (previous_revision + 1)::bigint FROM game_reset_revision_fences;
+    INSERT INTO public.game_profiles(user_id, visibility_version, fishing_visibility_version)
+    SELECT user_id, (previous_revision + 1)::bigint, (previous_revision + 1)::bigint FROM game_reset_revision_fences;
     -- The reset gives the fresh starter pack once. Keep a new conversion fence
     -- so a later individual profile recreation cannot award it a second time.
     INSERT INTO public.economy_conversion_audit(user_id, legacy_sparks, legacy_wood, legacy_stone,
@@ -241,7 +241,8 @@ BEGIN
             OR w.revision IS DISTINCT FROM (f.previous_revision + 1)::bigint
             OR m.revision IS DISTINCT FROM (f.previous_revision + 1)::bigint
             OR g.visibility_version IS DISTINCT FROM (f.previous_revision + 1)::bigint
-            OR g.lifetime_taps <> 0 OR g.best_series <> 0 OR g.leaderboard_opt_in
+            OR g.fishing_visibility_version IS DISTINCT FROM (f.previous_revision + 1)::bigint
+            OR g.lifetime_taps <> 0 OR g.best_series <> 0 OR g.leaderboard_opt_in OR g.fishing_leaderboard_opt_in
             OR e.state IS DISTINCT FROM public.economy_v4_initial_state('{}'::jsonb, true)
             OR w.state IS DISTINCT FROM '{"schemaVersion":1,"resources":{"sparks":0,"wood":0,"stone":0}}'::jsonb
             OR m.snapshot IS NOT NULL OR m.lease_token IS NOT NULL

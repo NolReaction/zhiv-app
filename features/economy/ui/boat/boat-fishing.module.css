@@ -16,24 +16,17 @@
 .tab[aria-selected='true'] { color: #f2d38e; background: #344133; border-color: #8d8b5c; box-shadow: 0 2px 4px #0000001c; }
 .body { flex: 1 1 auto; min-height: 0; overflow-y: scroll; scrollbar-gutter: stable; overscroll-behavior: contain; scrollbar-width: thin; padding: 18px; }
 .layout { display: grid; grid-template-columns: minmax(0,1.05fr) minmax(0,1fr); gap: 18px; align-items: start; }
-.playingLayout { grid-template-columns: minmax(0,1fr); margin-top: 14px; }
-.playingLayout .boatView { display: none; }
 .boatView { display: grid; min-width: 0; gap: 10px; }
 .art { overflow: hidden; border-radius: 8px; }
 .art > * { display: block; width: 100%; height: auto; }
 .art [data-travelling] [data-boat-hull] { transform-origin: center; animation: boat-drift 3.5s ease-in-out infinite; }
 .caption { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 3px; color: #9cae98; font-size: 11px; }
 .caption > span { display: inline-flex; align-items: center; gap: 5px; }
-.trip, .upgrade, .blueprint, .work, .empty { min-width: 0; border: 1px solid #4b5b46; border-radius: 8px; background: #213127; }
+.trip, .upgrade, .work, .empty { min-width: 0; border: 1px solid #4b5b46; border-radius: 8px; background: #213127; }
 .trip { display: grid; gap: 13px; padding: 16px; }
-.trip h3, .sectionHeading, .blueprint h3 { font-size: 19px; line-height: 1.2; font-weight: 650; color: #ebdbb3; }
+.trip h3, .sectionHeading { font-size: 19px; line-height: 1.2; font-weight: 650; color: #ebdbb3; }
 .eyebrow { display: flex; align-items: center; gap: 6px; color: #b1b995; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 .muted { color: #aebbac; font-size: 12px; line-height: 1.6; }
-.stats { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
-.stat { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 9px; border-radius: 9px; background: #2c3d2e; color: #c3d4b3; }
-.stat > div { min-width: 0; }
-.stat strong { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
-.stat small { display: block; font-size: 10px; color: #9caa90; }
 .primary, .secondary { display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 7px; min-height: 44px; padding: 10px 14px; border: 1px solid #c8a267; border-radius: 6px; color: #1b291e; background: #c8a267; font-weight: 600 !important; }
 .primary:hover:not(:disabled) { background: #dab77b; }
 .secondary { color: #d7ddc1; border-color: #6a7657; background: #2d4030; }
@@ -53,9 +46,7 @@
 .gear summary::after { content: '+'; margin-left: auto; font-size: 18px; font-weight: 400; }
 .gear[open] summary::after { content: '−'; }
 .gear summary::-webkit-details-marker { display: none; }
-.section { display: grid; gap: 12px; margin-top: 22px; }
 .sectionHeading { font-size: 19px; }
-.upgradeGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
 .upgrade { display: flex; flex-direction: column; gap: 9px; padding: 14px; }
 .upgrade h3 { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 650; }
 .upgrade > .muted { flex: 1; font-size: 11px; }
@@ -68,29 +59,12 @@
 .work > div { display: flex; align-items: center; gap: 7px; }
 .work strong { flex: 1; min-width: 0; font-size: 13px; }
 .work small { font-size: 11px; }
-.confirmation { display: grid; gap: 10px; padding: 12px; border: 1px solid #8b7446; border-radius: 6px; background: #3c3925; }
-.confirmation > div { display: flex; flex-wrap: wrap; gap: 8px; }
-.confirmation p { font-size: 12px; }
 .catches { display: grid; gap: 7px; margin-top: 15px; }
 .catch { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid #4b6049; border-radius: 6px; background: #25372b; }
 .catch > div { flex: 1; min-width: 0; }
 .catch strong { display: block; font-size: 12px; font-weight: 600; }
 .catch small { color: #a4b595; font-size: 10px; }
 .weight { color: #e3ce97; font-size: 14px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.blueprints { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
-.blueprint { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 18px; }
-.blueprintTop { display: flex; align-items: center; gap: 12px; }
-.blueprintTop h3 { font-size: 20px; }
-.blueprintTop p { margin-top: 5px; color: #aabb9e; font-size: 11px; }
-.blueprint .muted { flex: 1; }
-.sheets { display: flex; flex-wrap: wrap; gap: 6px; }
-.sheet { display: grid; place-items: center; width: 31px; height: 38px; border: 1px dashed #738069; border-radius: 4px 8px 4px 4px; color: #9eac93; background: #283a2c; font-size: 11px; }
-.sheet[data-found] { border: 1px solid #9baf7e; color: #d4e9bc; background: #3d5637; }
-.forecast { display: grid; gap: 9px; width: 100%; border-top: 1px solid #53674e; padding-top: 12px; }
-.forecast > strong { color: #cee0b9; font-size: 13px; }
-.forecastOrder { border: 1px solid #55674f; border-radius: 9px; padding: 0 9px; background: #2a3c2c; }
-.forecastOrder summary { min-height: 44px; padding: 12px 0; font-size: 11px; cursor: pointer; }
-.forecastOrder ul { display: grid; gap: 7px; padding-bottom: 10px; }
 .empty { display: grid; justify-items: center; gap: 12px; padding: 32px 20px; color: #aabb9b; text-align: center; }
 .empty strong { color: #dde4c7; font-size: 22px; line-height: 1.2; font-weight: 650; }
 .empty p { max-width: 42ch; font-size: 12px; line-height: 1.6; }
@@ -99,26 +73,6 @@
 .record > div { flex: 1; min-width: 0; }
 .record strong { display: block; font-size: 12px; }
 .record small { color: #a3b394; font-size: 10px; }
-.game { display: grid; gap: 12px; padding: 16px; border: 1px solid #6b805b; border-radius: 8px; background: #243629; }
-.gameHeader { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.gameHeader strong { color: #e0dcba; font-size: 15px; }
-.gameHeader span { color: #b3b99c; font-size: 11px; font-variant-numeric: tabular-nums; }
-.gameStage { display: grid; grid-template-columns: minmax(0,1fr) 84px; gap: 12px; height: 248px; }
-.gameWater { position: relative; min-width: 0; overflow: hidden; border: 1px solid #52776b; border-radius: 13px; background: radial-gradient(ellipse at 50% 15%,#72947b55,transparent 60%),linear-gradient(#315c57,#173e47); }
-.gameWater::before, .gameWater::after { content: ''; position: absolute; left: 12%; right: 12%; top: 20%; height: 15%; border: 1px solid #b5ceb02b; border-radius: 50%; }
-.gameWater::after { top: 25%; left: 7%; right: 7%; height: 10%; }
-.gameWater svg { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 90px; height: 90px; color: #a2bb9f; opacity: .6; }
-.gameWater p { position: absolute; bottom: 17px; left: 15px; right: 15px; color: #d2ddbd; text-align: center; font-size: 12px; line-height: 1.6; }
-.reelTrack { position: relative; border: 4px solid #7e9064; border-radius: 15px; background: linear-gradient(#264d45,#153c44); overflow: hidden; }
-.reelZone { position: absolute; left: 4px; right: 4px; border: 2px solid #cde5a5; border-radius: 7px; background: #93b76977; box-shadow: inset 0 0 15px #c0d79133; }
-.reelFish { position: absolute; left: 50%; transform: translate(-50%,50%); display: grid; place-items: center; width: 45px; height: 31px; color: #f0d388; filter: drop-shadow(0 2px 2px #0b292a); }
-.gameProgress { display: flex; align-items: center; gap: 9px; color: #b6c6a0; font-size: 11px; }
-.gameProgress progress { flex: 1; }
-.hold { min-height: 58px; user-select: none; -webkit-user-select: none; touch-action: none !important; font-size: 15px !important; }
-.hold[aria-pressed='true'] { background: #d2b572; box-shadow: inset 0 3px 7px #25452955; }
-.reelControls { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
-.reelControls > :only-child { grid-column: 1 / -1; }
-.gameHint { font-size: 11px; color: #b0bf9b; text-align: center; }
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 @keyframes boat-drift { 0%,100% { transform: translateY(0) rotate(-.5deg); } 50% { transform: translateY(-3px) rotate(.5deg); } }
 @media (max-width: 640px) {
@@ -132,15 +86,10 @@
   .art { max-height: 240px; }
   .art > * { width: 100%; max-height: 240px; object-fit: contain; }
   .trip { padding: 13px; gap: 11px; }
-  .upgradeGrid, .blueprints, .records { grid-template-columns: minmax(0,1fr); }
-  .blueprint { padding: 14px; }
-  .game { padding: 11px; }
-  .gameStage { height: 212px; grid-template-columns: minmax(0,1fr) 73px; gap: 9px; }
-  .gameWater p { left: 8px; right: 8px; font-size: 11px; }
+  .records { grid-template-columns: minmax(0,1fr); }
 }
-@media (max-width: 640px) and (max-height: 700px) { .game { gap: 9px; }.gameStage { height: 160px; }.hold { min-height: 50px; } }
 @media (prefers-reduced-motion: reduce) { .dialog *, .dialog *::before, .dialog *::after { animation: none !important; transition: none !important; } }
-@media (forced-colors: active) { .dialog, .trip, .upgrade, .blueprint, .record, .game, .reelTrack, .reelZone { border-color: CanvasText; }.reelFish { color: Highlight; }.reelZone { background: Highlight; opacity: .5; } }
+@media (forced-colors: active) { .dialog, .trip, .upgrade, .record { border-color: CanvasText; } }
 
 .wallet { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid #756c44; border-radius: 5px; color: #e4c178; background: #1a231b; font-size: 15px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 @media (max-width: 640px) {

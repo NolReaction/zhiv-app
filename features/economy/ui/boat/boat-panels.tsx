@@ -39,7 +39,7 @@ export function BoatWork({ boat, config, now, disabled, onClaim }: { boat: BoatS
   </section>;
 }
 
-export function BoatRecords({ state, boat }: { state: EconomyView; boat: BoatState }) {
+export function BoatPersonalRecords({ state, boat }: { state: EconomyView; boat: BoatState }) {
   const records = Object.entries(boat.records).sort((left, right) => itemName(state, left[0]).localeCompare(itemName(state, right[0]), "ru"));
   if (!records.length) return <div className={styles.empty}><Trophy size={40} strokeWidth={1.3} /><strong>Первая большая рыба впереди</strong><p>Здесь останется самый тяжёлый экземпляр каждого вида. Привезите улов домой, чтобы записать свой первый рекорд.</p></div>;
   return <div><p className={styles.muted}>Самая большая рыба каждого вида. Рекорд остаётся с вами, даже если улов продан или приготовлен.</p><div className={styles.records}>{records.map(([id, record]) => <article key={id} className={styles.record} data-boat-record={id}>

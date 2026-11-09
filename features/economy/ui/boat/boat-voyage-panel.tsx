@@ -1,12 +1,9 @@
-"use client";
-
-import { useState } from "react";
-import { Anchor, ArrowLeft, Check, Fish, FishingRod, Package, Sailboat, Waves } from "lucide-react";
+import { Anchor, Check, Fish, Package, Sailboat, Waves } from "lucide-react";
 import { boatConfig, boatModules, boatPhase, boatReturnStartedAt, boatReturnsAt, boatState } from "@/features/economy/domain/boat-fishing";
 import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
-import { worldCountdown } from "@/features/economy/ui/shared/world-stations";
+import { BoatCountdown } from "./boat-countdown";
 import { BoatArt } from "./boat-art";
-import { BoatTripSummary } from "./boat-trip-summary";
+import { BoatDockReceipt } from "./boat-trip-summary";
 import { createBoatTripReceipt } from "./boat-trip-summary-data";
 import summaryStyles from "./boat-trip-summary.module.css";
 import { BoatCatchList } from "./boat-panels";
@@ -15,34 +12,34 @@ import styles from "./boat-fishing.module.css";
 
 type Props = { economy: ReadyEconomy; disabled: boolean; send: BoatSend; onOpenPantry?: () => void };
 export function BoatVoyagePanel({ economy, disabled, send, onOpenPantry }: Props) {
-  const [confirmReturn, setConfirmReturn] = useState<string | null>(null);
-  const state = economy.snapshot, boat = boatState(state), config = boatConfig(state.catalog), phase = boatPhase(boat, economy.now);
-  const voyage = boat.voyage;
+  const state = economy.snapshot, boat = boatState(state), voyage = boat.voyage;
   if (!voyage) return null;
-  if (phase === "ready") return <section data-boat-trip-ready>
-    <BoatTripSummary receipt={createBoatTripReceipt(state, voyage)} />
-    <div className={summaryStyles.actions}>
-      <button type="button" className={styles.primary} disabled={disabled} onClick={() => send("claim_boat", voyage.id)}>{voyage.catches.length ? <Package size={17} /> : <Check size={17} />}{voyage.catches.length ? "Забрать улов" : "Завершить выход"}</button>
-      {onOpenPantry && <button type="button" className={styles.secondary} onClick={onOpenPantry}>Открыть кладовую</button>}
-    </div>
-  </section>;
-  const challenge = voyage.challenge, liveChallenge = challenge && economy.now < Date.parse(challenge.expiresAt);
-  const remaining = Math.max(0, voyage.maxCasts - voyage.castsUsed);
-  const returnHome = () => { if (send("return_boat", voyage.id)) setConfirmReturn(null); };
+  const phase = boatPhase(boat, economy.now);
+  if (phase === "ready") {
+    const shortfall = Math.max(0, voyage.catches.length - state.storage.available);
+    return <section data-boat-trip-ready>
+      <BoatDockReceipt receipt={createBoatTripReceipt(state, voyage)} />
+      <div className={summaryStyles.unloading}>
+        {shortfall > 0 && <p>Освободите мест в кладовой: {shortfall}. Улов ждёт на борту.</p>}
+        <button type="button" className={styles.primary} disabled={disabled || shortfall > 0} onClick={() => send("claim_boat", voyage.id)}>{voyage.catches.length ? <Package size={17} /> : <Check size={17} />}{voyage.catches.length ? "Забрать улов" : "Завершить выход"}</button>
+        {shortfall > 0 && onOpenPantry && <button type="button" className={styles.secondary} onClick={onOpenPantry}>Открыть кладовую</button>}
+      </div>
+    </section>;
+  }
+  if (phase !== "outbound" && phase !== "returning") return null;
+  const outbound = phase === "outbound";
+  const start = outbound ? Date.parse(voyage.departedAt) : boatReturnStartedAt(voyage);
+  const end = outbound ? Date.parse(voyage.arrivesAt) : boatReturnsAt(voyage);
+  const config = boatConfig(state.catalog);
   return <>
     <div className={styles.layout}>
-      <div className={styles.boatView}><div className={styles.art}><BoatArt modules={boatModules(boat)} repaired={boat.level > 0} crate={boat.upgrades.includes("crate")} oars={boat.upgrades.includes("oars")} travelling={phase === "outbound" || phase === "returning"} /></div><div className={styles.caption}><span><Waves size={14} />{config.name}</span><span><Fish size={14} />{voyage.catches.length} на борту</span></div></div>
+      <div className={styles.boatView}><div className={styles.art}><BoatArt modules={boatModules(boat)} repaired={boat.level > 0} travelling /></div><div className={styles.caption}><span><Waves size={14} />{config.name}</span><span><Fish size={14} />{voyage.catches.length} на борту</span></div></div>
       <section className={styles.trip} aria-label="Состояние лодки">
-        <span className={styles.eyebrow}><Anchor size={13} />{phase === "outbound" ? "Дорога к месту ловли" : phase === "returning" ? "Возвращение домой" : "Речной плёс"}</span>
-        {phase === "outbound" || phase === "returning" ? <><h3>{phase === "outbound" ? "К месту ловли" : "Курс на причал"}</h3><div className={styles.travelLine}><Anchor size={19} /><span /><Sailboat size={28} /><span /><Fish size={20} /></div>
-          <p className={styles.timer}>{worldCountdown(Math.max(0, Math.ceil(((phase === "outbound" ? Date.parse(voyage.arrivesAt) : boatReturnsAt(voyage)) - economy.now) / 1000)))}</p><p className={styles.muted}>{phase === "outbound" ? "После прибытия здесь откроется рыбалка. Можно закрыть окно и заняться лесом." : "Улов на борту. Заберите его, когда Мохлик вернётся."}</p>
-          <progress className={styles.progress} value={Math.min(1, Math.max(0, (economy.now - (phase === "outbound" ? Date.parse(voyage.departedAt) : boatReturnStartedAt(voyage))) / ((phase === "outbound" ? voyage.outboundSeconds : voyage.inboundSeconds) * 1000)))} max={1} aria-label="Путь лодки" />
-        </> : phase === "fishing" ? <><h3>{liveChallenge ? "На крючке рыба" : remaining ? "Можно забрасывать" : "Все забросы использованы"}</h3><div className={styles.stats}><div className={styles.stat}><FishingRod size={18} /><div><strong>{remaining}</strong><small>забросов осталось</small></div></div><div className={styles.stat}><Fish size={18} /><div><strong>{voyage.catches.length} / {voyage.maxCatches}</strong><small>рыб на борту</small></div></div></div>
-          {!liveChallenge && remaining > 0 && <button type="button" className={styles.primary} disabled={disabled} onClick={() => send("begin_boat_cast", voyage.id)}><FishingRod size={18} />Забросить удочку</button>}
-          <p className={styles.note}>Лодка отправится домой через {worldCountdown(Math.max(0, Math.ceil((Date.parse(voyage.fishingUntil) - economy.now) / 1000)))}.</p>
-          {confirmReturn === voyage.id ? <div className={styles.confirmation}><p>{liveChallenge ? "Текущая рыба уйдёт. " : ""}Оставшиеся забросы закончатся. Пойманная рыба останется на борту.</p><div><button type="button" className={styles.secondary} onClick={() => setConfirmReturn(null)}>Остаться</button><button type="button" className={styles.primary} disabled={disabled} onClick={returnHome}>Вернуться</button></div></div>
-            : <button type="button" className={styles.secondary} disabled={disabled} onClick={() => remaining || liveChallenge ? setConfirmReturn(voyage.id) : returnHome()}><ArrowLeft size={16} />Вернуться с уловом</button>}
-        </> : null}
+        <span className={styles.eyebrow}><Anchor size={13} />{outbound ? "Дорога к месту ловли" : "Возвращение домой"}</span>
+        <h3>{outbound ? "К месту ловли" : "Курс на причал"}</h3><div className={styles.travelLine}><Anchor size={19} /><span /><Sailboat size={28} /><span /><Fish size={20} /></div>
+        <p className={styles.timer}><BoatCountdown until={end} now={economy.now} readClock={economy.readServerNow} /></p>
+        <p className={styles.muted}>{outbound ? "После прибытия здесь откроется рыбалка. Можно закрыть окно и заняться лесом." : "Улов на борту. Заберите его в мастерской, когда Мохлик вернётся."}</p>
+        <progress className={styles.progress} value={Math.min(1, Math.max(0, (economy.now - start) / Math.max(1, end - start)))} max={1} aria-label="Путь лодки" />
       </section>
     </div>
     <BoatCatchList state={state} boat={boat} />

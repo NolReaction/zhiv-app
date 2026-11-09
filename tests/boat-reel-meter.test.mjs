@@ -22,8 +22,8 @@ const challenge = { id: "meter-challenge", rulesVersion: 3, resistance: "surging
 function renderGame(overrides = {}, props = {}) {
   globalThis.__reelMeterController = {
     challenge, reel: { tick: 40, bar: 5000, fish: 5200, progress: 4600, velocity: 160, status: "active" },
-    playing: true, held: true, ready: true, expired: false, waitingForConfirmation: false, status: "Удерживайте рыбу в зелёной зоне",
-    seconds: 110, castStage: "bite", holdButton: { current: null }, finishButton: { current: null },
+    playing: true, held: true, ready: true, expired: false, waitingForConfirmation: false, status: "Рыба на крючке",
+    castStage: "bite", holdButton: { current: null },
     togglePlay() { assert.fail("Rendering must not start input"); }, changeHeld() { assert.fail("Rendering must not hold input"); },
     submit() { assert.fail("Rendering must not submit a catch"); }, ...overrides,
   };
@@ -35,12 +35,13 @@ test("vertical meter clips the same catchable interval as domain membership at b
   for (const bar of [0, 800, 1600, 5000, 8400, 9600, 10000]) for (const fish of [0, 1000, 1600, 5000, 8400, 9000, 10000]) {
     const geometry = boatReelMeterGeometry({ bar, fish, zoneWidth: 3200 });
     assert.equal(geometry.inZone, Math.abs(fish - bar) <= 1600);
-    const paintedMembership = geometry.targetTop >= geometry.top && geometry.targetTop <= geometry.top + geometry.height;
+    const top = Math.max(0, geometry.centerTop - geometry.height / 2), bottom = Math.min(100, geometry.centerTop + geometry.height / 2);
+    const paintedMembership = geometry.targetTop >= top && geometry.targetTop <= bottom;
     assert.equal(paintedMembership, geometry.inZone, `bar=${bar},fish=${fish}`);
-    assert.ok(geometry.top >= 0 && geometry.top + geometry.height <= 100);
+    assert.ok(top >= 0 && bottom <= 100);
   }
   assert.deepEqual(boatReelMeterGeometry({ bar: 5000, fish: 6000, zoneWidth: 3200 }),
-    { bar: 5000, fish: 6000, top: 34, height: 32, targetTop: 40, inZone: true });
+    { bar: 5000, fish: 6000, centerTop: 50, height: 32, targetTop: 40, inZone: true });
 });
 
 test("invalid presentation numbers stay bounded without shifting valid target or introducing NaN", () => {
@@ -55,8 +56,8 @@ test("anonymous meter renders exact separate target and zone coordinates and no 
   const html = renderToStaticMarkup(createElement(BoatReelMeter, { reel: { bar: 4000, fish: 7000, zoneWidth: 3200,
     fishId: "fish_mooncarp", fishRarity: "legendary", weightGrams: 2400, seed: 12345 }, held: true }));
   assert.match(html, /data-boat-reel-meter/); assert.match(html, /data-in-zone="false"/);
-  assert.match(html, /data-reel-zone="true" style="top:44%;height:32%"/);
-  assert.match(html, /data-reel-target="true" style="top:30%"/);
+  assert.match(html, /data-reel-zone="true" style="transform:translateY\(60%\)"/);
+  assert.match(html, /data-reel-target="true" style="transform:translateY\(30%\)"/);
   assert.match(html, /Рыба вне зоны/);
   assert.doesNotMatch(html, /mooncarp|legendary|2400|12345|<img|fishRarity|weightGrams/);
 });
@@ -78,7 +79,7 @@ test("cast and soaking wait for the real bite before showing the meter or strike
 });
 
 test("paused and suspended reels preserve the exact meter while disabling input until resumed", () => {
-  const paused = renderGame({ playing: false, held: false });
+  const paused = renderGame({ playing: false, paused: true, held: false });
   assert.match(paused, /data-paused="true"/); assert.match(paused, /data-fishing-action="play"/); assert.match(paused, /Продолжить/);
   assert.match(paused, /Держите метку рыбы в зелёной зоне/);
   const suspended = renderGame({}, { suspended: true });
@@ -88,7 +89,7 @@ test("paused and suspended reels preserve the exact meter while disabling input 
 
 test("a local success remains anonymous until the server confirms it, and expiry removes the meter", () => {
   const caught = renderGame({ playing: false, held: false, status: "Рыба у борта!", reel: { tick: 250, bar: 5000, fish: 5000, progress: 10000, velocity: 0, status: "caught" } });
-  assert.match(caught, /data-boat-reel-meter/); assert.match(caught, /Поднять на борт/);
+  assert.match(caught, /data-boat-reel-meter/); assert.match(caught, /поднимает рыбу на борт/); assert.doesNotMatch(caught, /data-fishing-action="submit"/);
   assert.doesNotMatch(caught, /fish_mooncarp|Легендарная|Улов подтверждён/);
   const pending = renderGame({ playing: false, waitingForConfirmation: true, status: "Проверяем результат" });
   assert.match(pending, /Рыба появится на борту после подтверждения/); assert.doesNotMatch(pending, /data-fishing-action="submit"/);

@@ -81,7 +81,7 @@ test("boat help links busy-player advice to real repair, attempts, delivery and 
   assert.doesNotMatch(answer("boat-upgrades"), /чертеж|подзорная труба/i);
   assert.match(answer("boat-records"), /Вес не меняет цену/);
   assert.match(answer("boat-records"), /профессиональный навык рыбалки/);
-  assert.match(answer("boat-records"), /Общего рейтинга.*пока нет/);
+  assert.match(answer("boat-records"), /«Друзья» и «Мир».*Публиковать мои рекорды/);
   for (const [query, id] of [["лодочная рыбалка", "boat-fishing"], ["вес рыбы рекорд", "boat-records"]])
     assert.ok(searchWorldHelp(topics, query).some(entry => entry.id === id), query);
 });

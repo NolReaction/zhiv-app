@@ -2,9 +2,12 @@
 .railLabel { position: absolute; left: 4px; top: 50%; writing-mode: vertical-rl; transform: translateY(-50%) rotate(180deg); color: #b7c5a7; font-size: 8px; letter-spacing: .13em; }
 .track { box-sizing: border-box; position: relative; height: 100%; border: 1px solid #9fb6a94d; border-radius: 4px; background: linear-gradient(90deg, #0c252b, #173a3d 60%, #102b30); box-shadow: inset 0 0 8px #001a26c9; }
 .ticks { position: absolute; inset: 0; border-radius: inherit; background: repeating-linear-gradient(to top, transparent 0, transparent calc(25% - 1px), #c4d6ba2e calc(25% - 1px), #c4d6ba2e 25%); }
-.zone { box-sizing: border-box; position: absolute; left: 1px; right: 1px; display: flex; flex-direction: column; justify-content: space-evenly; align-items: center; min-height: 0; border: 1px solid #bbdf92; border-radius: 4px; background: linear-gradient(90deg, #6f9a56c7, #9fbd70b8, #6d9853c7); box-shadow: inset 0 1px #e5f2ad6b, 0 0 8px #9cc56d30; transition: background-color 100ms linear, border-color 100ms linear; }
+.zoneClip, .carriage { position: absolute; inset: 0; pointer-events: none; }
+.zoneClip { overflow: hidden; border-radius: inherit; }
+.meter:not([data-paused]) .carriage { transition: transform var(--step-time) linear; will-change: transform; }
+.zone { top: 0; transform: translateY(-50%); box-sizing: border-box; position: absolute; left: 1px; right: 1px; display: flex; flex-direction: column; justify-content: space-evenly; align-items: center; min-height: 0; border: 1px solid #bbdf92; border-radius: 4px; background: linear-gradient(90deg, #6f9a56c7, #9fbd70b8, #6d9853c7); box-shadow: inset 0 1px #e5f2ad6b, 0 0 8px #9cc56d30; transition: background-color 100ms linear, border-color 100ms linear; }
 .zone i { width: 8px; height: 1px; flex: 0 0 auto; background: #d8e6a85e; }
-.target { position: absolute; left: -7px; right: -7px; display: flex; align-items: center; gap: 1px; transform: translateY(-50%); filter: drop-shadow(0 1px 2px #001a27); }
+.target { position: absolute; top: 0; left: -7px; right: -7px; display: flex; align-items: center; gap: 1px; transform: translateY(-50%); filter: drop-shadow(0 1px 2px #001a27); }
 .target > span { display: grid; place-items: center; width: 23px; height: 23px; flex: 0 0 23px; border: 2px solid #e7e0ba; border-radius: 50%; color: #f1e7bb; background: #365659; font-size: 14px; line-height: 1; font-weight: 700; }
 .target > i { display: block; height: 2px; flex: 1; background: #e7e0ba; }
 .meter[data-in-zone='true'] .target > span { background: #416b42; border-color: #d7eeaf; }
@@ -14,3 +17,8 @@
 @media (max-width: 360px) { .meter { width: 68px; padding-right: 12px; padding-left: 19px; } }
 @media (max-height: 500px) { .meter { height: 98px; width: 62px; padding: 5px 11px 5px 17px; }.railLabel { font-size: 7px; left: 3px; }.target > span { width: 19px; height: 19px; flex-basis: 19px; font-size: 11px; } }
 @media (prefers-reduced-motion: reduce) { .zone { transition: none; } }
+/* The moving target and control are the input to the game, including in reduced-motion mode.
+   The river's decorative animation can stop independently. */
+@media (prefers-reduced-motion: reduce) {
+  .meter:not([data-paused]) .carriage { transition: transform var(--step-time) linear !important; }
+}

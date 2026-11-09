@@ -78,8 +78,11 @@ export function productionProjection(snapshot: EconomyView | null, entries: read
 
 export type JournalCoordinator = (owner: string, signal: AbortSignal) => Promise<(() => void) | null>;
 /** The lock is held for the session lifetime; storage events alone are not a mutex. */
-export const browserJournalCoordinator: JournalCoordinator = (owner, signal) => {
-  if (signal.aborted || typeof navigator === "undefined" || !navigator.locks) return Promise.resolve(null);
+export const browserJournalCoordinator: JournalCoordinator = async (owner, signal) => {
+  // React can dispose and reactivate a session in the same turn. Discard its old
+  // request before ifAvailable can briefly acquire the lock ahead of the live session.
+  await Promise.resolve();
+  if (signal.aborted || typeof navigator === "undefined" || !navigator.locks) return null;
   return new Promise(resolve => {
     let answered = false;
     const answer = (value: (() => void) | null) => { if (!answered) { answered = true; resolve(value); } };

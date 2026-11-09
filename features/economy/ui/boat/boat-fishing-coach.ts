@@ -43,12 +43,12 @@ export function createBoatFishingCoach(owner: string) {
   };
 }
 
-export function boatCoachInstruction(view: BoatCoachView, stage: string, tick = 0) {
+export function boatCoachInstruction(view: BoatCoachView, stage: string) {
   if (view.completed) return null;
   if (stage === "casting" || stage === "soaking") return "2 · Дождитесь, когда поплавок нырнёт.";
-  if (stage === "bite" || stage === "paused" && tick === 0) return "3 · Нажмите «Подсечь», затем управляйте снастью.";
+  if (stage === "bite") return "Рыба на крючке! Удерживайте метку в зелёной зоне.";
   if (stage === "reeling" || stage === "paused") return view.learnedLift
-    ? "5 · Отпустите кнопку — дайте зелёной зоне опуститься."
-    : "4 · Зажмите кнопку или пробел — зелёная зона поднимется.";
+    ? "4 · Отпустите кнопку — дайте зелёной зоне опуститься."
+    : "3 · Зажмите кнопку или пробел — зелёная зона поднимется.";
   return "1 · Забросьте удочку. Затем дождитесь поклёвки.";
 }

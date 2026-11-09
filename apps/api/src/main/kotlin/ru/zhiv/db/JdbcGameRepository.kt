@@ -257,6 +257,29 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
             ranked.firstOrNull { it.second.isMe }?.second?.rank, current.monthlyTaps, current.leaderboardOptIn, scope, metric, current.bestSeries)
     }
 
+    override suspend fun fishingRecords(sessionHash: ByteArray, scope: String): FishingRecordsBoard = tx { c ->
+        if (scope != "global" && scope != "friends") fail("INVALID_GAME_SCOPE", "Выберите круг сравнения", 400)
+        val actor = lockActor(c, sessionHash)
+        val visibility = fishingRecordVisibility(c, actor.id, actor.publicId)
+        FishingRecordsBoard(actor.publicId, scope, visibility.leaderboardOptIn, visibility.visibilityVersion,
+            fishingRecordLeaders(c, actor.id, scope))
+    }
+
+    override suspend fun setFishingVisibility(sessionHash: ByteArray, request: GameVisibilityRequest): FishingRecordVisibility = tx { c ->
+        if (request.expectedVersion !in 0L until MAX_SAFE_INTEGER) fail("INVALID_GAME_VISIBILITY", "Некорректная версия настроек", 400)
+        val actor = lockActor(c, sessionHash)
+        requireOwner(actor, request.ownerPublicId)
+        ensureProfile(c, actor)
+        val current = fishingRecordVisibility(c, actor.id, actor.publicId)
+        if (current.visibilityVersion != request.expectedVersion) {
+            if (current.visibilityVersion == request.expectedVersion + 1 && current.leaderboardOptIn == request.leaderboardOptIn) return@tx current
+            fail("GAME_VISIBILITY_CONFLICT", "Настройка публикации улова уже изменилась")
+        }
+        c.update("""UPDATE game_profiles SET fishing_leaderboard_opt_in=?, fishing_visibility_version=fishing_visibility_version+1,
+            updated_at=clock_timestamp() WHERE user_id=?""", request.leaderboardOptIn, actor.id)
+        current.copy(leaderboardOptIn = request.leaderboardOptIn, visibilityVersion = current.visibilityVersion + 1)
+    }
+
     override suspend fun achievements(sessionHash: ByteArray): GameAchievements = tx { c ->
         val actor = lockActor(c, sessionHash)
         val instant = now(c)

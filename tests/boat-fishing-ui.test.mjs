@@ -17,7 +17,8 @@ const { initialBoatReel, stepBoatReel, replayBoatReel } = await vite.ssrLoadModu
 const checkpoint = await vite.ssrLoadModule("/features/economy/ui/boat/boat-reel-checkpoint.ts");
 const { WorldBoatFishingDialog } = await vite.ssrLoadModule("/features/economy/ui/boat/world-boat-fishing-dialog.tsx");
 const { WorldExpeditionsMenu } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
-const { BoatRecords, BoatCatchList } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-panels.tsx");
+const { BoatRecords } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-records.tsx");
+const { BoatCatchList } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-panels.tsx");
 const at = Date.parse("2026-11-03T10:00:00Z");
 const uuid = () => crypto.randomUUID();
 function state() {

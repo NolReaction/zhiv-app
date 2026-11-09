@@ -185,6 +185,21 @@ test("boat fishing replaces ordinary shore launches, opens directly, and leaves 
   assert.match(renderSector("forest", controller({ snapshot: advanced })), /data-route="coastal_deposits"/);
 });
 
+test("boat card shows installed artwork, earned levels, regenerated fuel and the current onboard catch", () => {
+  const boat = { level: 1, upgrades: ["crate"], artifacts: [], modules: { hull: 3, tank: 2, engine: 1, storage: 0 },
+    fuel: { cells: 0, nextAt: new Date(now).toISOString() } };
+  const card = () => render(controller({ snapshot: snapshot({ boat }) }), { onOpenBoat() {} });
+  const dock = card();
+  for (const part of ["hull_l3", "tank_l2", "engine_l1"]) assert.ok(dock.includes(`${part}.svg`));
+  assert.doesNotMatch(dock, /hull_l4|tank_l3|engine_l2/);
+  assert.match(dock, /Улучшения 7\/20/); assert.match(dock, /Бензин 1\/4/);
+  boat.voyage = { arrivesAt: new Date(now - 1000).toISOString(), fishingUntil: new Date(now + 100000).toISOString(),
+    inboundSeconds: 0, maxCatches: 5, catches: [{ fishId: "fish_silverfin", weightGrams: 65 }] };
+  assert.match(card(), /Продолжить рыбалку/); assert.match(card(), /На борту 1\/5/);
+  boat.voyage.returnsAt = new Date(now).toISOString();
+  assert.match(card(), /Забрать улов/);
+});
+
 test("activity and route spotlights belong to actual cards instead of headings or list wrappers", () => {
   const activities = render();
   assert.match(activities, /data-section-guide-target="expedition-activities" data-guide-spotlight-group="true"/);

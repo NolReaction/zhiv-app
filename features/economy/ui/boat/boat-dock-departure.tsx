@@ -5,7 +5,8 @@ import { fishingState } from "@/features/economy/domain/fishing";
 import { formatPearls } from "@/features/economy/domain/money";
 import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { WorldTacklePicker } from "@/features/economy/ui/fishing/world-tackle-picker";
-import { worldCountdown, worldDuration } from "@/features/economy/ui/shared/world-stations";
+import { BoatCountdown } from "./boat-countdown";
+import { worldDuration } from "@/features/economy/ui/shared/world-stations";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { BoatSend } from "./world-boat-fishing-dialog";
 import shared from "./boat-fishing.module.css";
@@ -24,7 +25,7 @@ export function BoatDockDeparture({ economy, disabled, send }: { economy: ReadyE
       <div className={styles.fuel} aria-label={`Бензин: ${cells} из ${capacity}`}>
         <span><Fuel size={13} />Бензин <b>{cells} / {capacity}</b></span>
         <div className={styles.cells} aria-hidden="true">{Array.from({ length: capacity }, (_, index) => <i key={index} data-filled={index < cells || undefined} />)}</div>
-        <small>{nextAt !== null ? <>+1 через <time>{worldCountdown((nextAt - economy.now) / 1000)}</time></> : `+1 каждые ${worldDuration(config.fuel.regenSeconds)}`}</small>
+        <small>{nextAt !== null ? <>+1 через <BoatCountdown until={nextAt} now={economy.now} readClock={economy.readServerNow} /></> : `+1 каждые ${worldDuration(config.fuel.regenSeconds)}`}</small>
       </div>
       <button className={shared.primary} type="button" disabled={disabled || Boolean(reason)} onClick={() => send("depart_boat", config.routeId)}>
         <Sailboat size={16} /><span>Отправиться на рыбалку<small>1 ячейка бензина</small></span><ArrowRight size={15} />

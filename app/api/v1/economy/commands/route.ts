@@ -1,3 +1,4 @@
+import { publishDevFishingRecords } from "@/lib/dev/fishing-records-store";
 import releaseFeatures from "@/apps/api/src/main/resources/world/release-features.json";
 import { economyCommandSchema } from "@/features/economy/domain/model";
 import { commandDevEconomy } from "@/lib/dev/economy-store";
@@ -12,5 +13,9 @@ export async function POST(request: Request) {
   if (!command.success) return economyErrorResponse("INVALID_ECONOMY_COMMAND", "Некорректный запрос хозяйства");
   if (!releaseFeatures.boatFishingEnabled && releaseFeatures.boatFishingPlayActions.includes(command.data.action))
     return economyErrorResponse("ECONOMY_BOAT_PAUSED", "Лодочная рыбалка временно закрыта", 409);
-  return respondDevEconomy(() => commandDevEconomy(context.token, command.data));
+  return respondDevEconomy(() => {
+    const result = commandDevEconomy(context.token, command.data);
+    if (command.data.action === "claim_boat") publishDevFishingRecords(result.state);
+    return result;
+  });
 }

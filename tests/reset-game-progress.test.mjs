@@ -47,7 +47,7 @@ test("game reset reviews every table and the latest migration without clearing i
     "earth_latest_locations", "earth_frozen_locations", "check_ins", "check_in_audiences"]) assert.ok(preserved.includes(name), name);
   for (const table of ["economy_market_listings", "economy_market_receipts", "neighbor_identity", "neighbor_shop_cycles",
     "neighbor_daily_usage", "neighbor_global_usage", "neighbor_receipts", "neighbor_purchases",
-    "game_presence_daily", "game_presence_accounts", "game_daily_rewards", "game_reward_claims"])
+    "game_presence_daily", "game_presence_accounts", "game_daily_rewards", "game_reward_claims", "game_fishing_records"])
     assert.ok(cleared.includes(table), `${table}: release reset discards old activity and gameplay`);
   assert.deepEqual(partial, ["game_achievements", "game_achievement_reward_claims", "player_mail_messages",
     "notification_events", "notification_batches", "gameplay_generations", "gameplay_reset_runs"]);

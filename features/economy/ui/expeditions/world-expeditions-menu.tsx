@@ -27,6 +27,7 @@ import { economyActorConflict, economyMinerConflict, explorationActorId, isMiner
 import { expeditionMaximumRewards } from "@/features/economy/domain/expedition-finds";
 import { ExpeditionFindChances, ExpeditionLootPreview, ExpeditionReturnReport } from "./expedition-loot";
 import { ExpeditionActivityArt } from "./expedition-activity-art";
+import { BoatActivityPreview } from "./boat-activity-preview";
 import { miningDurationFilters, miningDurationLabel, miningDurationMatches, miningResourceGroups, type MiningDurationFilter } from "./mining-resource-groups";
 import workStyles from "@/features/economy/ui/production/production-work.module.css";
 import miningStyles from "./world-mining-production.module.css";
@@ -401,19 +402,7 @@ export function WorldExpeditionsMenu({ economy, onOpenBoat, onOpenPantry, onNavi
   if (activeOnly && !jobs.length && !returned) return null;
   const boatEntry = state && boatMode && onOpenBoat && <button type="button" className={styles.boatEntry}
     data-boat-entry={boatMode} data-guide-spotlight-item onClick={onOpenBoat}>
-    <span className={styles.boatLettering}>
-      <strong>{boatMode === "recover" ? "Возвращение к причалу" : "Лодочная рыбалка"}</strong>
-      <span>{state.boat?.voyage ? "Вернуться к поездке" : state.boat?.work ? "Открыть мастерскую" : state.boat?.level ? "Снарядить лодку и выйти на реку" : "Починить лодку в мастерской"}</span>
-      <ArrowRight size={17} aria-hidden="true" />
-    </span>
-    <svg viewBox="0 0 176 90" className={styles.boatIllustration} aria-hidden="true" focusable="false">
-      <g stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none">
-        <path d="M75 32q31-36 61-24 15 4 17 17m-1-1 6 23" />
-        <path d="M26 66q14 4 30 0t28 0m4 8q13 3 28 0t22-1m6-19q12 3 21-1" opacity=".6" />
-      </g>
-      <image href="/world/boat/modular/hull_l0.svg" x="-4" y="3" width="162" height="65" />
-      <path d="m155 47 4-1 2 6-4 1z" fill="#e9be76" />
-    </svg>
+    <BoatActivityPreview state={state} now={economy.now} readClock={economy.readServerNow} recovery={boatMode === "recover"} />
   </button>;
   return <div ref={content} className={styles.content} tabIndex={-1} data-embedded={embeddedCaves || undefined}>
     {!state ? <div className={styles.loading}><Compass size={18} aria-hidden="true" /><p>{economy.error ?? "Открываем маршруты…"}</p>{economy.error && retry}</div> : <>
