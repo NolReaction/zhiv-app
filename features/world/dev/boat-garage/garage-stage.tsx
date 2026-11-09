@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type PointerEvent } from "react";
 import { Anchor, Box, Fuel, Settings2, Ship, X } from "lucide-react";
 import { getGarageNodeMatrix, getGarageParentMatrix, getGarageViewport, inverseGaragePoint, moveGaragePivot } from "./garage-scene-model.mjs";
 import { getGarageShortcut } from "./garage-editor-shortcuts.mjs";
+import { garageLayerStack } from "./garage-layer-order.mjs";
 import { panGarageEditorView } from "./garage-editor-view.mjs";
 import { garageTransformHandles, pointInsideGarageNode, resizeGarageNode, rotateGarageNode, scaleGarageNodeAroundPivot } from "./garage-transform.mjs";
 import type { GarageNode, GaragePoint, GarageScene, GarageViewportMode, GarageWaterPreviewConfig } from "./garage-scene-types";
@@ -67,8 +68,9 @@ export function GarageStage({ scene, device, selectedId, tool, guides, clean, on
   const waterId = useId().replace(/:/g, "");
   const selected = scene.nodes.find(node => node.id === selectedId);
   const selectedMatrix = selected ? getGarageNodeMatrix(scene, selected.id) : null;
-  const ordered = [...scene.nodes].sort((a, b) => a.zIndex - b.zIndex);
   const transformHandles = selected ? garageTransformHandles(scene, selected.id, viewport.scale) : null;
+  const selectionHint = tool === "rotate" ? "Повернуть выбранный слой · Shift — шаг 15°"
+    : tool === "scale" ? "Масштабировать от опоры · Shift — шаг 10%" : "Перетащить выбранный слой";
 
   function point(event: PointerEvent<SVGSVGElement | SVGGElement>, view = viewport): GaragePoint {
     const rect = svg.current!.getBoundingClientRect();
@@ -122,7 +124,7 @@ export function GarageStage({ scene, device, selectedId, tool, guides, clean, on
     event.stopPropagation();
     if (event.altKey) {
       const world = point(event as unknown as PointerEvent<SVGSVGElement>);
-      const candidate = [...ordered].reverse().find(node => node.assetId && visibleNode(scene, node) && (!water || water.ids.has(node.id)) && pointInsideGarageNode(scene, node.id, world));
+      const candidate = garageLayerStack(scene).find(node => node.assetId && visibleNode(scene, node) && (!water || water.ids.has(node.id)) && pointInsideGarageNode(scene, node.id, world));
       if (candidate) down(event as unknown as PointerEvent<SVGSVGElement>, candidate);
       return;
     }
@@ -184,7 +186,7 @@ export function GarageStage({ scene, device, selectedId, tool, guides, clean, on
             {(["move", "rotate", "scale"] as GarageTool[]).includes(tool) && !selected.locked && !selectionBypass && <rect transform={`matrix(${selectedMatrix.join(" ")})`}
               data-testid="garage-selection-drag" width={selected.width} height={selected.height} fill="transparent" pointerEvents="all"
               style={{ cursor: tool === "rotate" ? "grab" : tool === "scale" ? "nwse-resize" : "move" }} onPointerDown={dragSelection}>
-              <title>{tool === "rotate" ? "Повернуть выбранный слой · Shift — шаг 15°" : tool === "scale" ? "Масштабировать от опоры · Shift — шаг 10%" : "Перетащить выбранный слой"} · Alt + клик — выбрать другой</title></rect>}
+              <title>{`${selectionHint} · Alt + клик — выбрать другой`}</title></rect>}
             <rect transform={`matrix(${selectedMatrix.join(" ")})`} width={selected.width} height={selected.height} fill="none" stroke="#ffe1a0" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
             {(["move", "rotate", "scale"] as GarageTool[]).includes(tool) && !selected.locked && !selectionBypass && transformHandles && <>
               {tool !== "scale" && <line x1={transformHandles.top.x} y1={transformHandles.top.y} x2={transformHandles.rotation.x} y2={transformHandles.rotation.y}

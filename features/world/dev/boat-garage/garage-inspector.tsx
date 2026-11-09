@@ -1,7 +1,7 @@
 "use client";
 
 import { Copy, Trash2 } from "lucide-react";
-import { useId, useRef, useState, type KeyboardEvent } from "react";
+import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { alignGarageNodeToPoints, alignGarageNodeToSocket, garageNodeContactPoint, getGarageNodeMatrix, reparentGarageNode, transformGaragePoint } from "./garage-scene-model.mjs";
 import type { GarageNode, GarageScene } from "./garage-scene-types";
 import { GarageOcclusionControls } from "./garage-occlusion-controls";
@@ -31,6 +31,10 @@ export function GarageInspector({ scene, node, onChange, onDuplicate, onRemove, 
 }) {
   const id = useId();
   const tabButtons = useRef<(HTMLButtonElement | null)[]>([]);
+  const scrollBody = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (scrollBody.current) scrollBody.current.scrollTop = 0;
+  }, [node?.id, activeTab]);
   if (!node) return <aside className={`${styles.inspector} ${panel.panel}`} aria-label="Свойства детали">
     <div className={panel.empty}><h2>Свойства детали</h2><p>Выберите деталь на сцене или в списке слоёв.</p></div>
   </aside>;
@@ -52,12 +56,8 @@ export function GarageInspector({ scene, node, onChange, onDuplicate, onRemove, 
   }
   return <aside className={`${styles.inspector} ${panel.panel}`} aria-label="Свойства детали">
     <div className={panel.header}>
-    <div className={styles.sectionHead}><h2>Свойства детали</h2><small>{node.assetId ? "PNG / IMAGE" : "ГРУППА"}</small></div>
-    <label className={styles.field}><span>Название</span><input value={node.name} maxLength={100} onChange={event => patch({ name: event.target.value })} /></label>
-    <div className={styles.checks}>
-      <label><input type="checkbox" checked={node.visible} onChange={event => patch({ visible: event.target.checked })} />Видимость</label>
-      <label><input type="checkbox" checked={node.locked} onChange={event => patch({ locked: event.target.checked })} />Закрепить</label>
-    </div>
+    <h2>Свойства детали</h2>
+    <label className={panel.name}><span>Название</span><input value={node.name} title={node.name} maxLength={100} onChange={event => patch({ name: event.target.value })} /></label>
     <div role="tablist" aria-label="Разделы свойств детали" className={panel.tabs}>
       {INSPECTOR_TABS.map((tab, index) => <button key={tab.id} ref={element => { tabButtons.current[index] = element; }}
         type="button" role="tab" id={`${id}-tab-${tab.id}`} aria-controls={`${id}-panel-${tab.id}`}
@@ -65,16 +65,21 @@ export function GarageInspector({ scene, node, onChange, onDuplicate, onRemove, 
         data-testid={`garage-inspector-tab-${tab.id}`} onClick={() => onTabChange(tab.id)} onKeyDown={event => navigateTabs(event, index)}>{tab.label}</button>)}
     </div>
     </div>
+    <div ref={scrollBody} className={panel.scrollBody}>
+    <div className={panel.flags}>
+      <label><input type="checkbox" checked={node.visible} onChange={event => patch({ visible: event.target.checked })} />Видимость</label>
+      <label><input type="checkbox" checked={node.locked} onChange={event => patch({ locked: event.target.checked })} />Закрепить</label>
+    </div>
     <section role="tabpanel" id={`${id}-panel-object`} aria-labelledby={`${id}-tab-object`} hidden={activeTab !== "object"}
       className={panel.body} data-testid="garage-inspector-panel-object">
     <fieldset disabled={node.locked} className={styles.fieldset}>
       <h3 className={panel.sectionTitle}>Положение и размер</h3>
-      <div className={styles.fields}>{number("x", "X")}{number("y", "Y")}{number("scale", "Масштаб", .01, .001, 100)}
+      <div className={`${styles.fields} ${panel.numberFields}`}>{number("x", "X")}{number("y", "Y")}{number("scale", "Масштаб", .01, .001, 100)}
         {number("rotation", "Поворот °", 1, -3600, 3600)}{number("zIndex", "Слой", 1, -10000, 10000)}</div>
       <p className={panel.tip}>Положение относительно родителя. Масштаб сохраняет пропорции.</p>
       <details className={panel.fold}><summary>Форма и отражение</summary>
         <div className={panel.foldBody}>
-        <div className={styles.fields}>
+        <div className={`${styles.fields} ${panel.numberFields}`}>
           <GarageNumber label="Ширина %" value={(node.scaleX ?? 1) * 100} step={1} min={.1} max={100000} onChange={value => patch({ scaleX: value / 100 })} />
           <GarageNumber label="Высота %" value={(node.scaleY ?? 1) * 100} step={1} min={.1} max={100000} onChange={value => patch({ scaleY: value / 100 })} />
           <GarageNumber label="Скос °" value={node.skewX ?? 0} step={1} min={-89} max={89} onChange={value => patch({ skewX: value })} />
@@ -112,7 +117,7 @@ export function GarageInspector({ scene, node, onChange, onDuplicate, onRemove, 
       {!node.sockets.length && <p className={panel.tip}>Точек пока нет. Выберите инструмент «Крепление» и нажмите на деталь.</p>}
       {node.sockets.map(socket => <div key={socket.id} className={styles.socket}>
         <label className={styles.field}><span>Название точки</span><input value={socket.name} maxLength={80} onChange={event => patch({ sockets: node.sockets.map(item => item.id === socket.id ? { ...item, name: event.target.value } : item) })} /></label>
-        <div className={styles.fields}>{(["x", "y"] as const).map(key => <GarageNumber key={key} label={`${key.toUpperCase()} %`} value={socket[key] * 100} step={1} min={0} max={100}
+        <div className={`${styles.fields} ${panel.numberFields}`}>{(["x", "y"] as const).map(key => <GarageNumber key={key} label={`${key.toUpperCase()} %`} value={socket[key] * 100} step={1} min={0} max={100}
           onChange={value => patch({ sockets: node.sockets.map(item => item.id === socket.id ? { ...item, [key]: value / 100 } : item) })} />)}</div>
         <button type="button" onClick={() => {
           let next = scene;
@@ -127,9 +132,9 @@ export function GarageInspector({ scene, node, onChange, onDuplicate, onRemove, 
       {node.assetId ? <GarageOcclusionControls scene={scene} node={node} onChange={onChange} onEdit={onEditOcclusion} onRedraw={onRedrawOcclusion} />
         : <div className={panel.emptyMask}><h3>Выберите изображение корпуса</h3><p>Контур борта использует прозрачность изображения. У группы нет своего рисунка; выберите её корпус в списке слоёв.</p></div>}
     </section>
+    </div>
     <div className={panel.footer}><div className={styles.row}><button type="button" onClick={onDuplicate}><Copy size={15} />Дубликат</button>
       <button type="button" disabled={node.locked} onClick={onRemove}><Trash2 size={15} />Удалить</button></div>
-      <p>G — двигать · R — поворот · S — масштаб<br />Ctrl/⌘ Z — отменить</p>
     </div>
   </aside>;
 }

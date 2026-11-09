@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { ArrowLeft, Crosshair, Download, Expand, Eye, FolderPlus, Hand, ImagePlus, Layers, Maximize2, Minimize2, Minus, MousePointer2, Plus, Redo2, RotateCw, Save, Scaling, Scissors, Undo2, Upload } from "lucide-react";
+import { ArrowLeft, Crosshair, Download, Expand, Eye, Focus, Hand, Keyboard, Layers, Maximize2, Minimize2, Minus, MousePointer2, PanelRight, Pause, Play, Plus, Redo2, RotateCw, Save, Scaling, Scan, Scissors, SlidersHorizontal, Undo2, X } from "lucide-react";
 import defaultScene from "./garage-scene-default.json";
 import exampleScene from "./garage-scene-example.json";
-import { duplicateGarageNode, removeGarageNode, validateGarageScene } from "./garage-scene-model.mjs";
+import { duplicateGarageNode, garageBranchIds, removeGarageNode, validateGarageScene } from "./garage-scene-model.mjs";
 import { changeGarageHistory, finishGarageHistoryGesture, getGarageShortcut, redoGarageHistory, undoGarageHistory } from "./garage-editor-shortcuts.mjs";
 import type { GarageAsset, GarageNode, GarageScene } from "./garage-scene-types";
 import { GarageInspector, GarageNumber, type GarageInspectorTab } from "./garage-inspector";
 import { GARAGE_DEVICES, GarageStage, type GarageTool } from "./garage-stage";
-import { fitGarageEditorView, frameGarageEditorBounds, garageEditorNodeBounds, garageEditorWorldPoint, zoomGarageEditorView } from "./garage-editor-view.mjs";
+import { frameGarageEditorArtwork, garageEditorArtworkBounds, garageEditorNodeBounds, garageEditorWorldPoint, zoomGarageEditorView } from "./garage-editor-view.mjs";
 import { garageWaterSetup } from "./garage-water-setup.mjs";
+import { GarageLayersPanel } from "./garage-layers-panel";
 import { GarageWaterControls } from "./garage-water-controls";
 import { attachGarageWaterParts } from "./garage-water-assembly.mjs";
 import { defaultGarageOcclusion } from "./garage-occlusion.mjs";
@@ -23,7 +24,16 @@ const initialScene = validateGarageScene(defaultScene);
 const assemblyExample = validateGarageScene(exampleScene);
 type History = { past: GarageScene[]; scene: GarageScene; future: GarageScene[] };
 
+const narrowDockQuery = "(max-width: 1080px)";
+function subscribeDockWidth(notify: () => void) {
+  const query = window.matchMedia(narrowDockQuery);
+  query.addEventListener("change", notify);
+  return () => query.removeEventListener("change", notify);
+}
+const isNarrowDock = () => window.matchMedia(narrowDockQuery).matches;
+
 export function GarageEditor() {
+  const narrowDock = useSyncExternalStore(subscribeDockWidth, isNarrowDock, () => false);
   const [history, setHistory] = useState<History>({ past: [], scene: initialScene, future: [] });
   const scene = history.scene;
   const [selectedId, setSelectedId] = useState<string | null>("stand-left");
@@ -36,14 +46,18 @@ export function GarageEditor() {
   const [notice, setNotice] = useState("Загружаем сцену проекта…");
   const [revision, setRevision] = useState<string | null>(null), [saved, setSaved] = useState(JSON.stringify(initialScene));
   const [ready, setReady] = useState(false), [busy, setBusy] = useState(false), [draftAvailable, setDraftAvailable] = useState(false);
-  const [previewScale, setPreviewScale] = useState(.65);
+  const [deviceActualSize, setDeviceActualSize] = useState(false);
   const [mode, setMode] = useState<"assembly" | "devices">("assembly"), [focused, setFocused] = useState(false);
   const [environment, setEnvironment] = useState<"garage" | "water">("garage");
+  const [openPanel, setOpenPanel] = useState<"layers" | "properties" | "settings" | null>(null);
+  const leftDock = useRef<HTMLElement>(null);
+  const rightDock = useRef<HTMLDivElement>(null);
+  const guideDialog = useRef<HTMLDialogElement>(null);
   const [waterRunning, setWaterRunning] = useState(false);
   const [surface, setSurface] = useState({ width: 800, height: 600 });
   const [editorView, setEditorView] = useState({ x: 0, y: 0, scale: 1 });
-  const autoFit = useRef(true), previousSurface = useRef({ width: 800, height: 600 });
-  const preview = useRef<HTMLDivElement>(null), imageInput = useRef<HTMLInputElement>(null), jsonInput = useRef<HTMLInputElement>(null);
+  const autoFit = useRef<"canvas" | "boat" | false>("canvas"), previousSurface = useRef({ width: 800, height: 600 });
+  const preview = useRef<HTMLDivElement>(null);
   const device = GARAGE_DEVICES.find(item => item.id === deviceId)!;
   const selected = scene.nodes.find(item => item.id === selectedId);
   const libraryAssets = [...scene.assets, ...assemblyExample.assets.filter(asset => !scene.assets.some(item => item.id === asset.id))];
@@ -52,6 +66,9 @@ export function GarageEditor() {
   const dirty = JSON.stringify(scene) !== saved;
   const waterSetup = garageWaterSetup(scene);
   const canvasWidth = scene.canvas.width, canvasHeight = scene.canvas.height;
+  const waterRoot = environment === "water" ? waterSetup.config.rootId : null;
+  const previousWaterRoot = useRef(waterRoot);
+  const previewScale = deviceActualSize ? 1 : Math.max(.01, Math.min(1, (surface.width - 16) / device.width, (surface.height - 16) / device.height));
   const placementCenter = mode === "assembly" ? garageEditorWorldPoint(editorView, { x: surface.width / 2, y: surface.height / 2 }) : camera;
 
   useEffect(() => {
@@ -62,7 +79,7 @@ export function GarageEditor() {
       const next = validateGarageScene(body.scene);
       if (!active) return;
       setHistory({ past: [], scene: next, future: [] }); setRevision(body.revision); setSaved(JSON.stringify(next));
-      setNotice("Сцена проекта загружена. Изменения сохраняются кнопкой «В проект».");
+      setNotice("Сцена проекта загружена.");
     }).catch(() => { if (active) setNotice("Файлы проекта доступны на локальном dev-сервере. Здесь можно расставлять детали и экспортировать JSON."); }).finally(() => {
       if (!active) return;
       try { setDraftAvailable(Boolean(localStorage.getItem(DRAFT_KEY))); } catch { /* Export stays available without storage. */ }
@@ -87,21 +104,30 @@ export function GarageEditor() {
     return () => window.removeEventListener("beforeunload", beforeUnload);
   }, [dirty]);
 
+  const fitMeasuredSurface = useEffectEvent((width: number, height: number) =>
+    frameGarageEditorArtwork(scene.canvas, autoFit.current === "boat" ? waterSetup.artworkBounds : null, width, height));
+
   useEffect(() => {
     const element = preview.current;
     if (!element) return;
+    if (previousWaterRoot.current !== waterRoot) {
+      previousWaterRoot.current = waterRoot;
+      autoFit.current = waterRoot !== null ? "boat" : "canvas";
+    }
     const measure = () => {
       const width = Math.max(1, element.clientWidth), height = Math.max(1, element.clientHeight);
+      setSurface(current => current.width === width && current.height === height ? current : { width, height });
+      if (mode !== "assembly") return;
       const previous = previousSurface.current;
       previousSurface.current = { width, height };
-      setSurface(current => current.width === width && current.height === height ? current : { width, height });
-      setPreviewScale(Math.max(.12, Math.min(1, (width - 32) / device.width, (height - 32) / device.height)));
-      if (mode === "assembly") setEditorView(current => autoFit.current ? fitGarageEditorView({ width: canvasWidth, height: canvasHeight }, width, height)
-        : { ...current, x: current.x + (width - previous.width) / 2, y: current.y + (height - previous.height) / 2 });
+      const fitted = autoFit.current && fitMeasuredSurface(width, height);
+      if (fitted) setEditorView(fitted);
+      else if (width !== previous.width || height !== previous.height)
+        setEditorView(current => ({ ...current, x: current.x + (width - previous.width) / 2, y: current.y + (height - previous.height) / 2 }));
     };
     const observer = new ResizeObserver(measure); observer.observe(element); measure();
     return () => observer.disconnect();
-  }, [device, mode, canvasWidth, canvasHeight]);
+  }, [mode, canvasWidth, canvasHeight, waterRoot, waterSetup.hasArtwork]);
 
   useEffect(() => {
     const element = preview.current;
@@ -118,19 +144,23 @@ export function GarageEditor() {
     return () => element.removeEventListener("wheel", wheel);
   }, [mode, busy, ready]);
 
-  function fitView() {
-    autoFit.current = true;
-    setEditorView(fitGarageEditorView(scene.canvas, surface.width, surface.height));
+  function fitScene(target: GarageScene, subject: "canvas" | "boat") {
+    autoFit.current = subject;
+    setEditorView(frameGarageEditorArtwork(target.canvas, subject === "boat" ? garageWaterSetup(target).artworkBounds : null, surface.width, surface.height));
   }
+  function fitView() { fitScene(scene, environment === "water" ? "boat" : "canvas"); }
+  function fitCanvasView() { fitScene(scene, "canvas"); }
+  function fitExampleView() { fitScene(assemblyExample, "boat"); }
   function zoomView(scale: number) {
     autoFit.current = false;
     setEditorView(current => zoomGarageEditorView(current, scale, { x: surface.width / 2, y: surface.height / 2 }));
   }
   function frameSelected() {
-    const bounds = selectedId && garageEditorNodeBounds(scene, selectedId);
-    if (!bounds) return;
+    if (!selected) return;
+    const artwork = !selected.assetId && garageEditorArtworkBounds(scene, garageBranchIds(scene, selected.id));
+    const bounds = artwork || garageEditorNodeBounds(scene, selected.id);
     autoFit.current = false;
-    setEditorView(frameGarageEditorBounds(bounds, surface.width, surface.height, 60));
+    setEditorView(frameGarageEditorArtwork(scene.canvas, bounds, surface.width, surface.height));
   }
   function editOcclusion(redraw = false) {
     setInspectorTab("occlusion");
@@ -140,6 +170,7 @@ export function GarageEditor() {
       : "Тяните точки борта; нажмите на ребро, чтобы добавить точку. Отметьте справа детали, которые надо спрятать за бортом.");
   }
   function selectNode(id: string) {
+    setOpenPanel(current => current === "settings" ? null : current);
     setSelectedId(id);
     if (id !== selectedId) setInspectorTab("object");
     if (id !== selectedId && tool === "occlusion") setTool("move");
@@ -228,14 +259,15 @@ export function GarageEditor() {
   async function importScene(file: File) {
     try {
       if (file.size > 1024 * 1024) throw new Error("JSON должен быть не больше 1 МБ.");
-      const next = validateGarageScene(JSON.parse(await file.text())); change(next); setSelectedId(next.nodes[0]?.id ?? null); setInspectorTab("object");
+      const next = validateGarageScene(JSON.parse(await file.text())); change(next); fitScene(next, environment === "water" ? "boat" : "canvas"); setSelectedId(next.nodes[0]?.id ?? null); setInspectorTab("object");
       setNotice("Сборка импортирована. Пути изображений должны существовать в этом проекте.");
     } catch (error) { setNotice(error instanceof Error ? error.message : "Не удалось импортировать JSON."); }
   }
   function restoreDraft() {
     try {
       const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? "null");
-      change(validateGarageScene(draft.scene));
+      const next = validateGarageScene(draft.scene);
+      change(next); fitScene(next, environment === "water" ? "boat" : "canvas");
       setRevision(typeof draft.revision === "string" && /^[0-9a-f]{64}$/.test(draft.revision) ? draft.revision : null);
       setNotice(draft.revision === revision ? "Черновик восстановлен. Проверьте сцену перед сохранением в проект."
         : "Черновик основан на другой версии проекта. Экспортируйте JSON; сохранение не перезапишет более новую версию.");
@@ -247,7 +279,10 @@ export function GarageEditor() {
   // Reattach with the current scene so actions never use a stale selection or camera.
   useEffect(() => {
     function keyboard(event: globalThis.KeyboardEvent) {
-      if (busy || !ready) return;
+      if (busy || !ready || guideDialog.current?.open) return;
+      if (event.key === "Escape" && !event.defaultPrevented && openPanel) {
+        event.preventDefault(); setOpenPanel(null); return;
+      }
       const action = getGarageShortcut(event);
       if (!action) return;
       if (action !== "save") setWaterRunning(false);
@@ -275,99 +310,151 @@ export function GarageEditor() {
     return () => window.removeEventListener("keydown", keyboard);
   });
 
+  function changeEnvironment(next: "garage" | "water") {
+    setEnvironment(next); setWaterRunning(false);
+    if (next === "garage" && mode === "assembly") setOpenPanel(null);
+  }
+  function changeMode(next: "assembly" | "devices") {
+    setMode(next);
+    if (next === "assembly" && environment === "garage") setOpenPanel(null);
+  }
+  const drawerVisible = Boolean(openPanel && (narrowDock || focused));
+  useEffect(() => {
+    if (!drawerVisible) return;
+    const dock = openPanel === "layers" ? leftDock.current : rightDock.current;
+    const trigger = document.activeElement;
+    dock?.querySelector<HTMLElement>("button:not(:disabled), input, select")?.focus({ preventScroll: true });
+    return () => {
+      if (trigger instanceof HTMLElement && trigger.isConnected && trigger.getClientRects().length)
+        trigger.focus({ preventScroll: true });
+    };
+  }, [drawerVisible, openPanel]);
+
+  const hasSceneSettings = environment === "water" || mode === "devices";
+  const showSettings = openPanel === "settings" && hasSceneSettings;
+
   return <main className={styles.editor} data-focus={focused} tabIndex={-1}>
-    <header className={styles.header}><Link href="/" aria-label="Вернуться в игру"><ArrowLeft size={19} /></Link>
-      <div className={styles.heading}><small>МОХЛИК · ИНСТРУМЕНТЫ РАЗРАБОТКИ</small><h1>Сборщик лодки</h1></div>
-      <span className={styles.saveState}>{dirty ? "Есть изменения" : revision ? "Сцена сохранена" : "Шаблон сцены"}</span>
-      <div className={styles.row}><button type="button" onClick={undo} disabled={!history.past.length || busy || occlusionDraft} aria-label="Отменить (Ctrl/⌘ Z)" title={occlusionDraft ? "Ctrl/⌘ Z отменяет точку нового контура" : "Отменить · Ctrl/⌘ Z"}><Undo2 size={17} /></button>
-        <button type="button" onClick={redo} disabled={!history.future.length || busy || occlusionDraft} aria-label="Повторить (Ctrl/⌘ Shift Z или Ctrl/⌘ Y)" title="Повторить · Ctrl/⌘ Shift Z или Ctrl/⌘ Y"><Redo2 size={17} /></button>
-        <button type="button" onClick={exportScene} disabled={!ready || busy || occlusionDraft}><Download size={16} />JSON</button>
-        <button className={styles.primary} type="button" onClick={save} title={occlusionDraft ? "Сначала завершите контур Enter или отмените Escape" : "Сохранить в проект · Ctrl/⌘ S"} disabled={!revision || busy || !dirty || occlusionDraft}><Save size={16} />В проект</button></div>
+    <header className={styles.header}>
+      <Link href="/" aria-label="Вернуться в игру"><ArrowLeft size={18} /></Link>
+      <h1>Сборщик лодки</h1>
+      <span className={styles.saveState} data-dirty={dirty}>{dirty ? "Есть изменения" : revision ? "Сцена сохранена" : "Шаблон сцены"}</span>
+      <div className={styles.row}><button type="button" onClick={undo} disabled={!history.past.length || busy || occlusionDraft} aria-label="Отменить (Ctrl/⌘ Z)" title="Отменить · Ctrl/⌘ Z"><Undo2 size={17} /></button>
+        <button type="button" onClick={redo} disabled={!history.future.length || busy || occlusionDraft} aria-label="Повторить (Ctrl/⌘ Shift Z или Ctrl/⌘ Y)" title="Повторить · Ctrl/⌘ Shift Z"><Redo2 size={17} /></button>
+        <button type="button" onClick={exportScene} disabled={!ready || busy || occlusionDraft} aria-label="Экспорт JSON" title="Экспорт JSON"><Download size={16} /><span>JSON</span></button>
+        <button className={styles.primary} type="button" onClick={save} aria-label="Сохранить в проект" title={occlusionDraft ? "Сначала завершите контур Enter или отмените Escape" : "Сохранить в проект · Ctrl/⌘ S"} disabled={!revision || busy || !dirty || occlusionDraft}><Save size={16} />В проект</button></div>
     </header>
-    <div className={styles.status} role="status">{occlusionDraft ? "Рисуем новый контур: Enter — применить, Escape — отменить. До завершения рисунка JSON и сохранение недоступны." : notice}{draftAvailable && <span><button type="button" disabled={busy} onClick={restoreDraft}>Восстановить черновик</button><button type="button" disabled={busy} onClick={() => { try { localStorage.removeItem(DRAFT_KEY); } catch {} setDraftAvailable(false); }}>Пропустить</button></span>}</div>
-    <div className={styles.workspace} inert={busy || !ready}>
-      <aside className={styles.library}>
-        <div className={styles.sectionHead}><h2>Изображения</h2><button title="Импортировать сборку JSON" type="button" disabled={busy} onClick={() => jsonInput.current?.click()}><Upload size={15} /></button></div>
-        <button className={styles.upload} type="button" disabled={busy || !ready} onClick={() => imageInput.current?.click()}><ImagePlus size={18} />Загрузить PNG / WebP</button>
-        <input ref={imageInput} hidden type="file" accept="image/png,image/webp,image/jpeg" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadImage(file); event.target.value = ""; }} />
-        <input ref={jsonInput} hidden type="file" accept="application/json,.json" onChange={event => { const file = event.target.files?.[0]; if (file) void importScene(file); event.target.value = ""; }} />
-        <div className={styles.assets}>{libraryAssets.map(asset => <button key={asset.id} type="button" disabled={busy} title="Добавить экземпляр на сцену" onClick={() => add(asset)}>
-          {/* Raster originals stay independent from the scene layout. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={asset.src} alt="" /><span>{asset.name}</span><small>{asset.width} × {asset.height}</small></button>)}</div>
-        <div className={styles.sectionHead}><h2><Layers size={16} />Слои</h2><button type="button" title="Добавить группу" onClick={() => add()} disabled={busy}><FolderPlus size={16} /></button></div>
-        <div className={styles.layers}>{[...scene.nodes].sort((a, b) => b.zIndex - a.zIndex).map(node => <button type="button" key={node.id}
-          aria-pressed={selectedId === node.id} onClick={() => selectNode(node.id)} className={selectedId === node.id ? styles.selected : ""}>
-          <span>{node.parentId ? "↳ " : ""}{node.name}</span><small>{node.locked ? "🔒" : node.visible ? node.zIndex : "скрыт"}</small></button>)}</div>
-        <p className={styles.hint}>Загружайте целые корпус, мотор и снаряжение. Инструмент «Борт / маска» скроет детали внутри лодки без обрезания PNG.</p>
+    <div className={styles.modeToolbar} inert={busy || !ready}>
+      <div className={styles.modeTabs} role="group" aria-label="Вид редактора">
+        <button type="button" aria-pressed={mode === "assembly"} onClick={() => changeMode("assembly")}>Сборка</button>
+        <button type="button" aria-pressed={mode === "devices"} onClick={() => changeMode("devices")}>Устройства</button>
+      </div>
+      <select className={styles.compactSelect} aria-label="Вид редактора" value={mode} onChange={event => changeMode(event.target.value as typeof mode)}>
+        <option value="assembly">Сборка</option><option value="devices">Устройства</option>
+      </select>
+      <div className={styles.modeTabs} role="group" aria-label="Окружение сборки">
+        <button type="button" aria-pressed={environment === "garage"} onClick={() => changeEnvironment("garage")}>Мастерская</button>
+        <button type="button" aria-pressed={environment === "water"} onClick={() => changeEnvironment("water")}>На воде</button>
+      </div>
+      <select className={styles.compactSelect} aria-label="Окружение сборки" value={environment} onChange={event => changeEnvironment(event.target.value as typeof environment)}>
+        <option value="garage">Мастерская</option><option value="water">На воде</option>
+      </select>
+      {environment === "water" && <button type="button" className={styles.play} disabled={!waterSetup.hasArtwork}
+        aria-label={waterRunning ? "Пауза и редактировать" : "Проверить плавучесть"} title={waterRunning ? "Остановить плавучесть" : "Проверить плавучесть"}
+        aria-pressed={waterRunning} onClick={() => setWaterRunning(value => !value)}>{waterRunning ? <Pause size={16} /> : <Play size={16} />}<span>{waterRunning ? "Пауза" : "Плавучесть"}</span></button>}
+      {hasSceneSettings && <button type="button" aria-label="Настройки сцены" title="Настройки сцены" aria-controls={showSettings ? "garage-settings" : undefined} aria-expanded={showSettings}
+        onClick={() => setOpenPanel(showSettings ? null : "settings")}><SlidersHorizontal size={16} /><span className={styles.settingsLabel}>Настройки сцены</span></button>}
+      <div className={styles.endActions}>
+        <button type="button" disabled={busy || !ready} title="Загрузить пример одним отменяемым действием; текущую сборку можно вернуть Ctrl/⌘ Z" onClick={() => {
+            change(assemblyExample); fitExampleView(); setSelectedId("starter-hull"); setInspectorTab("object"); setNotice("Пример посадки загружен. Вернуть свою сборку — Ctrl/⌘ Z.");
+          }} aria-label="Пример посадки"><span className={styles.exampleFull}>Пример посадки</span><span className={styles.exampleShort}>Пример</span></button>
+
+        <button type="button" aria-pressed={focused} aria-label={focused ? "Вернуть панели" : "На весь экран"} onClick={() => { setFocused(value => !value); setOpenPanel(null); }}
+          title={focused ? "Вернуть панели · Esc" : "На весь экран"}>{focused ? <Minimize2 size={16} /> : <Maximize2 size={16} />}<span>{focused ? "Вернуть панели" : "На весь экран"}</span></button>
+      </div>
+    </div>
+    <div className={styles.workspace} data-panel={openPanel ?? "canvas"} inert={busy || !ready}>
+      {openPanel && <button type="button" className={styles.backdrop} aria-label="Вернуться на холст" onClick={() => setOpenPanel(null)} />}
+      <aside ref={leftDock} className={styles.library} aria-label="Слои и изображения">
+        <GarageLayersPanel scene={scene} assets={libraryAssets} selectedId={selectedId} onSelect={selectNode} onChange={change}
+          onAdd={add} onUpload={uploadImage} onImport={importScene} />
       </aside>
-      <section className={styles.center} aria-label={mode === "assembly" ? "Холст сборки" : "Предпросмотр устройств"}>
-        <div className={styles.modeToolbar}>
-          <div className={styles.modeTabs}><button type="button" aria-pressed={mode === "assembly"} onClick={() => setMode("assembly")}>Сборка</button>
-            <button type="button" aria-pressed={mode === "devices"} onClick={() => setMode("devices")}>Устройства</button></div>
-          <div className={styles.modeTabs} aria-label="Окружение сборки">
-            <button type="button" aria-pressed={environment === "garage"} onClick={() => { setEnvironment("garage"); setWaterRunning(false); }}>Мастерская</button>
-            <button type="button" aria-pressed={environment === "water"} onClick={() => { setEnvironment("water"); setWaterRunning(false); }}>На воде</button>
+      <section inert={drawerVisible} className={styles.center} aria-label={mode === "assembly" ? "Холст сборки" : "Предпросмотр устройств"}>
+        <div className={styles.stageArea}>
+          <div className={styles.tools} role="group" aria-label="Инструменты холста">{([
+            ["move", MousePointer2, "Двигать", "G"], ["rotate", RotateCw, "Повернуть", "R"], ["scale", Scaling, "Масштаб", "S"],
+            ["camera", Hand, mode === "assembly" ? "Холст" : "Камера", "H"], ["pivot", Crosshair, "Опора", "P"], ["socket", Crosshair, "Крепление", "A"],
+          ] as const).map(([value, Icon, label, key]) => <button key={value} type="button" disabled={busy} aria-label={label} title={`${label} · ${key}`} aria-pressed={tool === value} onClick={() => activateTool(value)}><Icon size={18} /><span>{label}</span></button>)}
+            <button type="button" disabled={busy || !selected?.assetId || selected.locked} aria-label="Борт / маска" title="Борт / маска · M" aria-pressed={tool === "occlusion"} onClick={() => activateTool("occlusion")}><Scissors size={18} /><span>Маска</span></button>
+            <button type="button" aria-label="Без разметки" title="Без разметки" aria-pressed={clean} onClick={() => setClean(value => !value)}><Eye size={18} /><span>Чистый вид</span></button></div>
+          <div className={`${styles.preview} ${mode === "assembly" ? styles.assemblyPreview : ""}`} ref={preview} data-testid="garage-preview" data-mode={mode} data-actual-size={mode === "devices" && deviceActualSize}>
+            {mode === "assembly" ? <GarageStage key="assembly" scene={scene} device={device} selectedId={selectedId} tool={tool} guides={guides} clean={clean || (environment === "water" && waterRunning)}
+              occlusionEdit={{ ...occlusionEdit, onExit: () => setTool("move"), onDraftChange: setOcclusionDraft }}
+              waterPreview={environment === "water" ? { config: waterSetup.config, running: waterRunning } : undefined}
+              editingView={{ ...editorView, width: surface.width, height: surface.height }} onViewChange={view => { autoFit.current = false; setEditorView(view); }}
+              onSelect={selectNode} onChange={change} onGestureEnd={before => setHistory(current => finishGarageHistoryGesture(current, before))} />
+              : <div className={styles.deviceFrame} style={{ width: device.width * previewScale, height: device.height * previewScale }}>
+                <div style={{ transform: `scale(${previewScale})`, transformOrigin: "top left" }}>
+                  <GarageStage key="device" scene={scene} device={device} selectedId={selectedId} tool={tool} guides={guides} clean={clean || (environment === "water" && waterRunning)}
+                    occlusionEdit={{ ...occlusionEdit, onExit: () => setTool("move"), onDraftChange: setOcclusionDraft }}
+                    waterPreview={environment === "water" ? { config: waterSetup.config, running: waterRunning } : undefined} onSelect={selectNode}
+                    onChange={change} onGestureEnd={before => setHistory(current => finishGarageHistoryGesture(current, before))} />
+                </div>
+              </div>}
           </div>
-          <button type="button" disabled={busy || !ready} title="Загрузить пример одним отменяемым действием; текущую сборку можно вернуть Ctrl/⌘ Z" onClick={() => {
-            change(assemblyExample); setSelectedId("starter-hull"); setInspectorTab("object"); setNotice("Пример посадки загружен. Ctrl/⌘ Z вернёт вашу сборку; файл проекта не изменён.");
-          }}>Пример посадки</button>
-          <button type="button" aria-pressed={focused} onClick={() => { setFocused(value => !value); setMode("assembly"); }} title="Скрыть панели; Esc — выйти">
-            {focused ? <Minimize2 size={15} /> : <Maximize2 size={15} />}{focused ? "Вернуть панели" : "На весь экран"}</button>
         </div>
-        {mode === "devices" && <div className={styles.deviceToolbar}>{GARAGE_DEVICES.map(item => <button type="button" key={item.id} aria-pressed={deviceId === item.id} onClick={() => setDeviceId(item.id)}>{item.name}</button>)}</div>}
-        <div className={styles.tools}>{([
-          ["move", MousePointer2, "Двигать", "G"], ["rotate", RotateCw, "Повернуть", "R"], ["scale", Scaling, "Масштаб", "S"],
-          ["camera", Hand, mode === "assembly" ? "Холст" : "Камера", "H"], ["pivot", Crosshair, "Опора", "P"], ["socket", Crosshair, "Крепление", "A"],
-        ] as const).map(([value, Icon, label, key]) => <button key={value} type="button" disabled={busy} aria-label={label} title={`${label} · ${key}`} aria-pressed={tool === value} onClick={() => activateTool(value)}><Icon size={15} />{label}<kbd aria-hidden>{key}</kbd></button>)}
-          <button type="button" disabled={busy || !selected?.assetId || selected.locked} aria-label="Борт / маска" title="Борт / маска · M" aria-pressed={tool === "occlusion"} onClick={() => activateTool("occlusion")}><Scissors size={15} />Борт / маска<kbd aria-hidden>M</kbd></button>
-          <button type="button" aria-pressed={clean} onClick={() => setClean(value => !value)}><Eye size={15} />Без разметки</button></div>
-        {environment === "water" && <GarageWaterControls key={waterSetup.config.rootId} scene={scene} config={waterSetup.config} running={waterRunning} hasArtwork={waterSetup.hasArtwork}
-          onRunningChange={setWaterRunning} onChange={waterPreview => change({ ...scene, waterPreview })}
-          onAttachParts={partIds => { try { change(attachGarageWaterParts(scene, waterSetup.config.rootId, partIds)); }
-            catch (error) { setNotice(error instanceof Error ? error.message : "Не удалось добавить детали в сборку."); } }} />}
-        {mode === "assembly" && <div className={styles.zoomToolbar} aria-label="Масштаб холста">
-          <button type="button" title="Уменьшить" aria-label="Уменьшить холст" onClick={() => zoomView(editorView.scale / 1.25)}><Minus size={15} /></button>
-          <span>{Math.round(editorView.scale * 100)}%</span>
-          <button type="button" title="Увеличить" aria-label="Увеличить холст" onClick={() => zoomView(editorView.scale * 1.25)}><Plus size={15} /></button>
-          <button type="button" onClick={fitView}><Expand size={14} />Вписать</button><button type="button" onClick={() => zoomView(1)}>100%</button>
-          <button type="button" disabled={!selected} onClick={frameSelected}>К детали</button>
-        </div>}
-        <div className={`${styles.preview} ${mode === "assembly" ? styles.assemblyPreview : ""}`} ref={preview} data-testid="garage-preview" data-mode={mode}>
-          {mode === "assembly" ? <GarageStage key="assembly" scene={scene} device={device} selectedId={selectedId} tool={tool} guides={guides} clean={clean || (environment === "water" && waterRunning)}
-            occlusionEdit={{ ...occlusionEdit, onExit: () => setTool("move"), onDraftChange: setOcclusionDraft }}
-            waterPreview={environment === "water" ? { config: waterSetup.config, running: waterRunning } : undefined}
-            editingView={{ ...editorView, width: surface.width, height: surface.height }} onViewChange={view => { autoFit.current = false; setEditorView(view); }}
-            onSelect={selectNode} onChange={change} onGestureEnd={before => setHistory(current => finishGarageHistoryGesture(current, before))} />
-            : <div className={styles.deviceFrame} style={{ width: device.width * previewScale, height: device.height * previewScale }}>
-              <div style={{ transform: `scale(${previewScale})`, transformOrigin: "top left" }}>
-                <GarageStage key="device" scene={scene} device={device} selectedId={selectedId} tool={tool} guides={guides} clean={clean || (environment === "water" && waterRunning)}
-                  occlusionEdit={{ ...occlusionEdit, onExit: () => setTool("move"), onDraftChange: setOcclusionDraft }}
-                  waterPreview={environment === "water" ? { config: waterSetup.config, running: waterRunning } : undefined} onSelect={selectNode}
-                  onChange={change} onGestureEnd={before => setHistory(current => finishGarageHistoryGesture(current, before))} />
-              </div>
-            </div>}
+        <div className={styles.previewFoot}>
+          {mode === "assembly" ? <div className={styles.zoomToolbar} aria-label="Масштаб холста">
+            <button type="button" title="Уменьшить" aria-label="Уменьшить холст" onClick={() => zoomView(editorView.scale / 1.25)}><Minus size={15} /></button>
+            <button type="button" className={styles.zoomReadout} onClick={() => zoomView(1)} title="Вернуть масштаб 100%" aria-label="Масштаб 100%">{Math.round(editorView.scale * 100)}%</button>
+            <button type="button" title="Увеличить" aria-label="Увеличить холст" onClick={() => zoomView(editorView.scale * 1.25)}><Plus size={15} /></button>
+            <button type="button" onClick={fitView}><Expand size={14} />{environment === "water" ? "Вписать лодку" : "Вписать"}</button>
+            {environment === "water" && <button type="button" aria-label="Весь холст" title="Вписать весь холст" onClick={fitCanvasView}><Scan size={15}/><span className={styles.zoomLabel}>Весь холст</span></button>}
+            <button type="button" title="Приблизить выбранную деталь" aria-label="К детали" disabled={!selected} onClick={frameSelected}><Focus size={15}/><span className={styles.zoomLabel}>К детали</span></button>
+          </div> : <div className={styles.deviceToolbar}>
+            <select aria-label="Устройство" value={deviceId} onChange={event => setDeviceId(event.target.value)}>{GARAGE_DEVICES.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+            <button type="button" aria-pressed={deviceActualSize} onClick={() => setDeviceActualSize(value => !value)} title="Устройство в натуральном размере">1:1</button>
+            <span>{device.width} × {device.height} · {Math.round(previewScale * 100)}%</span>
+          </div>}
+          <div className={styles.viewActions}>
+            <button type="button" aria-pressed={guides} onClick={() => setGuides(value => !value)} aria-label={mode === "assembly" ? "Область композиции" : "Безопасная область"} title={mode === "assembly" ? "Область композиции" : "Безопасная область"}><Scan size={15}/></button>
+            <button type="button" aria-label="Горячие клавиши" title="Горячие клавиши" onClick={() => guideDialog.current?.showModal()}><Keyboard size={16}/></button>
+          </div>
         </div>
-        <div className={styles.previewFoot}><span>{mode === "assembly" ? `${scene.canvas.width} × ${scene.canvas.height} · холст` : `${device.width} × ${device.height} · ${Math.round(previewScale * 100)}%`}</span>
-          <label><input type="checkbox" checked={guides} onChange={event => setGuides(event.target.checked)} />{mode === "assembly" ? "Область композиции" : "Безопасная область"}</label>
-          <span>{mode === "assembly" ? "Колесо — зум · пробел / средняя кнопка — двигать холст" : "Панель улучшений — отдельный макет UI"}</span></div>
-        <details className={styles.shortcuts}><summary>Горячие клавиши</summary>
-          <dl><dt>Ctrl/⌘ Z</dt><dd>Отменить действие</dd><dt>Ctrl/⌘ Shift Z · Ctrl/⌘ Y</dt><dd>Повторить</dd>
+      </section>
+      <div ref={rightDock} className={styles.rightPanel}>
+        {showSettings ? <aside className={styles.settingsPane} id="garage-settings" aria-label="Настройки сцены">
+          <header><h2>Настройки сцены</h2><button type="button" title="Закрыть настройки" aria-label="Закрыть настройки" onClick={() => setOpenPanel(null)}><X size={16}/></button></header>
+          <div className={styles.settingsBody}>
+            {environment === "water" && <GarageWaterControls key={waterSetup.config.rootId} scene={scene} config={waterSetup.config} hasArtwork={waterSetup.hasArtwork}
+              onChange={waterPreview => change({ ...scene, waterPreview })}
+              onAttachParts={partIds => { try { change(attachGarageWaterParts(scene, waterSetup.config.rootId, partIds)); }
+                catch (error) { setNotice(error instanceof Error ? error.message : "Не удалось добавить детали в сборку."); } }} />}
+            {mode === "devices" && <section className={styles.camera}><h3>Кадр {cameraMode === "portrait" ? "телефона / планшета" : "альбомного экрана"}</h3><div className={styles.fields}>
+              {(["x", "y", "width"] as const).map(key => <GarageNumber key={key} label={key === "width" ? "Ширина кадра" : key.toUpperCase()} value={camera[key]} step={10} min={key === "width" ? 300 : -10000}
+                onChange={value => change({ ...scene, cameras: { ...scene.cameras, [cameraMode]: { ...camera, [key]: value } } })} />)}
+              <button type="button" onClick={() => change({ ...scene, cameras: { ...scene.cameras, [cameraMode]: { x: scene.canvas.width / 2, y: scene.canvas.height / 2, width: cameraMode === "portrait" ? 1280 : scene.canvas.width } } })}>Сбросить кадр</button>
+            </div></section>}
+          </div>
+        </aside> : <GarageInspector scene={scene} node={selected} onChange={change} onDuplicate={duplicate} onRemove={remove} onError={setNotice}
+        activeTab={inspectorTab} onTabChange={tab => { setInspectorTab(tab); if (tab !== "occlusion" && tool === "occlusion") setTool("move"); }}
+        onEditOcclusion={() => editOcclusion()} onRedrawOcclusion={() => editOcclusion(true)} />}
+      </div>
+    </div>
+    <nav className={styles.drawerNav} aria-label="Рабочие панели" inert={busy || !ready}>
+      <button type="button" aria-pressed={openPanel === "layers"} onClick={() => setOpenPanel(openPanel === "layers" ? null : "layers")}><Layers size={16}/>Слои</button>
+      <button type="button" aria-pressed={openPanel === null} onClick={() => setOpenPanel(null)}><Focus size={16}/>Холст</button>
+      <button type="button" aria-pressed={openPanel === "properties"} onClick={() => setOpenPanel(openPanel === "properties" ? null : "properties")}><PanelRight size={16}/>Свойства</button>
+    </nav>
+    <div className={styles.status} role="status" data-action={draftAvailable || occlusionDraft}>{occlusionDraft ? "Рисуем новый контур: Enter — применить, Escape — отменить. До завершения рисунка JSON и сохранение недоступны." : notice}{draftAvailable && <span><button type="button" disabled={busy} onClick={restoreDraft}>Восстановить черновик</button><button type="button" disabled={busy} onClick={() => { try { localStorage.removeItem(DRAFT_KEY); } catch {} setDraftAvailable(false); }}>Пропустить</button></span>}</div>
+    <dialog ref={guideDialog} className={styles.guide} aria-labelledby="garage-keys-title">
+      <header><h2 id="garage-keys-title">Горячие клавиши</h2><button type="button" onClick={() => guideDialog.current?.close()} aria-label="Закрыть подсказку"><X size={16}/></button></header>
+      <dl><dt>Ctrl/⌘ Z</dt><dd>Отменить действие</dd><dt>Ctrl/⌘ Shift Z · Ctrl/⌘ Y</dt><dd>Повторить</dd>
+            <dt>Alt + ↑ / ↓</dt><dd>Выше или ниже в списке слоёв</dd>
             <dt>Ctrl/⌘ D</dt><dd>Дубликат детали</dd><dt>Ctrl/⌘ S</dt><dd>Сохранить в проект</dd>
             <dt>← ↑ ↓ → · Shift</dt><dd>Сдвиг на 1 · на 10</dd><dt>Delete · Backspace</dt><dd>Удалить деталь</dd>
             <dt>G / V · R · S</dt><dd>Двигать · поворот · масштаб; выберите режим и тяните деталь</dd>
             <dt>H · P · A · M</dt><dd>Холст · опора · крепление · маска борта</dd><dt>Esc</dt><dd>Вернуться к перемещению</dd></dl>
           <p>Рамка двигает выбранный слой, даже если он за другим предметом. Alt + клик — выбрать другой слой. Ручки растягивают свободно, Shift сохраняет пропорции; ручка поворота с Shift даёт шаг 15°. В «Борт / маска» Delete удаляет точку, нажатие на ребро добавляет её; Enter завершает новый контур, Escape отменяет. Колесо — зум; пробел + перетаскивание или средняя кнопка — холст. В полях ввода остаются обычные команды редактирования текста.</p>
-        </details>
-        {mode === "devices" && <details className={styles.camera}><summary>Кадр {cameraMode === "portrait" ? "телефона / планшета" : "альбомного экрана"}</summary><div className={styles.fields}>
-          {(["x", "y", "width"] as const).map(key => <GarageNumber key={key} label={key === "width" ? "Ширина кадра" : key.toUpperCase()} value={camera[key]} step={10} min={key === "width" ? 300 : -10000}
-            onChange={value => change({ ...scene, cameras: { ...scene.cameras, [cameraMode]: { ...camera, [key]: value } } })} />)}
-          <button type="button" onClick={() => change({ ...scene, cameras: { ...scene.cameras, [cameraMode]: { x: scene.canvas.width / 2, y: scene.canvas.height / 2, width: cameraMode === "portrait" ? 1280 : scene.canvas.width } } })}>Сбросить кадр</button>
-        </div></details>}
-      </section>
-      <GarageInspector scene={scene} node={selected} onChange={change} onDuplicate={duplicate} onRemove={remove} onError={setNotice}
-        activeTab={inspectorTab} onTabChange={tab => { setInspectorTab(tab); if (tab !== "occlusion" && tool === "occlusion") setTool("move"); }}
-        onEditOcclusion={() => editOcclusion()} onRedrawOcclusion={() => editOcclusion(true)} />
-    </div>
+    </dialog>
   </main>;
 }
