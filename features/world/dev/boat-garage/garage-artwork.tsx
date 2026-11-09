@@ -3,6 +3,7 @@
 import { useId, type PointerEvent } from "react";
 import { getGarageNodeMatrix, transformGaragePoint } from "./garage-scene-model.mjs";
 import { garageOccludersForNode } from "./garage-occlusion.mjs";
+import { garagePaintOrder } from "./garage-layer-order.mjs";
 import type { GarageNode, GarageScene } from "./garage-scene-types";
 
 function visible(scene: GarageScene, node: GarageNode): boolean {
@@ -22,7 +23,7 @@ type Props = {
 /** The hull's actual alpha hides only designated parts. Source rasters are never cut. */
 export function GarageArtwork({ scene, selectedId, clean, visibleIds, onNodePointerDown }: Props) {
   const prefix = `garage-occlusion-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
-  const ordered = [...scene.nodes].sort((a, b) => a.zIndex - b.zIndex)
+  const ordered = garagePaintOrder(scene)
     .filter(node => visible(scene, node) && (!visibleIds || visibleIds.has(node.id)));
   const masks = ordered.filter(node => node.assetId).map(node => ({ node,
     owners: garageOccludersForNode(scene, node.id).filter(owner => !visibleIds || visibleIds.has(owner.id)) as GarageNode[],

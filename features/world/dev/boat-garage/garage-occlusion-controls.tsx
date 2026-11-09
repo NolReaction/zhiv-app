@@ -2,6 +2,7 @@
 
 import { EyeOff, Pencil, RotateCcw, Scissors, Trash2 } from "lucide-react";
 import { defaultGarageOcclusion, garageOcclusionTargetIds } from "./garage-occlusion.mjs";
+import { garageLayerStack } from "./garage-layer-order.mjs";
 import type { GarageNode, GarageScene } from "./garage-scene-types";
 import styles from "./garage-occlusion-controls.module.css";
 
@@ -19,15 +20,17 @@ export function GarageOcclusionControls({ scene, node, onChange, onEdit, onRedra
   if (!node.assetId && !occlusion) return null;
 
   const eligible = new Set(garageOcclusionTargetIds(scene, node.id));
-  const targets = [...scene.nodes].filter(item => eligible.has(item.id)).sort((a, b) => b.zIndex - a.zIndex);
+  const stack = garageLayerStack(scene);
+  const targets = stack.filter(item => eligible.has(item.id));
   const targetBranches = new Set(occlusion?.targetIds ?? []);
   for (let previous = -1; previous !== targetBranches.size;) {
     previous = targetBranches.size;
     for (const item of scene.nodes) if (item.parentId && targetBranches.has(item.parentId)) targetBranches.add(item.id);
   }
   const foregroundZ = Math.min(10000, node.zIndex + 1);
-  const behindTargets = scene.nodes.filter(item => targetBranches.has(item.id) && !item.locked && item.zIndex < foregroundZ);
-  const lockedBehind = scene.nodes.some(item => targetBranches.has(item.id) && item.locked && item.zIndex <= node.zIndex);
+  const behindHull = stack.slice(stack.findIndex(item => item.id === node.id) + 1).filter(item => targetBranches.has(item.id));
+  const behindTargets = behindHull.filter(item => !item.locked);
+  const lockedBehind = behindHull.some(item => item.locked);
 
   function setOcclusion(next: GarageNode["occlusion"]) {
     onChange({ ...scene, nodes: scene.nodes.map(item => {

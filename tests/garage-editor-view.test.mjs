@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { fitGarageEditorView, frameGarageEditorBounds, garageEditorNodeBounds, garageEditorWorldPoint, panGarageEditorView, zoomGarageEditorView } from "../features/world/dev/boat-garage/garage-editor-view.mjs";
+import { fitGarageEditorView, frameGarageEditorArtwork, frameGarageEditorBounds, garageEditorNodeBounds, garageEditorWorldPoint, panGarageEditorView, zoomGarageEditorView } from "../features/world/dev/boat-garage/garage-editor-view.mjs";
 import { validateGarageScene } from "../features/world/dev/boat-garage/garage-scene-model.mjs";
+import { garageWaterSetup } from "../features/world/dev/boat-garage/garage-water-setup.mjs";
 const close = (a, b) => assert(Math.abs(a - b) < 1e-8, `${a} != ${b}`);
 
 test("assembly fit uses the entire available area without a device-size ceiling", () => {
@@ -48,4 +49,28 @@ test("selection framing reads all world corners through parent transforms withou
   assert.equal(JSON.stringify(scene), afterRotation);
   assert.notEqual(before, afterRotation);
   assert.equal(garageEditorNodeBounds(scene, "missing"), null);
+});
+
+test("water fits the visible hull and attached motor together even though their group covers the whole canvas", async () => {
+  const scene = validateGarageScene(JSON.parse(await readFile(new URL("../features/world/dev/boat-garage/garage-scene-example.json", import.meta.url), "utf8")));
+  const before = JSON.stringify(scene), bounds = garageWaterSetup(scene).artworkBounds;
+  const hull = garageEditorNodeBounds(scene, "starter-hull"), motor = garageEditorNodeBounds(scene, "starter-motor");
+  close(bounds.x, Math.min(hull.x, motor.x));
+  close(bounds.y, Math.min(hull.y, motor.y));
+  close(bounds.x + bounds.width, Math.max(hull.x + hull.width, motor.x + motor.width));
+  close(bounds.y + bounds.height, Math.max(hull.y + hull.height, motor.y + motor.height));
+  for (const [width, height] of [[825, 510], [320, 440], [820, 280]]) {
+    const fit = frameGarageEditorArtwork(scene.canvas, bounds, width, height);
+    assert(fit.scale > fitGarageEditorView(scene.canvas, width, height).scale * 1.15);
+    close(fit.x + (bounds.x + bounds.width / 2) * fit.scale, width / 2);
+    close(fit.y + (bounds.y + bounds.height / 2) * fit.scale, height / 2);
+    assert(fit.x + bounds.x * fit.scale > 0 && fit.y + bounds.y * fit.scale > 0);
+  }
+  assert.equal(JSON.stringify(scene), before);
+  scene.nodes.find(node => node.id === "starter-motor").visible = false;
+  assert.deepEqual(garageWaterSetup(scene).artworkBounds, hull);
+  scene.nodes.find(node => node.id === "boat").visible = false;
+  const empty = garageWaterSetup(scene).artworkBounds;
+  assert.equal(empty, null);
+  assert.deepEqual(frameGarageEditorArtwork(scene.canvas, empty, 400, 600), fitGarageEditorView(scene.canvas, 400, 600));
 });

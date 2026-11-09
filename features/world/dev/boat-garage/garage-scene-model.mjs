@@ -8,6 +8,7 @@ import { garageOcclusionPolygonProblem, garageOcclusionTargetIds } from "./garag
 
 /** @type {GarageMatrix} */
 const IDENTITY = [1, 0, 0, 1, 0, 0];
+export const GARAGE_MAX_DEPTH = 100_000;
 const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/;
 const SOURCE_PATTERN = /^\/world\/boat-garage\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9][a-zA-Z0-9._-]*\.(?:png|webp|jpe?g)$/i;
 
@@ -83,7 +84,7 @@ export function validateGarageScene(input) {
         x: number(socket.x, "Крепление X", 0, 1), y: number(socket.y, "Крепление Y", 0, 1) };
     });
     unique(sockets, "Крепления слоя");
-    const zIndex = number(node.zIndex, "Порядок слоя", -100_000, 100_000);
+    const zIndex = number(node.zIndex, "Порядок слоя", -GARAGE_MAX_DEPTH, GARAGE_MAX_DEPTH);
     if (!Number.isInteger(zIndex)) throw new Error("Порядок слоя должен быть целым числом.");
     let occlusion;
     if (node.occlusion !== undefined) {
@@ -243,13 +244,22 @@ export function duplicateGarageNode(scene, id) {
   return validateGarageScene({ ...scene, nodes: [...scene.nodes, duplicate] });
 }
 
+/** A root and its attached descendants, independently of their draw order.
+ * @param {GarageScene} scene @param {string|undefined} rootId @returns {Set<string>} */
+export function garageBranchIds(scene, rootId) {
+  const ids = new Set();
+  if (!scene.nodes.some(node => node.id === rootId)) return ids;
+  ids.add(rootId);
+  for (let previous = -1; previous !== ids.size;) {
+    previous = ids.size;
+    for (const node of scene.nodes) if (node.parentId && ids.has(node.parentId)) ids.add(node.id);
+  }
+  return ids;
+}
+
 /** @param {GarageScene} scene @param {string} id @returns {GarageScene} */
 export function removeGarageNode(scene, id) {
-  const removed = new Set([id]);
-  for (let previous = -1; previous !== removed.size;) {
-    previous = removed.size;
-    for (const node of scene.nodes) if (node.parentId && removed.has(node.parentId)) removed.add(node.id);
-  }
+  const removed = garageBranchIds(scene, id);
   const result = { ...scene, nodes: scene.nodes.filter(node => !removed.has(node.id)) };
   result.nodes = result.nodes.map(node => node.occlusion && node.occlusion.targetIds.some(id => removed.has(id))
     ? { ...node, occlusion: { ...node.occlusion, targetIds: node.occlusion.targetIds.filter(id => !removed.has(id)) } } : node);
