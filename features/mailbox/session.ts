@@ -1,10 +1,11 @@
 import { ApiError } from "@/lib/check-in-api";
-import type { MailMessage, MailNotification, MailboxPage, MailReadResult, MailClaimResult } from "./model";
+import type { MailMessage, MailNotification, MailboxPage, MailReadResult } from "./model";
+import type { MailClaimReceipt } from "./claim-receipt";
 import { compareMailInstants, createMailNotificationLedger } from "./notification-ledger";
 
 type Transport = { list: (cursor: string | null, signal: AbortSignal) => Promise<MailboxPage>;
   read: (id: string, signal: AbortSignal) => Promise<MailReadResult>;
-  claim?: (id: string, signal: AbortSignal) => Promise<MailClaimResult> };
+  claim?: (id: string, signal: AbortSignal) => Promise<MailClaimReceipt> };
 type View = { ownerPublicId: string | null; messages: readonly MailMessage[]; unreadCount: number; nextCursor: string | null;
   loaded: boolean; loading: boolean; loadingMore: boolean; available: boolean; error: string | null; readError: string | null;
   opened: boolean; selected: MailMessage | null; readingIds: readonly string[]; claimingIds: readonly string[];
@@ -21,7 +22,7 @@ export function createMailboxSession(owner: string | null, transport: Transport,
   const received = new Set<string>();
   const receivedClaims = new Set<string>();
   const requests = new Set<AbortController>(), reads = new Map<string, AbortController>(), listeners = new Set<() => void>();
-  const claims = new Map<string, AbortController>(), claimed = new Map<string, MailClaimResult["gift"]>();
+  const claims = new Map<string, AbortController>(), claimed = new Map<string, MailClaimReceipt["gift"]>();
   const acknowledged = new Map<string, string>(), ledger = owner ? createMailNotificationLedger(owner, storage) : null;
   const publish = (patch: Partial<View>) => { view = { ...view, ...patch }; listeners.forEach(listener => listener()); };
   const valid = (token: number) => active && available && generation === token;

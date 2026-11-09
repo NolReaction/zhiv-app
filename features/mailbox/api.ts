@@ -2,7 +2,8 @@ import { z } from "zod";
 import { gameplayGenerationHeaders, reportGameplayReset } from "@/lib/gameplay-generation";
 import { ApiError } from "@/lib/check-in-api";
 import { retryAfterMs, withRequestDeadline } from "@/lib/request-deadline";
-import { mailboxPageSchema, mailReadResultSchema, mailClaimResultSchema } from "./model";
+import { mailboxPageSchema, mailReadResultSchema } from "./model";
+import { mailClaimReceiptSchema } from "./claim-receipt";
 
 async function request<T>(path: string, owner: string, schema: z.ZodType<T, unknown>, signal?: AbortSignal, body?: unknown) {
   return withRequestDeadline(10_000, signal, async requestSignal => {
@@ -35,5 +36,5 @@ export function markMailRead(owner: string, id: string, signal?: AbortSignal) {
 }
 export function claimMailGift(owner: string, id: string, signal?: AbortSignal) {
   if (!z.guid().safeParse(id).success) return Promise.reject(new ApiError("Письмо не найдено", 400));
-  return request(`/api/v1/mail/${encodeURIComponent(id)}/claim`, owner, mailClaimResultSchema, signal, { expectedOwnerPublicId: owner });
+  return request(`/api/v1/mail/${encodeURIComponent(id)}/claim`, owner, mailClaimReceiptSchema, signal, { expectedOwnerPublicId: owner });
 }

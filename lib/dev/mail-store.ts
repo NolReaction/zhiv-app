@@ -3,7 +3,8 @@ import { devMailMessages } from "./mail-state";
 import { creditDevProgressionReward } from "./economy-store";
 import { PEARL_DISPLAY_DIVISOR } from "@/features/economy/domain/money";
 import { WELCOME_MAIL_PEARLS, WELCOME_MAIL_TITLE, WELCOME_MAIL_BODY } from "@/features/mailbox/welcome";
-import { mailMessageSchema, type MailMessage, type MailboxPage, type MailReadResult, type MailClaimResult } from "@/features/mailbox/model";
+import { mailMessageSchema, type MailMessage, type MailboxPage, type MailReadResult } from "@/features/mailbox/model";
+import type { MailClaimReceipt } from "@/features/mailbox/claim-receipt";
 
 export type DevMailResult<T> = { kind: "ok"; value: T } | { kind: "unauthorized" | "owner-mismatch" | "not-found" | "invalid" };
 const canonicalTime = (value: string) => new Date(value).toISOString().replace(/\.000Z$/, "Z");
@@ -47,7 +48,7 @@ export function getDevMail(token: string | undefined, owner: string, cursor: str
     latestUnreadNotification: latest ? { id: latest.id, createdAt: latest.createdAt } : null } };
 }
 /** Synchronous equivalent of the JDBC transaction. Read/open never calls this. */
-export function claimDevMailGift(token: string | undefined, owner: string, id: string, now = Date.now()): DevMailResult<MailClaimResult> {
+export function claimDevMailGift(token: string | undefined, owner: string, id: string, now = Date.now()): DevMailResult<MailClaimReceipt> {
   const session = actor(token, owner);
   if (session.kind !== "ok") return session;
   const messages = devMailMessages(owner), message = messages.get(id);

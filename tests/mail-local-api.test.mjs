@@ -14,6 +14,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 const identity = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const store = await vite.ssrLoadModule("/lib/dev/mail-store.ts");
 const model = await vite.ssrLoadModule("/features/mailbox/model.ts");
+const { claimMailGift } = await vite.ssrLoadModule("/features/mailbox/api.ts");
 const { GET } = await vite.ssrLoadModule("/app/api/v1/mail/route.ts");
 const { POST } = await vite.ssrLoadModule("/app/api/v1/mail/[id]/read/route.ts");
 const { POST: CLAIM } = await vite.ssrLoadModule("/app/api/v1/mail/[id]/claim/route.ts");
@@ -139,13 +140,18 @@ test("production gates run before cookies identity or local mail access", async 
   assert.throws(() => store.seedDevMailForTests(p.me.user.publicId, [letter(2)]), /NODE_ENV=test/);
 });
 
-test("welcome open and read do not pay, explicit concurrent retries credit exactly 20 visible pearls once", async () => {
+test("welcome open and read do not pay, explicit concurrent retries credit exactly 20 visible pearls once", async t => {
   const p = player(); globalThis.__mailToken = p.token;
   const before = economy.getDevEconomy(p.token), welcome = (await (await inbox(p)).json()).messages[0];
   await status(await read(p, welcome.id), 200);
   assert.equal(economy.getDevEconomy(p.token).wallet.pearls, before.wallet.pearls);
-  const results = await Promise.all(Array.from({ length: 8 }, () => claim(p, welcome.id)));
-  const gifts = await Promise.all(results.map(async response => model.mailClaimResultSchema.parse(await (await status(response, 200)).json())));
+  t.mock.method(globalThis, "fetch", async (path, init) => {
+    const request = new Request(new URL(path, "http://localhost:3000"), init);
+    request.headers.set("Origin", "http://localhost:3000");
+    assert.equal(new URL(request.url).pathname, `/api/v1/mail/${welcome.id}/claim`);
+    return status(await CLAIM(request, { params: Promise.resolve({ id: welcome.id }) }), 200);
+  });
+  const gifts = await Promise.all(Array.from({ length: 8 }, () => claimMailGift(p.me.user.publicId, welcome.id)));
   assert.ok(gifts.every(result => result.gift.pearls === 20 && result.gift.claimedAt === gifts[0].gift.claimedAt));
   assert.equal(gifts.filter(result => result.replayed === false).length, 1);
   assert.equal(gifts.filter(result => result.replayed === true).length, gifts.length - 1);
