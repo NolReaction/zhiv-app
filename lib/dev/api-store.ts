@@ -36,7 +36,7 @@ import { activeUserStatus, normalizeUserStatus, validStatusDuration } from "@/li
 import { normalizePersonNickname, personDisplayName } from "@/lib/person-nickname";
 import { createHash } from "node:crypto";
 import { normalizeDisplayName } from "@/lib/check-in-presentation";
-import { resetDevEconomyStoreForTests, getDevEconomyAchievementState, getDevConfirmedMarketSales, getDevGuestWorldEconomy, getDevFriendGameSummary } from "@/lib/dev/economy-store";
+import { resetDevEconomyStoreForTests, getDevEconomyAchievementState, getDevConfirmedMarketSales, getDevGuestFishingSummary, getDevGuestWorldEconomy, getDevFriendGameSummary } from "@/lib/dev/economy-store";
 import { resetDevWorldStoreForTests, getDevCollectionFinds, getDevGuestWorldAppearance } from "@/lib/dev/world-store";
 import { resetDevProgressionRewardsForTests } from "@/lib/dev/progression-rewards-store";
 import { resetDevForestMemoryStoreForTests } from "@/lib/dev/forest-memory-state";
@@ -1104,6 +1104,7 @@ export function getDevGuestProfile(token: string | undefined, circleId: string):
     user: { publicId: target.publicId, displayName: target.displayName },
     homeLevel: Math.min(5, Math.max(1, state?.buildings.home ?? 1)), completedExplorations: state?.completedExplorations ?? 0,
     playerXp: state?.progression.player?.xp ?? 0,
+    fishingSummary: getDevGuestFishingSummary(target.publicId),
     achievements, tapStats: devSharedTapStats(target.publicId), collections: guestCollections(finds, state?.fishing.catches ?? {}), serverTime: new Date().toISOString() } };
 }
 

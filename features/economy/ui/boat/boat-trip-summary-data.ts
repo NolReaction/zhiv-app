@@ -11,12 +11,12 @@ export type BoatTripCatch = Readonly<{
 }>;
 export type BoatTripReceipt = Readonly<{
   voyageId: string; routeName: string; catches: readonly BoatTripCatch[];
-  count: number; castsUsed: number; totalWeightGrams: number; largest: BoatTripCatch | null;
+  saleCoins?: number; count: number; castsUsed: number; totalWeightGrams: number; largest: BoatTripCatch | null;
   newSpeciesCount: number; recordSpeciesCount: number;
 }>;
 
 /** A detached display receipt. Only confirmed catches enter it; it never credits inventory. */
-export function createBoatTripReceipt(state: EconomyView, voyage: BoatVoyage): BoatTripReceipt {
+export function createBoatTripReceipt(state: EconomyView, voyage: BoatVoyage, saleCoins?: number): BoatTripReceipt {
   const displayState = { ...state, boat: { ...boatState(state), voyage } };
   const catches = voyage.catches.map(caught => {
     const details = boatCatchPresentation(displayState, caught);
@@ -26,7 +26,7 @@ export function createBoatTripReceipt(state: EconomyView, voyage: BoatVoyage): B
       previousBestGrams: details.previousBestGrams });
   });
   const largest = catches.reduce<BoatTripCatch | null>((best, caught) => !best || caught.weightGrams > best.weightGrams ? caught : best, null);
-  return Object.freeze({ voyageId: voyage.id, routeName: state.catalog.boat?.name ?? "Речной плёс",
+  return Object.freeze({ voyageId: voyage.id, ...(saleCoins != null ? { saleCoins } : {}), routeName: state.catalog.boat?.name ?? "Речной плёс",
     catches: Object.freeze(catches), count: catches.length, castsUsed: voyage.castsUsed,
     totalWeightGrams: catches.reduce((total, caught) => total + caught.weightGrams, 0), largest,
     newSpeciesCount: new Set(catches.filter(caught => caught.isNewSpecies).map(caught => caught.fishId)).size,

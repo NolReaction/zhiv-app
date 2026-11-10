@@ -76,9 +76,15 @@ export function WorldCookbook({ economy, recipes, focusedRecipeId, navigationReq
   const cooked = economy.snapshot.catalog.recipes.filter(recipe => recipe.buildingId === "dryer").reduce((total, recipe) => total + (confirmedRecipes[recipe.id] ?? 0), 0);
   const available = (recipe: WorldRecipe) => !worldRecipeAccessReason(state, recipe) && !worldCostShortfalls(state, worldRecipeCost(state, recipe)).length;
   const categoryProducts = products.filter(product => product.category === selection.category);
-  const maskedInView = !availableOnly && !query.trim() && rarity === "all" ? masked[selection.category] : 0;
+  const search = query.trim().toLocaleLowerCase("ru-RU");
+  const ingredientLabels = (items: Record<string, number>) => Object.keys(items).map(item => itemName(state, item));
+  const matches = (labels: string[]) => labels.some(label => label.toLocaleLowerCase("ru-RU").includes(search));
+  const maskedCategory = masked.filter(page => page.category === selection.category);
+  const maskedInView = maskedCategory.filter(page => matches(ingredientLabels(page.cost.items))
+    && (!availableOnly || !worldCostShortfalls(state, page.cost).length)
+    && (selection.category !== "fish" || rarity === "all" || page.rarity === rarity));
   const filtered = categoryProducts.filter(product => (!availableOnly || available(product.recipe))
-    && (!query.trim() || [recipeTitle(product.recipe), product.recipe.experiment?.hint ?? ""].join(" ").toLocaleLowerCase("ru-RU").includes(query.trim().toLocaleLowerCase("ru-RU")))
+    && matches([recipeTitle(product.recipe), product.recipe.experiment?.hint ?? "", ...ingredientLabels(product.recipe.cost.items)])
     && (selection.category !== "fish" || rarity === "all" || cookbookFishRarity(state, product.recipe) === rarity));
   const groups = selection.category === "fish" ? [...cookbookRarities.map(group => ({ ...group, products: filtered.filter(product => cookbookFishRarity(state, product.recipe) === group.id) })), { id: "prepared", label: "Блюда из заготовок", products: filtered.filter(product => !cookbookFishRarity(state, product.recipe)) }]
     : [{ id: selection.category, label: bookTabs.find(category => category.id === selection.category)!.label, products: filtered }];
@@ -110,20 +116,24 @@ export function WorldCookbook({ economy, recipes, focusedRecipeId, navigationReq
       })}</div>
       <div className={styles.workspace} role="tabpanel" id={`${id}-recipes`} aria-labelledby={`${id}-${selection.category}`} data-selected={Boolean(selectedRecipe)}>
         <div className={styles.browser} ref={listing} tabIndex={-1}>
-          {selection.category === "discoveries" && <p className={styles.discoveryIntro}>Знакомые ингредиенты подсказывают новые сочетания. Название блюда появится после первого удачного опыта.</p>}
+          {selection.category === "discoveries" && <p className={styles.discoveryIntro}>Раскройте состав и соберите продукты. Выберите знакомое сочетание и нажмите «Попробовать». Заберите результат у костра: при первом успехе блюдо появится в основном разделе книги.</p>}
           <div className={styles.filters}><label className={styles.search}><Search size={15} aria-hidden="true" /><input type="search" aria-label="Найти рецепт" placeholder="Поиск" value={query} onChange={event => setQuery(event.target.value)} /></label><label className={styles.canCook}><input type="checkbox" checked={availableOnly} onChange={event => setAvailableOnly(event.target.checked)} />Есть ингредиенты</label></div>
           {selection.category === "fish" && <label className={styles.rarityFilter}>Рыба<select aria-label="Редкость рыбы в рецепте" value={rarity} onChange={event => setRarity(event.target.value)}><option value="all">Любая редкость</option>{cookbookRarities.map(entry => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select></label>}
           <div className={styles.recipeList} data-section-guide-target="workshop-recipes">{groups.filter(group => group.products.length > 0).map(group => <section key={group.id} data-cooking-group={selection.category} data-cookbook-rarity={selection.category === "fish" ? group.id : undefined}><h3 className={styles.groupHeading}>{group.label}<span>{group.products.length}</span></h3><div className={styles.recipeGrid}>{group.products.map(product => {
             const recipe = product.recipe, output = Object.keys(recipe.rewards)[0], access = worldRecipeAccessReason(state, recipe), hidden = recipe.experiment && !experimentDiscovered(state, recipe);
             return <button key={product.key} type="button" className={styles.recipe} data-cookbook-recipe={recipe.id} data-recipe-focused={recipe.id === focusedRecipeId || undefined} aria-pressed={selectedRecipe?.id === recipe.id} aria-label={`Рецепт: ${recipeTitle(recipe)}`} onClick={event => { lastTrigger.current = event.currentTarget; setSelection(value => ({ ...value, recipeId: recipe.id })); onHelpContextChange?.({ stationId: "dryer", intent: "production", recipeId: recipe.id, quantity: 1 }); }}>{hidden ? <CookingExperimentIcon recipeId={recipe.id} size={35} /> : <ProductIcon state={state} itemId={output} size={35} />}<span><strong>{recipeTitle(recipe)}</strong>{recipe.fishInput?.exactSpecies && <em className={styles.signature}>Фирменное</em>}<small><Clock3 size={11} aria-hidden="true" />{worldRecipeDuration(recipe.seconds)}{access ? <LockKeyhole size={12} aria-label="Есть условия открытия" /> : available(recipe) ? <Check size={13} aria-label="Есть ингредиенты" /> : null}</small></span></button>;
           })}</div></section>)}
-            {maskedInView > 0 && <div className={styles.maskedRecipes}>
-              <LockKeyhole size={23} aria-hidden="true" />
-              <div><strong>Скрытые рецепты: {maskedInView}</strong><p>{selection.category === "discoveries"
-                ? "Готовьте у костра и собирайте новые ингредиенты, чтобы открыть опыты."
-                : "Собирайте новые ингредиенты, чтобы открыть страницы."}</p></div>
-            </div>}
-            {!filtered.length && !maskedInView && <p className={styles.empty}>{categoryProducts.length || masked[selection.category] ? "Нет подходящих рецептов. Попробуйте другой раздел или фильтр." : selection.category === "discoveries" ? "Новые опыты появятся, когда вы познакомитесь с их ингредиентами и разовьёте кухню." : "Новые рецепты появятся по мере развития кухни и знакомства с ингредиентами."}</p>}</div>
+            {maskedInView.length > 0 && <section className={styles.maskedRecipes}>
+              <h3 className={styles.groupHeading}><LockKeyhole size={15} aria-hidden="true" />Скрытые рецепты: {maskedInView.length}</h3>
+              {maskedInView.map(page => <details key={page.key} className={styles.maskedPage}>
+                <summary><strong>Состав</strong> · {ingredientLabels(page.cost.items).join(", ")}</summary>
+                <ul>{Object.entries(page.cost.items).map(([item, quantity]) => <li key={item}>{itemName(state, item)} ×{number(quantity)}</li>)}
+                  {page.cost.coins > 0 && <li>Монеты ×{number(page.cost.coins)}</li>}</ul>
+                {page.unfamiliar.length > 0 && <p>Ещё нужно найти: {page.unfamiliar.map(item => itemName(state, item)).join(", ")}.</p>}
+                {page.requiredSkill && <p>Нужна кулинария {page.requiredSkill} ур. Готовьте и забирайте блюда у костра.</p>}
+              </details>)}
+            </section>}
+            {!filtered.length && !maskedInView.length && <p className={styles.empty}>{categoryProducts.length || maskedCategory.length ? "Нет подходящих рецептов. Попробуйте другой раздел или фильтр." : selection.category === "discoveries" ? "Новые опыты появятся, когда вы познакомитесь с их ингредиентами и разовьёте кухню." : "Новые рецепты появятся по мере развития кухни и знакомства с ингредиентами."}</p>}</div>
         </div>
         {selectedRecipe ? <section className={styles.detail} aria-label={`Рецепт: ${recipeTitle(selectedRecipe)}`}>
           <div className={styles.detailScroll}><button type="button" className={styles.back} onClick={backToRecipes}><ArrowLeft size={15} aria-hidden="true" />Все рецепты</button><CookbookRecipeDetails economy={economy} recipe={selectedRecipe} navigation={navigation} headingRef={heading} />

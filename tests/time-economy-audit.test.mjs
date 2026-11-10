@@ -73,7 +73,7 @@ test("hero material baskets cannot regain a hidden mint or a long unattended tim
 
 
 test("optional kitchen experiments compensate failed attempts and bound skill benefits against full ingredient-and-work cost", () => {
-  assert.equal(report.experiments.length, 4);
+  assert.equal(report.experiments.length, 7);
   for (const experiment of report.experiments) {
     assert(experiment.expectedNet >= experiment.workValue && experiment.expectedNet < experiment.workValue + 1);
     assert(experiment.masteredNet > experiment.expectedNet && experiment.masteredGross <= experiment.totalCost * 1.12 + 1);

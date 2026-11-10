@@ -187,3 +187,36 @@ test("real session definitive failure has one error; timeout and reads do not", 
     } finally { stop(); unsubscribe(); }
   }
 });
+
+test("the workshop confirms the paid job and installed module separately, once per accepted action", async () => {
+  const { createBoatWorkshopDemo } = await vite.ssrLoadModule("/features/economy/dev/boat-workshop-demo.ts");
+  let now = Date.parse("2026-11-10T00:00:00Z");
+  const demo = createBoatWorkshopDemo({ ownerPublicId: owner, now: () => now });
+  const session = createEconomySession(owner, { get: async () => demo.read(), send: async command => demo.send(command) }, () => assert.fail());
+  const tracker = createEconomyAudioFeedbackTracker(), cues = [];
+  const unsubscribe = session.subscribe(() => cues.push(...tracker.update(session.getSnapshot()).map(event => event.cueId)));
+  const stop = session.activate();
+  try {
+    await session.refresh();
+    assert.equal(session.getSnapshot().localBoatUpgrade, undefined);
+    for (const [action, target, phase, module, sound] of [
+      ["start_boat_upgrade", "repair", "installed", "hull", "ui.construction-complete"],
+      ["start_boat_upgrade", "oars", "started", "engine", "ui.production-start"],
+      ["claim_boat_upgrade", null, "installed", "engine", "ui.construction-complete"],
+    ]) {
+      const work = demo.read().boat.work;
+      if (work) now = Date.parse(work.finishesAt) + 1;
+      const count = cues.length;
+      assert.equal(session.act(action, target ?? work.id), true);
+      await flush();
+      const receipt = session.getSnapshot().localBoatUpgrade;
+      assert.equal(receipt.phase, phase);
+      assert.equal(receipt.module, module);
+      assert.equal(receipt.tier, 1);
+      assert.deepEqual(cues.slice(count), [sound]);
+      await session.refresh();
+      assert.equal(cues.length, count + 1, "polling does not replay the work");
+      assert.deepEqual(createEconomyAudioFeedbackTracker().update(session.getSnapshot()), []);
+    }
+  } finally { unsubscribe(); stop(); }
+});

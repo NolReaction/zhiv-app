@@ -1,3 +1,4 @@
+import type { BoatUpgradeReceipt } from "@/features/economy/domain/boat-upgrade-receipt";
 import type { ConstructionCompletion } from "@/features/economy/domain/construction-completion";
 import type { InventoryGain } from "@/features/economy/domain/inventory-gain";
 import type { ProductionStart } from "@/features/economy/domain/production-start";
@@ -10,6 +11,7 @@ export type EconomyAudioFeedbackView = {
   uncertain: boolean;
   notice: string;
   error: string | null;
+  localBoatUpgrade?: BoatUpgradeReceipt;
   inventoryGains?: readonly InventoryGain[];
   productionStarts?: readonly ProductionStart[];
   completedConstructions: readonly ConstructionCompletion[];
@@ -22,7 +24,7 @@ export type EconomyAudioFeedbackEvent = {
   maxAgeMs?: number;
 };
 
-type RewardFeedback = Pick<EconomyAudioFeedbackEvent, "id"> & { cueId: "ui.reward" | "ui.collect" | "ui.confirm" | "ui.construction-complete" };
+type RewardFeedback = Pick<EconomyAudioFeedbackEvent, "id"> & { cueId: "ui.reward" | "ui.collect" | "ui.confirm" | "ui.construction-complete" | "ui.production-start" };
 type PendingFeedback = { startRevision: number; id: string; suppressed: boolean; reward: RewardFeedback | null; productionStart: boolean };
 export const ECONOMY_AUDIO_RECEIPT_LIMIT = 128;
 let trackerSequence = 0;
@@ -48,6 +50,7 @@ export function createEconomyAudioFeedbackTracker() {
   }
 
   function seed(view: EconomyAudioFeedbackView) {
+    if (view.localBoatUpgrade) remember(`boat-upgrade:${view.localBoatUpgrade.id}`);
     for (const receipt of view.inventoryGains ?? []) remember(`gain:${receipt.id}`);
     for (const receipt of view.completedConstructions) remember(`construction:${receipt.id}`);
     for (const receipt of view.productionStarts ?? []) remember(`production-start:${receipt.id}`);
@@ -105,6 +108,12 @@ export function createEconomyAudioFeedbackTracker() {
       const revisionFloor = pending?.startRevision ?? highestRevision;
       const allowReward = !view.uncertain && !suppressUntilIdle && !pending?.suppressed;
       const rewards: RewardFeedback[] = [];
+      if (view.localBoatUpgrade) {
+        const receipt = view.localBoatUpgrade, key = `boat-upgrade:${receipt.id}`;
+        if (!seen.has(key) && receipt.revision > revisionFloor && receipt.revision <= snapshot.revision && allowReward)
+          rewards.push({ id: key, cueId: receipt.phase === "installed" ? "ui.construction-complete" : "ui.production-start" });
+        remember(key);
+      }
       for (const receipt of view.inventoryGains ?? []) {
         const key = `gain:${receipt.id}`;
         if (!seen.has(key) && receipt.ownerPublicId === owner && Number.isSafeInteger(receipt.revision)

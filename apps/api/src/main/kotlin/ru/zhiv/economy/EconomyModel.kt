@@ -225,6 +225,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
 ) {
     init {
         require(buildingLevel > 0)
+        require(experiment?.initialFire != true || buildingLevel == 1)
         require(experiment == null || buildingId == "dryer" && maxBatch == 1 && rewards.values.sum() == 1L)
         require(requiredFishCaught in 0L..ECONOMY_MAX_ITEMS)
         require(unlockTitle == null || unlockTitle.isNotBlank() && unlockTitle.length <= 80)
@@ -232,7 +233,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
         require(collection == null || buildingId == "garden" &&
             rewards.any { (id, quantity) -> id in economyBerryItemIds && quantity > 0L })
     }
-    val effectiveBuildingLevel: Int get() = if (baseCampfire == true) 0 else buildingLevel
+    val effectiveBuildingLevel: Int get() = if (baseCampfire == true || experiment?.initialFire == true) 0 else buildingLevel
 }
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyExploration(

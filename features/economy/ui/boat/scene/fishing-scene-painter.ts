@@ -52,7 +52,9 @@ export function fishingSceneGeometry(width: number, height: number, frame: Fishi
     : frame.stage === "reeling" || frame.stage === "bite" ? .3 + actorRig.effort * .85 : .12) + bobber.tension;
   const depthRange = Math.max(1, waterBottom - waterTop), progress = unit(frame.reel?.progress, 2500);
   const pull = ["caught", "landed"].includes(frame.stage) ? 1 : progress * .66;
-  const hookX = mix(composition.floatX / scale, boat.x + boat.scale * 975 + 18, pull);
+  const alongside = boat.x + boat.scale * 975 + 18;
+  const targetX = mix(alongside, composition.floatX / scale, .4 + .6 * clamp(frame.castPower ?? 100, 0, 100) / 100);
+  const hookX = mix(targetX, alongside, pull);
   // The float stays on the water. The exact green control zone is now drawn in the dedicated fishing meter.
   const landing = { x: hookX + bobber.x / scale,
     y: clamp(waterTop + depthRange * .53 + bobber.y / scale, waterTop + 10 / scale, waterBottom - 10 / scale) };

@@ -6,7 +6,7 @@ import { ApiError } from "@/lib/check-in-api";
 import { economyDevCommandSchema, type EconomyDevCommand } from "./dev-model";
 import { applyDevBoatCommand } from "./dev-boat";
 
-const playerActions = new Set(["buy_boat_fuel", "start_boat_upgrade", "claim_boat_upgrade", "depart_boat", "begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat",
+const playerActions = new Set(["buy_boat_fuel", "start_boat_upgrade", "claim_boat_upgrade", "depart_boat", "begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat", "sell_boat_catch",
   "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait"]);
 const reject = (code: string, message: string, status = 409) => new ApiError(message, status, { code, message });
 const demoOwner = () => {

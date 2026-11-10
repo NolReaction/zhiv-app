@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
-export const recipeBuildingLevel = recipe => recipe.baseCampfire === true && recipe.id === "cook_grilled_fish"
-  && recipe.buildingId === "dryer" && recipe.buildingLevel === 1 ? 0 : recipe.buildingLevel;
+export const recipeBuildingLevel = recipe => recipe.buildingId === "dryer" && recipe.buildingLevel === 1
+  && (recipe.baseCampfire === true && recipe.id === "cook_grilled_fish" || recipe.experiment?.initialFire === true) ? 0 : recipe.buildingLevel;
 
 const add = (into, values, scale = 1) => {
   for (const [key, value] of Object.entries(values)) into[key] = (into[key] ?? 0) + value * scale;

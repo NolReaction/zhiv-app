@@ -11,6 +11,7 @@ import { economyBuilderStatus } from "@/features/economy/domain/builder-status";
 import { constructionSpeedupPrice } from "@/features/economy/domain/rules";
 import { getAdminAccess, getAdminEconomyPlayer, type AdminEconomyDetail } from "./admin-api";
 import { economyCount, economyTime, type AdminEconomyTarget } from "./admin-economy-panel";
+import { AdminBoatStatus } from "./admin-boat-status";
 import styles from "./admin-economy.module.css";
 
 const ledgerLabels: Record<string, string> = {
@@ -83,6 +84,7 @@ export function AdminEconomyDetailContent({ detail }: { detail: AdminEconomyDeta
         <div className={styles.metric}><span>Жемчуг</span><strong>{formatPearls(state.wallet.pearls)}</strong></div>
         <div className={styles.metric}><span>Завершённые вылазки</span><strong>{economyCount(state.completedExplorations)}</strong></div>
       </div>
+      <AdminBoatStatus state={state} now={snapshotTime} />
       <section className={styles.panel} aria-label="Поручения жителей на момент снимка">
         <div className={styles.heading}><h3>Поручения жителей</h3><p>На момент серверного снимка. Положение и анимация персонажей здесь не отслеживаются.</p></div>
         <div className={styles.residents}>

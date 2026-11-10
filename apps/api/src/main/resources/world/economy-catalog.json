@@ -978,6 +978,27 @@
       "category": "provisions",
       "baseSellPrice": 589,
       "tradable": true
+    },
+    {
+      "id": "ember_berries",
+      "name": "Томлёная малина",
+      "category": "provisions",
+      "baseSellPrice": 59,
+      "tradable": true
+    },
+    {
+      "id": "strawberry_kissel",
+      "name": "Клубничный кисель",
+      "category": "provisions",
+      "baseSellPrice": 236,
+      "tradable": true
+    },
+    {
+      "id": "cranberry_bream",
+      "name": "Лещ с клюквенной корочкой",
+      "category": "provisions",
+      "baseSellPrice": 2695,
+      "tradable": true
     }
   ],
   "buildings": [
@@ -3568,6 +3589,87 @@
         "requiredCookingLevel": 3,
         "failureRewards": {}
       }
+    },
+    {
+      "id": "experiment_ember_berries",
+      "name": "Томлёная малина",
+      "buildingId": "dryer",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "seconds": 180,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "berries": 2
+        }
+      },
+      "rewards": {
+        "ember_berries": 1
+      },
+      "maxBatch": 1,
+      "experiment": {
+        "title": "Ягоды в углях",
+        "hint": "Положите малину в глиняную миску и прогрейте у самого края огня.",
+        "successBps": 8500,
+        "requiredCookingLevel": 1,
+        "failureRewards": {},
+        "initialFire": true
+      }
+    },
+    {
+      "id": "experiment_strawberry_kissel",
+      "name": "Клубничный кисель",
+      "buildingId": "dryer",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 600,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "berry_compote": 1,
+          "strawberries": 1
+        }
+      },
+      "rewards": {
+        "strawberry_kissel": 1
+      },
+      "maxBatch": 1,
+      "experiment": {
+        "title": "Густой настой",
+        "hint": "Разомните клубнику в малиновом компоте и прогрейте до загустения.",
+        "successBps": 8500,
+        "requiredCookingLevel": 1,
+        "failureRewards": {}
+      }
+    },
+    {
+      "id": "experiment_cranberry_bream",
+      "name": "Лещ с клюквенной корочкой",
+      "buildingId": "dryer",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {},
+      "seconds": 2100,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "smoked_bream": 1,
+          "cranberry_glaze": 1
+        }
+      },
+      "rewards": {
+        "cranberry_bream": 1
+      },
+      "maxBatch": 1,
+      "experiment": {
+        "title": "Корочка на углях",
+        "hint": "Смажьте копчёного леща клюквенным десертом. Поверните к углям, чтобы глазурь схватилась.",
+        "successBps": 8500,
+        "requiredCookingLevel": 3,
+        "failureRewards": {}
+      }
     }
   ],
   "explorations": [
@@ -5343,7 +5445,10 @@
       "currant_glazed_fish": 924,
       "berry_pastila": 377,
       "trail_feast": 1130,
-      "river_aspic": 589
+      "river_aspic": 589,
+      "ember_berries": 59,
+      "strawberry_kissel": 236,
+      "cranberry_bream": 2695
     }
   },
   "rareDrops": {
@@ -5521,6 +5626,27 @@
         "builderSpeedBps": 4500,
         "heroWorkSeconds": 17100,
         "builderWorkSeconds": 14400
+      },
+      {
+        "itemId": "ember_berries",
+        "heroSpeedBps": 1000,
+        "builderSpeedBps": 1500,
+        "heroWorkSeconds": 5400,
+        "builderWorkSeconds": 1800
+      },
+      {
+        "itemId": "strawberry_kissel",
+        "heroSpeedBps": 1500,
+        "builderSpeedBps": 2000,
+        "heroWorkSeconds": 14400,
+        "builderWorkSeconds": 7200
+      },
+      {
+        "itemId": "cranberry_bream",
+        "heroSpeedBps": 5500,
+        "builderSpeedBps": 7500,
+        "heroWorkSeconds": 57600,
+        "builderWorkSeconds": 21600
       }
     ],
     "orders": {
@@ -10281,7 +10407,10 @@
       "currant_glazed_fish": "experiment_currant_fish",
       "berry_pastila": "experiment_berry_pastila",
       "trail_feast": "experiment_trail_feast",
-      "river_aspic": "experiment_river_aspic"
+      "river_aspic": "experiment_river_aspic",
+      "ember_berries": "experiment_ember_berries",
+      "strawberry_kissel": "experiment_strawberry_kissel",
+      "cranberry_bream": "experiment_cranberry_bream"
     },
     "baselineExplorations": {
       "stone": "quarry_stone",
@@ -10416,7 +10545,7 @@
         "name": "Хранилище I",
         "description": "Увеличивает вместимость трюма и число доступных забросов.",
         "cost": {
-          "coins": 600,
+          "coins": 800,
           "items": {}
         },
         "seconds": 900,
@@ -10430,7 +10559,7 @@
         "name": "Двигатель I",
         "description": "Снасть быстрее меняет направление при смене тяги.",
         "cost": {
-          "coins": 1200,
+          "coins": 1500,
           "items": {}
         },
         "seconds": 1200,
@@ -10470,7 +10599,7 @@
         "name": "Двигатель II",
         "description": "Снасть быстрее меняет направление при смене тяги.",
         "cost": {
-          "coins": 1500,
+          "coins": 1900,
           "items": {}
         },
         "seconds": 900,
@@ -10484,7 +10613,7 @@
         "name": "Двигатель III",
         "description": "Снасть быстрее меняет направление при смене тяги.",
         "cost": {
-          "coins": 1800,
+          "coins": 3000,
           "items": {}
         },
         "seconds": 1200,
@@ -10498,7 +10627,7 @@
         "name": "Двигатель IV",
         "description": "Снасть быстрее меняет направление при смене тяги.",
         "cost": {
-          "coins": 3200,
+          "coins": 5300,
           "items": {}
         },
         "seconds": 1800,
@@ -10512,7 +10641,7 @@
         "name": "Двигатель V",
         "description": "Снасть быстрее меняет направление при смене тяги.",
         "cost": {
-          "coins": 5200,
+          "coins": 9000,
           "items": {}
         },
         "seconds": 2700,
@@ -10526,7 +10655,7 @@
         "name": "Корпус II",
         "description": "Снижает максимальную скорость рывков рыбы.",
         "cost": {
-          "coins": 900,
+          "coins": 1400,
           "items": {}
         },
         "seconds": 900,
@@ -10540,7 +10669,7 @@
         "name": "Корпус III",
         "description": "Снижает максимальную скорость рывков рыбы.",
         "cost": {
-          "coins": 1800,
+          "coins": 2600,
           "items": {}
         },
         "seconds": 1200,
@@ -10554,7 +10683,7 @@
         "name": "Корпус IV",
         "description": "Снижает максимальную скорость рывков рыбы.",
         "cost": {
-          "coins": 3200,
+          "coins": 4800,
           "items": {}
         },
         "seconds": 1800,
@@ -10568,7 +10697,7 @@
         "name": "Корпус V",
         "description": "Снижает максимальную скорость рывков рыбы.",
         "cost": {
-          "coins": 5200,
+          "coins": 8500,
           "items": {}
         },
         "seconds": 2700,
@@ -10582,7 +10711,7 @@
         "name": "Бак I",
         "description": "Позволяет накопить ещё одну ячейку топлива.",
         "cost": {
-          "coins": 350,
+          "coins": 500,
           "items": {}
         },
         "seconds": 600,
@@ -10596,7 +10725,7 @@
         "name": "Бак II",
         "description": "Позволяет накопить ещё одну ячейку топлива.",
         "cost": {
-          "coins": 900,
+          "coins": 1300,
           "items": {}
         },
         "seconds": 900,
@@ -10610,7 +10739,7 @@
         "name": "Бак III",
         "description": "Позволяет накопить ещё одну ячейку топлива.",
         "cost": {
-          "coins": 1800,
+          "coins": 2500,
           "items": {}
         },
         "seconds": 1200,
@@ -10624,7 +10753,7 @@
         "name": "Бак IV",
         "description": "Позволяет накопить ещё одну ячейку топлива.",
         "cost": {
-          "coins": 3200,
+          "coins": 4600,
           "items": {}
         },
         "seconds": 1800,
@@ -10638,7 +10767,7 @@
         "name": "Бак V",
         "description": "Позволяет накопить ещё одну ячейку топлива.",
         "cost": {
-          "coins": 5200,
+          "coins": 8000,
           "items": {}
         },
         "seconds": 2700,
@@ -10652,7 +10781,7 @@
         "name": "Хранилище II",
         "description": "Увеличивает вместимость трюма и число доступных забросов.",
         "cost": {
-          "coins": 900,
+          "coins": 1400,
           "items": {}
         },
         "seconds": 900,
@@ -10666,7 +10795,7 @@
         "name": "Хранилище III",
         "description": "Увеличивает вместимость трюма и число доступных забросов.",
         "cost": {
-          "coins": 1800,
+          "coins": 2700,
           "items": {}
         },
         "seconds": 1200,
@@ -10680,7 +10809,7 @@
         "name": "Хранилище IV",
         "description": "Увеличивает вместимость трюма и число доступных забросов.",
         "cost": {
-          "coins": 3200,
+          "coins": 4900,
           "items": {}
         },
         "seconds": 1800,
@@ -10694,7 +10823,7 @@
         "name": "Хранилище V",
         "description": "Увеличивает вместимость трюма и число доступных забросов.",
         "cost": {
-          "coins": 5200,
+          "coins": 8500,
           "items": {}
         },
         "seconds": 2700,
@@ -10813,6 +10942,7 @@
         9
       ]
     },
+    "dockSaleBonusPercent": 15,
     "spareCasts": 2
   }
 }

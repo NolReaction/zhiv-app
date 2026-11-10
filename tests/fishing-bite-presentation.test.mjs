@@ -22,6 +22,7 @@ test("a quiet pre-bite nibble precedes one definite dip without changing the ser
 test("bite attention settles and reduced motion leaves a stable readable sunk float", () => {
   const settled = fishingBiteMotion("bite", 1.4, 0, false);
   assert.equal(settled.notice, 0); assert.equal(settled.dip, 6);
+  assert.ok(fishingBiteMotion("bite", 1.81, 0, false).dip > 10, "the float tugs again while the player can still hook");
   const samples = Array.from({ length: 240 }, (_, index) => fishingBiteMotion("bite", index / 20, 0, false));
   assert.ok(samples.every(sample => sample.dip >= 0 && sample.dip <= 12));
   assert.deepEqual(fishingBiteMotion("bite", .1, 0, true), fishingBiteMotion("bite", 300, 0, true));

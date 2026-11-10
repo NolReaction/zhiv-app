@@ -2,6 +2,18 @@ import type { ReactNode } from "react";
 
 /** Closed vessels hint at the known ingredients without revealing the discovery. */
 export const cookingExperimentArt: Record<string, ReactNode> = {
+  experiment_ember_berries: <>
+    <path d="M7 26h34l-6 14H13Z" fill="#a1765f" /><path d="m5 25 12-11h16l10 11Z" fill="#bc9276" />
+    <path d="M20 14V9h8v5" fill="#92765e" /><path d="M12 36h23m-15-6h6" stroke="#dbab86" />
+  </>,
+  experiment_strawberry_kissel: <>
+    <path d="M11 16h24l4 23c-5 5-25 5-30 0Z" fill="#b5909b" /><path d="m8 16 5-8h21l5 8-5 4-7-3-8 4-5-4Z" fill="#e3c6ac" />
+    <path d="M12 20h23m-16 4 9 8m-2-8-6 7" stroke="#c7af92" />
+  </>,
+  experiment_cranberry_bream: <>
+    <path d="m4 25 18-11 21 10-6 13-22 4Z" fill="#aa9b76" /><path d="m4 24 17-14 23 11-19 14Z" fill="#859974" />
+    <path d="m13 16 22 14m-2-17L15 35m9-15-2-8" stroke="#d2b887" /><circle cx="26" cy="15" r="3" fill="#bd7180" />
+  </>,
   experiment_currant_fish: <>
     <ellipse cx="24" cy="39" rx="21" ry="5" fill="#a4b18b" />
     <path d="M5 34c1-13 8-20 19-20s18 7 19 20Z" fill="#b1bba4" />

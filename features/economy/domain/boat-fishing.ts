@@ -69,7 +69,7 @@ export function publicBoatState(value?: BoatState | null): BoatState {
       ...(voyage.challenge ? { challenge: { id: voyage.challenge.id, rulesVersion: voyage.challenge.rulesVersion, seed: voyage.challenge.seed,
         tickMs: voyage.challenge.tickMs, maxTicks: voyage.challenge.maxTicks, zoneWidth: voyage.challenge.zoneWidth, difficulty: voyage.challenge.difficulty,
         startedAt: voyage.challenge.startedAt, expiresAt: voyage.challenge.expiresAt,
-        ...(voyage.challenge.rulesVersion === 5 ? { motorResponse: voyage.challenge.motorResponse, hullDamping: voyage.challenge.hullDamping } : {}),
+        ...(voyage.challenge.rulesVersion >= 5 ? { motorResponse: voyage.challenge.motorResponse, hullDamping: voyage.challenge.hullDamping } : {}),
         ...(voyage.challenge.resistance ? { resistance: voyage.challenge.resistance } : {}),
         ...(voyage.challenge.biteAt ? { biteAt: voyage.challenge.biteAt } : {}),
         ...(voyage.challenge.fishRarity ? { fishRarity: voyage.challenge.fishRarity } : {}) } } : {}) } } : {}) };
@@ -111,7 +111,7 @@ export function boatFishWeight(minGrams: number, maxGrams: number, first: number
 }
 export function boatClaimPracticeSeconds(before: BoatState | undefined, after: BoatState | undefined, action: string): number {
   const voyage = before?.voyage;
-  if (action !== "claim_boat" || !voyage || after?.voyage) return 0;
+  if ((action !== "claim_boat" && action !== "sell_boat_catch") || !voyage || after?.voyage) return 0;
   const travel = voyage.outboundSeconds + voyage.inboundSeconds;
   return travel ? Math.floor(travel * voyage.catches.length / voyage.maxCatches)
     : voyage.catches.reduce((total, caught) => total + (caught.reelSeconds ?? 0), 0);

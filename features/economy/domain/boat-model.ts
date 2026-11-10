@@ -14,19 +14,22 @@ const moduleTier = count.max(5);
 export const boatArtifactIds = ["landing_net", "telescope"] as const;
 const artifact = z.enum(boatArtifactIds);
 export const boatReelInputSchema = z.object({ tick: count.max(599), held: z.boolean() }).strict();
-export const boatReelCommandSchema = z.object({ challengeId: uuid, deferred: z.boolean().optional(), inputs: z.array(boatReelInputSchema).max(600), endTick: count.min(1).max(600) }).strict()
+export const BOAT_HOOK_WINDOW_MS = 3200;
+export const boatReelCommandSchema = z.object({ challengeId: uuid, deferred: z.boolean().optional(), missedBite: z.literal(true).optional(), inputs: z.array(boatReelInputSchema).max(600), endTick: count.max(600) }).strict()
+  .refine(value => value.missedBite ? value.endTick === 0 && value.inputs.length === 0 : value.endTick > 0, "A missed bite has no reel input")
   .refine(value => value.inputs.every((input, index) => input.tick < value.endTick && (!index || input.tick > value.inputs[index - 1].tick)), "Inputs must be ordered within the attempt");
 export const boatResistanceIds = ["steady", "sprightly", "surging", "stubborn"] as const;
 export type BoatResistance = typeof boatResistanceIds[number];
-export const boatChallengeSchema = z.object({ id: uuid, rulesVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]), seed: count.max(0xffff_ffff), tickMs: z.literal(50),
-  maxTicks: z.literal(600), zoneWidth: z.union([z.literal(3200), z.literal(4000)]), difficulty: count.min(1).max(5), startedAt: instant, expiresAt: instant,
+export const boatChallengeSchema = z.object({ id: uuid, rulesVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]), seed: count.max(0xffff_ffff), tickMs: z.literal(50),
+  maxTicks: z.literal(600), zoneWidth: count.min(590).max(4000).multipleOf(2), difficulty: count.min(1).max(5), startedAt: instant, expiresAt: instant,
   motorResponse: count.max(5).optional(), hullDamping: count.max(20).optional(),
   resistance: z.enum(boatResistanceIds).optional(), biteAt: instant.optional(), fishRarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).optional() })
   .refine(value => Date.parse(value.expiresAt) > Date.parse(value.startedAt)
     && (!value.biteAt || Date.parse(value.biteAt) >= Date.parse(value.startedAt) && Date.parse(value.biteAt) < Date.parse(value.expiresAt)), "Attempt bite must be within its lifetime")
+  .refine(value => value.rulesVersion >= 6 || [3200, 4000].includes(value.zoneWidth), "Legacy attempts require their original zone width")
   .refine(value => value.rulesVersion === 1 || value.resistance !== undefined, "Versioned attempts require their saved resistance profile")
   .refine(value => value.rulesVersion < 3 || value.fishRarity !== undefined, "V3+ attempts require their public fish class")
-  .refine(value => value.rulesVersion < 5 || value.motorResponse !== undefined && value.hullDamping !== undefined, "V5 saves its control parameters");
+  .refine(value => value.rulesVersion < 5 || value.motorResponse !== undefined && value.hullDamping !== undefined, "V5+ attempts require saved control parameters");
 const boatCatchSchema = z.object({ castIndex: count.max(10), reelSeconds: count.max(30).optional(), fishId: id, weightGrams: count.min(1).max(1_000_000), caughtAt: instant });
 const boatWorkSchema = z.object({ id: uuid, upgradeId: z.enum(boatUpgradeIds), startedAt: instant, finishesAt: instant, cost })
   .refine(value => Date.parse(value.finishesAt) > Date.parse(value.startedAt), "Boat work must take time");
@@ -62,7 +65,7 @@ export const boatCatalogSchema = z.object({ version: z.literal(1), routeId: id, 
   zoneWidth: z.literal(3200), netZoneWidth: z.literal(4000), oarsTravelSeconds: count.max(3600),
   fuel: z.object({ baseCapacity: count.min(1).max(7), regenSeconds: count.positive(), refillPricePearls: count.positive() }),
   moduleEffects: z.object({ engine: z.array(count.max(5)).length(6), tank: z.array(count.min(1).max(7)).length(6),
-    storage: z.array(count.min(1).max(9)).length(6), hull: z.array(count.max(20)).length(6) }), spareCasts: count.max(2),
+    storage: z.array(count.min(1).max(9)).length(6), hull: z.array(count.max(20)).length(6) }), spareCasts: count.max(2), dockSaleBonusPercent: count.max(100).optional(),
   upgrades: z.array(z.object({ id: z.enum(boatUpgradeIds), name: z.string(), description: z.string(), cost, seconds: count.max(86400),
     requiredHomeLevel: count.min(1).max(5), requiredBuildings: z.record(id, count.min(1).max(100)), module: z.enum(boatModuleIds).optional(), tier: moduleTier.min(1).optional(), blueprint: artifact.optional() }).refine(upgrade => upgrade.seconds > 0 || upgrade.id === "repair", "Only the first hull can be installed immediately")).length(boatUpgradeIds.length),
   blueprints: z.array(z.object({ id: artifact, name: z.string(), milestones: z.array(count.min(1).max(100)).length(3)

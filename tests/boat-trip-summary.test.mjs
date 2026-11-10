@@ -55,7 +55,7 @@ test("a pre-claim receipt remains unchanged after acknowledged delivery changes 
   assert.match(delivered, /300 г/); assert.doesNotMatch(delivered, /999 г|Разгрузка добавит/);
 });
 
-test("the return report always lists every catch; the only action changes when the pantry has space", () => {
+test("the dock offers the full catch at its weight-adjusted price even with a full pantry", () => {
   const state = fixture([caught(0, "fish_silverfin", 300), caught(1, "fish_silverfin", 450)]), now = Date.parse(state.boat.voyage.returnsAt);
   const economy = { snapshot: state, now, busy: false, uncertain: false };
   const report = () => renderToStaticMarkup(createElement(BoatVoyagePanel, { economy, disabled: false,
@@ -71,8 +71,14 @@ test("the return report always lists every catch; the only action changes when t
   state.storage.available = 2;
   const ready = report();
   assert.match(ready, /Принять улов/); assert.doesNotMatch(ready, /В кладовую|<details/);
-  assert.equal((ready.match(/<button/g) || []).length, 1);
-  assert.equal((full.match(/<button/g) || []).length, 1);
+  for (const html of [ready, full]) {
+    assert.match(html, /Выкуп у причала: \d+ монет за рыбу \+ \d+ за вес/);
+    assert.match(html, /Продать весь улов · \d+ монет/);
+    assert.equal((html.match(/<button/g) || []).length, 2);
+  }
+  const oldCatalog = { ...state.catalog, boat: { ...state.catalog.boat, dockSaleBonusPercent: undefined } };
+  state.catalog = oldCatalog;
+  assert.doesNotMatch(report(), /Продать весь улов/);
 });
 
 test("an empty outing has no invented largest fish, achievement or reward and retains explicit completion", () => {

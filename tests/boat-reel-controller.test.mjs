@@ -90,7 +90,18 @@ function saveTerminal(attempt, owner = "owner", voyageId = "voyage") {
   return reel;
 }
 
-test("a fresh attempt starts on the server bite without a click and never changes its issued rules", () => {
+test("manual hooking accepts only the live bite and survives an immediate remount before the first tick", () => {
+  const attempt = { ...challenge(), rulesVersion: 6, fishRarity: "common", resistance: "steady", motorResponse: 0, hullDamping: 0, biteAt: new Date(at + 4000).toISOString() };
+  const f = fixture({ challenge: attempt }); f.frame(0); f.value.hookFish(); f.render(); assert.equal(f.value.playing, false);
+  f.frame(4000); assert(f.value.awaitingHook); assert.equal(f.value.reel.tick, 0);
+  f.frame(1200); f.value.hookFish(); f.render(); assert(f.value.playing); assert.equal(f.value.reel.tick, 0);
+  hooks.unmount();
+  const restored = fixture({ challenge: attempt, now: at + 9000 }); restored.frame(0);
+  assert(restored.value.paused); assert.equal(restored.value.missedBite, false);
+  restored.value.togglePlay(); restored.frame(50); assert.equal(restored.value.reel.tick, 1);
+});
+
+test("a saved pre-hook attempt starts on the server bite without a click and never changes its issued rules", () => {
   const attempt = { ...challenge(), biteAt: new Date(at + 4000).toISOString() };
   const f = fixture({ challenge: attempt }); f.frame(0);
   assert(Object.isFrozen(f.value.challenge)); assert.equal(f.value.castStage, "casting");

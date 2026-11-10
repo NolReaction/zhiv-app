@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { Dialog } from "radix-ui";
 import { ArrowLeft } from "lucide-react";
+import { AudioProvider } from "@/features/audio/ui/audio-provider";
+import { useEconomyAudioFeedback } from "@/features/economy/integration/use-economy-audio-feedback";
 import { WorldPantryMenu } from "@/features/economy/ui/inventory/world-pantry-menu";
 import { boatPhase } from "@/features/economy/domain/boat-fishing";
 import { createEconomySession } from "@/features/economy/sync/session";
@@ -31,6 +33,7 @@ function WorkshopSession({ onReset }: { onReset: () => void }) {
     return () => { window.clearInterval(clock); deactivate(); };
   }, [session]);
   const economy: EconomyController = { ...view, ...session, now: now || session.now(), readServerNow: session.now };
+  useEconomyAudioFeedback(economy);
   const snapshot = economy.snapshot;
   const phase = snapshot ? boatPhase(snapshot.boat, economy.now) : "broken";
   const phaseName = { broken: "Нужен ремонт", repairing: "Идёт работа", docked: "Лодка у причала", outbound: "Дорога к месту ловли",
@@ -46,7 +49,7 @@ function WorkshopSession({ onReset }: { onReset: () => void }) {
       <ol><li>Восстановите первый корпус бесплатно. Лодка сразу готова к выходу.</li>
         <li>Откройте DEV в шапке мастерской. Выберите модуль и установите уровень или выдайте монеты, чтобы проверить покупку обычной кнопкой.</li>
         <li>Нажмите «Отправиться на рыбалку», проверьте снасти и подтвердите выход. На это уйдёт одна ячейка бензина.</li>
-        <li>Забросьте удочку, дождитесь начала вываживания и проверьте удержание, отпускание и паузу. После поимки вернитесь в мастерскую и заберите улов.</li></ol>
+        <li>Удерживайте кнопку и отпустите для заброса. Когда поплавок нырнёт, нажмите «Подсечь!», затем проверьте вываживание и паузу. После поимки вернитесь в мастерскую и заберите улов.</li></ol>
       <p>На реке тестовое управление открывается кнопкой DEV. После закрытия окна можно открыть его снова или начать новый пример.</p>
       <p className={styles.status} role="status">{snapshot ? phaseName : "Готовим демонстрационную лодку…"}</p>
       <div className={styles.actions}><button type="button" onClick={() => setSurface("workshop")} disabled={!snapshot || Boolean(surface)}>Открыть мастерскую</button>
@@ -65,5 +68,5 @@ function WorkshopSession({ onReset }: { onReset: () => void }) {
 
 export function BoatWorkshopPreview() {
   const [revision, setRevision] = useState(0);
-  return <WorkshopSession key={revision} onReset={() => setRevision(value => value + 1)} />;
+  return <AudioProvider><WorkshopSession key={revision} onReset={() => setRevision(value => value + 1)} /></AudioProvider>;
 }

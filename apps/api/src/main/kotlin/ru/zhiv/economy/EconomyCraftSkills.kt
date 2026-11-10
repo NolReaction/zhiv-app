@@ -28,7 +28,7 @@ private const val MAX_SKILL_SECONDS = 31_536_000L
         fishingSeconds in 0..MAX_SKILL_SECONDS && craftingSeconds in 0..MAX_SKILL_SECONDS && smeltingSeconds in 0..MAX_SKILL_SECONDS && gatheringSeconds in 0..MAX_SKILL_SECONDS && forestrySeconds in 0..MAX_SKILL_SECONDS && miningSeconds in 0..MAX_SKILL_SECONDS && buildingSeconds in 0..MAX_SKILL_SECONDS) }
 }
 @Serializable data class EconomyCookingExperiment(val title: String, val hint: String, val successBps: Int,
-    val requiredCookingLevel: Int, val failureRewards: Map<String, Long>) {
+    val requiredCookingLevel: Int, val failureRewards: Map<String, Long>, val initialFire: Boolean = false) {
     init { require(title.isNotBlank() && title.length <= 80 && hint.isNotBlank() && hint.length <= 240)
         require(successBps in 5000..9500 && requiredCookingLevel in 1..10 && failureRewards.size <= 1 && failureRewards.values.all { it == 1L }) }
 }
@@ -107,7 +107,7 @@ object EconomySkills {
         ids.fold(EconomyCraftSkills(buildingHistoryVersion = if ((a == null || a.buildingHistoryVersion == 1) && (b == null || b.buildingHistoryVersion == 1)) 1 else null)) { skills, id -> withSeconds(skills, id, maxOf(seconds(a, id), seconds(b, id))) }
 
     fun award(before: EconomyState, state: EconomyState, command: EconomyCommand, now: Instant): EconomyState {
-        if (command.action == "claim_boat") {
+        if (command.action in setOf("claim_boat", "sell_boat_catch")) {
             val work = EconomyBoats.claimPracticeSeconds(before.boat, state.boat, command.action)
             val skills = state.progression.skills ?: EconomyCraftSkills()
             return if (work <= 0L) state else state.copy(progression = state.progression.copy(skills = skills.copy(

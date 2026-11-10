@@ -158,3 +158,6 @@
 @media (max-height: 500px) { .coachShortcut { display: inline-flex; min-width: 30px; } .bottomRow { gap: 7px; } }
 @media (max-width: 640px) and (min-height: 501px) { .tools { max-width: calc(100% - 20px); gap: 4px; } }
 @media (max-height: 500px) and (max-width: 480px) { .bottomRow { gap: 5px; }.bottomRow .back { font-size: 10px !important; }.coachShortcut { min-width: 26px; } }
+
+.castControl { position: relative; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+.castPower { position: absolute; inset: auto 0 0; height: 4px; transform-origin: left; background: #f6e38e; }

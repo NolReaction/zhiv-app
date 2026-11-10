@@ -23,7 +23,7 @@ test("house two opens blueberries, rope, the independent mine, kiln and bridge w
   const result = unlocks("home", 2);
   assert.ok(result.upgrades.some(target => target.stationId === "quarry" && target.level === 1));
   assert.ok(result.upgrades.some(target => target.stationId === "kiln" && target.level === 1));
-  assert.deepEqual(result.recipes.map(recipe => recipe.id), ["gather_fiber", "make_rope", "make_charcoal", "fire_bricks", "grow_blueberries", "cook_blueberry_compote", "make_ceramic_jar", "cook_grilled_silverfin", "cook_berry_tea", "cook_forest_pan", "experiment_berry_pastila"]);
+  assert.deepEqual(result.recipes.map(recipe => recipe.id), ["gather_fiber", "make_rope", "make_charcoal", "fire_bricks", "grow_blueberries", "cook_blueberry_compote", "make_ceramic_jar", "cook_grilled_silverfin", "cook_berry_tea", "cook_forest_pan", "experiment_berry_pastila", "experiment_strawberry_kissel"]);
   assert.deepEqual(result.routes.map(route => route.id), ["quarry_stone", "quarry_clay"]);
   assert.deepEqual(result.routes.map(route => route.rewards), [{ stone: 1 }, { clay: 1 }]);
   assert.ok(result.routes.every(route => !route.retired));
@@ -94,6 +94,7 @@ const startButton = nodes => nodes.find(element => element.type === "button" && 
 test("home and campfire upgrade previews keep experiment names and result art hidden until a successful recipe claim", () => {
   for (const recipe of economyCatalog.recipes.filter(recipe => recipe.experiment)) for (const stationId of ["home", "dryer"]) {
     const controller = economy();
+    if (recipe.experiment.initialFire) continue;
     const targetLevel = stationId === "home" ? recipe.requiredHomeLevel : recipe.buildingLevel;
     controller.snapshot.buildings = { ...Object.fromEntries(economyCatalog.buildings.map(building => [building.id, building.levels.at(-1).level])), [stationId]: targetLevel - 1 };
     controller.snapshot.progression = { recipes: {}, routes: {} };

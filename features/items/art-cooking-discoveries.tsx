@@ -1,7 +1,26 @@
 import type { ReactNode } from "react";
 
-/** Six kitchen finds with distinct silhouettes in the shared illustrated item set. */
+/** Kitchen finds with distinct silhouettes in the shared illustrated item set. */
 export const cookingDiscoveryArt: Record<string, ReactNode> = {
+  ember_berries: <>
+    <ellipse cx="24" cy="31" rx="20" ry="10" fill="#bb8c70" />
+    <path d="M5 29q2 15 19 15t19-15" fill="#b67450" />
+    <ellipse cx="24" cy="28" rx="17" ry="7" fill="#935060" />
+    <path d="m11 28 5-5 5 3m1 0 5-4 6 3m-13 5 5-3 7 2" stroke="#e88b91" strokeWidth="3" />
+    <path d="M18 18c-5-5 2-6 0-11m11 10c-3-4 4-6 2-10" fill="none" stroke="#b9b49c" />
+  </>,
+  strawberry_kissel: <>
+    <path d="M11 13h25l-4 28H15Z" fill="#dcb4a8" /><path d="M14 21h19l-3 17H17Z" fill="#af566b" />
+    <ellipse cx="23" cy="14" rx="13" ry="4" fill="#e7c3bc" /><path d="m27 19 9-14" stroke="#8c755f" strokeWidth="3" />
+    <path d="M10 16q-6-7-5 1t7 5l3-6Z" fill="#d3666f" /><path d="m7 13 5 1 2-5" fill="none" stroke="#799559" />
+  </>,
+  cranberry_bream: <>
+    <ellipse cx="24" cy="31" rx="21" ry="10" fill="#bcc5a5" />
+    <path d="m13 25-8-6 2 14 7-4q17 9 28-7-13-10-29 3Z" fill="#cc9064" />
+    <path d="m17 23 7-3 9 3-6 5-8 1Z" fill="#a9575c" />
+    <path d="m18 25 4-3m3 3 3-3m2 3 3-2" stroke="#e5ae75" />
+    <circle cx="36" cy="23" r="1.2" fill="#4e4841" /><circle cx="13" cy="35" r="2.5" fill="#b75263" /><circle cx="20" cy="36" r="2.5" fill="#c97175" />
+  </>,
   berry_tea: <>
     <ellipse cx="24" cy="39" rx="19" ry="5" fill="#adb78b" />
     <path d="M34 20c14-6 14 13 0 12M9 17h27v15c-2 10-24 10-27 0Z" fill="#e1c99a" />

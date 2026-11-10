@@ -1,8 +1,9 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowRight, Check, Clock3, Hammer, LockKeyhole, Wrench } from "lucide-react";
 import { boatFuelStatus, boatModules, boatModuleUpgrade, boatUpgradeReason } from "@/features/economy/domain/boat-fishing";
+import type { BoatUpgradeReceipt } from "@/features/economy/domain/boat-upgrade-receipt";
 import type { BoatCatalog, BoatState, BoatUpgradeId } from "@/features/economy/domain/boat-model";
 import type { EconomyView } from "@/features/economy/domain/model";
 import { number } from "@/features/economy/ui/shared/world-economy-parts";
@@ -36,14 +37,36 @@ function workDuration(seconds: number) {
   return seconds < 60 ? `${seconds} с` : worldDuration(seconds);
 }
 
-type Props = { state: EconomyView; boat: BoatState; config: BoatCatalog; now: number; disabled: boolean; children?: ReactNode;
+type Props = { state: EconomyView; boat: BoatState; config: BoatCatalog; now: number; disabled: boolean; children?: ReactNode; receipt?: BoatUpgradeReceipt;
   onUpgrade: (id: BoatUpgradeId) => void; onClaim: (id: string) => void };
 
-export function BoatGarage({ state, boat, config, now, disabled, children, onUpgrade, onClaim }: Props) {
+export function BoatGarage({ state, boat, config, now, disabled, children, receipt, onUpgrade, onClaim }: Props) {
   const levels = boatModules(boat);
   const workModule = config.upgrades.find(entry => entry.id === boat.work?.upgradeId)?.module;
   const [selected, setSelected] = useState<ModuleId>(workModule ?? (levels.hull ? "engine" : "hull"));
   const id = useId();
+  const garage = useRef<HTMLElement>(null);
+  const lastReceipt = useRef(receipt?.id);
+  useLayoutEffect(() => {
+    const element = garage.current;
+    if (!element || !receipt || lastReceipt.current === receipt.id) return;
+    lastReceipt.current = receipt.id;
+    if (document.hidden) return;
+    element.dataset.feedbackModule = receipt.module;
+    element.dataset.feedbackPhase = receipt.phase;
+    const clear = () => {
+      delete element.dataset.feedbackModule;
+      delete element.dataset.feedbackPhase;
+    };
+    const onVisibility = () => { if (document.hidden) clear(); };
+    const timer = window.setTimeout(clear, 2400);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+      clear();
+    };
+  }, [receipt]);
   const upgrade = boatModuleUpgrade(boat, selected, config);
   const level = levels[selected], working = Boolean(boat.work && workModule === selected);
   const showWork = working || Boolean(boat.work && !workModule);
@@ -55,8 +78,12 @@ export function BoatGarage({ state, boat, config, now, disabled, children, onUpg
   const selectedLabel = modules.find(module => module.id === selected)!.label;
   const isFree = Boolean(upgrade && upgrade.cost.coins === 0 && !Object.values(upgrade.cost.items).some(Boolean));
   const actionLabel = upgrade?.id === "repair" ? `Восстановить ${isFree ? "бесплатно" : "лодку"}` : "Установить улучшение";
-  return <section className={styles.garage} aria-label="Гараж лодки" data-boat-garage>
+  return <section ref={garage} className={styles.garage} aria-label="Гараж лодки" data-boat-garage>
     <div className={styles.stage}>
+      <div className={styles.upgradeFeedback} role="status" aria-atomic="true">{receipt && <span key={receipt.id}>
+        {receipt.phase === "installed" ? <Check size={14} aria-hidden="true" /> : <Hammer size={14} aria-hidden="true" />}
+        {modules.find(module => module.id === receipt.module)?.label} · {receipt.phase === "installed" ? `Ур. ${receipt.tier} установлен` : "Работа началась"}
+      </span>}</div>
       <span className={styles.readiness} data-ready={!boat.voyage && !boat.work && levels.hull > 0 && hasFuel || undefined}>
         {boat.work ? <Hammer size={13} /> : levels.hull && hasFuel ? <Check size={13} /> : <Wrench size={13} />}{readiness}
       </span>

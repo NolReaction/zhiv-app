@@ -19,6 +19,7 @@ export const pantryItemRarities: Readonly<Record<string, PantryRarity>> = {
   quartz: "epic", lens: "epic", field_kit: "epic", berry_gift: "epic",
   cranberries: "legendary", cranberry_glaze: "legendary", limestone: "legendary", mortar: "legendary", stone_tile: "legendary",
   berry_tea: "uncommon", forest_pan: "common", currant_glazed_fish: "common", berry_pastila: "uncommon", trail_feast: "epic", river_aspic: "common",
+  ember_berries: "common", strawberry_kissel: "uncommon", cranberry_bream: "legendary",
 };
 
 /** Alternatives use the lowest required raw fish class, independent of the chosen species. */
@@ -49,10 +50,10 @@ export const pantryGroupDefinitions = [
 ] as const;
 export type PantryGroupId = typeof pantryGroupDefinitions[number]["id"];
 const berries = new Set(["berries", "strawberries", "blueberries", "currants", "blackberries", "cranberries"]);
-const desserts = new Set(["currant_jelly", "blackberry_preserve", "cranberry_glaze", "berry_gift", "berry_pastila"]);
+const desserts = new Set(["currant_jelly", "blackberry_preserve", "cranberry_glaze", "berry_gift", "berry_pastila", "ember_berries"]);
 const travel = new Set(["dried_berries", "smoked_fish", "trail_ration", "packed_berries", "trail_feast"]);
 // This dish uses prepared soup, so its fish class is not a direct ingredient.
-const preparedFishDishes = new Set(["river_aspic"]);
+const preparedFishDishes = new Set(["river_aspic", "cranberry_bream"]);
 
 export function pantryItemGroup(item: Item, catalog: Catalog): PantryGroupId {
   if (fishClassForItem(item.id, catalog.fishing)) return "fish";
@@ -63,7 +64,7 @@ export function pantryItemGroup(item: Item, catalog: Catalog): PantryGroupId {
   if (item.category === "fishing") return "bait";
   if (item.category === "provisions" || catalog.food?.meals.some(meal => meal.itemId === item.id)) {
     if (travel.has(item.id)) return "travel";
-    if (item.id.endsWith("_compote") || item.id === "berry_tea") return "drinks";
+    if (item.id.endsWith("_compote") || item.id === "berry_tea" || item.id === "strawberry_kissel") return "drinks";
     if (desserts.has(item.id)) return "desserts";
     if (preparedFishDishes.has(item.id) || pantryRecipeFishRarity(item.id, catalog)) return "fish-dishes";
     return "other";

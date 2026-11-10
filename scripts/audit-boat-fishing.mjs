@@ -62,15 +62,33 @@ export function auditBoatFishingBalance(catalog) {
     return { id: blueprint.id, legacyMilestones: blueprint.milestones, awardedByBoat: false };
   });
 
+  assert(Number.isInteger(boat.dockSaleBonusPercent) && boat.dockSaleBonusPercent >= 0 && boat.dockSaleBonusPercent <= 100);
+  // Integrate the two independent weight draws before rounding each fish's premium.
+  const speciesPremium = {};
+  for (const fish of fishing.fish) {
+    const group = fishing.classes.find(group => group.rarity === fish.rarity);
+    const base = math.liquidation({ [group.itemId]: 1 });
+    const { minGrams, maxGrams } = boat.weights[fish.itemId], span = maxGrams - minGrams;
+    let sum = 0;
+    const grid = 128;
+    for (let a = 0; a < grid; a++) for (let b = 0; b < grid; b++) {
+      const first = Math.floor((a + .5) * 10000 / grid), second = Math.floor((b + .5) * 10000 / grid);
+      const excess = Math.floor(span * first * second / 100000000);
+      sum += Math.floor(base * boat.dockSaleBonusPercent * excess / (100 * span));
+    }
+    speciesPremium[fish.itemId] = sum / (grid * grid);
+  }
   const loadouts = [];
   for (const rod of fishing.rods) for (const hook of fishing.hooks) for (const bait of [null, ...fishing.baits]) {
     const portfolio = math.catchPortfolio(rod.id, bait?.itemId ?? null, "shore", hook.id);
     if (bait && !portfolio.classProbabilities[`fish_${bait.rarity}`]) continue;
     assert.equal(portfolio.speciesDrawsPerJob, shore.rewards.fish, "Every shore fish retains an independent species draw");
     const expectedValuePerFish = portfolio.expectedFishRevenue / portfolio.speciesDrawsPerJob;
+    const expectedDockPrice = expectedValuePerFish + Object.entries(portfolio.probabilities)
+      .reduce((sum, [id, probability]) => sum + probability * speciesPremium[id], 0);
     const baitCost = portfolio.baitPurchaseCoins;
     assert.equal(baitCost, bait?.price ?? 0, "The entire trip pays for exactly one bait portion");
-    loadouts.push({ rodId: rod.id, hookId: hook.id, baitId: bait?.itemId ?? null, expectedValuePerFish, baitCost,
+    loadouts.push({ rodId: rod.id, hookId: hook.id, baitId: bait?.itemId ?? null, expectedValuePerFish, expectedDockPrice, baitCost,
       shoreNetCoinsPerHour: (portfolio.expectedFishRevenue - baitCost) * 3600 / shore.seconds });
   }
   assert(loadouts.length > 0, "At least one owned loadout must remain usable");
@@ -88,11 +106,15 @@ export function auditBoatFishingBalance(catalog) {
     const maxFishPerHour = tripsPerHour * capacity;
     assert(maxFishPerHour <= oldShoreRate, "Free long-run supply exceeds the old shore route");
     const best = Math.max(...loadouts.map(row => capacity * row.expectedValuePerFish - row.baitCost));
+    const expectedDockNet = Math.max(...loadouts.map(row => capacity * row.expectedDockPrice - row.baitCost));
+    assert(expectedDockNet <= refillAlternativeCoins, "A paid refill must not beat currency exchange at expected dock prices");
     const sensitivity = [0.5, 0.75, 0.9].map(probability => {
       const catches = expectedCatches(capacity, attempts, probability);
       return { probability, expectedCatches: rounded(catches), expectedStarterSale: rounded(catches * starter.expectedValuePerFish) };
     });
     return { tier, capacity, attempts, maxFishPerHour, starterFullSale: rounded(capacity * starter.expectedValuePerFish),
+      starterDockSale: rounded(capacity * starter.expectedDockPrice), bestExpectedDockNet: rounded(expectedDockNet),
+      dockSaleCeiling: capacity * (topFishPrice + Math.floor(topFishPrice * boat.dockSaleBonusPercent / 100)),
       bestExpectedFullNetSale: rounded(best), luckyFullSaleCeiling: capacity * topFishPrice, sensitivity };
   });
   const tanks = tank.map((cells, tier) => ({ tier, cells, emptyToFullMinutes: cells * boat.fuel.regenSeconds / 60,

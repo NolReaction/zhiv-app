@@ -26,8 +26,12 @@ fun Route.guestProfileRoutes(repository: GuestProfileRepository, codec: TokenCod
             // Preserve the strict legacy projection, even when the owner shares records.
             val encoded = Json.encodeToJsonElement(profile).jsonObject
             val extended = call.request.headers.getAll("X-Zhiv-Profile")?.singleOrNull() == "tap-stats-v1"
-            call.respond(JsonObject(if (extended) encoded + ("tapStats" to
-                (profile.tapStats?.let { Json.encodeToJsonElement(it) } ?: JsonNull)) else encoded - "tapStats"))
+            val fishing = call.request.headers.getAll("X-Zhiv-Fishing-Profile")?.singleOrNull() == "v1"
+            call.respond(buildJsonObject {
+                (encoded - "tapStats" - "fishingSummary").forEach { (key, value) -> put(key, value) }
+                if (extended) put("tapStats", profile.tapStats?.let { Json.encodeToJsonElement(it) } ?: JsonNull)
+                if (fishing) put("fishingSummary", profile.fishingSummary?.let { Json.encodeToJsonElement(it) } ?: JsonNull)
+            })
         }
     }
 }

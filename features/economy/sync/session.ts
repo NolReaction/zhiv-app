@@ -4,6 +4,7 @@ import { createUuidV4 } from "@/lib/browser-uuid";
 import { z } from "zod";
 import { economyCommandSchema, marketCommandSchema, type EconomyCommand, type EconomyResult, type EconomyView, type MarketCommand, type MarketView } from "@/features/economy/domain/model";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev/dev-model";
+import { boatUpgradeReceipt, type BoatUpgradeReceipt } from "@/features/economy/domain/boat-upgrade-receipt";
 import { constructionCompletions, type ConstructionCompletion } from "@/features/economy/domain/construction-completion";
 import { inventoryGainFromReceipt, INVENTORY_GAIN_HISTORY_LIMIT, type InventoryGain } from "@/features/economy/domain/inventory-gain";
 import { playerXpGainFromReceipt, PLAYER_XP_GAIN_HISTORY_LIMIT, type PlayerXpGain } from "@/features/economy/domain/player-xp-gain";
@@ -47,6 +48,7 @@ type View = {
   marketSyncError: string | null; barterSyncError: string | null;
   error: string | null; notice: string; busy: boolean; uncertain: boolean; retryAt: number; rateLimited: boolean;
   completedConstructions: readonly ConstructionCompletion[];
+  localBoatUpgrade?: BoatUpgradeReceipt;
   directActionsAvailable: boolean;
   snapshotConfirmed: boolean;
   pendingBoatCastId?: string;
@@ -83,7 +85,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
   let pending: Pending | null = null, active = false, available = true, epoch = 0, readSequence = 0, marketSequence = 0, barterSequence = 0;
   // A reload may recover the command, but must not pretend the player just
   // started it in this course. Keep this intent out of receipt persistence.
-  let localXpIntent: { requestId: string; before: EconomyView } | null = null;
+  let localEconomyIntent: { requestId: string; before: EconomyView } | null = null;
   let localExplorationIntent: { requestId: string; before: EconomyView } | null = null;
   let localLeaftailPurchaseIntent: { requestId: string; before: EconomyView } | null = null;
   let reading: Promise<void> | null = null, marketReading: Promise<void> | null = null, barterReading: Promise<void> | null = null;
@@ -254,7 +256,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
       durableLanding = null;
     }
     pending = value;
-    if (!value) { localExplorationIntent = null; localLeaftailPurchaseIntent = null; localXpIntent = null; }
+    if (!value) { localExplorationIntent = null; localLeaftailPurchaseIntent = null; localEconomyIntent = null; }
     try { if (value) storage?.setItem(storageKey, JSON.stringify(value)); else storage?.removeItem(storageKey); } catch { /* Receipt remains in memory if browser storage is unavailable. */ }
   }
   function restore() {
@@ -458,8 +460,8 @@ export function createEconomySession(owner: string | null, transport: Transport,
           && !result.state.jobs.some(job => job.id === value.command.targetId)
           && !view.snapshot?.jobs.some(job => job.id === value.command.targetId)
           && !view.cancelledExplorations?.includes(value.command.targetId) ? value.command.targetId : null;
-        const claimIntent = value.kind === "economy" && ["claim_job", "claim_mining_batch"].includes(value.command.action) && localXpIntent?.requestId === value.command.requestId
-          ? localXpIntent : null;
+        const claimIntent = value.kind === "economy" && ["claim_job", "claim_mining_batch"].includes(value.command.action) && localEconomyIntent?.requestId === value.command.requestId
+          ? localEconomyIntent : null;
         let gain = value.kind !== "dev" && value.kind !== "barter" && value.kind !== "neighbor" && view.snapshot?.revision === result.state.revision
           && !inventoryReceipts.has(value.command.requestId) ? inventoryGainFromReceipt(claimIntent?.before ?? before, result, value.command) : null;
         if (gain?.expedition && !claimIntent) {
@@ -467,9 +469,11 @@ export function createEconomySession(owner: string | null, transport: Transport,
           const withoutReport = { ...gain }; delete withoutReport.expedition;
           gain = Object.freeze(withoutReport);
         }
-        const xpGain = value.kind === "economy" && localXpIntent?.requestId === value.command.requestId
+        const xpGain = value.kind === "economy" && localEconomyIntent?.requestId === value.command.requestId
           && view.snapshot?.revision === result.state.revision && !xpReceipts.has(value.command.requestId)
-          ? playerXpGainFromReceipt(localXpIntent.before, result, value.command) : null;
+          ? playerXpGainFromReceipt(localEconomyIntent.before, result, value.command) : null;
+        const upgrade = value.kind === "economy" && localEconomyIntent?.requestId === value.command.requestId
+          && view.snapshot?.revision === result.state.revision ? boatUpgradeReceipt(localEconomyIntent.before, result, value.command) : null;
         const sale = value.kind === "economy" && view.snapshot?.revision === result.state.revision
           && view.localSale?.id !== value.command.requestId ? localSaleFromReceipt(before, result, value.command) : null;
         const purchase = value.kind === "economy" && localLeaftailPurchaseIntent?.requestId === value.command.requestId
@@ -492,6 +496,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
             offers: view.neighbor.shop.offers.map(offer => offer.id === value.command.targetId ? { ...offer, purchased: true } : offer) } } } : {}),
           ...(xpGain ? { playerXpGains: Object.freeze([...(view.playerXpGains ?? []), xpGain].slice(-PLAYER_XP_GAIN_HISTORY_LIMIT)) } : {}),
           ...(sale ? { localSale: sale } : {}),
+          ...(upgrade ? { localBoatUpgrade: upgrade } : {}),
           ...(purchase ? { localLeaftailPurchase: purchase } : {}),
           ...(exploration ? { localExploration: exploration } : {}),
           ...(completed.length ? { completedConstructions: [...view.completedConstructions, ...completed].slice(-8) } : {}),
@@ -633,7 +638,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
         ...(fishSelection === undefined ? {} : { fishSelection: { ...fishSelection } }),
         ...(action === "load_ship_cargo" && shipCargo ? { voyageId: shipCargo.voyageId, orderId: shipCargo.orderId, itemId: shipCargo.itemId } : {}),
         ...(reel ? { reel: { ...reel, inputs: reel.inputs.map(input => ({ ...input })) } } : {}) };
-      localXpIntent = { requestId: command.requestId, before: view.snapshot };
+      localEconomyIntent = { requestId: command.requestId, before: view.snapshot };
       if (action === "start_exploration" || action === "start_fishing")
         localExplorationIntent = { requestId: command.requestId, before: view.snapshot };
       if (action === "buy_leaftail_item") localLeaftailPurchaseIntent = { requestId: command.requestId, before: view.snapshot };

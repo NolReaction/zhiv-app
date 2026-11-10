@@ -54,6 +54,7 @@ const vite = await createServer({ configFile: false, appType: "custom", root, ca
             effects.push({ instance, callback: () => { slot.cleanup?.(); slot.cleanup = callback(); } });
           }
         }
+        export const useLayoutEffect = useEffect;
         export function useMemo(callback, dependencies) {
           const index = cursor++, previous = current.slots[index];
           if (!previous || !equal(dependencies, previous.dependencies)) current.slots[index] = { dependencies, value: callback() };
@@ -181,8 +182,12 @@ function fixture({ outbound = false, dev = false } = {}) {
     get state() { return state; }, get tree() { return tree; },
     advanceTo(next) { const elapsed = next - time; assert(elapsed >= 0); time = next; clock += elapsed; render(); },
     close() { open = false; render(); }, reopen() { open = true; render(); },
-    cast() { click(byAction("cast")); flush(); frame(0); },
-    play() { const biteAt = Date.parse(state.boat.voyage.challenge.biteAt ?? state.boat.voyage.challenge.startedAt); if (time < biteAt) frame(biteAt - time); if (byAction("play")) click(byAction("play")); frame(0); assert(byAction("hold")); },
+    cast() {
+      const button = byAction("cast"); assert(button);
+      button.props.onPointerDown(event(button)); render(); frame(350);
+      button.props.onPointerUp(event(button)); render(); flush(); frame(0);
+    },
+    play() { const biteAt = Date.parse(state.boat.voyage.challenge.biteAt ?? state.boat.voyage.challenge.startedAt); if (time < biteAt) frame(biteAt - time); if (byAction("hook")) click(byAction("hook")); else if (byAction("play")) click(byAction("play")); frame(0); assert(byAction("hold")); },
     hold(value, input = "keyboard") { const button = byAction("hold"); assert(button); if (input === "pointer") button.props[value ? "onPointerDown" : "onPointerUp"](event(button));
       else button.props[value ? "onKeyDown" : "onKeyUp"](event(button)); render(); },
     playToResult() {
@@ -222,6 +227,24 @@ test("actual root changes from timed outbound to one separate river scene withou
   assert.equal(f.view().boat.voyage.challenge.fishId, undefined);
   assert.equal(f.view().boat.voyage.challenge.weightGrams, undefined);
   assert.equal(f.commands.filter(request => request.action === "submit_boat_cast").length, 0);
+});
+
+test("cancelled charges keep the budget and a missed bite settles once with no catch", () => {
+  const f = fixture();
+  const button = f.byAction("cast"); button.props.onPointerDown(event(button)); f.render(); f.frame(700);
+  assert.equal(f.pending.length, 0); assert.match(text(f.byAction("cast")), /75%/);
+  button.props.onPointerCancel(event(button)); f.render();
+  button.props.onPointerUp(event(button)); f.render();
+  assert.equal(f.pending.length, 0); assert.equal(f.state.boat.voyage.castsUsed, 0);
+  button.props.onKeyDown(event(button, { key: " " })); f.render(); f.frame(1000);
+  assert.match(text(f.byAction("cast")), /100%/);
+  button.props.onKeyUp(event(button, { key: " " })); f.render(); f.flush(); f.frame(0);
+  const voyage = f.state.boat.voyage, biteAt = Date.parse(voyage.challenge.biteAt);
+  f.frame(biteAt - Date.parse(f.view().serverTime)); assert(f.byAction("hook")); assert.equal(f.byAction("hold"), undefined);
+  f.frame(3199); assert.equal(f.pending.length, 0); assert.equal(hooks.inspectReel().tick, 0);
+  f.frame(1); assert.equal(f.pending.length, 1); assert.equal(f.pending[0].reel.missedBite, true);
+  f.flush(); assert.equal(f.state.boat.voyage.challenge, undefined); assert.deepEqual(f.state.boat.voyage.catches, []);
+  assert.equal(f.state.boat.voyage.castsUsed, 1); assert(f.byAction("cast"));
 });
 
 test("real play and input handlers pause for catch album DEV and return overlays without spending a return or generating fish", () => {

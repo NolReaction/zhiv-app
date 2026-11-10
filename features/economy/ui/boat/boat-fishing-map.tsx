@@ -5,6 +5,7 @@ import { AlertDialog, Dialog } from "radix-ui";
 import { ArrowLeft, BookOpen, CircleHelp, Clock3, Fish, FishingRod, Sailboat, X } from "lucide-react";
 import { boatConfig, boatModules, boatState } from "@/features/economy/domain/boat-fishing";
 import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
+import { BoatCastControl } from "./boat-cast-control";
 import { BoatCountdown } from "./boat-countdown";
 import { BoatDevControls } from "@/features/economy/dev/boat-dev-controls";
 import { boatCastStage } from "./boat-cast-timing";
@@ -34,8 +35,11 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
   const coach = useBoatFishingCoach(state.ownerPublicId);
   const [stageSample, setStageSample] = useState<Pick<BoatReelVisualState, "challengeId" | "stage"> | null>(null);
   const [feed] = useState(createRiverFeed);
+  const [castPower, setCastPower] = useState(100);
+  const [missedCast, setMissedCast] = useState<string | null>(null);
   const [showAlbum, setShowAlbum] = useState(false);
   const [confirmReturn, setConfirmReturn] = useState(false), [showCatch, setShowCatch] = useState(false), [showDev, setShowDev] = useState(false);
+  const controlsSuspended = suspended || showCatch || showDev || showAlbum || confirmReturn;
   const publishVisual = useCallback((next: BoatReelVisualState) => {
     if (feed.publish(next)) {
       setStageSample({ challengeId: next.challengeId, stage: next.stage });
@@ -54,15 +58,15 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
   const fishRarity = landed ? state.catalog.fishing?.fish.find(fish => fish.itemId === landed.fishId)?.rarity : undefined;
   const stage = suspended ? "paused" : challenge ? queued ? "pending" : expired ? "expired" : stageSample?.challengeId === challenge.id ? stageSample.stage : boatCastStage(challenge, economy.now) : landed ? "landed" : "waiting";
   const localDisabled = suspended || economy.busy || economy.uncertain || (economy.pendingProductionCount ?? 0) > 0;
-  const frame = useMemo<FishingSceneFrame>(() => ({ stage, sceneKey: voyage.id, castKey: challenge?.id, resistance: challenge?.resistance,
+  const frame = useMemo<FishingSceneFrame>(() => ({ stage, castPower, sceneKey: voyage.id, castKey: challenge?.id, resistance: challenge?.resistance,
     ambience: { now: economy.now, timeZone }, biteLeadSeconds: challenge ? Math.max(0, (Date.parse(challenge.biteAt ?? challenge.startedAt) - economy.now) / 1000) : undefined,
     fishSizeScale: landed ? lastPresentation?.sizeScale : undefined, catchKey: landed ? `${state.ownerPublicId}.${voyage.id}.${landed.castIndex}` : undefined,
     fishRarity, fishId: landed?.fishId, held: false, boat: { repaired: true, upgrades: boat.upgrades, modules: boatModules(boat) }, rodId: voyage.loadout.rodId, appearance }),
-  [stage, challenge, economy.now, timeZone, state.ownerPublicId, voyage.id, landed, lastPresentation?.sizeScale, fishRarity, boat, voyage.loadout.rodId, appearance]);
+  [stage, castPower, challenge, economy.now, timeZone, state.ownerPublicId, voyage.id, landed, lastPresentation?.sizeScale, fishRarity, boat, voyage.loadout.rodId, appearance]);
   const finishReturn = () => { if (!disabled && !suspended && send("return_boat", voyage.id)) setConfirmReturn(false); };
   const requestReturn = () => { if (!disabled && !suspended) { if (completed) finishReturn(); else setConfirmReturn(true); } };
   return <section className={styles.map} data-boat-map data-fishing-stage={frame.stage} aria-label="Карта речной рыбалки">
-    <RiverScene base={frame} owner={state.ownerPublicId} voyageId={voyage.id} count={voyage.catches.length} feed={feed} suspended={suspended} />
+    <RiverScene base={frame} owner={state.ownerPublicId} voyageId={voyage.id} count={voyage.catches.length} feed={feed} suspended={controlsSuspended} />
     <header className={styles.header}><div className={styles.location}><span>РЕЧНАЯ РЫБАЛКА</span><h2>{config.name}</h2><small>{completed ? <><Sailboat size={13} />Можно возвращаться домой</> : <><Clock3 size={13} /><span className={styles.returnLabel}>До возвращения</span><BoatCountdown until={Date.parse(voyage.fishingUntil)} now={economy.now} readClock={economy.readServerNow} /></>}</small></div>
       <div className={styles.headerActions}><span className={styles.counter}><FishingRod size={16} />{remaining}<small>забросов</small></span><span className={styles.counter}><Fish size={16} />{voyage.catches.length} / {voyage.maxCatches}<small>на борту</small></span>
         <button type="button" className={styles.close} onClick={onClose} aria-label="К поляне, сохранить рыбалку"><X size={22} /></button></div></header>
@@ -77,11 +81,17 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
     <div className={styles.bottom}>
       <div className={styles.controls} data-control-stage={frame.stage} data-fishing-finished={completed || undefined}>
         {challenge && !completed ? <BoatReelGame owner={state.ownerPublicId} voyageId={voyage.id} challenge={challenge} now={economy.now} readClock={economy.readServerNow} disabled={localDisabled}
-          queued={queued} uncertain={economy.uncertain} error={economy.error} coachView={coach.view} onCoachObservation={coach.observe} suspended={suspended || showCatch || showDev || showAlbum || confirmReturn} onVisualState={publishVisual} onSubmit={reel => send("submit_boat_cast", voyage.id, { ...reel, deferred: true })} />
+          queued={queued} uncertain={economy.uncertain} error={economy.error} coachView={coach.view} onCoachObservation={coach.observe} suspended={controlsSuspended} onVisualState={publishVisual} onSubmit={reel => {
+            const sent = send("submit_boat_cast", voyage.id, { ...reel, deferred: true });
+            if (sent && reel.missedBite) setMissedCast(reel.challengeId);
+            return sent;
+          }} />
           : <div className={styles.waiting} key={landed ? `landed-${landed.castIndex}` : "ready"}>
-            {landed ? <BoatCatchCard state={state} caught={landed} /> : completed ? <BoatFishingCompletion receipt={createBoatTripReceipt(state, voyage)} full={full} onShowCatch={() => setShowCatch(true)} /> : <><span className={styles.eyebrow}><Sailboat size={15} />Мохлик на речном плёсе</span><h3>Пора забросить удочку</h3><p className={!coach.view.completed ? coachStyles.prompt : undefined} data-fishing-coach={!coach.view.completed ? "cast" : undefined}>{boatCoachInstruction(coach.view, "waiting") ?? "Забросьте удочку. Следите за поплавком и удерживайте рыбу в зоне снасти."}</p></>}
+            {landed ? <BoatCatchCard state={state} caught={landed} /> : completed ? <BoatFishingCompletion receipt={createBoatTripReceipt(state, voyage)} full={full} onShowCatch={() => setShowCatch(true)} /> : <><span className={styles.eyebrow}><Sailboat size={15} />Мохлик на речном плёсе</span><h3>{missedCast ? "Поклёвка пропущена" : "Пора забросить удочку"}</h3><p className={!coach.view.completed ? coachStyles.prompt : undefined} data-fishing-coach={!coach.view.completed ? "cast" : undefined}>{boatCoachInstruction(coach.view, "waiting") ?? "Удерживайте кнопку, чтобы выбрать силу. Отпустите для заброса и следите за поплавком."}</p></>}
           </div>}
-        {(!challenge || expired) && usableCasts > 0 && <button type="button" className={styles.primary} data-fishing-action="cast" disabled={disabled || suspended} onClick={() => { if (!disabled && !suspended) send("begin_boat_cast", voyage.id); }}><FishingRod size={18} />Забросить удочку</button>}
+        {(!challenge || expired) && usableCasts > 0 && <BoatCastControl disabled={disabled || controlsSuspended} onCast={power => {
+          if (send("begin_boat_cast", voyage.id)) { setCastPower(power); setMissedCast(null); }
+        }} />}
         {completed && <button type="button" className={styles.primary} data-fishing-action="return" aria-label="Завершить рыбалку и вернуться домой" disabled={disabled || suspended} onClick={requestReturn}><Sailboat size={18} />Завершить и вернуться домой</button>}
         <div className={styles.bottomRow}><button type="button" className={styles.back} onClick={onClose}><ArrowLeft size={15} />К поляне</button><button type="button" className={`${styles.back} ${styles.albumShortcut}`} data-fishing-action="album-shortcut" onClick={() => setShowAlbum(true)} aria-haspopup="dialog"><BookOpen size={15} />Альбом</button><button type="button" className={`${styles.back} ${styles.coachShortcut}`} data-fishing-action="coach-shortcut" onClick={coach.replay} aria-label="Повторить подсказки управления"><CircleHelp size={15} /></button>{!completed && <button type="button" className={styles.back} data-fishing-action="return" disabled={disabled || suspended} onClick={requestReturn}>Вернуться с уловом</button>}</div>
       </div>

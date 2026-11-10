@@ -15,9 +15,9 @@ export function fishingBiteMotion(stage: FishingSceneFrame["stage"], age: number
   if (stage !== "bite") return { dip: 0, tilt: 0, notice: 0, ripple: .7 };
   const t = Math.max(0, age), first = t < .72 ? Math.sin(Math.PI * t / .72) : 0;
   const settle = smooth(t / .16), recover = smooth((t - .3) / .6);
-  // One definite dip announces the real bite, followed by widely spaced small reminders.
-  const cycle = (Math.max(0, t - 1.8) % 4.2) / 4.2;
-  const reminder = t > 1.8 && cycle < .16 ? Math.sin(cycle / .16 * Math.PI) ** 2 : 0;
-  return { dip: settle * (12 - recover * 6) + reminder * 1.6, tilt: -first * .24 + reminder * .04,
-    notice: first, ripple: .85 + first * .65 + reminder * .15 };
+  // Short tugs keep the float readable until the player sets the hook.
+  const cycle = Math.max(0, t - 1.6) % .85;
+  const reminder = t > 1.6 && cycle < .42 ? Math.sin(cycle / .42 * Math.PI) ** 2 : 0;
+  return { dip: settle * (12 - recover * 6) + reminder * 5, tilt: -first * .24 + reminder * .18,
+    notice: first, ripple: .85 + first * .65 + reminder * .4 };
 }

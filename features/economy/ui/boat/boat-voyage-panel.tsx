@@ -1,5 +1,7 @@
-import { Anchor, Check, Fish, Package, Sailboat, Waves } from "lucide-react";
+import { Anchor, Check, Coins, Fish, Package, Sailboat, Waves } from "lucide-react";
 import { boatConfig, boatModules, boatPhase, boatReturnStartedAt, boatReturnsAt, boatState } from "@/features/economy/domain/boat-fishing";
+import { ECONOMY_MAX_BALANCE } from "@/features/economy/domain/model";
+import { boatDockSaleQuote } from "@/features/economy/domain/boat-dock-sale";
 import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { BoatCountdown } from "./boat-countdown";
 import { BoatArt } from "./boat-art";
@@ -16,11 +18,16 @@ export function BoatVoyagePanel({ economy, disabled, send, onOpenPantry }: Props
   if (!voyage) return null;
   const phase = boatPhase(boat, economy.now);
   if (phase === "ready") {
+    const sale = boatDockSaleQuote(voyage.catches, state.catalog);
+    const walletFull = sale != null && sale.total > ECONOMY_MAX_BALANCE - state.wallet.coins;
     const shortfall = Math.max(0, voyage.catches.length - state.storage.available);
     return <section data-boat-trip-ready>
       <BoatTripSummary receipt={createBoatTripReceipt(state, voyage)} />
       <div className={summaryStyles.unloading}>
         {shortfall > 0 && <p>Освободите мест в кладовой: {shortfall}. Улов ждёт на борту.</p>}
+        {sale && <p>Выкуп у причала: {sale.base} монет за рыбу + {sale.bonus} за вес.{walletFull && " Кошелёк заполнен."}</p>}
+        {sale && <button type="button" className={styles.secondary} disabled={disabled || walletFull}
+          onClick={() => send("sell_boat_catch", voyage.id, undefined, sale.total)}><Coins size={17} />Продать весь улов · {sale.total} монет</button>}
         {shortfall > 0
           ? <button type="button" className={styles.primary} disabled={!onOpenPantry || economy.busy} onClick={onOpenPantry}><Package size={17} />В кладовую</button>
           : <button type="button" className={styles.primary} disabled={disabled} onClick={() => send("claim_boat", voyage.id)}><Check size={17} />{voyage.catches.length ? "Принять улов" : "Завершить выход"}</button>}

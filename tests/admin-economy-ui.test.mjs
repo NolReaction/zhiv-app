@@ -230,3 +230,23 @@ test("detail preserves issued order prices, shows pending meals and records appl
   for (const text of ["Еда и доска заказов", "Прежний заказ", "Сохранённая награда: 777 монет", "не пересчитываются по нынешнему уровню", "Сохранённая доска устарела", "Окно истекло", "скорость +20%", "Бонус уже учтён в сроке", "Сдача заказа жителя", "Еда для строителя"]) assert.ok(markup.includes(text), text);
   assert.deepEqual(value, before);
 });
+
+
+test("admin boat snapshot distinguishes upgrade work, fishing and unloading into available storage", () => {
+  const value = detail();
+  const now = Date.parse(serverTime), iso = offset => new Date(now + offset).toISOString();
+  const boat = value.economy.boat = { level: 1, upgrades: [], records: {}, completedVoyages: 1 };
+  const html = () => renderToStaticMarkup(AdminEconomyDetailContent({ detail: value }));
+  boat.work = { upgradeId: "oars", finishesAt: iso(-1000) };
+  assert.match(html(), /Улучшение готово/);
+  delete boat.work;
+  boat.voyage = { arrivesAt: iso(-1000), fishingUntil: iso(60000), inboundSeconds: 60,
+    catches: [{ fishId: "fish" }, { fishId: "fish_dace" }], castsUsed: 3, maxCatches: 4, maxCasts: 6 };
+  assert.match(html(), /На рыбалке/);
+  boat.voyage.returnsAt = iso(-1000);
+  assert.match(html(), /Ожидает разгрузки/);
+  value.economy.storage.available = 1;
+  assert.match(html(), /Мест для разгрузки не хватает: 1/);
+  value.economy.storage.available = 2;
+  assert.match(html(), /Весь улов поместится/);
+});

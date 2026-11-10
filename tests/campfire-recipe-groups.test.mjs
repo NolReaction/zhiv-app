@@ -75,8 +75,8 @@ test("campfire sections include every selected product once and leave the catalo
   const economy = controller(), products = worldRecipeGroups(economy.snapshot, recipes(economy)), before = structuredClone(products);
   const groups = campfireRecipeGroups(products, "all");
   assert.deepEqual(groups.map(group => group.id), ["fish", "drinks", "desserts", "provisions"]);
-  assert.equal(products.length, 30);
-  assert.deepEqual(groups.map(group => group.recipes.length), [15, 5, 5, 5]);
+  assert.equal(products.length, 33);
+  assert.deepEqual(groups.map(group => group.recipes.length), [16, 6, 6, 5]);
   assert.deepEqual(groups.flatMap(group => group.recipes.map(product => product.key)).sort(), products.map(product => product.key).sort());
   for (const group of groups) assert.deepEqual(group.recipes.map(product => product.recipe.seconds), group.recipes.map(product => product.recipe.seconds).toSorted((left, right) => left - right));
   assert.deepEqual(products, before);
@@ -104,7 +104,7 @@ test("cookbook tabs show every product once and filters use real fish rarity and
   assert.equal(view.tab("fish").props["aria-selected"], true);
   for (const name of ["Рыбные блюда", "Напитки", "Десерты", "Припасы"]) assert.ok(view.html.includes(name));
   const seen = [];
-  for (const [category, count] of [["fish", 13], ["drinks", 5], ["desserts", 4], ["provisions", 4], ["discoveries", 4]]) {
+  for (const [category, count] of [["fish", 13], ["drinks", 5], ["desserts", 4], ["provisions", 4], ["discoveries", 7]]) {
     view.tab(category).props.onClick(); view = catalog(economy);
     assert.equal(view.tab(category).props["aria-selected"], true);
     assert.equal(view.ids.length, count);
@@ -112,7 +112,7 @@ test("cookbook tabs show every product once and filters use real fish rarity and
     seen.push(...view.ids);
   }
   assert.deepEqual(seen.toSorted(), recipes(economy).map(recipe => recipe.id).toSorted());
-  assert.equal(new Set(seen).size, 30);
+  assert.equal(new Set(seen).size, 33);
   view.tab("fish").props.onClick(); view = catalog(economy);
   view.rarity.props.onChange({ target: { value: "common" } }); view = catalog(economy);
   assert.deepEqual(view.ids.toSorted(), ["cook_fish_soup", "cook_forest_pan", "cook_grilled_fish", "cook_grilled_silverfin"]);
@@ -168,7 +168,7 @@ test("an unchanged source preserves manual filters while foreign station targets
   hooks.reset(); const economy = controller();
   let view = catalog(economy, "cook_compote");
   view.search.props.onChange({ target: { value: "Малиновый" } }); view = catalog(economy, "cook_compote");
-  assert.equal(view.search.props.value, "Малиновый"); assert.deepEqual(view.ids, ["cook_compote"]);
+  assert.equal(view.search.props.value, "Малиновый"); assert.deepEqual(view.ids, ["cook_compote", "bottle_compote"]);
   for (const id of ["missing_recipe", "make_planks"]) {
     view = catalog(economy, id);
     assert.equal(view.search.props.value, "");
@@ -271,7 +271,7 @@ test("an unknown experiment cannot be exposed through search or a recipe link be
   assert.doesNotMatch(view.html, /Тягучая ягодная сладость|Ягодная пастила/);
   view.tab("discoveries").props.onClick(); view = catalog(economy, "experiment_berry_pastila");
   assert.deepEqual(view.ids, []);
-  assert.match(view.html, /Скрытые рецепты: 4/);
+  assert.match(view.html, /Скрытые рецепты: 7/);
   assert.doesNotMatch(view.html, /Тягучая ягодная сладость|Ягодная пастила|experiment_berry_pastila/);
   economy.snapshot.familiarItems = ["strawberry_compote", "berries"];
   view = catalog(economy, "experiment_berry_pastila", 1);
@@ -280,16 +280,21 @@ test("an unknown experiment cannot be exposed through search or a recipe link be
 });
 
 
-test("eligible unknown dishes show an anonymous count and never match search or ingredient filters", () => {
+test("locked pages expose ingredient clues through search and native keyboard disclosures, without naming the dish", () => {
   const economy = controller({ buildings: { home: 1, dryer: 1 }, familiarItems: [], progression: { recipes: {}, routes: {} } });
   const show = () => catalog(economy, "cook_forest_pan");
   hooks.reset();
-  assert.doesNotMatch(show().html, /Скрытые рецепты|скрыто \d/);
+  assert.doesNotMatch(show().html, /Скрытые рецепты:/);
   economy.snapshot.buildings = { home: 2, dryer: 2 };
   let view = show();
   assert.match(view.html, /Скрытые рецепты: 1/);
   assert.deepEqual(view.ids, ["cook_grilled_fish"]);
   assert.equal(view.cards.length, 0);
+  assert.doesNotMatch(view.html, /лесное жаркое|cook_forest_pan|forest_pan/i);
+  view.search.props.onChange({ target: { value: "Малина" } });
+  view = show();
+  assert.match(view.html, /<details[^>]*><summary>.*Состав.*Малина.*<\/summary>/);
+  assert.match(view.html, /Ещё нужно найти/);
   assert.doesNotMatch(view.html, /лесное жаркое|cook_forest_pan|forest_pan/i);
   view.search.props.onChange({ target: { value: "жаркое" } });
   view = show();

@@ -82,14 +82,14 @@ private fun boatCost(value: EconomyCost) = require(value.coins in 0L..1_000_000_
     @EncodeDefault(EncodeDefault.Mode.NEVER) val motorResponse: Int? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val hullDamping: Int? = null) {
     init {
-        boatUuid(id); require(rulesVersion in 1..5 && seed in 0L..0xffff_ffffL && tickMs == 50 && maxTicks == 600)
-        require(zoneWidth in setOf(3200, 4000) && difficulty in 1..5 && Instant.parse(expiresAt).isAfter(Instant.parse(startedAt)))
+        boatUuid(id); require(rulesVersion in 1..6 && seed in 0L..0xffff_ffffL && tickMs == 50 && maxTicks == 600)
+        require(EconomyBoatReel.validZoneWidth(rulesVersion, zoneWidth) && difficulty in 1..5 && Instant.parse(expiresAt).isAfter(Instant.parse(startedAt)))
         require(biteAt == null || !Instant.parse(biteAt).isBefore(Instant.parse(startedAt)) && Instant.parse(biteAt).isBefore(Instant.parse(expiresAt)))
         require(fishRarity == null || fishRarity in fishingShopRarities)
         require(resistance == null || resistance in setOf("steady", "sprightly", "surging", "stubborn"))
         require(rulesVersion == 1 || resistance != null)
         require(rulesVersion < 3 || fishRarity != null)
-        require(if (rulesVersion == 5) motorResponse != null && motorResponse in 0..5 && hullDamping != null && hullDamping in 0..20
+        require(if (rulesVersion >= 5) motorResponse != null && motorResponse in 0..5 && hullDamping != null && hullDamping in 0..20
                 else motorResponse == null && hullDamping == null)
     }
 }
@@ -180,8 +180,9 @@ private fun boatCost(value: EconomyCost) = require(value.coins in 0L..1_000_000_
     val outboundSeconds: Long, val inboundSeconds: Long, val maxCasts: Int, val activeSeconds: Long,
     val castExpirySeconds: Long, val zoneWidth: Int, val netZoneWidth: Int, val oarsTravelSeconds: Long,
     val upgrades: List<EconomyBoatUpgrade>, val blueprints: List<EconomyBoatBlueprintSpec>, val weights: Map<String, EconomyBoatWeight>,
-    val fuel: EconomyBoatFuelRules, val moduleEffects: EconomyBoatModuleEffects, val spareCasts: Int) {
+    val fuel: EconomyBoatFuelRules, val moduleEffects: EconomyBoatModuleEffects, val spareCasts: Int, val dockSaleBonusPercent: Int? = null) {
     init {
+        require(dockSaleBonusPercent == null || dockSaleBonusPercent in 0..100)
         require(version == 1 && outboundSeconds in 0L..3600L && inboundSeconds in 0L..3600L && maxCasts in 1..8 && activeSeconds in 120L..3600L)
         require(fuel.baseCapacity == moduleEffects.tank.first() && spareCasts in 0..2 && moduleEffects.storage.max() + spareCasts <= 11)
         require(castExpirySeconds == 120L && zoneWidth == 3200 && netZoneWidth == 4000 && oarsTravelSeconds in 0L..3600L)

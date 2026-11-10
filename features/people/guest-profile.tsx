@@ -7,6 +7,7 @@ import { AchievementMedal } from "@/features/game/achievement-medal";
 import { GAME_ACHIEVEMENTS } from "@/features/game/game-rewards";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
 import { getPlayerLevel } from "@/features/economy/domain/player-levels";
+import { GuestFishingCard } from "./guest-fishing-card";
 import { ProfileFindings } from "./profile-findings";
 import { getGuestProfile } from "./guest-profile-api";
 import type { GuestProfile } from "./guest-profile-model";
@@ -28,6 +29,7 @@ export function GuestProfileContents({ profile, section = "overview" }: { profil
       <div><dt>Всего тапов</dt><dd>{profile.tapStats.lifetimeTaps.toLocaleString("ru-RU")}</dd></div>
       <div><dt>Лучшая серия</dt><dd>×{profile.tapStats.bestSeries.toLocaleString("ru-RU")}</dd></div>
     </dl> : <p className={styles.privateStats}>Подтверждённые тапы за месяц и лучшие серии доступны в игровом рейтинге.</p>}
+    {profile.fishingSummary && <GuestFishingCard fishing={profile.fishingSummary} />}
     <section aria-label="Достижения друга">
       <h4>Достижения мира · {profile.achievements.length}</h4>
       {profile.achievements.length === 0 ? <p>Первые игровые медали ещё впереди.</p> : <ul className={styles.awards}>

@@ -131,3 +131,43 @@
   .modules { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (forced-colors: active) { .module[aria-pressed=true], .hotspot[aria-pressed=true] { outline: 2px solid Highlight; } }
+
+.upgradeFeedback {
+  position: absolute;
+  z-index: 3;
+  inset: auto 0 4px;
+  display: grid;
+  justify-items: center;
+  pointer-events: none;
+}
+.upgradeFeedback > span {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border: 1px solid #e7c081;
+  border-radius: 5px;
+  background: #26372a;
+  color: #fff0c8;
+  font-size: 11px;
+}
+.garage[data-feedback-phase] .upgradeFeedback > span { display: inline-flex; }
+.garage[data-feedback-module="engine"] [data-boat-module="engine"],
+.garage[data-feedback-module="hull"] [data-boat-module="hull"],
+.garage[data-feedback-module="tank"] [data-boat-module="tank"],
+.garage[data-feedback-module="storage"] [data-boat-module="storage"] { outline: 2px solid #e7c081; outline-offset: -2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .garage[data-feedback-phase] .upgradeFeedback > span { animation: install-notice 300ms ease-out both; }
+  .garage[data-feedback-module="hull"][data-feedback-phase="installed"] [data-boat-part="repair"],
+  .garage[data-feedback-module="engine"][data-feedback-phase="installed"] [data-boat-part="engine"],
+  .garage[data-feedback-module="tank"][data-feedback-phase="installed"] [data-boat-part="tank"],
+  .garage[data-feedback-module="storage"][data-feedback-phase="installed"] [data-boat-module="storage"] .moduleImage {
+    animation: fit-part 750ms ease-out;
+  }
+}
+@keyframes install-notice { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fit-part {
+  0% { transform: translateY(-6px); opacity: .65; }
+  55% { transform: translateY(1px); opacity: 1; filter: drop-shadow(0 0 6px #f3c77d); }
+  100% { transform: translateY(0); }
+}

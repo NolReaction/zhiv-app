@@ -1,8 +1,9 @@
 import type { EconomyView } from "@/features/economy/domain/model";
 import { familiarEconomyItems } from "@/features/economy/domain/familiar-items";
 import { campfireRecipeSection } from "./campfire-recipe-groups";
+import { cookbookFishRarity } from "./cookbook-recipes";
 import { experimentCanPractice } from "@/features/economy/domain/craft-skill";
-import { worldMissingRequirements, worldRequirements, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
+import { worldMissingRequirements, worldRequirements, worldRecipeCost, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
 
 const basicRecipes = new Set(["cook_grilled_fish", "cook_compote"]);
 // Fuel and packaging affect the debit and its availability, not familiarity with a dish.
@@ -29,20 +30,23 @@ export function cookbookRecipeVisible(state: EconomyView, recipe: WorldRecipe, f
   return cookbookRecipeVisibility(state, recipe, familiar) === "known";
 }
 
-/** Only anonymous counts leave this boundary for unreadable pages. */
+/** A locked page exposes ingredient clues, never the output, recipe title or result artwork. */
 export function cookbookPages(state: EconomyView, recipes: readonly WorldRecipe[]) {
   const familiar = new Set(familiarEconomyItems(state));
   const known: WorldRecipe[] = [];
-  const masked = { fish: 0, drinks: 0, desserts: 0, provisions: 0, discoveries: 0 };
-  let maskedTotal = 0;
+  const masked = [];
   for (const recipe of recipes) {
     const visibility = cookbookRecipeVisibility(state, recipe, familiar);
     if (visibility === "known") known.push(recipe);
     if (visibility === "masked") {
       const category = recipe.experiment ? "discoveries" : campfireRecipeSection(recipe)?.id ?? "provisions";
-      masked[category]++;
-      maskedTotal++;
+      const cost = worldRecipeCost(state, recipe);
+      masked.push({
+        key: recipe.id, category, rarity: cookbookFishRarity(state, recipe), cost,
+        unfamiliar: cookbookCoreIngredients(recipe).filter(id => !familiar.has(id)),
+        requiredSkill: experimentCanPractice(state, recipe, state.catalog) ? null : recipe.experiment!.requiredCookingLevel,
+      });
     }
   }
-  return { known, masked, maskedTotal };
+  return { known, masked, maskedTotal: masked.length };
 }

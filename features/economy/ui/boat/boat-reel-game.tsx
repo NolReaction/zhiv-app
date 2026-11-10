@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { ArrowDown, ArrowUp, Check, Pause, Play, RotateCcw } from "lucide-react";
 import type { FishingSceneFrame } from "./scene/fishing-scene-types";
 import { useBoatReelController, type BoatReelControllerProps } from "./use-boat-reel-controller";
@@ -28,12 +28,17 @@ export function BoatReelGame(props: Props) {
 
 function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachObservation, ...props }: Props) {
   const { reel, challenge, playing, held, ready, paused, expired, waitingForConfirmation, retryNeeded, togglePlay, changeHeld, submit,
-    holdButton, status, castStage } = useBoatReelController({ ...props, suspended });
-  const stage: FishingSceneFrame["stage"] = waitingForConfirmation ? "pending" : expired ? "expired"
+    holdButton, status, castStage, missedBite, awaitingHook, hookFish } = useBoatReelController({ ...props, suspended });
+  const hookButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (awaitingHook && !suspended && !document.hidden && (!document.activeElement || document.activeElement === document.body))
+      hookButton.current?.focus({ preventScroll: true });
+  }, [awaitingHook, suspended]);
+  const stage: FishingSceneFrame["stage"] = waitingForConfirmation ? "pending" : expired ? "expired" : missedBite ? "escaped"
     : reel.status === "caught" ? "caught" : reel.status === "escaped" ? "escaped" : playing ? "reeling" : paused ? "paused" : castStage;
   const resistancePhase = boatReelResistancePhase(challenge, reel.tick);
-  // Input opens on the bite itself. Give the river and audio their bite cue before the first simulation step.
-  const visualStage = waitingForConfirmation && reel.status !== "active" ? reel.status : playing && reel.tick === 0 ? "bite" : stage;
+  // Older attempts start automatically and still need one frame for the bite cue.
+  const visualStage = waitingForConfirmation && reel.status !== "active" ? reel.status : playing && challenge.rulesVersion < 6 && reel.tick === 0 ? "bite" : stage;
   const visual = useMemo<BoatReelVisualState>(() => ({ challengeId: challenge.id, stage: visualStage, held, resistancePhase,
     reel: { bar: reel.bar, fish: reel.fish, progress: reel.progress, zoneWidth: challenge.zoneWidth, velocity: reel.velocity } }),
   [challenge.id, challenge.zoneWidth, visualStage, held, resistancePhase, reel.bar, reel.fish, reel.progress, reel.velocity]);
@@ -45,10 +50,14 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
   const feedback = boatResistanceFeedback(resistancePhase, boatReelFeedback(reel, challenge.zoneWidth));
   const controlCoachText = feedback.inZone && !feedback.urgent ? coachText : null;
   const FeedbackIcon = feedback.inZone ? Check : feedback.direction === "lift" ? ArrowUp : ArrowDown;
-  const showMeter = !expired && castStage === "bite";
-  const action = waitingForConfirmation ? <p role="status" className={gameStyles.instruction}>{props.queued ? "Результат записан. Улов появится на борту после синхронизации." : "Проверяем улов. Рыба появится на борту после подтверждения."}</p>
-    : !expired && reel.status === "active" && castStage !== "bite" ? <p className={styles.waitingBite} role="status">{coachText ?? (castStage === "casting" ? "Поплавок летит к воде." : "Снасть в воде. При поклёвке Мохлик начнёт вываживание.")}</p>
-    : !expired && reel.status === "active" ? <>
+  const showMeter = !expired && !missedBite && !awaitingHook && castStage === "bite";
+  const action = waitingForConfirmation ? <p role="status" className={gameStyles.instruction}>{missedBite ? "Поклёвка пропущена. Сохраняем завершение попытки." : props.queued ? "Результат записан. Улов появится на борту после синхронизации." : "Проверяем улов. Рыба появится на борту после подтверждения."}</p>
+    : !expired && reel.status === "active" && castStage !== "bite" ? <p className={styles.waitingBite} role="status">{coachText ?? (castStage === "casting" ? "Поплавок летит к воде." : "Снасть в воде. Следите за поплавком.")}</p>
+    : !expired && awaitingHook ? <>
+      <p className={styles.waitingBite} role="status">Поплавок нырнул! Подсеките, пока рыба держит наживку.</p>
+      <button ref={hookButton} type="button" className={styles.primary} data-fishing-action="hook" onClick={hookFish}
+        disabled={!ready || suspended || props.disabled}>Подсечь!</button>
+    </> : !expired && !missedBite && reel.status === "active" ? <>
       {paused && <p className={`${gameStyles.instruction} ${coachText ? coachStyles.prompt : ""}`} data-fishing-coach={coachText ? "resume" : undefined}>{coachText ?? "Держите метку рыбы в зелёной зоне. Зажмите — зона вверх, отпустите — вниз."}</p>}
       <div className={`${gameStyles.actions} ${!playing ? gameStyles.single : ""}`}>{playing ? <>
         <button ref={holdButton} type="button" className={`${styles.primary} ${styles.hold} ${gameStyles.input}`} data-fishing-action="hold" aria-pressed={held} aria-label="Удерживать снасть: зажмите — вверх, отпустите — вниз" disabled={!ready || suspended}

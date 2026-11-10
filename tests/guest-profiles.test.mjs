@@ -51,7 +51,7 @@ test("guest projection only contains known personal discoveries and safe earned 
   assert.deepEqual(result.collections, { travel: ["acorn"], fishing: [fish], quarry: ["quartz_cluster"] });
   assert.deepEqual(result.achievements, [{ id: "home_builder", level: 4 }]);
   assert.deepEqual(record, before);
-  assert.deepEqual(Object.keys(result).sort(), ["ownerPublicId", "circleId", "user", "homeLevel", "completedExplorations", "achievements", "collections", "tapStats", "playerXp", "serverTime"].sort());
+  assert.deepEqual(Object.keys(result).sort(), ["ownerPublicId", "circleId", "user", "homeLevel", "completedExplorations", "achievements", "collections", "tapStats", "fishingSummary", "playerXp", "serverTime"].sort());
   for (const secret of ["wallet", "inventory", "jobs", "fishingCastSeed", "rareDropState", "unlockedAt", "travelSeconds", "quarrySeconds", "linked_email", "saved_recovery_code", "status", "bestSeries"])
     assert.equal(JSON.stringify(result).includes(secret), false, secret);
   result.collections.travel.push("forged"); assert.deepEqual(read(a, circle).collections.travel, ["acorn"]);
@@ -100,7 +100,8 @@ test("API binds every successful response to viewer friendship and subject and n
   assert.equal(called.url, `/api/v1/people/${circle}/game-profile`); assert.equal(called.options.cache, "no-store");
   assert.equal(called.options.credentials, "same-origin");
   assert.equal(called.options.headers["X-Zhiv-Profile"], "tap-stats-v1");
-  const legacy = { ...value }; delete legacy.tapStats;
+  assert.equal(called.options.headers["X-Zhiv-Fishing-Profile"], "v1");
+  const legacy = { ...value }; delete legacy.tapStats; delete legacy.fishingSummary;
   globalThis.fetch = async () => Response.json(legacy);
   assert.deepEqual(await api.getGuestProfile(a.me.user.publicId, circle, b.me.user.publicId), value, "new clients accept an older server without tap statistics");
   for (const patch of [{ ownerPublicId: b.me.user.publicId }, { circleId: key() }, { user: { ...value.user, publicId: a.me.user.publicId } }]) {
@@ -203,4 +204,33 @@ test("friend level uses authoritative development XP while tap records remain pr
   assert.match(html, /Уровень 13/);
   assert.doesNotMatch(JSON.stringify(result), /workSeconds|awardedLevels|awardedMilestones|"season"/);
   assert.equal(model.guestProfileSchema.safeParse({ ...result, playerXp: -1 }).success, false);
+});
+
+
+test("a friend sees equipped tackle, installed modules and the three heaviest delivered species only", () => {
+  const viewer = player(), friend = player(), outsider = player(), circle = connect(viewer, friend);
+  assert.equal(read(viewer, circle).fishingSummary, null);
+  economy.getDevEconomy(friend.token);
+  const state = globalThis.__zhivDevEconomyStore.profiles.get(friend.me.user.publicId).state;
+  state.fishing.equippedBaitId = "crumb_bait";
+  const caughtAt = "2026-11-10T00:01:00Z";
+  const record = weightGrams => ({ weightGrams, caughtAt });
+  state.boat = { level: 1, upgrades: ["oars", "crate"], completedVoyages: 9, records: {
+    fish: record(900), fish_silverfin: record(100), fish_dace: record(1400), fish_bream: record(1400), unknown: record(50000),
+  }, voyage: { slots: [{ fishId: "fish_rudd" }], catches: [{ fishId: "fish_rudd", weightGrams: 9999 }] } };
+  const before = structuredClone(state);
+  const result = read(viewer, circle);
+  const expected = { rodId: "reed_rod", hookId: "bare_hook", baitId: "crumb_bait", completedVoyages: 9,
+    modules: { engine: 1, hull: 1, tank: 0, storage: 1 }, records: [
+      { fishId: "fish_bream", weightGrams: 1400 }, { fishId: "fish_dace", weightGrams: 1400 }, { fishId: "fish", weightGrams: 900 },
+    ] };
+  assert.deepEqual(result.fishingSummary, expected);
+  assert.deepEqual(state, before);
+  const markup = renderToStaticMarkup(createElement(ui.GuestProfileContents, { profile: model.guestProfileSchema.parse(result) }));
+  assert.match(markup, /Самые тяжёлые уловы/); assert.match(markup, /1,4 кг/); assert.match(markup, /900 г/);
+  for (const invalid of [{ fuel: 1 }, { records: [expected.records[0], expected.records[0]] }, { hookId: "future_hook" }])
+    assert.equal(model.guestProfileSchema.safeParse({ ...result, fishingSummary: { ...expected, ...invalid } }).success, false);
+  assert.deepEqual(social.getDevGuestProfile(outsider.token, circle), { kind: "not-found" });
+  ok(social.removeDevPerson(viewer.token, circle));
+  assert.deepEqual(social.getDevGuestProfile(viewer.token, circle), { kind: "not-found" });
 });

@@ -47,9 +47,9 @@ test("completion is scoped per owner/device, replay is cosmetic and denied stora
   first.reset(saved); assert.equal(first.snapshot().completed, false); assert.equal(saved.map.size, 0);
   const denied = { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); }, removeItem() { throw new Error("blocked"); } };
   assert.doesNotThrow(() => first.restore(denied)); assert.doesNotThrow(() => first.reset(denied));
-  assert.match(boatCoachInstruction(first.snapshot(), "waiting"), /Забросьте/);
+  assert.match(boatCoachInstruction(first.snapshot(), "waiting"), /выбрать силу/);
   assert.match(boatCoachInstruction(first.snapshot(), "soaking"), /Дождитесь/);
-  assert.match(boatCoachInstruction(first.snapshot(), "bite"), /Рыба на крючке/);
+  assert.match(boatCoachInstruction(first.snapshot(), "bite"), /Подсечь/);
   assert.match(boatCoachInstruction(first.snapshot(), "reeling"), /Зажмите/);
 });
 

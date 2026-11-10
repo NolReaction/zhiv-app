@@ -9,9 +9,11 @@ import kotlin.math.abs
 @Serializable data class EconomyBoatReelInput(val tick: Int, val held: Boolean)
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyBoatReelSubmission(val challengeId: String, val inputs: List<EconomyBoatReelInput>, val endTick: Int,
-    @EncodeDefault(EncodeDefault.Mode.NEVER) val deferred: Boolean = false) {
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val deferred: Boolean = false,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val missedBite: Boolean = false) {
     init {
-        require(parseCanonicalUuidV4(challengeId) != null && endTick in 1..600 && inputs.size <= 600)
+        require(parseCanonicalUuidV4(challengeId) != null && inputs.size <= 600)
+        require(if (missedBite) endTick == 0 && inputs.isEmpty() else endTick in 1..600)
         require(inputs.all { it.tick in 0 until endTick } && inputs.zipWithNext().all { (a, b) -> a.tick < b.tick })
     }
 }
@@ -31,6 +33,20 @@ object EconomyBoatReel {
             else -> "steady"
         }
     }
+
+    // Starter and fully upgraded meter widths by public rarity, before the landing net bonus.
+    private val zoneWidths = mapOf("common" to (3200 to 3200), "uncommon" to (2500 to 2700),
+        "rare" to (1800 to 2100), "epic" to (1200 to 1450), "legendary" to (590 to 960))
+
+    fun zoneWidth(baseWidth: Int, rarity: String, motorResponse: Int, hullDamping: Int): Int {
+        val (starter, upgraded) = zoneWidths.getValue(rarity)
+        val control = motorResponse * 4 + hullDamping
+        val width = starter + (upgraded - starter) * control / 40
+        return 2 * (width * baseWidth / 6400)
+    }
+
+    fun validZoneWidth(version: Int, width: Int): Boolean =
+        if (version >= 6) width in 590..4000 && width % 2 == 0 else width == 3200 || width == 4000
 
     private fun hash(seed: Long, segment: Int): Long {
         var value = seed.toInt() xor ((segment + 1) * 0x9e3779b9.toInt())
@@ -116,8 +132,8 @@ object EconomyBoatReel {
     /** The old signature keeps V1 tools and vectors readable. New attempts dispatch through their saved version. */
     fun step(frame: Frame, held: Boolean, seed: Long, zoneWidth: Int, difficulty: Int,
         rulesVersion: Int = 1, resistance: String? = null, fishRarity: String? = null, motorResponse: Int = 0, hullDamping: Int = 0): Frame {
-        require(seed in 0L..0xffff_ffffL && zoneWidth in setOf(3200, 4000) && difficulty in 1..5)
-        require(rulesVersion in 1..5 && motorResponse in 0..5 && hullDamping in 0..20)
+        require(seed in 0L..0xffff_ffffL && validZoneWidth(rulesVersion, zoneWidth) && difficulty in 1..5)
+        require(rulesVersion in 1..6 && motorResponse in 0..5 && hullDamping in 0..20)
         if (frame.status != "active") return frame
         val half = zoneWidth / 2
         val modernControl = rulesVersion >= 4
@@ -136,7 +152,7 @@ object EconomyBoatReel {
         val movement = if (rulesVersion >= 3) motionV3(seed, frame.tick, difficulty, requireNotNull(resistance), requireNotNull(fishRarity))
             else if (rulesVersion == 2) motion(seed, frame.tick, difficulty, requireNotNull(resistance))
             else Motion(500 + (hash(seed, frame.tick / (60 - 6 * difficulty)) % 9001).toInt(), 35 + 7 * difficulty, 10)
-        val limit = if (rulesVersion == 5) movement.limit * (100 - hullDamping) / 100 else movement.limit
+        val limit = if (rulesVersion >= 5) movement.limit * (100 - hullDamping) / 100 else movement.limit
         val fish = (frame.fish + ((movement.target - frame.fish) / movement.divisor).coerceIn(-limit, limit)).coerceIn(0, 10000)
         val progress = (frame.progress + if (abs(fish - bar) <= half) 32 else -45).coerceIn(0, 10000)
         val tick = frame.tick + 1

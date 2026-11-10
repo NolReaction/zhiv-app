@@ -1,4 +1,4 @@
-import type { EconomyView } from "@/features/economy/domain/model";
+import { recipeBuildingLevel, type EconomyView } from "@/features/economy/domain/model";
 import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import type { WorldState } from "@/features/world/domain/model";
 import type { EconomySceneActivity, EconomySceneJourney } from "@/features/world/state/economy/economy-scene-state";
@@ -45,7 +45,7 @@ export function economySceneProduction(economy: EconomyView | null | undefined):
       recipeId: job.recipeId ?? "quarry_legacy", startedAt: job.startedAt, finishesAt: job.finishesAt }];
     const recipe = economy.catalog.recipes.find(recipe => recipe.id === job.recipeId && recipe.buildingId === job.targetId);
     return recipe ? [{ id: job.id, stationId: recipe.buildingId, stationLevel: economy.buildings[recipe.buildingId] ?? 0,
-      recipeId: recipe.id, startedAt: job.startedAt, finishesAt: job.finishesAt }] : [];
+      recipeId: recipe.id, ...(recipeBuildingLevel(recipe) === 0 ? { initialFire: true } : {}), startedAt: job.startedAt, finishesAt: job.finishesAt }] : [];
   }) };
 }
 

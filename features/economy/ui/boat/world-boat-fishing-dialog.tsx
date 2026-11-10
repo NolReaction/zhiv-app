@@ -26,7 +26,7 @@ import styles from "./boat-fishing.module.css";
 const tabs = [{ id: "boat", label: "Лодка", icon: Sailboat }, { id: "records", label: "Рекорды", icon: Trophy }, { id: "album", label: "Альбом", icon: BookOpen }] as const;
 type Tab = typeof tabs[number]["id"];
 type Props = { sharedRecordsAvailable?: boolean; economy: ReadyEconomy; onClose: () => void; onOpenPantry?: () => void; suspended?: boolean; timeZone?: string; appearance?: { palette: string; head: string | null; neck: string | null } };
-export type BoatSend = (action: EconomyCommand["action"], targetId: string, reel?: BoatReelCommand) => boolean;
+export type BoatSend = (action: EconomyCommand["action"], targetId: string, reel?: BoatReelCommand, saleQuote?: number) => boolean;
 
 export function WorldBoatFishingDialog(props: Props) {
   if (boatAccess(props.economy.snapshot) === "recover") return <BoatRecoveryDialog {...props} />;
@@ -83,14 +83,14 @@ function BoatDialogSession({ sharedRecordsAvailable, economy, onClose, onOpenPan
     content.current?.scrollTo({ top: 0 });
     if (document.activeElement === document.body) content.current?.focus({ preventScroll: true });
   }, [deliveredTrip]);
-  const send: BoatSend = (action, targetId, reel) => {
+  const send: BoatSend = (action, targetId, reel, saleQuote = 0) => {
     const localLanding = action === "submit_boat_cast" && reel?.deferred === true;
     if ((!localLanding && disabled) || sent.current) return false;
     sent.current = true;
-    const receipt = action === "claim_boat" && boat.voyage?.id === targetId
-      ? { receipt: createBoatTripReceipt(state, boat.voyage), completedBefore: boat.completedVoyages, revisionBefore: state.revision } : null;
+    const receipt = (action === "claim_boat" || action === "sell_boat_catch") && boat.voyage?.id === targetId
+      ? { receipt: createBoatTripReceipt(state, boat.voyage, action === "sell_boat_catch" ? saleQuote : undefined), completedBefore: boat.completedVoyages, revisionBefore: state.revision } : null;
     let accepted;
-    try { accepted = economy.act(action, targetId, 1, action === "buy_boat_fuel" ? config.fuel.refillPricePearls : 0, undefined, undefined, reel); }
+    try { accepted = economy.act(action, targetId, 1, action === "buy_boat_fuel" ? config.fuel.refillPricePearls : saleQuote, undefined, undefined, reel); }
     catch (error) { sent.current = false; throw error; }
     if (accepted !== false && receipt) setClaimedTrip(receipt);
     if (accepted === false) sent.current = false;
@@ -105,7 +105,7 @@ function BoatDialogSession({ sharedRecordsAvailable, economy, onClose, onOpenPan
       onPointerDownOutside={event => event.preventDefault()} onEscapeKeyDown={event => { event.stopPropagation(); event.preventDefault(); requestClose(); }}>
       {onRiver && boat.voyage ? <>
         <Dialog.Title className={styles.srOnly}>Лодочная рыбалка</Dialog.Title>
-        <Dialog.Description id={`${id}-description`} className={styles.srOnly}>Мохлик в лодке на речном плёсе. Забросьте удочку и удерживайте рыбу в зоне снасти.</Dialog.Description>
+        <Dialog.Description id={`${id}-description`} className={styles.srOnly}>Мохлик в лодке на речном плёсе. Удерживайте кнопку и отпустите для заброса. Когда нырнёт поплавок, подсеките и вываживайте рыбу.</Dialog.Description>
         <BoatFishingMap key={`${state.ownerPublicId}.${boat.voyage.id}`} economy={economy} disabled={disabled} send={send} onClose={requestClose} appearance={appearance} suspended={suspended || leaving} timeZone={timeZone} />
       </> : <>
       <header className={styles.header}><Anchor size={25} strokeWidth={1.6} /><div><small>{phaseName}</small><Dialog.Title>{unloading ? "Итоги рыбалки" : boat.voyage ? "Лодочная рыбалка" : "Лодочная мастерская"}</Dialog.Title></div><span className={styles.wallet} aria-label={`${number(state.wallet.coins)} монет`}><Coins size={17} /><strong>{number(state.wallet.coins)}</strong></span><BoatWorkshopDevButton economy={economy} /><button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть лодку"><X size={22} /></button></header>
@@ -122,7 +122,7 @@ function BoatDialogSession({ sharedRecordsAvailable, economy, onClose, onOpenPan
           : tab === "album" ? <BoatFishingAlbum state={state} /> : tab === "records" ? <BoatRecords state={state} boat={boat} sharedRecordsAvailable={sharedRecordsAvailable} />
           : boat.voyage ? <BoatVoyagePanel economy={economy} disabled={disabled} send={send} /> : <>
             {deliveredTrip && <BoatDeliveryNotice receipt={deliveredTrip} />}
-            <BoatGarage state={state} boat={boat} config={config} now={economy.now} disabled={disabled} onUpgrade={upgrade} onClaim={workId => send("claim_boat_upgrade", workId)}>
+            <BoatGarage receipt={economy.localBoatUpgrade} state={state} boat={boat} config={config} now={economy.now} disabled={disabled} onUpgrade={upgrade} onClaim={workId => send("claim_boat_upgrade", workId)}>
               {boat.level > 0 && <BoatDockDeparture economy={economy} disabled={disabled} send={send} />}
             </BoatGarage>
           </>}

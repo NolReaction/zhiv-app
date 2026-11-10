@@ -71,9 +71,9 @@ test("instant starter repair costs nothing with a busy builder; paid work reserv
   assert.throws(() => run(starter, "start_boat_upgrade", "tank_1"), /Строитель занят/);
 
   const state = ready(); state.buildings = { home: 1 }; state.inventory = {};
-  state.wallet.coins = 349;
+  state.wallet.coins = 499;
   assert.throws(() => run(state, "start_boat_upgrade", "tank_1"), /Не хватает монет/);
-  state.wallet.coins = 350;
+  state.wallet.coins = 500;
   run(state, "start_boat_upgrade", "tank_1");
   assert.equal(state.wallet.coins, 0); assert.deepEqual(state.inventory, {});
   assert.throws(() => run(state, "start_construction", "woodlot"), { code: "ECONOMY_CONSTRUCTION_BUSY" });
@@ -221,6 +221,35 @@ test("full storage failure is atomic, then claim awards once including species, 
 });
 
 
+test("dock sale quotes the saved weights, confirms only the exact total and closes the voyage once", () => {
+  const state = ready(), voyage = depart(state), fishId = "fish_silverfin";
+  const { minGrams, maxGrams } = model.economyCatalog.boat.weights[fishId];
+  const price = model.economyCatalog.items.find(item => item.id === "fish_common").baseSellPrice;
+  const bonus = Math.floor(price * model.economyCatalog.boat.dockSaleBonusPercent / 100);
+  voyage.castsUsed = 2;
+  voyage.catches = [minGrams, maxGrams].map((weightGrams, castIndex) => ({ fishId, weightGrams, castIndex,
+    caughtAt: new Date(at).toISOString(), reelSeconds: 3 }));
+  const totalPrice = 2 * price + bonus;
+  const sell = () => run(state, "sell_boat_catch", voyage.id, at, { totalPrice });
+  assert.throws(sell, { code: "ECONOMY_BOAT_PHASE" });
+  run(state, "return_boat", voyage.id);
+  state.inventory = { wood: rules.economyStorage(state).capacity };
+  state.wallet.coins = model.ECONOMY_MAX_BALANCE;
+  assert.throws(sell, { code: "ECONOMY_CAPACITY" });
+  state.wallet.coins = 0;
+  const before = structuredClone(state);
+  assert.throws(() => run(state, "sell_boat_catch", voyage.id, at, { totalPrice: 2 * price }), { code: "ECONOMY_BOAT_SALE_PRICE" });
+  assert.deepEqual(state, before);
+  sell();
+  assert.equal(state.wallet.coins, totalPrice); assert(bonus > 0);
+  assert.deepEqual(state.inventory, before.inventory); assert.deepEqual(state.fishing.stock, before.fishing.stock);
+  assert.equal(state.boat.records[fishId].weightGrams, maxGrams); assert.equal(state.fishing.catches[fishId], 2);
+  assert.equal(state.progression.skills.fishingSeconds, before.progression.skills.fishingSeconds + 6);
+  assert.throws(sell, { code: "ECONOMY_BOAT_VOYAGE_GONE" });
+  assert.throws(() => run(state, "claim_boat", voyage.id), { code: "ECONOMY_BOAT_VOYAGE_GONE" });
+  assert.equal(state.wallet.coins, totalPrice);
+});
+
 test("a cast publishes only its actual rarity and waits 4–7 seconds before any valid replay can finish", () => {
   const state = ready(), voyage = depart(state), started = Date.parse(voyage.arrivesAt);
   const rarity = model.economyCatalog.fishing.fish.find(fish => fish.itemId === voyage.slots[0].fishId).rarity;
@@ -228,7 +257,7 @@ test("a cast publishes only its actual rarity and waits 4–7 seconds before any
   const challenge = state.boat.voyage.challenge, bite = Date.parse(challenge.biteAt), played = play(challenge), reel = wireReel(played);
   assert.ok(bite - started >= 4000 && bite - started <= 7000);
   assert.equal(challenge.fishRarity, rarity);
-  assert.equal(challenge.rulesVersion, 4);
+  assert.equal(challenge.rulesVersion, 6);
   assert.equal(challenge.resistance, physics.boatResistanceForClass(rarity, challenge.seed));
   const publicChallenge = boats.publicBoatState(state.boat).voyage.challenge;
   assert.equal(publicChallenge.resistance, challenge.resistance);
@@ -250,6 +279,7 @@ test("legacy attempts stay playable without bite metadata and a too-late new cas
   run(state, "begin_boat_cast", voyage.id, started);
   const challenge = state.boat.voyage.challenge;
   challenge.rulesVersion = 1; delete challenge.resistance; delete challenge.biteAt; delete challenge.fishRarity;
+  delete challenge.motorResponse; delete challenge.hullDamping; challenge.zoneWidth = 3200;
   assert.equal(schema.boatChallengeSchema.safeParse(challenge).success, true);
   const reel = wireReel(play(challenge));
   run(state, "submit_boat_cast", voyage.id, started + reel.endTick * 50, { reel });
@@ -315,7 +345,7 @@ test("paid three-module legacy loadouts map once and all twenty sequential tiers
   const v = depart(state); assert.equal(v.maxCatches, 9); assert.equal(v.maxCasts, 11);
   run(state, "begin_boat_cast", v.id);
   const c = state.boat.voyage.challenge, view = schema.boatStateSchema.parse(boats.publicBoatState(state.boat));
-  assert.equal(c.rulesVersion, 5); assert.equal(c.motorResponse, 5); assert.equal(c.hullDamping, 20);
+  assert.equal(c.rulesVersion, 6); assert.equal(c.motorResponse, 5); assert.equal(c.hullDamping, 20);
   assert.deepEqual(view.voyage.challenge, c); assert.equal(view.voyage.slots, undefined);
   const unassisted = { ...c, rulesVersion: 4 };
   const turning = { ...physics.initialBoatReel(c), velocity: -100 };

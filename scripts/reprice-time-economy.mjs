@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { recipeBuildingLevel } from "./lib/economy-math.mjs";
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { heroMealWorkBudgetSeconds, timeEconomyPricing } from "./lib/time-economy-pricing.mjs";
@@ -52,7 +53,7 @@ export function repriceTimeEconomy(source) {
       const key = `source:${source.id}`; if (seen.has(key)) return; seen.add(key);
       home = Math.max(home, source.requiredHomeLevel);
       for (const [id, level] of Object.entries(source.requiredBuildings)) building(id, level);
-      if (source.buildingId) building(source.buildingId, source.baseCampfire ? 0 : source.buildingLevel);
+      if (source.buildingId) building(source.buildingId, recipeBuildingLevel(source));
       for (const id of Object.keys(source.requiredRecipes ?? {})) recipe(id);
       for (const id of Object.keys(source.requiredExplorations ?? {})) {
         const route = routeById.get(id); assert(route && !route.retired, `Unavailable exploration: ${id}`); visit(route);

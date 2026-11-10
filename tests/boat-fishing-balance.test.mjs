@@ -70,10 +70,13 @@ test("every hold and legal tackle fit the renewable fish budget and emergency pe
   assert.equal(report.tanks.at(-1).tripsAtDailyVisits[1].trips, 21);
   assert.equal(report.fuel.refillAlternativeCoins, 350);
   assert.equal(report.holds.at(-1).luckyFullSaleCeiling, 342);
+  assert.equal(report.holds.at(-1).dockSaleCeiling, 387);
+  assert(report.holds.every(hold => hold.starterDockSale > hold.starterFullSale
+    && hold.bestExpectedDockNet < report.fuel.refillAlternativeCoins));
   assert.equal(report.holds[0].sensitivity[0].expectedCatches, 2.875);
   assert.equal(report.upgrades.find(upgrade => upgrade.id === "repair").coins, 0);
   assert.equal(report.upgrades.find(upgrade => upgrade.id === "telescope").coins, 800);
-  assert.equal(report.upgrades.filter(row => row.module).reduce((sum, row) => sum + row.coins, 0), 47150);
+  assert.equal(report.upgrades.filter(row => row.module).reduce((sum, row) => sum + row.coins, 0), 73200);
   assert(report.blueprints.every(blueprint => blueprint.awardedByBoat === false && !("guaranteedAtQualifiedVoyage" in blueprint)));
 });
 

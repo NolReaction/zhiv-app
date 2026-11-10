@@ -30,7 +30,7 @@ export function BoatRecoveryDialog({ economy, onClose, onOpenPantry }: Props) {
         <Dialog.Description id={description}>Можно завершить оплаченную работу или забрать улов прежнего выхода.</Dialog.Description>
         {voyage && <section className={styles.trip}>
           {phase === "ready"
-            ? <BoatVoyagePanel economy={economy} disabled={disabled} send={(action, id) => send(action, id)} onOpenPantry={onOpenPantry} />
+            ? <BoatVoyagePanel economy={economy} disabled={disabled} send={(action, id, _reel, price) => send(action, id, 1, price)} onOpenPantry={onOpenPantry} />
             : <>
               <p>До возвращения: {worldCountdown(Math.ceil((boatReturnsAt(voyage) - economy.now) / 1000))}</p>
               {phase === "fishing" && <button type="button" className={styles.primary} disabled={disabled} onClick={() => send("return_boat", voyage.id)}>Вернуться с уловом</button>}

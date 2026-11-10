@@ -53,7 +53,7 @@ class EconomyBoatWorkshopTest {
                 assertEquals(tier, EconomyBoatWorkshop.modules(state.boat!!).tier(module))
             }
         }
-        assertEquals(1_000_000L - 47_150, state.wallet.coins)
+        assertEquals(1_000_000L - 73_200, state.wallet.coins)
         assertTrue(state.inventory.isEmpty())
         val outward = command(state,"depart_boat",config.routeId,now)
         val voyage = outward.boat!!.voyage!!
@@ -62,7 +62,7 @@ class EconomyBoatWorkshopTest {
         assertEquals("fishing", EconomyBoats.phase(outward.boat!!,now))
         val cast = command(outward,"begin_boat_cast",voyage.id,now)
         val challenge = cast.boat!!.voyage!!.challenge!!
-        assertEquals(5, challenge.rulesVersion)
+        assertEquals(6, challenge.rulesVersion)
         assertEquals(5, challenge.motorResponse)
         assertEquals(20, challenge.hullDamping)
         assertEquals(cast, economyJson.decodeFromString<EconomyState>(economyJson.encodeToString(cast)))

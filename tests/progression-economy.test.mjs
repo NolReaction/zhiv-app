@@ -429,7 +429,7 @@ test("personal-fishing unlock uses the earliest real fishing route without treat
 
 test("optional cooking experiments use expected value and never become guaranteed planning sources", () => {
   const experiments = economy.recipes.filter(recipe => recipe.experiment);
-  assert.equal(experiments.length, 4);
+  assert.equal(experiments.length, 7);
   const guaranteed = sources.productionSources(catalog);
   for (const trial of experiments) {
     const p = trial.experiment.successBps / 10000;

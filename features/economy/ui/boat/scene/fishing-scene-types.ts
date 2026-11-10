@@ -4,6 +4,7 @@ import type { BoatVisualLevels } from "@/features/world/objects/fishing-boat/fis
 export type FishingSceneFrame = {
   stage: "waiting" | "casting" | "soaking" | "landed" | "bite" | "reeling" | "paused" | "caught" | "escaped" | "expired" | "pending";
   castKey?: string;
+  castPower?: number;
   /** Cosmetic composition stays stable for one saved voyage. */
   sceneKey?: string;
   resistance?: "steady" | "sprightly" | "surging" | "stubborn";

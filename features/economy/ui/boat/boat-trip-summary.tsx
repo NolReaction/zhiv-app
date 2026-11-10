@@ -13,7 +13,7 @@ export function BoatTripSummary({ receipt }: Props) {
       <span className={styles.seal}><Anchor size={26} /></span>
       <div><span className={styles.eyebrow}>{receipt.routeName} · Лодка вернулась</span>
         <h3>{receipt.count ? "Улов прибыл домой" : "Снова у причала"}</h3>
-        <p>{receipt.count ? "Примите улов, чтобы поместить рыбу в кладовую и сохранить рекорды." : "На этот раз без улова. Можно завершить выход и снова снарядить лодку."}</p>
+        <p>{receipt.count ? "После завершения выхода виды и рекорды сохранятся в альбоме." : "На этот раз без улова. Можно завершить выход и снова снарядить лодку."}</p>
       </div>
     </header>
     <div className={styles.stats}>
@@ -41,7 +41,7 @@ export function BoatTripSummary({ receipt }: Props) {
 export function BoatDeliveryNotice({ receipt }: Props) {
   return <p className={styles.delivered} role="status" data-boat-delivery>
     <Check size={17} aria-hidden="true" />
-    <strong>{receipt.count ? "Улов доставлен" : "Выход завершён"}</strong>
+    <strong>{receipt.saleCoins != null ? `Улов продан за ${receipt.saleCoins} монет` : receipt.count ? "Улов доставлен" : "Выход завершён"}</strong>
     {receipt.count > 0 && <span>Рыб: {receipt.count} · {boatFishWeightLabel(receipt.totalWeightGrams)}</span>}
   </p>;
 }

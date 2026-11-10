@@ -3,7 +3,7 @@ import type { FixedWorldScene, SiteVisual } from "@/features/world/tiled/types";
 
 /** Confirmed server jobs only. No costs, output goods or command callbacks enter the scene. */
 export type EconomySceneProduction = { ownerPublicId: string; revision: number; jobs: readonly {
-  id: string; stationId: string; stationLevel: number; recipeId: string; startedAt: string; finishesAt: string;
+  id: string; stationId: string; stationLevel: number; recipeId: string; initialFire?: boolean; startedAt: string; finishesAt: string;
 }[] };
 export type ForestProductionFrame = {
   jobId: string; recipeId: string; stationId: "dryer" | "workshop" | "woodlot" | "quarry";
@@ -37,7 +37,7 @@ export function forestProductionFrames(snapshot: EconomySceneProduction | null |
     || Date.parse(a.finishesAt) - Date.parse(b.finishesAt) || a.id.localeCompare(b.id));
   for (const job of jobs) {
     const start = Date.parse(job.startedAt), finish = Date.parse(job.finishesAt);
-    const basicFire = job.stationId === "dryer" && job.recipeId === "cook_grilled_fish" && job.stationLevel === 0;
+    const basicFire = job.stationId === "dryer" && (job.initialFire || job.recipeId === "cook_grilled_fish") && job.stationLevel === 0;
     if (used.has(job.stationId) || !Number.isInteger(job.stationLevel) || job.stationLevel <= 0 && !basicFire
       || !Number.isFinite(start) || !Number.isFinite(finish) || finish <= start || now < start) continue;
     const frame = { jobId: job.id, recipeId: job.recipeId, phase: now < finish ? "working" as const : "ready" as const, elapsed: time };

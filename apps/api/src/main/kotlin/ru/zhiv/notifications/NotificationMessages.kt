@@ -67,6 +67,7 @@ private val resourceWords = mapOf(
     "berry_tea" to "ягодного чая", "forest_pan" to "лесного жаркого",
     "currant_glazed_fish" to "рыбы в смородиновой глазури", "berry_pastila" to "ягодной пастилы",
     "trail_feast" to "таёжного пайка", "river_aspic" to "лесного рыбного студня",
+    "ember_berries" to "томлёной малины", "strawberry_kissel" to "клубничного киселя", "cranberry_bream" to "леща с клюквенной корочкой",
 ).mapValues { (_, food) -> CountedResource("порция $food", "порции $food", "порций $food") }
 
 private fun quantityForm(quantity: Long): Int = when {

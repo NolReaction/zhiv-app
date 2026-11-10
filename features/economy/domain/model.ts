@@ -243,9 +243,10 @@ export const economyCatalogSchema = z.object({
     requiredBuildings, requiredRecipes: quantities.prefault({}), requiredExplorations: quantities.prefault({}),
     requiredFishCaught: count.max(ECONOMY_MAX_ITEMS).prefault(0), unlockTitle: z.string().trim().min(1).max(80).optional(),
     experiment: z.object({ title: z.string().min(1).max(80), hint: z.string().min(1).max(240), successBps: count.min(5000).max(9500),
-      requiredCookingLevel: count.min(1).max(10), failureRewards: quantities }).optional(),
+      requiredCookingLevel: count.min(1).max(10), initialFire: z.boolean().optional(), failureRewards: quantities }).optional(),
     seconds: count.positive(), cost: economyCostSchema, rewards: quantities, collection: economyCollectionSpecSchema.nullish() })
     .refine(recipe => !recipe.experiment || recipe.buildingId === "dryer" && recipe.maxBatch === 1
+      && (!recipe.experiment.initialFire || recipe.buildingLevel === 1)
       && Object.values(recipe.rewards).reduce((sum, n) => sum + n, 0) === 1
       && Object.keys(recipe.experiment.failureRewards).length <= 1 && Object.values(recipe.experiment.failureRewards).every(n => n === 1), "Experiments produce one portion and at most one legacy fallback")
     .refine(recipe => !recipe.baseCampfire || recipe.id === "cook_grilled_fish" && recipe.buildingId === "dryer" && recipe.buildingLevel === 1,
@@ -401,8 +402,9 @@ export const economyCatalogSchema = z.object({
 export const economyCatalog = economyCatalogSchema.parse(catalogJson);
 
 /** Keep the positive wire level readable by older clients; the flag opens only the existing base fire. */
-export function recipeBuildingLevel(recipe: { id?: string; buildingId: string; buildingLevel: number; baseCampfire?: boolean }): number {
-  return recipe.baseCampfire === true && recipe.id === "cook_grilled_fish" && recipe.buildingId === "dryer" && recipe.buildingLevel === 1
+export function recipeBuildingLevel(recipe: { id?: string; buildingId: string; buildingLevel: number; baseCampfire?: boolean; experiment?: { initialFire?: boolean } }): number {
+  return recipe.buildingId === "dryer" && recipe.buildingLevel === 1
+    && (recipe.baseCampfire === true && recipe.id === "cook_grilled_fish" || recipe.experiment?.initialFire === true)
     ? 0 : recipe.buildingLevel;
 }
 export const economyBookCollectionSchema = z.object({
@@ -469,7 +471,7 @@ const commandBase = {
   quantity: z.number().int().min(1).max(10_000).prefault(1), totalPrice: balance.prefault(0),
 };
 export const economyCommandSchema = z.object({ ...commandBase,
-  action: z.enum(["start_production", "start_tutorial_harvest", "cancel_production", "buy_production_slot", "buy_market_slot", "start_collection", "start_garden_collection", "claim_garden_collection", "claim_production", "start_exploration", "cancel_exploration", "start_construction", "start_tutorial_workshop", "speedup_construction", "claim_job", "claim_mining_batch", "claim_workshop_starter", "claim_tutorial_order", "sell", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell_fish", "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait", "start_fishing", "eat_food", "feed_builder", "cancel_meal", "complete_resident_order", "replace_resident_order", "accept_weekly_order", "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage", "replace_ship_order", "expire_ship_voyage", "exchange_pearls_for_gold", "start_boat_upgrade", "claim_boat_upgrade", "buy_boat_fuel", "depart_boat", "begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat", "inspect_telescope"]),
+  action: z.enum(["start_production", "start_tutorial_harvest", "cancel_production", "buy_production_slot", "buy_market_slot", "start_collection", "start_garden_collection", "claim_garden_collection", "claim_production", "start_exploration", "cancel_exploration", "start_construction", "start_tutorial_workshop", "speedup_construction", "claim_job", "claim_mining_batch", "claim_workshop_starter", "claim_tutorial_order", "sell", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "exchange_leaftail_relic", "refresh_fishing_shop", "sell_fish", "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait", "start_fishing", "eat_food", "feed_builder", "cancel_meal", "complete_resident_order", "replace_resident_order", "accept_weekly_order", "open_ship_voyage", "load_ship_cargo", "complete_ship_order", "claim_ship_voyage", "skip_ship_voyage", "replace_ship_order", "expire_ship_voyage", "exchange_pearls_for_gold", "start_boat_upgrade", "claim_boat_upgrade", "buy_boat_fuel", "depart_boat", "begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat", "sell_boat_catch", "inspect_telescope"]),
   fishSelection: quantities.nullish(),
   voyageId: uuid.nullish(), orderId: id.nullish(), itemId: id.nullish(),
   reel: boatReelCommandSchema.optional(),

@@ -53,7 +53,7 @@ test("skills have ten slow levels, bounded bonuses and safe legacy defaults", ()
 });
 
 test("all optional experiments compensate failure at base skill without exceeding the skilled gross-value cap", () => {
-  assert.equal(experiments.length, 4);
+  assert.equal(experiments.length, 7);
   const value = items => Object.entries(items).reduce((sum, [id, count]) => sum + catalog.items.find(item => item.id === id).baseSellPrice * count, 0);
   for (const recipe of experiments) {
     const work = recipe.seconds / 60 * catalog.timeEconomy.coinsPerMinute;
@@ -65,6 +65,17 @@ test("all optional experiments compensate failure at base skill without exceedin
     assert.equal(Object.values(recipe.rewards).reduce((a, b) => a + b, 0), 1);
     assert.equal(Object.values(recipe.experiment.failureRewards).reduce((a, b) => a + b, 0), 0);
   }
+});
+
+test("the first experiment runs at the starter fire and only unlocks its result after collection", () => {
+  const starter = experiments.find(recipe => recipe.experiment.initialFire);
+  const state = fresh(starter.id);
+  state.buildings = { home: 1, dryer: 0, warehouse: 1 };
+  apply(state, "start_production", starter.id, now, 0);
+  assert.equal(skills.experimentDiscovered(state, starter), false);
+  claim(state);
+  assert.equal(skills.experimentDiscovered(state, starter), true);
+  assert.deepEqual(state.inventory, starter.rewards);
 });
 
 for (const recipe of experiments) for (const successful of [false, true]) test(`${recipe.id}: ${successful ? "success discovers" : "failure consumes ingredients without discovery"} only on claim`, () => {

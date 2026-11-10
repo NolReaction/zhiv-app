@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import ru.zhiv.auth.AuthFailure
+import ru.zhiv.economy.EconomyBoatState
 import ru.zhiv.relationships.*
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -27,6 +28,13 @@ class JdbcGuestProfileRepository(private val source: DataSource) : GuestProfileR
                        COALESCE((ep.state#>>'{progression,player,xp}')::bigint,0) AS player_xp,
                        COALESCE(ep.state#>'{progression,collections,finds}','[]'::jsonb)
                            || COALESCE(wp.state->'collection','[]'::jsonb) AS finds,
+                       ep.state#>>'{fishing,equippedRodId}' AS rod_id,
+                       ep.state#>>'{fishing,equippedHookId}' AS hook_id,
+                       ep.state#>>'{fishing,equippedBaitId}' AS bait_id,
+                       CASE WHEN ep.user_id IS NOT NULL THEN jsonb_strip_nulls(jsonb_build_object(
+                           'level', ep.state#>'{boat,level}', 'modules', ep.state#>'{boat,modules}',
+                           'upgrades', ep.state#>'{boat,upgrades}', 'records', ep.state#>'{boat,records}',
+                           'completedVoyages', ep.state#>'{boat,completedVoyages}')) END AS guest_boat,
                        COALESCE(ep.state#>'{fishing,catches}','{}'::jsonb) AS catches,
                        COALESCE((SELECT jsonb_object_agg(a.achievement_id,COALESCE((
                            SELECT max(t.level) FROM game_achievement_tiers t
@@ -61,7 +69,9 @@ class JdbcGuestProfileRepository(private val source: DataSource) : GuestProfileR
                                 Json.decodeFromString<Map<String,Long>>(r.getString("catches"))),
                             r.getObject("server_time",OffsetDateTime::class.java).toInstant().toString(),
                             r.getObject("lifetime_taps")?.let { GuestTapStats(r.getLong("lifetime_taps"), r.getLong("best_series")) },
-                            r.getLong("player_xp").coerceIn(0, 9_007_199_254_740_991L))
+                            r.getLong("player_xp").coerceIn(0, 9_007_199_254_740_991L),
+                            r.getString("guest_boat")?.let { GuestProfileRules.fishingSummary(Json.decodeFromString<EconomyBoatState>(it),
+                                r.getString("rod_id"), r.getString("hook_id"), r.getString("bait_id")) })
                     }
                 } finally { ids.free() }
             }

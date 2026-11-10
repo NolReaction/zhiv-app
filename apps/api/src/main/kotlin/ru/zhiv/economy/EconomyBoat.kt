@@ -6,7 +6,8 @@ import java.time.Instant
 import java.util.UUID
 
 object EconomyBoats {
-    val actions = setOf("start_boat_upgrade", "claim_boat_upgrade", "buy_boat_fuel", "depart_boat", "begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat")
+    val actions = setOf("start_boat_upgrade", "claim_boat_upgrade", "buy_boat_fuel", "depart_boat", "begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat", "sell_boat_catch")
+    private const val HOOK_WINDOW_MS = 3200L
     private val entropy = SecureRandom()
     private val config get() = checkNotNull(EconomyRules.catalog.boat)
     fun returnStartedAt(v: EconomyBoatVoyage): Instant = Instant.parse(v.returnStartedAt ?: v.fishingUntil)
@@ -33,7 +34,7 @@ object EconomyBoats {
     }
     fun claimPracticeSeconds(before: EconomyBoatState?, after: EconomyBoatState?, action: String): Long {
         val v = before?.voyage ?: return 0L
-        if (action != "claim_boat" || after?.voyage != null) return 0L
+        if (action !in setOf("claim_boat", "sell_boat_catch") || after?.voyage != null) return 0L
         val travel = v.outboundSeconds + v.inboundSeconds
         return if (travel > 0) travel * v.catches.size / v.maxCatches else v.catches.sumOf { (it.reelSeconds ?: 0).toLong() }
     }
@@ -130,9 +131,11 @@ object EconomyBoats {
                 val modules = EconomyBoatWorkshop.modules(b)
                 val response = config.moduleEffects.engine[modules.engine]
                 val damping = config.moduleEffects.hull[modules.hull]
-                val assisted = v.outboundSeconds + v.inboundSeconds == 0L && (response > 0 || damping > 0)
-                val challenge = EconomyBoatChallenge(id(), rulesVersion = if (assisted) 5 else 4,
-                    motorResponse = response.takeIf { assisted }, hullDamping = damping.takeIf { assisted }, resistance = EconomyBoatReel.resistanceForClass(rarity, slot.challengeSeed), seed = slot.challengeSeed, zoneWidth = slot.zoneWidth, difficulty = slot.difficulty,
+                val modern = v.outboundSeconds + v.inboundSeconds == 0L
+                val width = if (modern) EconomyBoatReel.zoneWidth(slot.zoneWidth, rarity, response, damping) else slot.zoneWidth
+                val challenge = EconomyBoatChallenge(id(), rulesVersion = if (modern) 6 else 4,
+                    motorResponse = response.takeIf { modern }, hullDamping = damping.takeIf { modern },
+                    resistance = EconomyBoatReel.resistanceForClass(rarity, slot.challengeSeed), seed = slot.challengeSeed, zoneWidth = width, difficulty = slot.difficulty,
                     startedAt = now.toString(), expiresAt = expiry.toString(), biteAt = biteAt.toString(), fishRarity = rarity)
                 return state.copy(boat = b.copy(voyage = v.copy(castsUsed = v.castsUsed + 1, challenge = challenge))) to "Удочка заброшена. Ждём поклёвку"
             }
@@ -141,11 +144,15 @@ object EconomyBoats {
                 val challenge = v.challenge?.takeIf { reel != null && it.id == reel.challengeId } ?: economyFailure("ECONOMY_BOAT_CAST_GONE", "Эта поклёвка уже закончилась")
                 checkNotNull(reel)
                 val expiry = Instant.parse(challenge.expiresAt)
-                val earliestFinish = Instant.parse(challenge.biteAt ?: challenge.startedAt).plusMillis(reel.endTick.toLong() * challenge.tickMs)
+                val earliestFinish = Instant.parse(challenge.biteAt ?: challenge.startedAt).plusMillis(if (reel.missedBite) HOOK_WINDOW_MS else reel.endTick.toLong() * challenge.tickMs)
                 val pendingOffline = reel.deferred && v.returnStartedAt == null && !now.isAfter(expiry.plusSeconds(86_400)) && !earliestFinish.isAfter(expiry)
                 if ((phase != "fishing" || !now.isBefore(expiry)) && !pendingOffline) economyFailure("ECONOMY_BOAT_CAST_EXPIRED", "Рыба ушла. Можно сделать следующий заброс")
                 if (now.isBefore(earliestFinish))
                     economyFailure("ECONOMY_BOAT_TRACE", "Дождитесь поклёвки и завершите вываживание")
+                if (reel.missedBite) {
+                    if (challenge.rulesVersion < 6) economyFailure("ECONOMY_BOAT_TRACE", "Некорректный результат подсечки")
+                    return state.copy(boat = b.copy(voyage = v.copy(challenge = null))) to "Поклёвка пропущена. Улов остаётся на борту"
+                }
                 val result = try { EconomyBoatReel.replay(challenge, reel) }
                     catch (_: IllegalArgumentException) { economyFailure("ECONOMY_BOAT_TRACE", "Не удалось проверить управление удочкой") }
                     catch (_: AuthFailure) { economyFailure("ECONOMY_BOAT_TRACE", "Не удалось проверить управление удочкой") }
@@ -163,10 +170,18 @@ object EconomyBoats {
                 return state.copy(boat = b.copy(voyage = v.copy(challenge = null, returnStartedAt = now.toString(), returnsAt = now.plusSeconds(v.inboundSeconds).toString()))) to "Мохлик возвращается к берегу"
             }
         }
-        if (command.action != "claim_boat" || phase != "ready") economyFailure("ECONOMY_BOAT_PHASE", "Дождитесь возвращения лодки")
+        val selling = command.action == "sell_boat_catch"
+        if ((!selling && command.action != "claim_boat") || phase != "ready") economyFailure("ECONOMY_BOAT_PHASE", "Дождитесь возвращения лодки")
         val rewards = v.catches.groupingBy { it.fishId }.eachCount().mapValues { it.value.toLong() }
-        var next = EconomyFishStock.credit(state.copy(inventory = EconomyRules.addItems(state.inventory, rewards)), rewards)
-        EconomyRules.assertStorageTransition(state, next, reserved)
+        var next = if (selling) {
+            val total = boatDockSaleTotal(v.catches)
+            if (total == null || total != command.totalPrice) economyFailure("ECONOMY_BOAT_SALE_PRICE", "Цена улова изменилась. Проверьте предложение у причала")
+            if (total > ECONOMY_MAX_BALANCE - state.wallet.coins) economyFailure("ECONOMY_CAPACITY", "Кошелёк достиг предела")
+            state.copy(wallet = state.wallet.copy(coins = state.wallet.coins + total))
+        } else {
+            EconomyFishStock.credit(state.copy(inventory = EconomyRules.addItems(state.inventory, rewards)), rewards)
+                .also { EconomyRules.assertStorageTransition(state, it, reserved) }
+        }
         val catches = next.fishing.catches.toMutableMap()
         rewards.forEach { (fish, count) -> catches[fish] = minOf(ECONOMY_MAX_ITEMS, (catches[fish] ?: 0L) + count) }
         val records = b.records.toMutableMap()
@@ -177,6 +192,7 @@ object EconomyBoats {
         if (v.catches.isNotEmpty()) next = next.copy(completedExplorations = minOf(ECONOMY_MAX_ITEMS, next.completedExplorations + 1),
             progression = next.progression.copy(routes = next.progression.routes + (v.routeId to minOf(ECONOMY_MAX_ITEMS, (next.progression.routes[v.routeId] ?: 0L) + 1))),
             unlockedItems = (next.unlockedItems + rewards.keys).distinct())
+        if (selling) return next to "Улов продан за ${command.totalPrice} монет"
         return next to if (v.catches.isNotEmpty()) "Улов получен: ${v.catches.size}" else "Мохлик вернулся с рыбалки"
     }
 

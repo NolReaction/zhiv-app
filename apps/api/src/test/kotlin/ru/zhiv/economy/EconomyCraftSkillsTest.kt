@@ -52,7 +52,7 @@ class EconomyCraftSkillsTest {
     }
 
     @Test fun `each experiment compensates failure at base skill and respects maximum skill gross value`() {
-        assertEquals(4, experiments.size)
+        assertEquals(7, experiments.size)
         fun value(items: Map<String, Long>) = items.entries.sumOf { (id, count) -> catalog.items.single { it.id == id }.baseSellPrice * count }.toDouble()
         experiments.forEach { recipe ->
             val work = recipe.seconds / 60.0 * catalog.timeEconomy!!.coinsPerMinute

@@ -13,8 +13,11 @@ export async function GET(request: Request, context: { params: Promise<{ circleI
   const result = getDevGuestProfile(await devSessionToken(), circleId);
   if (result.kind === "ok") {
     // Older clients validate a strict eight-field projection. New fields are opt-in.
-    const { tapStats, ...legacy } = result.value;
-    const payload = request.headers.get("X-Zhiv-Profile") === "tap-stats-v1" ? { ...legacy, tapStats } : legacy;
+    const { tapStats, fishingSummary, ...legacy } = result.value;
+    const payload = { ...legacy,
+      ...(request.headers.get("X-Zhiv-Profile") === "tap-stats-v1" ? { tapStats } : {}),
+      ...(request.headers.get("X-Zhiv-Fishing-Profile") === "v1" ? { fishingSummary } : {}),
+    };
     return NextResponse.json(payload, { headers: NO_STORE_HEADERS });
   }
   return NextResponse.json({ code: result.kind === "unauthorized" ? "UNAUTHORIZED" : "GUEST_PROFILE_UNAVAILABLE", message: "Профиль недоступен" },

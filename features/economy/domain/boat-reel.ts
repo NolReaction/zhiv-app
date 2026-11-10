@@ -7,7 +7,7 @@ export function boatReelHash(seed: number, segment: number): number {
 }
 /** V1 integer physics is immutable: existing saved challenges retain these rules. */
 export function initialBoatReel(challenge: BoatChallenge): BoatReelState {
-  if (![1, 2, 3, 4, 5].includes(challenge.rulesVersion)) throw new RangeError("Unsupported boat reel version");
+  if (![1, 2, 3, 4, 5, 6].includes(challenge.rulesVersion)) throw new RangeError("Unsupported boat reel version");
   if (challenge.rulesVersion >= 2 && !challenge.resistance) throw new RangeError("Missing boat resistance profile");
   if (challenge.rulesVersion >= 3 && !challenge.fishRarity) throw new RangeError("Missing public boat fish class");
   return { tick: 0, bar: 5000, velocity: 0, fish: 5000, progress: 2500, status: "active" };
@@ -20,6 +20,20 @@ export function boatResistanceForClass(rarity: string | undefined, seed: number)
   if (rarity === "epic") return alternate ? "stubborn" : "surging";
   if (rarity === "legendary") return alternate ? "surging" : "stubborn";
   return "steady";
+}
+
+// Widths are in 1/10000 of the meter for a plain net, on a starter and a fully upgraded boat.
+const reelZoneWidths = {
+  common: [3200, 3200], uncommon: [2500, 2700], rare: [1800, 2100], epic: [1200, 1450], legendary: [590, 960],
+} as const;
+
+export function boatReelZoneWidth(baseWidth: number, rarity: NonNullable<BoatChallenge["fishRarity"]>,
+  motorResponse: number, hullDamping: number): number {
+  const [starter, upgraded] = reelZoneWidths[rarity];
+  const control = motorResponse * 4 + hullDamping; // Engine and hull each supply up to 20 points.
+  const width = starter + Math.trunc((upgraded - starter) * control / 40);
+  // Preserve the landing net's 25% bonus and keep integer half-widths in both replay engines.
+  return 2 * Math.trunc(width * baseWidth / 6400);
 }
 
 /** V2 changes only fish motion. Each burst has an authored recovery phase. All arithmetic is integer. */
@@ -107,7 +121,7 @@ export function stepBoatReel(challenge: BoatChallenge, state: BoatReelState, hel
   if (state.status !== "active") return state;
   const modernControl = challenge.rulesVersion >= 4;
   const reversing = held ? state.velocity < 0 : state.velocity > 0;
-  const response = challenge.rulesVersion === 5 && reversing ? (challenge.motorResponse ?? 0) * (held ? 1 : -1) : 0;
+  const response = challenge.rulesVersion >= 5 && reversing ? (challenge.motorResponse ?? 0) * (held ? 1 : -1) : 0;
   let velocity = clamp(Math.trunc(state.velocity * (modernControl ? 96 : 94) / 100)
     + (held ? modernControl ? 22 : 26 : modernControl ? -18 : -20) + response, -220, 220);
   const half = challenge.zoneWidth / 2, freeBar = state.bar + velocity, bar = clamp(freeBar, half, 10000 - half);
@@ -117,7 +131,7 @@ export function stepBoatReel(challenge: BoatChallenge, state: BoatReelState, hel
     target: 500 + boatReelHash(challenge.seed, Math.floor(state.tick / (60 - 6 * challenge.difficulty))) % 9001,
     limit: 35 + 7 * challenge.difficulty, divisor: 10,
   };
-  const limit = challenge.rulesVersion === 5 ? Math.trunc(motion.limit * (100 - (challenge.hullDamping ?? 0)) / 100) : motion.limit;
+  const limit = challenge.rulesVersion >= 5 ? Math.trunc(motion.limit * (100 - (challenge.hullDamping ?? 0)) / 100) : motion.limit;
   const fish = clamp(state.fish + clamp(Math.trunc((motion.target - state.fish) / motion.divisor), -limit, limit), 0, 10000);
   const progress = clamp(state.progress + (Math.abs(fish - bar) <= half ? 32 : -45), 0, 10000), tick = state.tick + 1;
   return { tick, bar, velocity, fish, progress, status: progress === 10000 ? "caught" : progress === 0 || tick >= challenge.maxTicks ? "escaped" : "active" };

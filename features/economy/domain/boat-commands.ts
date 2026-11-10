@@ -1,12 +1,13 @@
-import { ECONOMY_MAX_ITEMS, economyCatalog, type EconomyCommand, type EconomyCost, type EconomyState } from "./model";
+import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, economyCatalog, type EconomyCommand, type EconomyCost, type EconomyState } from "./model";
 import { boatConfig, newBoatState, boatDepartureReason, boatUpgradeReason, boatPhase, boatFishWeight, boatFuelStatus, boatModules, boatTripStats } from "./boat-fishing";
-import { boatResistanceForClass, replayBoatReel } from "./boat-reel";
+import { boatReelZoneWidth, boatResistanceForClass, replayBoatReel } from "./boat-reel";
 import { fishingState, selectFishingCatch } from "./fishing";
+import { boatDockSaleQuote } from "./boat-dock-sale";
 import { creditFishStock } from "./fish-stock";
 import type { RareRandomInteger } from "./rare-drops";
-import { boatPrivateStateSchema, type BoatPrivateState } from "./boat-model";
+import { BOAT_HOOK_WINDOW_MS, boatPrivateStateSchema, type BoatPrivateState } from "./boat-model";
 
-export const boatActions = ["start_boat_upgrade", "claim_boat_upgrade", "buy_boat_fuel", "depart_boat", "begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat"] as const;
+export const boatActions = ["start_boat_upgrade", "claim_boat_upgrade", "buy_boat_fuel", "depart_boat", "begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat", "sell_boat_catch"] as const;
 type BoatServices = { debit: (state: EconomyState, cost: EconomyCost) => unknown; credit: (state: EconomyState, items: Record<string, number>) => void;
   assertStorage: (before: EconomyState, after: EconomyState) => void; fail: (code: string, message: string) => never };
 const iso = (now: number) => new Date(now).toISOString();
@@ -111,10 +112,12 @@ function transition(state: EconomyState, command: EconomyCommand, now: number, i
     const fishRarity = economyCatalog.fishing!.fish.find(fish => fish.itemId === slot.fishId)!.rarity;
     voyage.castsUsed++;
     const levels = boatModules(boat), motorResponse = config.moduleEffects.engine[levels.engine], hullDamping = config.moduleEffects.hull[levels.hull];
-    // Previously departed trips keep their original replay, including a pending attempt acquired on another device.
-    const assisted = voyage.outboundSeconds === 0 && voyage.inboundSeconds === 0 && (motorResponse > 0 || hullDamping > 0);
-    voyage.challenge = { id: id(), rulesVersion: assisted ? 5 : 4, ...(assisted ? { motorResponse, hullDamping } : {}), resistance: boatResistanceForClass(fishRarity, slot.challengeSeed), seed: slot.challengeSeed, tickMs: 50, maxTicks: 600,
-      zoneWidth: slot.zoneWidth, difficulty: slot.difficulty, startedAt: iso(now), expiresAt: iso(expiresAt), biteAt: iso(biteAt), fishRarity };
+    // Timed voyages predate the modular workshop and finish under their original rules.
+    const modern = voyage.outboundSeconds === 0 && voyage.inboundSeconds === 0;
+    const zoneWidth = modern ? boatReelZoneWidth(slot.zoneWidth, fishRarity, motorResponse, hullDamping) : slot.zoneWidth;
+    voyage.challenge = { id: id(), rulesVersion: modern ? 6 : 4, ...(modern ? { motorResponse, hullDamping } : {}),
+      resistance: boatResistanceForClass(fishRarity, slot.challengeSeed), seed: slot.challengeSeed, tickMs: 50, maxTicks: 600,
+      zoneWidth, difficulty: slot.difficulty, startedAt: iso(now), expiresAt: iso(expiresAt), biteAt: iso(biteAt), fishRarity };
     state.boat = boat;
     return "Удочка заброшена. Ждём поклёвку";
   }
@@ -122,12 +125,17 @@ function transition(state: EconomyState, command: EconomyCommand, now: number, i
     const challenge = voyage.challenge, reel = command.reel;
     if (!challenge || !reel || challenge.id !== reel.challengeId) return fail("ECONOMY_BOAT_CAST_GONE", "Эта поклёвка уже закончилась");
     const expiresAt = Date.parse(challenge.expiresAt);
-    const earliestFinish = Date.parse(challenge.biteAt ?? challenge.startedAt) + reel.endTick * challenge.tickMs;
+    const earliestFinish = Date.parse(challenge.biteAt ?? challenge.startedAt) + (reel.missedBite ? BOAT_HOOK_WINDOW_MS : reel.endTick * challenge.tickMs);
     // Only the outstanding server-issued slot may settle after reconnecting. Its original
     // time budget, replay and private draw are still authoritative.
     const deliverLater = reel.deferred && !voyage.returnStartedAt && earliestFinish <= expiresAt && now <= expiresAt + 86_400_000;
     if ((phase !== "fishing" || now >= expiresAt) && !deliverLater) return fail("ECONOMY_BOAT_CAST_EXPIRED", "Рыба ушла. Можно сделать следующий заброс");
     if (now < earliestFinish) return fail("ECONOMY_BOAT_TRACE", "Дождитесь поклёвки и завершите вываживание");
+    if (reel.missedBite) {
+      if (challenge.rulesVersion < 6 || reel.inputs.length || reel.endTick !== 0) return fail("ECONOMY_BOAT_TRACE", "Некорректный результат подсечки");
+      delete voyage.challenge; state.boat = boat;
+      return "Поклёвка пропущена. Улов остаётся на борту";
+    }
     let result;
     try { result = replayBoatReel(challenge, reel.inputs, reel.endTick); }
     catch { return fail("ECONOMY_BOAT_TRACE", "Не удалось проверить управление удочкой"); }
@@ -147,12 +155,20 @@ function transition(state: EconomyState, command: EconomyCommand, now: number, i
     voyage.returnStartedAt = iso(now); voyage.returnsAt = iso(now + voyage.inboundSeconds * 1000); state.boat = boat;
     return "Мохлик возвращается к берегу";
   }
-  if (command.action !== "claim_boat" || phase !== "ready") return fail("ECONOMY_BOAT_PHASE", "Дождитесь возвращения лодки");
+  const selling = command.action === "sell_boat_catch";
+  if ((!selling && command.action !== "claim_boat") || phase !== "ready") return fail("ECONOMY_BOAT_PHASE", "Дождитесь возвращения лодки");
   const rewards: Record<string, number> = {};
   for (const caught of voyage.catches) rewards[caught.fishId] = (rewards[caught.fishId] ?? 0) + 1;
-  const previous = structuredClone(state);
-  services.credit(state, rewards); services.assertStorage(previous, state);
-  creditFishStock(state, rewards);
+  if (selling) {
+    const quote = boatDockSaleQuote(voyage.catches, economyCatalog);
+    if (!quote || command.totalPrice !== quote.total) return fail("ECONOMY_BOAT_SALE_PRICE", "Цена улова изменилась. Проверьте предложение у причала");
+    if (quote.total > ECONOMY_MAX_BALANCE - state.wallet.coins) return fail("ECONOMY_CAPACITY", "Кошелёк достиг предела");
+    state.wallet.coins += quote.total;
+  } else {
+    const previous = structuredClone(state);
+    services.credit(state, rewards); services.assertStorage(previous, state);
+    creditFishStock(state, rewards);
+  }
   const tackle = fishingState(state), catches = { ...tackle.catches };
   for (const [fishId, count] of Object.entries(rewards)) catches[fishId] = Math.min(ECONOMY_MAX_ITEMS, (catches[fishId] ?? 0) + count);
   state.fishing = { ...tackle, catches };
@@ -168,5 +184,6 @@ function transition(state: EconomyState, command: EconomyCommand, now: number, i
     state.unlockedItems = [...new Set([...(state.unlockedItems ?? []), ...Object.keys(rewards)])];
   }
   delete boat.voyage; state.boat = boat;
+  if (selling) return `Улов продан за ${command.totalPrice} монет`;
   return voyage.catches.length ? `Улов получен: ${voyage.catches.length}` : "Мохлик вернулся с рыбалки";
 }

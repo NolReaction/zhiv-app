@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { guestFishingSummarySchema } from "./guest-fishing-summary";
 import policy from "@/apps/api/src/main/resources/world/guest-profile-policy.json";
 import { economyCatalog } from "@/features/economy/domain/model";
 import { collectionCatalog } from "@/features/world/domain/collection-book";
@@ -24,6 +25,7 @@ export const guestProfileSchema = z.object({
       return !!levels && award.level <= levels.length;
     })).max(GUEST_ACHIEVEMENT_IDS.length).refine(awards => new Set(awards.map(award => award.id)).size === awards.length),
   collections: z.object({ travel: ids(GUEST_COLLECTION_IDS.travel), fishing: ids(GUEST_COLLECTION_IDS.fishing), quarry: ids(GUEST_COLLECTION_IDS.quarry) }).strict(),
+  fishingSummary: guestFishingSummarySchema.nullable().prefault(null),
   tapStats: z.object({ lifetimeTaps: z.number().int().nonnegative().safe(), bestSeries: z.number().int().nonnegative().safe() }).strict()
     .refine(value => value.bestSeries <= value.lifetimeTaps).nullable().prefault(null),
   serverTime: z.string().datetime(),

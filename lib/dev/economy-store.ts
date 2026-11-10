@@ -1,4 +1,5 @@
 import { familiarEconomyItems } from "@/features/economy/domain/familiar-items";
+import { guestFishingSummary } from "@/features/people/guest-fishing-summary";
 import { publicBoatState } from "@/features/economy/domain/boat-fishing";
 import { effectiveCraftSkills } from "@/features/economy/domain/craft-skill";
 import { promoRequestSchema, type PromoRequest, type PromoResult } from "@/features/promo/model";
@@ -603,6 +604,11 @@ export function* devFishingRecordWeights() {
       yield { ownerPublicId, fishId, weightGrams: record.weightGrams };
     }
   }
+}
+
+export function getDevGuestFishingSummary(owner: string) {
+  const state = globalStore.__zhivDevEconomyStore?.profiles.get(owner)?.state;
+  return state ? guestFishingSummary(state) : null;
 }
 
 export function getDevEconomyAchievementState(owner: string): Pick<EconomyState, "completedExplorations" | "buildings" | "fishing" | "progression" | "residentOrders"> | null {

@@ -51,6 +51,47 @@ class EconomyBoatTest {
     }
     private fun failure(code: String, block: () -> Unit) = assertEquals(code, assertFailsWith<AuthFailure>(block = block).code)
 
+    @Test fun `a missed hook clears only that cast after the bite window`() {
+        val original = depart()
+        val id = original.boat!!.voyage!!.id
+        val issued = call(original, "begin_boat_cast", id)
+        val voyage = issued.boat!!.voyage!!
+        val challenge = voyage.challenge!!
+        val missed = EconomyBoatReelSubmission(challenge.id, emptyList(), 0, missedBite = true)
+        val deadline = Instant.parse(challenge.biteAt).plusMillis(3200)
+        failure("ECONOMY_BOAT_TRACE") { call(issued, "submit_boat_cast", id, deadline.minusMillis(1), missed) }
+        val settled = call(issued, "submit_boat_cast", id, deadline, missed)
+        assertEquals(voyage.copy(challenge = null), settled.boat!!.voyage)
+        failure("ECONOMY_BOAT_CAST_GONE") { call(settled, "submit_boat_cast", id, deadline, missed) }
+    }
+
+    @Test fun `dock sale exchanges saved catch for the confirmed weight quote and keeps records without adding stock`() {
+        val loaded = ready()
+        val v = loaded.boat!!.voyage!!
+        val id = "fish_silverfin"
+        val range = config.weights.getValue(id)
+        val catches = listOf(range.minGrams, range.maxGrams).mapIndexed { index, grams ->
+            EconomyBoatCatch(index, id, grams, now.toString())
+        }
+        val state = loaded.copy(boat = loaded.boat!!.copy(voyage = v.copy(catches = catches)))
+        val base = EconomyRules.catalog.items.single { it.id == "fish_common" }.baseSellPrice
+        val bonus = base * checkNotNull(config.dockSaleBonusPercent) / 100
+        assertTrue(bonus > 0)
+        val total = 2 * base + bonus
+        val sale = command("sell_boat_catch", v.id).copy(totalPrice = total)
+        val time = Instant.parse(v.fishingUntil).plusSeconds(v.inboundSeconds)
+        failure("ECONOMY_BOAT_PHASE") { EconomyRules.apply(state, sale, now) }
+        failure("ECONOMY_BOAT_SALE_PRICE") { EconomyRules.apply(state, sale.copy(totalPrice = total - 1), time) }
+        failure("ECONOMY_CAPACITY") { EconomyRules.apply(state.copy(wallet = state.wallet.copy(coins = ECONOMY_MAX_BALANCE)), sale, time) }
+        val sold = EconomyRules.apply(state, sale, time).first
+        assertEquals(state.wallet.coins + total, sold.wallet.coins); assertEquals(state.inventory, sold.inventory)
+        assertEquals(state.fishing.stock, sold.fishing.stock); assertEquals(2L, sold.fishing.catches[id])
+        assertEquals(range.maxGrams, sold.boat!!.records.getValue(id).weightGrams)
+        assertNull(sold.boat!!.voyage)
+        failure("ECONOMY_BOAT_VOYAGE_GONE") { EconomyRules.apply(sold, sale, time) }
+        failure("ECONOMY_BOAT_VOYAGE_GONE") { call(sold, "claim_boat", v.id, time) }
+    }
+
     @Test fun `starter repair is free even during construction and a legacy paid repair keeps its saved terms`() {
         val job = EconomyJob(UUID.randomUUID().toString(), "construction", "woodlot", targetLevel = 1,
             startedAt = now.toString(), finishesAt = now.plusSeconds(300).toString())
@@ -187,14 +228,14 @@ class EconomyBoatTest {
         val bite = Instant.parse(challenge.biteAt)
         assertEquals(started.plusSeconds(4), bite)
         assertEquals("common", challenge.fishRarity)
-        assertEquals(4, challenge.rulesVersion); assertEquals("steady", challenge.resistance)
+        assertEquals(6, challenge.rulesVersion); assertEquals("steady", challenge.resistance)
         val public = economyJson.encodeToString(EconomyBoats.publicView(state.boat))
         assertTrue("biteAt" in public); assertTrue("fishRarity" in public)
         assertFalse("fishId" in public); assertFalse("weightGrams" in public); assertFalse("slots" in public)
         val reel = caughtTrace(challenge); val finished = bite.plusMillis(reel.endTick * 50L)
         failure("ECONOMY_BOAT_TRACE") { call(state, "submit_boat_cast", v.id, finished.minusMillis(1), reel) }
         assertEquals(1, call(state, "submit_boat_cast", v.id, finished, reel).boat!!.voyage!!.catches.size)
-        val old = challenge.copy(rulesVersion = 1, resistance = null, biteAt = null, fishRarity = null)
+        val old = challenge.copy(rulesVersion = 1, resistance = null, biteAt = null, fishRarity = null, motorResponse = null, hullDamping = null)
         val oldReel = caughtTrace(old)
         val legacy = state.copy(boat = state.boat!!.copy(voyage = state.boat!!.voyage!!.copy(challenge = old)))
         assertEquals(1, call(legacy, "submit_boat_cast", v.id, started.plusMillis(oldReel.endTick * 50L), oldReel).boat!!.voyage!!.catches.size)
