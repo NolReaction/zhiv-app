@@ -6,12 +6,24 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ root, configFile: false, appType: "custom", resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { createBoatFishingCoach, boatCoachStorageKey, boatCoachInstruction } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-fishing-coach.ts");
+const { createBoatFishingCoach, claimBoatFishingCourse, boatCoachStorageKey, boatCoachInstruction } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-fishing-coach.ts");
 const { initialBoatReel, stepBoatReel } = await vite.ssrLoadModule("/features/economy/domain/boat-reel.ts");
 const storage = () => { const map = new Map(); return { map, getItem: key => map.get(key) ?? null, setItem: (key, value) => map.set(key, value), removeItem: key => map.delete(key) }; };
 const attempt = { id: "attempt", rulesVersion: 1, seed: 17, tickMs: 50, maxTicks: 600, zoneWidth: 3200, difficulty: 1,
   startedAt: "2026-11-03T00:00:00Z", expiresAt: "2026-11-03T00:02:00Z" };
 const sample = (reel, held, playing = true) => ({ challengeId: attempt.id, stage: "reeling", playing, held, tick: reel.tick, bar: reel.bar });
+
+test("the course is offered once per owner, including returning players and denied storage", () => {
+  const saved = storage();
+  saved.setItem(boatCoachStorageKey("v1-player"), "done");
+  assert.equal(claimBoatFishingCourse("v1-player", saved), false);
+  assert.equal(claimBoatFishingCourse("new-player", saved), true);
+  assert.equal(saved.getItem(boatCoachStorageKey("new-player")), "seen");
+  assert.equal(claimBoatFishingCourse("new-player", saved), false);
+  const denied = { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); } };
+  assert.equal(claimBoatFishingCourse("private-player", denied), true);
+  assert.equal(claimBoatFishingCourse("private-player", denied), false);
+});
 
 test("lesson completes only after simulated upward hold and downward release, without changing the reel", () => {
   const saved = storage(), coach = createBoatFishingCoach("owner"); let reel = initialBoatReel(attempt);
@@ -44,7 +56,7 @@ test("completion is scoped per owner/device, replay is cosmetic and denied stora
   first.restore(saved); second.restore(saved);
   assert.equal(first.snapshot().completed, true); assert.equal(second.snapshot().completed, false);
   assert.equal(boatCoachInstruction(first.snapshot(), "waiting"), null);
-  first.reset(saved); assert.equal(first.snapshot().completed, false); assert.equal(saved.map.size, 0);
+  first.reset(saved); assert.equal(first.snapshot().completed, false); assert.equal(saved.getItem(boatCoachStorageKey("first")), "seen");
   const denied = { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); }, removeItem() { throw new Error("blocked"); } };
   assert.doesNotThrow(() => first.restore(denied)); assert.doesNotThrow(() => first.reset(denied));
   assert.match(boatCoachInstruction(first.snapshot(), "waiting"), /метка попадёт в зелёную зону/);

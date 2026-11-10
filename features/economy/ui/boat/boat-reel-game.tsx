@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { RotateCcw } from "lucide-react";
+import { ArrowDown, ArrowUp, RotateCcw } from "lucide-react";
 import type { FishingSceneFrame } from "./scene/fishing-scene-types";
 import { useBoatReelController, type BoatReelControllerProps } from "./use-boat-reel-controller";
 import { boatReelFeedback } from "./boat-reel-feedback";
@@ -85,7 +85,8 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
     <span className={gameStyles.srOnly} role="status">{status}</span>
     {waterActive && <button type="button" ref={holdButton} className={waterStyles.surface}
       data-fishing-action={playing ? "hold" : "line"} aria-pressed={playing ? held : undefined}
-      aria-label="Вода. Подсечка и вываживание" aria-keyshortcuts="Space Enter ArrowUp" disabled={blocked}
+      aria-label={!playing ? "Вода. Подсечка и вываживание" : held ? "Ослабить снасть. Отпустите для спуска" : "Тянуть снасть. Удерживайте для подъёма"}
+      aria-keyshortcuts="Space Enter ArrowUp" disabled={blocked}
       onContextMenu={event => event.preventDefault()} onDragStart={event => event.preventDefault()}
       onPointerDown={event => {
         if (event.button !== 0 || !event.isPrimary || blocked || input.current !== null) return;
@@ -109,7 +110,12 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
         // Assistive switches may activate a button without sending pointer or key events.
         if (event.detail !== 0 || blocked || input.current !== null) return;
         if (playing) changeHeld(!held); else hookFish();
-      }} />}
+      }}>
+      {playing && !blocked && <span className={waterStyles.actionCue} data-fishing-cue="reel" aria-hidden="true">
+        {held ? <ArrowDown size={20} /> : <ArrowUp size={20} />}
+        <span>{held ? "Ослабить снасть" : "Тянуть снасть"}<small>{held ? "Отпустите" : "Удерживайте"}</small></span>
+      </span>}
+    </button>}
     {showMeter && <div className={gameStyles.instrument}>
       <BoatReelMeter reel={{ bar: reel.bar, fish: reel.fish, zoneWidth: challenge.zoneWidth }} held={held} tickMs={challenge.tickMs} danger={feedback.urgent} />
       <div className={gameStyles.readout}>

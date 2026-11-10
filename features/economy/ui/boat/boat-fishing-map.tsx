@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertDialog, Dialog } from "radix-ui";
 import { ArrowLeft, BookOpen, CircleHelp, Clock3, Fish, FishingRod, Sailboat, X } from "lucide-react";
 import { boatConfig, boatModules, boatState } from "@/features/economy/domain/boat-fishing";
@@ -20,6 +20,7 @@ import { boatCatchPresentation } from "./boat-catch-presentation";
 import { BoatReelGame, type BoatReelVisualState } from "./boat-reel-game";
 import { FishingSceneCanvas } from "./scene/fishing-scene-canvas";
 import { useBoatFishingCoach } from "./use-boat-fishing-coach";
+import { BoatFishingCourse } from "./boat-fishing-course";
 import { boatCoachInstruction } from "./boat-fishing-coach";
 import coachStyles from "./boat-fishing-coach.module.css";
 import { useFishingAudio } from "./use-fishing-audio";
@@ -48,10 +49,12 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
     return () => clearTimeout(timeout);
   }, [releasedCast]);
   const [showHints, setShowHints] = useState(false);
+  const [courseForCast, setCourseForCast] = useState<number | null>(null);
+  const river = useRef<HTMLElement>(null);
   const [missedCast, setMissedCast] = useState<string | null>(null);
   const [showAlbum, setShowAlbum] = useState(false);
   const [confirmReturn, setConfirmReturn] = useState(false), [showCatch, setShowCatch] = useState(false), [showDev, setShowDev] = useState(false);
-  const controlsSuspended = suspended || showCatch || showDev || showAlbum || confirmReturn;
+  const covered = suspended || showCatch || showDev || showAlbum || confirmReturn;
   const publishVisual = useCallback((next: BoatReelVisualState) => {
     if (feed.publish(next)) {
       setStageSample({ challengeId: next.challengeId, stage: next.stage });
@@ -65,6 +68,17 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
   const full = voyage.catches.length >= voyage.maxCatches;
   const usableCasts = full ? 0 : remaining;
   const completed = !liveChallenge && usableCasts === 0;
+  const canStudy = !liveChallenge && !disabled && !covered && !aiming && !releasedCast && !completed;
+  const courseOpen = canStudy && courseForCast === voyage.castsUsed;
+  const controlsSuspended = covered || courseOpen;
+  const offerCourse = coach.offerCourse;
+  useEffect(() => {
+    if (!canStudy || voyage.castsUsed !== 0) return;
+    const frame = requestAnimationFrame(() => {
+      if (offerCourse()) setCourseForCast(0);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [canStudy, voyage.castsUsed, offerCourse]);
   const lastCatch = voyage.catches.at(-1);
   const lastPresentation = lastCatch ? boatCatchPresentation(state, lastCatch) : undefined;
   const landed = !challenge && lastCatch && economy.now >= Date.parse(lastCatch.caughtAt) && economy.now - Date.parse(lastCatch.caughtAt) < (lastPresentation?.revealMs ?? 3500) ? lastCatch : undefined;
@@ -78,19 +92,29 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
     fishRarity, fishId: landed?.fishId, held: false, boat: { repaired: true, upgrades: boat.upgrades, modules: boatModules(boat) }, rodId: voyage.loadout.rodId, appearance }),
   [stage, castPower, aiming, controlsSuspended, challenge, economy.now, timeZone, state.ownerPublicId, voyage.id, landed, lastPresentation?.sizeScale, fishRarity, boat, voyage.loadout.rodId, appearance]);
   const toggleHints = () => {
-    if (!showHints) coach.replay();
-    setShowHints(!showHints);
+    if (canStudy) {
+      offerCourse();
+      setCourseForCast(voyage.castsUsed);
+    } else {
+      if (!showHints) coach.replay();
+      setShowHints(!showHints);
+    }
+  };
+  const closeCourse = (practice: boolean) => {
+    if (practice) coach.replay();
+    setShowHints(practice);
+    setCourseForCast(null);
   };
   const finishReturn = () => { if (!disabled && !suspended && send("return_boat", voyage.id)) setConfirmReturn(false); };
   const requestReturn = () => { if (!disabled && !suspended) { if (completed) finishReturn(); else setConfirmReturn(true); } };
-  return <section className={styles.map} data-boat-map data-fishing-stage={frame.stage} aria-label="Карта речной рыбалки">
+  return <section ref={river} className={styles.map} data-boat-map data-fishing-stage={frame.stage} aria-label="Карта речной рыбалки">
     <RiverScene base={frame} owner={state.ownerPublicId} voyageId={voyage.id} count={voyage.catches.length} feed={feed} suspended={controlsSuspended} />
     <header className={styles.header}><div className={styles.location}><span>РЕЧНАЯ РЫБАЛКА</span><h2>{config.name}</h2><small>{completed ? <><Sailboat size={13} />Можно возвращаться домой</> : <><Clock3 size={13} /><span className={styles.returnLabel}>До возвращения</span><BoatCountdown until={Date.parse(voyage.fishingUntil)} now={economy.now} readClock={economy.readServerNow} /></>}</small></div>
       <div className={styles.headerActions}><span className={styles.counter}><FishingRod size={16} />{remaining}<small>забросов</small></span><span className={styles.counter}><Fish size={16} />{voyage.catches.length} / {voyage.maxCatches}<small>на борту</small></span>
         <button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть рыбалку и вернуться к поляне"><X size={22} /></button></div></header>
     <div className={styles.tools}><button type="button" className={styles.tool} onClick={() => setShowCatch(value => !value)} aria-expanded={showCatch}><Fish size={16} />Улов · {voyage.catches.length}</button>
       <button type="button" className={styles.tool} data-fishing-action="album" onClick={() => setShowAlbum(true)} aria-haspopup="dialog"><BookOpen size={16} />Альбом рыбака</button>
-      <button type="button" className={`${styles.tool} ${coachStyles.trigger}`} data-fishing-action="coach" onClick={toggleHints} aria-pressed={showHints} aria-label="Подсказки управления"><CircleHelp size={16} /><span>Подсказки</span></button>
+      <button type="button" className={`${styles.tool} ${coachStyles.trigger}`} data-fishing-action="coach" onClick={toggleHints} aria-haspopup={canStudy ? "dialog" : undefined} aria-pressed={canStudy ? undefined : showHints} aria-label="Подсказки управления"><CircleHelp size={16} /><span>Подсказки</span></button>
       {process.env.NODE_ENV === "development" && economy.devAvailable && <button type="button" className={styles.tool} onClick={() => setShowDev(value => !value)} aria-expanded={showDev}>DEV</button>}</div>
     {showCatch && <aside className={styles.catchTray}><button type="button" className={styles.trayClose} onClick={() => setShowCatch(false)} aria-label="Закрыть улов"><X size={18} /></button><BoatCatchList state={state} boat={boat} /></aside>}
     {showDev && <aside className={styles.devTray}><button type="button" className={styles.trayClose} onClick={() => setShowDev(false)} aria-label="Закрыть DEV рыбалки"><X size={18} /></button><BoatDevControls economy={economy} compact /></aside>}
@@ -124,9 +148,10 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
         </>}
         {!challenge && !completed && missedCast && <span className={styles.riverNotice} role="status">Рыба ушла</span>}
         {showHints && !aiming && !ownRelease && !coach.view.completed && !challenge && !completed && <p className={styles.riverHint} data-fishing-coach="cast">{boatCoachInstruction(coach.view, "waiting")}</p>}
-        <div className={styles.bottomRow}><button type="button" className={styles.back} onClick={onClose}><ArrowLeft size={15} />К поляне</button><button type="button" className={`${styles.back} ${styles.albumShortcut}`} data-fishing-action="album-shortcut" onClick={() => setShowAlbum(true)} aria-haspopup="dialog"><BookOpen size={15} />Альбом</button><button type="button" className={`${styles.back} ${styles.coachShortcut}`} data-fishing-action="coach-shortcut" onClick={toggleHints} aria-pressed={showHints} aria-label="Подсказки управления"><CircleHelp size={15} /></button>{!completed && <button type="button" className={styles.back} data-fishing-action="return" disabled={disabled || suspended} onClick={requestReturn}>Вернуться с уловом</button>}</div>
+        <div className={styles.bottomRow}><button type="button" className={styles.back} onClick={onClose}><ArrowLeft size={15} />К поляне</button><button type="button" className={`${styles.back} ${styles.albumShortcut}`} data-fishing-action="album-shortcut" onClick={() => setShowAlbum(true)} aria-haspopup="dialog"><BookOpen size={15} />Альбом</button><button type="button" className={`${styles.back} ${styles.coachShortcut}`} data-fishing-action="coach-shortcut" onClick={toggleHints} aria-haspopup={canStudy ? "dialog" : undefined} aria-pressed={canStudy ? undefined : showHints} aria-label="Подсказки управления"><CircleHelp size={15} /></button>{!completed && <button type="button" className={styles.back} data-fishing-action="return" disabled={disabled || suspended} onClick={requestReturn}>Вернуться с уловом</button>}</div>
       </div>
     </div>
+    <BoatFishingCourse open={courseOpen} river={river} onClose={closeCourse} />
     <Dialog.Root open={showAlbum} onOpenChange={setShowAlbum}><Dialog.Portal>
       <Dialog.Overlay className={styles.albumOverlay} />
       <Dialog.Content className={styles.albumDialog} data-boat-album-dialog onEscapeKeyDown={event => event.stopPropagation()}>

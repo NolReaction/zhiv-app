@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createBoatFishingCoach, type BoatCoachObservation } from "./boat-fishing-coach";
+import { claimBoatFishingCourse, createBoatFishingCoach, type BoatCoachObservation } from "./boat-fishing-coach";
 
 const storage = () => { try { return window.localStorage; } catch { return null; } };
 
@@ -18,5 +18,6 @@ export function useBoatFishingCoach(owner: string) {
     if (session.observe(sample, storage())) setSnapshot(session.snapshot());
   }, [session]);
   const replay = useCallback(() => { session.reset(storage()); setSnapshot(session.snapshot()); }, [session]);
-  return { view: snapshot.owner === owner ? snapshot : session.snapshot(), observe, replay };
+  const offerCourse = useCallback(() => claimBoatFishingCourse(owner, storage()), [owner]);
+  return { offerCourse, view: snapshot.owner === owner ? snapshot : session.snapshot(), observe, replay };
 }

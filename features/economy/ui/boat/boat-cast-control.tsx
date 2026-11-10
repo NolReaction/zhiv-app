@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { FishingRod } from "lucide-react";
 import { BOAT_CAST_CYCLE_MS, BOAT_CAST_GREEN_RADIUS, boatCastAim } from "@/features/economy/domain/boat-cast-aim";
 import styles from "./boat-cast-control.module.css";
 import { BOAT_CAST_MIN_HOLD_MS } from "./boat-cast-timing";
@@ -94,7 +95,7 @@ export function BoatCastControl({ disabled, voyageId, castNumber, onCast, onChar
   const cancelPointer = (pointerId: number) => { if (press.current?.input === String(pointerId)) cancel(); };
   return <>
     <button type="button" ref={water} className={styles.surface} data-fishing-action="cast" disabled={disabled}
-      aria-label="Вода. Удерживайте до появления шкалы и отпустите для заброса" aria-keyshortcuts="Space Enter"
+      aria-label="Удерживать для заброса. Отпустите, когда метка войдёт в зелёную зону" aria-keyshortcuts="Space Enter"
       onContextMenu={event => event.preventDefault()} onDragStart={event => event.preventDefault()}
       onPointerDown={event => {
         if (!event.isPrimary || event.button !== 0) return;
@@ -124,7 +125,11 @@ export function BoatCastControl({ disabled, voyageId, castNumber, onCast, onChar
         if (event.detail !== 0 || disabled) return;
         if (press.current?.input === "activation") release("activation", event.timeStamp);
         else start("activation", event.timeStamp);
-      }} />
+      }}>
+      {!gesture && !disabled && <span className={styles.actionCue} data-fishing-cue="cast" aria-hidden="true">
+        <FishingRod size={20} />Удерживать для заброса
+      </span>}
+    </button>
     {gesture && !disabled && <CastMeter voyageId={voyageId} castNumber={castNumber} startedAt={gesture.startedAt} />}
   </>;
 }

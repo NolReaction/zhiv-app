@@ -1,8 +1,30 @@
 export const BOAT_COACH_STORAGE_PREFIX = "zhiv.boat-controls.v1.";
 export type BoatCoachView = { owner: string; learnedLift: boolean; completed: boolean; justCompleted: boolean };
 export type BoatCoachObservation = { challengeId: string; stage: string; playing: boolean; held: boolean; tick: number; bar: number };
-type Storage = Pick<globalThis.Storage, "getItem" | "setItem" | "removeItem">;
+type Storage = Pick<globalThis.Storage, "getItem" | "setItem">;
+const seenWithoutStorage = new Set<string>();
 export const boatCoachStorageKey = (owner: string) => BOAT_COACH_STORAGE_PREFIX + encodeURIComponent(owner);
+
+function saveLesson(key: string, value: "seen" | "done", storage: Storage | null) {
+  if (storage) try {
+    storage.setItem(key, value);
+    seenWithoutStorage.delete(key);
+    return;
+  } catch { /* A denied write still counts as a visit in this browser session. */ }
+  seenWithoutStorage.add(key);
+}
+
+/** A previous practical lesson marked "done" counts as an introduction too. */
+export function claimBoatFishingCourse(owner: string, storage: Storage | null) {
+  const key = boatCoachStorageKey(owner);
+  if (seenWithoutStorage.has(key)) return false;
+  try {
+    const value = storage?.getItem(key);
+    if (value === "seen" || value === "done") return false;
+  } catch { /* The in-memory receipt covers repeated visits. */ }
+  saveLesson(key, "seen", storage);
+  return true;
+}
 
 /** A cosmetic local lesson. Only actual advancing reel samples may complete it. */
 export function createBoatFishingCoach(owner: string) {
@@ -17,7 +39,7 @@ export function createBoatFishingCoach(owner: string) {
     },
     reset(storage: Storage | null) {
       previous = undefined; liftTicks = 0; releaseTicks = 0; releaseArmed = false;
-      try { storage?.removeItem(boatCoachStorageKey(owner)); } catch { /* Hints still work without storage. */ }
+      saveLesson(boatCoachStorageKey(owner), "seen", storage);
       return set({ owner, learnedLift: false, completed: false, justCompleted: false });
     },
     observe(sample: BoatCoachObservation, storage: Storage | null) {
@@ -37,7 +59,7 @@ export function createBoatFishingCoach(owner: string) {
       const learnedLift = liftTicks >= 2;
       if (learnedLift && sample.held) releaseArmed = true;
       const completed = learnedLift && releaseTicks >= 2;
-      if (completed) try { storage?.setItem(boatCoachStorageKey(owner), "done"); } catch { /* Completion is cosmetic and remains in memory. */ }
+      if (completed) saveLesson(boatCoachStorageKey(owner), "done", storage);
       return set({ owner, learnedLift, completed, justCompleted: completed });
     },
   };

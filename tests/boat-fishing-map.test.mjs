@@ -91,6 +91,7 @@ const { boatCastAim } = await vite.ssrLoadModule("/features/economy/domain/boat-
 const { boatReelCheckpointKey, changeBoatReelInput, writeBoatReelCheckpoint } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-reel-checkpoint.ts");
 
 const at = Date.parse("2026-11-03T10:00:00Z");
+const coachKey = "zhiv.boat-controls.v1.0000-0000-0000";
 const globalNames = ["window", "document", "requestAnimationFrame", "cancelAnimationFrame"];
 let clock, nextFrame, frames, storage, savedGlobals;
 class TrackedEvents extends EventTarget {
@@ -102,8 +103,9 @@ class TrackedEvents extends EventTarget {
 beforeEach(t => {
   clock = 100; nextFrame = 0; frames = new Map(); storage = new Map();
   savedGlobals = globalNames.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]);
-  const memory = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) };
-  Object.assign(globalThis, { window: Object.assign(new TrackedEvents(), { sessionStorage: memory }), document: Object.assign(new TrackedEvents(), { hidden: false, activeElement: null }),
+  const memory = values => ({ getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) });
+  const localStorage = memory(new Map([[coachKey, "seen"]]));
+  Object.assign(globalThis, { window: Object.assign(new TrackedEvents(), { sessionStorage: memory(storage), localStorage }), document: Object.assign(new TrackedEvents(), { hidden: false, activeElement: null }),
     requestAnimationFrame: callback => { const id = ++nextFrame; frames.set(id, callback); return id; }, cancelAnimationFrame: id => frames.delete(id) });
   t.mock.method(performance, "now", () => clock);
 });
@@ -215,6 +217,33 @@ function fixture({ outbound = false, dev = false } = {}) {
   };
 }
 
+test("the first river course appears once, skips without spending a cast, and can be replayed for practice", () => {
+  window.localStorage.removeItem(coachKey);
+  const f = fixture(), initial = structuredClone(f.state.boat.voyage);
+  const course = () => f.find(node => node.props["data-boat-fishing-course"]);
+  f.frame(0);
+  assert.match(text(course()), /Забросьте удочку.*Подсеките при нырке.*Подведите рыбу к борту/);
+  assert.equal(f.byAction("cast").props.disabled, true);
+  assert.equal(window.localStorage.getItem(coachKey), "seen");
+  f.click(f.byAction("course-skip"));
+  f.close(); f.reopen(); f.frame(0);
+  assert.equal(course(), undefined);
+  assert.equal(f.find(node => node.props["data-fishing-coach"]), undefined);
+  f.click(f.byAction("coach-shortcut"));
+  assert(course());
+  f.click(f.byAction("course-start"));
+  assert.equal(course(), undefined);
+  assert(f.find(node => node.props["data-fishing-coach"] === "cast"));
+  assert.deepEqual(f.state.boat.voyage, initial); assert.equal(f.pending.length, 0);
+  f.cast();
+  assert.equal(f.state.boat.voyage.castsUsed, 1);
+  // Recovering a real challenge takes precedence even on a browser with no lesson receipt.
+  window.localStorage.removeItem(coachKey);
+  f.close(); f.reopen(); f.frame(0);
+  assert.equal(course(), undefined); assert.equal(window.localStorage.getItem(coachKey), null);
+  assert.equal(f.commands.length, 2);
+});
+
 test("actual root changes from timed outbound to one separate river scene without disclosing or starting a cast", () => {
   const f = fixture({ outbound: true }), before = structuredClone(f.state.boat.voyage);
   assert.equal(f.find(node => node.props["data-boat-map-view"]), undefined);
@@ -272,6 +301,7 @@ test("short taps and keystrokes neither wind up nor spend a cast; a fresh delibe
   const f = fixture(), water = f.byAction("cast");
   const advance = elapsed => { f.frame(elapsed); t.mock.timers.tick(elapsed); f.render(); };
   const meter = () => f.find(node => node.props.role === "meter");
+  assert.equal(text(water), "Удерживать для заброса");
   for (const [down, up] of [["onPointerDown", "onPointerUp"], ["onKeyDown", "onKeyUp"]]) {
     water.props[down](event(water)); advance(279);
     assert.equal(meter(), undefined); assert.equal(f.find(node => node.tag === "canvas").props.frame.aiming, false);
@@ -281,6 +311,7 @@ test("short taps and keystrokes neither wind up nor spend a cast; a fresh delibe
   water.props.onPointerDown(event(water));
   water.props.onPointerCancel(event(water, { pointerId: 8, isPrimary: false })); advance(280);
   assert.equal(meter().props["data-marker"], 28); assert.equal(f.find(node => node.tag === "canvas").props.frame.aiming, true);
+  assert.equal(f.find(node => node.props["data-fishing-cue"] === "cast"), undefined);
   water.props.onPointerUp(event(water)); water.props.onPointerUp(event(water)); f.render();
   assert.equal(f.pending.length, 1); assert.equal(f.pending[0].castHeldMs, 280);
   f.flush(); assert.equal(f.state.boat.voyage.castsUsed, 1);
@@ -330,8 +361,9 @@ test("a keyboard cast passes focus through the dialog trap to the water for the 
 test("a premature hold cannot hook across the bite, and only optional hints teach when to strike", () => {
   const f = fixture();
   assert.equal(f.find(node => node.props["data-fishing-coach"]), undefined);
-  f.click(f.byAction("coach")); assert.match(text(f.find(node => node.props["data-fishing-coach"] === "cast")), /зелёную зону/);
-  f.click(f.byAction("coach")); f.cast();
+  f.click(f.byAction("coach")); f.click(f.byAction("course-start"));
+  assert.match(text(f.find(node => node.props["data-fishing-coach"] === "cast")), /зелёную зону/);
+  f.click(f.byAction("coach")); f.click(f.byAction("course-skip")); f.cast();
   const water = f.byAction("line");
   assert(water); assert.equal(text(water), "");
   water.props.onPointerDown(event(water)); f.render();
@@ -343,7 +375,9 @@ test("a premature hold cannot hook across the bite, and only optional hints teac
   assert.equal(f.byAction("hold"), undefined);
   water.props.onKeyDown(event(water)); f.render();
   assert.equal(f.byAction("hold"), water); assert.equal(water.props["aria-pressed"], true);
+  assert.match(text(water), /Ослабить снасть.*Отпустите/);
   water.props.onKeyUp(event(water)); f.render(); assert.equal(water.props["aria-pressed"], false);
+  assert.match(text(water), /Тянуть снасть.*Удерживайте/);
 });
 
 test("late viewers cannot settle another tab's hook implicitly, while a legacy attempt still reels automatically", () => {

@@ -443,6 +443,7 @@ jobs:
           for domain in im-alive.ru localhost; do
             docker compose -f deploy/compose.yml run --rm --no-deps -T -e DOMAIN="$domain" \
               --entrypoint caddy caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile |
+              tee "$RUNNER_TEMP/caddy-$domain.json" |
               jq -e --arg domain "$domain" '
                 [.apps.http.servers[].routes[] |
                   select(any(.match[]?.host[]?; . == "auto-gorizont.ru"))] as $routes |
@@ -543,6 +544,12 @@ jobs:
           import fs from 'node:fs';
           if (JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).maintenance !== true) throw new Error('Maintenance status was intercepted by the gate');
           NODE
+
+      - name: Exercise the shared Caddy hosts during game maintenance
+        shell: bash
+        run: |
+          caddy_image=$(docker compose -f deploy/compose.yml images -q caddy)
+          python3 scripts/smoke-shared-caddy.py "$caddy_image" < "$RUNNER_TEMP/caddy-im-alive.ru.json"
 
       - name: Exercise private administration and real monitoring
         run: node scripts/smoke-admin.mjs

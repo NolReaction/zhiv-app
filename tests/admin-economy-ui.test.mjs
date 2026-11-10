@@ -173,10 +173,15 @@ test("admin player names remain escaped text and recent fishing ledger actions h
   assert.match(view.markup, /&lt;img src=x onerror=/);
   assert.doesNotMatch(view.markup, /<img|<script/);
   const value = detail();
-  value.ledger = ["refresh_fishing_shop", "equip_fishing_hook"].map(kind => ({ ...value.ledger[0], kind }));
+  const actions = ["refresh_fishing_shop", "equip_fishing_hook", "start_boat_upgrade", "claim_boat_upgrade",
+    "buy_boat_fuel", "depart_boat", "begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat", "sell_boat_catch"];
+  value.ledger = actions.map(kind => ({ ...value.ledger[0], kind }));
   const markup = renderToStaticMarkup(AdminEconomyDetailContent({ detail: value }));
   assert.match(markup, /Обновление лавки Плёски/);
   assert.match(markup, /Выбор крючка/);
+  assert.match(markup, /Результат заброса/);
+  assert.match(markup, /Продажа улова у причала/);
+  for (const action of actions) assert.equal(markup.includes(action), false, action);
 });
 
 test("both economy loaders authenticate the same owner before each read and pass cancellable no-store requests", async () => {
@@ -236,15 +241,25 @@ test("admin boat snapshot distinguishes upgrade work, fishing and unloading into
   const value = detail();
   const now = Date.parse(serverTime), iso = offset => new Date(now + offset).toISOString();
   const boat = value.economy.boat = { level: 1, upgrades: [], records: {}, completedVoyages: 1 };
+  const miner = job(6, { kind: "exploration", actorId: "miner", targetId: "quarry" });
+  value.economy.jobs = [miner];
+  value.jobStatuses = [{ jobId: miner.id, status: "running", storageBlocked: false }];
   const html = () => renderToStaticMarkup(AdminEconomyDetailContent({ detail: value }));
-  boat.work = { upgradeId: "oars", finishesAt: iso(-1000) };
+  const builderCard = () => html().split("Шишколап · строитель")[1].split("</article>")[0];
+  boat.work = { upgradeId: "oars", finishesAt: iso(120000) };
+  assert.match(builderCard(), /Занят.*Работа в лодочной мастерской.*2 мин/);
+  assert.doesNotMatch(builderCard(), /Ускорение|Свободен/);
+  boat.work.finishesAt = iso(0);
+  assert.match(builderCard(), /Ждёт получения.*получить улучшение лодки/);
   assert.match(html(), /Улучшение готово/);
   delete boat.work;
   boat.voyage = { arrivesAt: iso(-1000), fishingUntil: iso(60000), inboundSeconds: 60,
     catches: [{ fishId: "fish" }, { fishId: "fish_dace" }], castsUsed: 3, maxCatches: 4, maxCasts: 6 };
   assert.match(html(), /На рыбалке/);
+  assert.match(html(), /Мохлик · вылазки.*Занят лодкой/);
   boat.voyage.returnsAt = iso(-1000);
   assert.match(html(), /Ожидает разгрузки/);
+  assert.match(html(), /Следующая вылазка доступна после завершения рейса у причала/);
   value.economy.storage.available = 1;
   assert.match(html(), /Мест для разгрузки не хватает: 1/);
   value.economy.storage.available = 2;

@@ -79,10 +79,14 @@ test("new quarry and workshop furnace need home two before spending, while start
 
 test("an empty account can rebuild its first stage from the free bush and forest without buying a slot", () => {
   const p = player();
-  fixture(p, { coins: 0, items: {}, home: 1, completedExplorations: 0, buildings: { warehouse: 1 } });
+  const profile = fixture(p, { coins: 0, items: {}, home: 1, completedExplorations: 0, buildings: { warehouse: 1 } });
   let clock = now;
   const complete = (action, targetId) => {
     const started = issue(p, action, targetId, 1, clock).state, job = started.jobs.at(-1);
+    if (action === "start_exploration") {
+      // Even the legal minimum roll must leave a path from an empty inventory to house two.
+      profile.state.jobs.find(saved => saved.id === job.id).expeditionFinds = {};
+    }
     clock = Date.parse(job.finishesAt);
     if (job.collection) {
       const collecting = issue(p, "start_collection", job.id, 1, clock).state.jobs.find(item => item.id === job.id);
@@ -104,6 +108,7 @@ test("an empty account can rebuild its first stage from the free bush and forest
   complete("start_production", "cook_compote"); complete("start_production", "cook_compote"); tutorial();
   complete("start_exploration", "forest"); complete("start_construction", "workshop");
   complete("start_production", "make_planks"); complete("start_production", "make_planks"); tutorial();
+  complete("start_production", "gather_wood"); complete("start_production", "gather_wood");
   complete("start_production", "make_planks"); complete("start_production", "make_planks");
   berries(5); issue(p, "sell", "berries", 5, clock); complete("start_exploration", "forest");
   const beforeHome = read(p, clock);
