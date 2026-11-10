@@ -5,6 +5,7 @@ import { AlertDialog, Dialog } from "radix-ui";
 import { ArrowLeft, BookOpen, CircleHelp, Clock3, Fish, FishingRod, Sailboat, X } from "lucide-react";
 import { boatConfig, boatModules, boatState } from "@/features/economy/domain/boat-fishing";
 import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
+import { createBoatCastCheckpoint } from "./boat-cast-checkpoint";
 import { BoatCastControl } from "./boat-cast-control";
 import { BoatCountdown } from "./boat-countdown";
 import { BoatDevControls } from "@/features/economy/dev/boat-dev-controls";
@@ -35,7 +36,9 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
   const coach = useBoatFishingCoach(state.ownerPublicId);
   const [stageSample, setStageSample] = useState<Pick<BoatReelVisualState, "challengeId" | "stage"> | null>(null);
   const [feed] = useState(createRiverFeed);
-  const [castPower, setCastPower] = useState(100);
+  const [castAim] = useState(() => createBoatCastCheckpoint(state.ownerPublicId, voyage.id));
+  const castPower = castAim.power(voyage.castsUsed, challenge?.id);
+  useEffect(() => { castAim.confirm(voyage.castsUsed, challenge?.id); }, [castAim, voyage.castsUsed, challenge?.id]);
   const [missedCast, setMissedCast] = useState<string | null>(null);
   const [showAlbum, setShowAlbum] = useState(false);
   const [confirmReturn, setConfirmReturn] = useState(false), [showCatch, setShowCatch] = useState(false), [showDev, setShowDev] = useState(false);
@@ -44,7 +47,7 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
     if (feed.publish(next)) {
       setStageSample({ challengeId: next.challengeId, stage: next.stage });
     }
-  }, [feed]);
+  }, [feed, setStageSample]);
   const remaining = Math.max(0, voyage.maxCasts - voyage.castsUsed);
   const queued = Boolean(challenge && economy.pendingBoatCastId === challenge.id);
   const expired = challenge && !queued && economy.now >= Date.parse(challenge.expiresAt);
@@ -90,7 +93,7 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
             {landed ? <BoatCatchCard state={state} caught={landed} /> : completed ? <BoatFishingCompletion receipt={createBoatTripReceipt(state, voyage)} full={full} onShowCatch={() => setShowCatch(true)} /> : <><span className={styles.eyebrow}><Sailboat size={15} />Мохлик на речном плёсе</span><h3>{missedCast ? "Поклёвка пропущена" : "Пора забросить удочку"}</h3><p className={!coach.view.completed ? coachStyles.prompt : undefined} data-fishing-coach={!coach.view.completed ? "cast" : undefined}>{boatCoachInstruction(coach.view, "waiting") ?? "Удерживайте кнопку, чтобы выбрать силу. Отпустите для заброса и следите за поплавком."}</p></>}
           </div>}
         {(!challenge || expired) && usableCasts > 0 && <BoatCastControl disabled={disabled || controlsSuspended} onCast={power => {
-          if (send("begin_boat_cast", voyage.id)) { setCastPower(power); setMissedCast(null); }
+          if (send("begin_boat_cast", voyage.id)) { castAim.release(voyage.castsUsed + 1, power); setMissedCast(null); }
         }} />}
         {completed && <button type="button" className={styles.primary} data-fishing-action="return" aria-label="Завершить рыбалку и вернуться домой" disabled={disabled || suspended} onClick={requestReturn}><Sailboat size={18} />Завершить и вернуться домой</button>}
         <div className={styles.bottomRow}><button type="button" className={styles.back} onClick={onClose}><ArrowLeft size={15} />К поляне</button><button type="button" className={`${styles.back} ${styles.albumShortcut}`} data-fishing-action="album-shortcut" onClick={() => setShowAlbum(true)} aria-haspopup="dialog"><BookOpen size={15} />Альбом</button><button type="button" className={`${styles.back} ${styles.coachShortcut}`} data-fishing-action="coach-shortcut" onClick={coach.replay} aria-label="Повторить подсказки управления"><CircleHelp size={15} /></button>{!completed && <button type="button" className={styles.back} data-fishing-action="return" disabled={disabled || suspended} onClick={requestReturn}>Вернуться с уловом</button>}</div>

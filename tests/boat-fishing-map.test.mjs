@@ -150,6 +150,7 @@ function fixture({ outbound = false, dev = false } = {}) {
   state.wallet.coins = 100000; state.inventory = { planks: 20, rope: 20 }; state.buildings.warehouse = 5; state.boat.level = 1;
   let time = at, revision = 1, open = true, busy = false, tree = [], hosts = new Map();
   const pending = [], commands = [];
+  let localBoatSettlement;
   const apply = command => { const next = structuredClone(state); applyEconomyCommand(next, command, time, () => crypto.randomUUID(), {}, maximum => 37 % maximum); state = next; revision++; commands.push(command); };
   const command = (action, targetId, reel) => economyCommandSchema.parse({ requestId: crypto.randomUUID(), ownerPublicId: "0000-0000-0000", expectedRevision: revision, action, targetId, quantity: 1, totalPrice: 0, ...(reel ? { reel } : {}) });
   apply(command("depart_boat", economyCatalog.boat.routeId));
@@ -165,7 +166,7 @@ function fixture({ outbound = false, dev = false } = {}) {
   const render = () => {
     for (let iteration = 0; iteration < 30; iteration++) {
       hooks.begin();
-      const economy = { snapshot: view(), now: time, snapshotConfirmed: true, busy, uncertain: false, retryAt: 0, error: null, devAvailable: dev,
+      const economy = { snapshot: view(), now: time, snapshotConfirmed: true, busy, uncertain: false, retryAt: 0, error: null, devAvailable: dev, localBoatSettlement,
         act(action, targetId, quantity, totalPrice, fishSelection, unused, reel) { if (busy) return false; busy = true; pending.push(command(action, targetId, reel)); return true; }, refresh() {}, retry() {} };
       tree = featureTree(open ? createElement(PlayableBoatFishingDialog, { economy, onClose() { open = false; } }) : null, "root", hosts);
       hooks.finish(); if (!hooks.changed()) return tree;
@@ -176,7 +177,16 @@ function fixture({ outbound = false, dev = false } = {}) {
   const byAction = action => find(node => node.props["data-fishing-action"] === action);
   const click = node => { assert(node, "Expected an available control"); assert.equal(Boolean(node.props.disabled), false); node.props.onClick?.(event(node)); render(); };
   const frame = (elapsed = 50) => { clock += elapsed; time += elapsed; for (const [id, callback] of [...frames]) if (frames.delete(id)) callback(clock); render(); };
-  const flush = () => { for (const request of pending.splice(0)) apply(request); busy = false; render(); };
+  const flush = () => {
+    for (const request of pending.splice(0)) {
+      apply(request);
+      if (request.action === "claim_boat" || request.action === "sell_boat_catch") {
+        localBoatSettlement = { voyageId: request.targetId, requestId: request.requestId, revision,
+          ...(request.action === "sell_boat_catch" ? { saleCoins: request.totalPrice } : {}) };
+      }
+    }
+    busy = false; render();
+  };
   render();
   return { render, find, byAction, click, frame, flush, view, pending, commands,
     get state() { return state; }, get tree() { return tree; },
@@ -229,6 +239,25 @@ test("actual root changes from timed outbound to one separate river scene withou
   assert.equal(f.commands.filter(request => request.action === "submit_boat_cast").length, 0);
 });
 
+test("a short cast restores the same landing distance before and after receipt and stays bound to its attempt", () => {
+  const f = fixture(), button = f.byAction("cast");
+  button.props.onPointerDown(event(button)); f.render(); f.frame(115);
+  button.props.onPointerUp(event(button)); f.render();
+  f.close(); f.flush(); f.reopen(); f.frame(0);
+  const scene = () => f.find(node => node.tag === "canvas").props.frame;
+  const power = scene().castPower;
+  assert.equal(power, 25);
+  const key = "zhiv.boat-cast.v1.0000-0000-0000";
+  const first = f.state.boat.voyage.challenge;
+  assert.equal(JSON.parse(window.sessionStorage.getItem(key)).challenge, first.id);
+  f.close(); f.reopen(); f.frame(0); assert.equal(scene().castPower, power);
+  f.state.boat.voyage.challenge.id = crypto.randomUUID(); f.render(); f.frame(0);
+  assert.equal(scene().castPower, 100, "another challenge cannot reuse the saved aim");
+  f.advanceTo(Date.parse(first.expiresAt)); f.cast();
+  assert.equal(JSON.parse(window.sessionStorage.getItem(key)).challenge, f.state.boat.voyage.challenge.id);
+  assert.equal(scene().castPower, 45);
+});
+
 test("cancelled charges keep the budget and a missed bite settles once with no catch", () => {
   const f = fixture();
   const button = f.byAction("cast"); button.props.onPointerDown(event(button)); f.render(); f.frame(700);
@@ -245,6 +274,23 @@ test("cancelled charges keep the budget and a missed bite settles once with no c
   f.frame(1); assert.equal(f.pending.length, 1); assert.equal(f.pending[0].reel.missedBite, true);
   f.flush(); assert.equal(f.state.boat.voyage.challenge, undefined); assert.deepEqual(f.state.boat.voyage.catches, []);
   assert.equal(f.state.boat.voyage.castsUsed, 1); assert(f.byAction("cast"));
+});
+
+test("late viewers cannot settle another tab's hook implicitly, while a legacy attempt still reels automatically", () => {
+  const f = fixture();
+  f.cast(); const first = f.state.boat.voyage.challenge;
+  f.close(); f.advanceTo(Date.parse(first.biteAt) + 4000); f.reopen(); f.frame(0);
+  assert.equal(f.byAction("hook"), undefined); assert.equal(f.byAction("hold"), undefined);
+  assert(f.byAction("skip-bite")); f.frame(1500); assert.deepEqual(f.pending, []);
+  f.click(f.byAction("skip-bite")); assert.equal(f.pending.length, 1); assert.equal(f.pending[0].reel.missedBite, true);
+  f.flush(); assert.equal(f.state.boat.voyage.castsUsed, 1); assert(f.byAction("cast"));
+
+  f.cast(); f.close();
+  const legacy = f.state.boat.voyage.challenge;
+  legacy.rulesVersion = 5;
+  f.advanceTo(Date.parse(legacy.biteAt) + 4000); f.reopen(); f.frame(0);
+  assert.equal(f.byAction("skip-bite"), undefined); assert.equal(f.byAction("hook"), undefined);
+  assert(f.byAction("hold")); assert.deepEqual(f.pending, []);
 });
 
 test("real play and input handlers pause for catch album DEV and return overlays without spending a return or generating fish", () => {

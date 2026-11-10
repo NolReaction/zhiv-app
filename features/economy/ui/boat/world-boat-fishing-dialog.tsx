@@ -60,8 +60,10 @@ function BoatDialogSession({ sharedRecordsAvailable, economy, onClose, onOpenPan
   const state = economy.snapshot, boat = boatState(state), config = boatConfig(state.catalog), phase = boatPhase(boat, economy.now);
   const [tab, setTab] = useState<Tab>("boat");
   const [claimedTrip, setClaimedTrip] = useState<{ receipt: BoatTripReceipt; completedBefore: number; revisionBefore: number } | null>(null);
+  const settlement = economy.localBoatSettlement;
   const deliveredTrip = claimedTrip && !boat.voyage && !economy.busy && !economy.uncertain && economy.snapshotConfirmed !== false
-    && state.revision > claimedTrip.revisionBefore && boat.completedVoyages === claimedTrip.completedBefore + 1 ? claimedTrip.receipt : null;
+    && settlement?.voyageId === claimedTrip.receipt.voyageId && settlement.revision === claimedTrip.revisionBefore + 1
+    && settlement.saleCoins === claimedTrip.receipt.saleCoins && boat.completedVoyages === claimedTrip.completedBefore + 1 ? claimedTrip.receipt : null;
   const sent = useRef(false), content = useRef<HTMLDivElement>(null), id = useId();
   const disabled = locked(economy) || economy.snapshotConfirmed === false;
   const challenge = boat.voyage?.challenge;

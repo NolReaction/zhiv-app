@@ -22,9 +22,11 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
   const [missedBite, setMissedBite] = useState(false);
   const manualHook = challenge.rulesVersion >= 6;
   const biteAt = Date.parse(challenge.biteAt ?? challenge.startedAt);
+  const hookDeadline = biteAt + BOAT_HOOK_WINDOW_MS;
+  const [windowClosed, setWindowClosed] = useState(() => manualHook && now >= hookDeadline);
   const [delivery, setDelivery] = useState<"idle" | "sent" | "retry">("idle");
   const [castStage, setCastStage] = useState(() => boatCastStage(challenge, now));
-  const runtime = useRef({ reel: initialBoatReel(challenge), inputs: [] as BoatReelInput[], held: false, playing: false, started: false, missed: false,
+  const runtime = useRef({ reel: initialBoatReel(challenge), inputs: [] as BoatReelInput[], held: false, playing: false, started: false, missed: false, sawBite: false, hookClosed: false,
     last: 0, remainder: 0, ready: false, expired: false });
   const current = useRef({ now, observedAt: 0 });
   const blocked = disabled || queued || uncertain || suspended;
@@ -46,6 +48,7 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
   }, [key, challenge]);
   useEffect(() => {
     gates.current = { blocked, suspended };
+    if (blocked) runtime.current.sawBite = false;
     if (suspended && runtime.current.playing) pause();
   }, [blocked, suspended, pause]);
   useEffect(() => { if (playing && !suspended) holdButton.current?.focus({ preventScroll: true }); }, [playing, suspended]);
@@ -56,14 +59,14 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
     const restored = readBoatReelCheckpoint(storage(), key, challenge);
     data.reel = restored.reel; data.inputs = restored.inputs; data.held = false; data.playing = false; data.started = restored.reel.tick > 0 || Boolean(restored.hooked);
     setStarted(data.started);
-    data.last = 0; data.remainder = 0; data.ready = true; data.expired = false;
+    data.last = 0; data.remainder = 0; data.ready = true; data.expired = false; data.sawBite = false; data.hookClosed = false;
     if (data.reel.status === "active") changeBoatReelInput(data.inputs, data.reel.tick, false);
     let frame = 0, publishedTick = -1, publishedStage = boatCastStage(challenge, current.current.now);
     let focused = document.hasFocus?.() ?? true;
     const save = () => writeBoatReelCheckpoint(storage(), key, challenge, data.reel, data.inputs, data.started);
-    const blur = () => { focused = false; pause(); };
+    const blur = () => { focused = false; data.sawBite = false; pause(); };
     const focus = () => { focused = true; };
-    const visibility = () => { if (document.hidden) pause(); };
+    const visibility = () => { if (document.hidden) { data.sawBite = false; pause(); } };
     const update = (time: number) => {
       const currentTime = current.current.now + Math.max(0, time - current.current.observedAt);
       const nextStage = boatCastStage(challenge, currentTime);
@@ -72,9 +75,14 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
         data.expired = true; setDeadlineReached(true); pause();
       }
       if (!data.started && !data.expired && data.reel.status === "active" && nextStage === "bite") {
-        if (manualHook && currentTime >= biteAt + BOAT_HOOK_WINDOW_MS) {
-          data.missed = true; setMissedBite(true);
-        } else if (!manualHook && !gates.current.blocked && focused && !document.hidden) {
+        const visible = !gates.current.blocked && focused && !document.hidden;
+        if (manualHook && currentTime < hookDeadline) {
+          data.sawBite = visible;
+        } else if (manualHook && !data.hookClosed) {
+          data.hookClosed = true; setWindowClosed(true);
+          // A tab opened after the bite cannot silently discard another tab’s ongoing local reel.
+          if (visible && data.sawBite) { data.missed = true; setMissedBite(true); }
+        } else if (!manualHook && visible) {
           data.started = true; data.playing = true; data.last = time; setStarted(true); setPlaying(true);
         }
       }
@@ -104,16 +112,21 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
       cancelAnimationFrame(frame); pause(); window.removeEventListener("blur", blur); window.removeEventListener("focus", focus);
       document.removeEventListener("visibilitychange", visibility);
     };
-  }, [key, challenge, owner, pause, biteAt, manualHook]);
+  }, [key, challenge, owner, pause, hookDeadline, manualHook]);
 
   const hookFish = () => {
     const data = runtime.current;
     const time = performance.now(), currentTime = current.current.now + Math.max(0, time - current.current.observedAt);
     if (!manualHook || !data.ready || data.started || data.missed || data.expired || expired || blocked || document.hidden
-      || currentTime < biteAt || currentTime >= Math.min(biteAt + BOAT_HOOK_WINDOW_MS, Date.parse(challenge.expiresAt))) return;
+      || currentTime < biteAt || currentTime >= Math.min(hookDeadline, Date.parse(challenge.expiresAt))) return;
     data.started = true; data.playing = true; data.last = time;
     setStarted(true); setPlaying(true);
     writeBoatReelCheckpoint(storage(), key, challenge, data.reel, data.inputs, true);
+  };
+  const confirmMiss = () => {
+    const data = runtime.current;
+    if (!manualHook || !data.ready || !data.hookClosed || data.started || data.missed || blocked || expired) return;
+    data.missed = true; setMissedBite(true);
   };
   const changeHeld = (next: boolean) => {
     const data = runtime.current;
@@ -154,7 +167,8 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
     window.addEventListener("online", submit);
     return () => window.removeEventListener("online", submit);
   }, [delivery, blocked, expired, submit]);
-  const status = waitingForConfirmation ? "Проверяем результат" : expired ? "Рыба ушла" : missedBite ? "Поклёвка пропущена" : reel.status === "caught" ? "Рыба у борта!" : reel.status === "escaped" ? "Рыба сорвалась" : playing ? "Рыба на крючке" : started ? "Вываживание на паузе" : castStage === "casting" ? "Забрасываем удочку…" : castStage === "soaking" ? "Ждём поклёвку…" : "Есть поклёвка!";
+  const missedElsewhere = manualHook && windowClosed && !started && !missedBite;
+  const status = waitingForConfirmation ? "Проверяем результат" : expired ? "Рыба ушла" : missedElsewhere ? "Время для подсечки прошло" : missedBite ? "Поклёвка пропущена" : reel.status === "caught" ? "Рыба у борта!" : reel.status === "escaped" ? "Рыба сорвалась" : playing ? "Рыба на крючке" : started ? "Вываживание на паузе" : castStage === "casting" ? "Забрасываем удочку…" : castStage === "soaking" ? "Ждём поклёвку…" : "Есть поклёвка!";
   return { challenge, reel, playing, held, ready, paused: started && !playing, expired, waitingForConfirmation, retryNeeded: delivery === "retry", status, castStage,
-    holdButton, changeHeld, togglePlay, submit, hookFish, missedBite, awaitingHook: manualHook && !started && !missedBite && castStage === "bite" };
+    holdButton, changeHeld, togglePlay, submit, hookFish, missedBite, missedElsewhere, confirmMiss, awaitingHook: manualHook && !windowClosed && !started && !missedBite && castStage === "bite" };
 }

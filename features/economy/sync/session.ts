@@ -49,6 +49,7 @@ type View = {
   error: string | null; notice: string; busy: boolean; uncertain: boolean; retryAt: number; rateLimited: boolean;
   completedConstructions: readonly ConstructionCompletion[];
   localBoatUpgrade?: BoatUpgradeReceipt;
+  localBoatSettlement?: { requestId: string; voyageId: string; revision: number; saleCoins?: number };
   directActionsAvailable: boolean;
   snapshotConfirmed: boolean;
   pendingBoatCastId?: string;
@@ -474,6 +475,11 @@ export function createEconomySession(owner: string | null, transport: Transport,
           ? playerXpGainFromReceipt(localEconomyIntent.before, result, value.command) : null;
         const upgrade = value.kind === "economy" && localEconomyIntent?.requestId === value.command.requestId
           && view.snapshot?.revision === result.state.revision ? boatUpgradeReceipt(localEconomyIntent.before, result, value.command) : null;
+        const settlement = value.kind === "economy" && (value.command.action === "claim_boat" || value.command.action === "sell_boat_catch")
+          && localEconomyIntent?.requestId === value.command.requestId && localEconomyIntent.before.boat?.voyage?.id === value.command.targetId
+          && result.acceptedRevision === value.command.expectedRevision + 1 && !result.state.boat?.voyage
+          ? { voyageId: value.command.targetId, requestId: value.command.requestId, revision: result.acceptedRevision,
+            ...(value.command.action === "sell_boat_catch" ? { saleCoins: value.command.totalPrice } : {}) } : null;
         const sale = value.kind === "economy" && view.snapshot?.revision === result.state.revision
           && view.localSale?.id !== value.command.requestId ? localSaleFromReceipt(before, result, value.command) : null;
         const purchase = value.kind === "economy" && localLeaftailPurchaseIntent?.requestId === value.command.requestId
@@ -497,6 +503,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
           ...(xpGain ? { playerXpGains: Object.freeze([...(view.playerXpGains ?? []), xpGain].slice(-PLAYER_XP_GAIN_HISTORY_LIMIT)) } : {}),
           ...(sale ? { localSale: sale } : {}),
           ...(upgrade ? { localBoatUpgrade: upgrade } : {}),
+          ...(settlement ? { localBoatSettlement: settlement } : {}),
           ...(purchase ? { localLeaftailPurchase: purchase } : {}),
           ...(exploration ? { localExploration: exploration } : {}),
           ...(completed.length ? { completedConstructions: [...view.completedConstructions, ...completed].slice(-8) } : {}),

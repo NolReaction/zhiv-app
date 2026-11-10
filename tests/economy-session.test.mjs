@@ -191,6 +191,31 @@ test("uncertain purchase uses same receipt, blocks other writes and survives ses
   assert.equal(next.getSnapshot().uncertain, false); assert.equal(cache.data.size, 0);
 });
 
+test("only the tab whose dock action won receives its own settlement after a competing unload or sale", async () => {
+  for (const winner of ["claim_boat", "sell_boat_catch"]) {
+    const id = crypto.randomUUID(), rejected = winner === "claim_boat" ? "sell_boat_catch" : "claim_boat";
+    const boat = { level: 1, completedVoyages: 0, voyage: { id, catches: [] } };
+    const before = { ...state(), boat }, afterState = { ...state(1), boat: { level: 1, completedVoyages: 1 } };
+    let published = before, accepted, resolveLoser;
+    const first = createEconomySession(owner, transport({ get: async () => published, send: async command => {
+      accepted = command; published = afterState; return result(afterState);
+    } }), () => assert.fail());
+    const second = createEconomySession(owner, transport({ get: async () => published, send: () => new Promise((_resolve, reject) => {
+      resolveLoser = () => reject(new ApiError("Запрос устарел", 409));
+    }) }), () => assert.fail());
+    const stopFirst = first.activate(), stopSecond = second.activate();
+    await Promise.all([first.refresh(), second.refresh()]);
+    assert(second.act(rejected, id, 1, rejected === "sell_boat_catch" ? 50 : 0));
+    assert(first.act(winner, id, 1, winner === "sell_boat_catch" ? 50 : 0));
+    await flush(); resolveLoser(); await flush();
+    assert.equal(second.getSnapshot().snapshot.revision, 1);
+    assert.equal(second.getSnapshot().localBoatSettlement, undefined);
+    assert.deepEqual(first.getSnapshot().localBoatSettlement, { requestId: accepted.requestId, voyageId: id, revision: 1,
+      ...(winner === "sell_boat_catch" ? { saleCoins: 50 } : {}) });
+    stopFirst(); stopSecond();
+  }
+});
+
 test("definitive conflict refreshes balance and permits a deliberate new command", async () => {
   let sent = 0, latest = state();
   const session = createEconomySession(owner, transport({ get: async () => latest, send: async () => {
