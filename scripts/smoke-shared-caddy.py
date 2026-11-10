@@ -1,9 +1,11 @@
 """Exercise both imlive-cloud vhosts from Caddy's adapted production config on loopback."""
+import base64
 import http.client
 import http.server
 import json
 import os
 from pathlib import Path
+import secrets
 import socket
 import socketserver
 import subprocess
@@ -18,7 +20,7 @@ class Site(http.server.BaseHTTPRequestHandler):
         if self.headers.get("Host") != "auto-gorizont.ru" or self.path not in ("/", "/postavki/", "/admin/"):
             self.send_error(404)
             return
-        authorized = self.headers.get("Authorization") == "Bearer smoke-test"
+        authorized = self.headers.get("Authorization") == self.server.expected_authorization
         self.send_response(200 if authorized else 401)
         self.send_header("X-Smoke-Site", "auto-gorizont")
         if not authorized:
@@ -60,6 +62,8 @@ def main():
         path.write_text(json.dumps(config))
 
         with socketserver.UnixStreamServer(str(site_dir / "site.sock"), Site) as site:
+            credentials = f"review:{secrets.token_urlsafe(24)}".encode("ascii")
+            site.expected_authorization = f"Basic {base64.b64encode(credentials).decode('ascii')}"
             threading.Thread(target=site.serve_forever, daemon=True).start()
             process = subprocess.Popen([
                 "docker", "run", "--rm", "--user", f"{os.getuid()}:{os.getgid()}",
@@ -81,7 +85,7 @@ def main():
                 for endpoint in ("/", "/postavki/", "/admin/"):
                     status, headers = request(port, "auto-gorizont.ru", endpoint)
                     assert status == 401 and headers.get("WWW-Authenticate"), endpoint
-                    status, headers = request(port, "auto-gorizont.ru", endpoint, {"Authorization": "Bearer smoke-test"})
+                    status, headers = request(port, "auto-gorizont.ru", endpoint, {"Authorization": site.expected_authorization})
                     assert status == 200 and headers.get("X-Smoke-Site") == "auto-gorizont", endpoint
                 print("Game maintenance returns 503; the second vhost forwards protected requests over its Unix socket.")
             finally:
