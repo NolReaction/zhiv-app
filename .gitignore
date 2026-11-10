@@ -64,3 +64,6 @@ deploy/runtime/*
 
 # Tiled editor session (local view state)
 *.tiled-session
+
+# Git handoff archives are imported locally, not committed into the project.
+*.bundle

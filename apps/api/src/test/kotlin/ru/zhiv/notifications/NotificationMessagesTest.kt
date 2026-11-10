@@ -28,6 +28,22 @@ class NotificationMessagesTest {
     private fun message(job: EconomyJob, phase: String? = null, storageBlocked: Boolean = false) =
         notificationMessage(listOf(NotificationMessageEvent(job.kind, job, phase, storageBlocked)))
 
+    @Test fun `ready experiments never reveal successful dishes or failed attempts in push`() {
+        val recipe = EconomyRules.catalog.recipes.first { it.experiment != null }
+        val success = job("production", "dryer", recipe.rewards).copy(recipeId = recipe.id)
+        val failure = success.copy(rewards = recipe.experiment!!.failureRewards)
+        assertEquals(message(success), message(failure))
+        assertContains(message(success).body, "Кулинарный опыт готов")
+        for (id in recipe.rewards.keys + recipe.experiment.failureRewards.keys) {
+            val name = EconomyRules.catalog.items.single { it.id == id }.name
+            assertFalse(message(success).body.contains(name, ignoreCase = true))
+        }
+        val mixed = notificationMessage(listOf(NotificationMessageEvent("production", success),
+            NotificationMessageEvent("production", job("production", "workshop", mapOf("planks" to 2), "boards"))))
+        assertContains(mixed.body, "2 доски")
+        assertContains(mixed.body, "Кулинарный опыт готов")
+    }
+
     @Test fun `event titles do not repeat the app identity`() {
         mapOf("exploration" to "Мохлик вернулся", "construction" to "Стройка завершена",
             "production" to "Ресурсы готовы", "checkin" to "Пора отметиться").forEach { (category, title) ->
@@ -89,6 +105,18 @@ class NotificationMessagesTest {
             "blueberry_compote" to "2 порции черничного компота", "currant_jelly" to "2 порции смородинового желе",
             "blackberry_preserve" to "2 порции ежевичного варенья", "cranberry_glaze" to "2 порции клюквенного десерта",
             "trail_ration" to "2 походных пайка", "research_gear" to "2 комплекта снаряжения исследователя",
+            "ceramic_jar" to "2 керамические банки", "mortar" to "2 ед. строительной смеси",
+            "glass_bottle" to "2 стеклянные бутылки", "lens" to "2 линзы", "packed_berries" to "2 ягодных запаса",
+            "trade_crate" to "2 торговых ящика", "field_kit" to "2 полевых комплекта", "stone_tile" to "2 облицовочные плитки",
+            "bottled_compote" to "2 бутылки компота", "berry_gift" to "2 ягодных подарка",
+            "grilled_silverfin" to "2 порции серебропёрки на углях", "smoked_bream" to "2 порции копчёного леща",
+            "mooncarp_blueberries" to "2 порции лунного карася с черникой", "pike_berry_sauce" to "2 порции щуки в ягодном соусе",
+            "eel_in_jar" to "2 порции угря в горшочке", "festive_sturgeon" to "2 порции праздничного осетра",
+            "berry_tea" to "2 порции ягодного чая", "forest_pan" to "2 порции лесного жаркого",
+            "currant_glazed_fish" to "2 порции рыбы в смородиновой глазури", "berry_pastila" to "2 порции ягодной пастилы",
+            "trail_feast" to "2 порции таёжного пайка", "river_aspic" to "2 порции лесного рыбного студня",
+            "ember_berries" to "2 порции томлёной малины", "strawberry_kissel" to "2 порции клубничного киселя",
+            "cranberry_bream" to "2 порции леща с клюквенной корочкой",
         )
         expectations.forEach { (resource, expected) ->
             assertEquals("Готово: $expected. Можно забрать в кладовую.", message(job("production", "workshop", mapOf(resource to 2))).body)
@@ -99,7 +127,7 @@ class NotificationMessagesTest {
         assertEquals(EconomyRules.catalog.recipes.flatMap { it.rewards.keys }.toSet() - "berries", expectations.keys)
     }
 
-    @Test fun `every real recipe renders its saved output rather than a generic production message`() {
+    @Test fun `every real recipe names its output except private cooking experiments`() {
         EconomyRules.catalog.recipes.forEach { recipe ->
             val production = job("production", recipe.buildingId, recipe.rewards, recipe.id).copy(recipeId = recipe.id,
                 collection = recipe.collection?.let { EconomyCollection(it.kind, it.seconds, null, null) })
@@ -107,7 +135,11 @@ class NotificationMessagesTest {
             assertEquals("Ресурсы готовы", actual.title, recipe.id)
             assertFalse(actual.body.contains("Производство завершено"), recipe.id)
             assertTrue(actual.body.length <= 360, recipe.id)
-            recipe.rewards.values.forEach { assertTrue(actual.body.contains(it.toString()), "${recipe.id}: ${actual.body}") }
+            if (recipe.experiment == null) {
+                recipe.rewards.values.forEach { assertTrue(actual.body.contains(it.toString()), "${recipe.id}: ${actual.body}") }
+            } else {
+                assertEquals("Кулинарный опыт готов. Получите результат у костра.", actual.body, recipe.id)
+            }
             assertFalse(actual.body.contains(recipe.id), recipe.id)
         }
     }
@@ -123,6 +155,7 @@ class NotificationMessagesTest {
             "quarry_stone_hour" to "из шахты", "quarry_ore_hour" to "из шахты", "quarry_ore_overnight" to "из шахты",
             "quarry_clay_hour" to "из шахты", "quarry_clay_overnight" to "из шахты", "quarry_sand_hour" to "из шахты",
             "quarry_sand_overnight" to "из шахты",
+            "quarry_quartz" to "из шахты", "quarry_limestone" to "из шахты",
         )
         val namedRoutes = mapOf("far_bank_path" to "Тропа дальнего берега", "far_bank_grove" to "Роща за рекой", "ancient_ruins" to "Древние руины")
         assertEquals(EconomyRules.catalog.explorations.map { it.id }.toSet(), expectedPlaces.keys + namedRoutes.keys)

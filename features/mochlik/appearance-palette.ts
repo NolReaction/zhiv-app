@@ -5,6 +5,7 @@ const palettes: Record<string, MossPalette> = {
   moss: { moss: "#7c8845", mossLight: "#a5ad58", mossDark: "#58683b" },
   fern: { moss: "#49816b", mossLight: "#7fb99a", mossDark: "#345649" },
   autumn: { moss: "#b27b42", mossLight: "#d8ae63", mossDark: "#7a5637" },
+  berest_birch_moss: { moss: "#6a8f7c", mossLight: "#c6cba0", mossDark: "#365b4f" },
   heather: { moss: "#8a739b", mossLight: "#baa3c7", mossDark: "#62536e" },
   frost: { moss: "#8ba9a3", mossLight: "#c3d7c9", mossDark: "#587b76" },
   ember: { moss: "#a96750", mossLight: "#d59b6f", mossDark: "#764936" },

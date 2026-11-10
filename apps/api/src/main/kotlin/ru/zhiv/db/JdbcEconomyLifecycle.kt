@@ -8,7 +8,11 @@ import ru.zhiv.economy.ECONOMY_MAX_ITEMS
 import ru.zhiv.economy.EconomyState
 import ru.zhiv.economy.EconomyTutorialOrders
 import ru.zhiv.economy.EconomyStageOrders
+import ru.zhiv.economy.EconomyTradeRelations
+import ru.zhiv.economy.EconomyShipOrders
+import ru.zhiv.economy.EconomyBoats
 import ru.zhiv.economy.EconomyRules
+import ru.zhiv.economy.EconomySkills
 import ru.zhiv.economy.EconomyCollectionProgress
 import ru.zhiv.economy.EconomyRareDrops
 import ru.zhiv.economy.EconomyFood
@@ -16,6 +20,7 @@ import ru.zhiv.economy.EconomyFoodState
 import ru.zhiv.economy.EconomyFishStock
 import ru.zhiv.economy.EconomyFishInventory
 import ru.zhiv.economy.EconomyItemUnlocks
+import ru.zhiv.economy.EconomyFamiliarItems
 import ru.zhiv.economy.EconomyLeaftailShops
 import ru.zhiv.world.WorldState
 import ru.zhiv.world.worldJson
@@ -49,7 +54,9 @@ private fun economyStateForReview(c: Connection, user: UUID): EconomyState {
 
 /** Review is read-only: in particular, it cannot mint a migration grant. */
 internal fun economyMergeConflicts(c: Connection, target: UUID, source: UUID): List<String> {
+    val now = c.economyRows("SELECT clock_timestamp()") { it.getObject(1, OffsetDateTime::class.java).toInstant() }.single()
     val states = listOf(economyStateForReview(c, target), economyStateForReview(c, source))
+        .map { it.copy(ship = EconomyShipOrders.project(it.ship, now)) }
     val escrow = c.prepareStatement("""SELECT item_id,sum(quantity) FROM (
         SELECT item_id,quantity FROM economy_market_listings WHERE seller_id IN (?,?) AND status='active'
         UNION ALL SELECT offered_item_id,1::bigint FROM economy_barter_offers WHERE seller_id IN (?,?) AND status='active'
@@ -71,7 +78,13 @@ internal fun economyMergeConflicts(c: Connection, target: UUID, source: UUID): L
     return buildList {
         if (pendingSales > ru.zhiv.economy.EconomyMarketRules.MAX_LISTINGS)
             add("Заберите выручку в лавках перед объединением профилей: вместе ожидают сбора больше десяти продаж.")
+        if (states.any { it.boat?.voyage != null || it.boat?.work != null })
+            add("Вернитесь на лодке, заберите улов и закончите её улучшения в обоих профилях перед объединением.")
         if (states.any { it.jobs.isNotEmpty() }) add("Сначала получите результаты производства, строительства и исследований в обоих профилях. Затем повторите объединение.")
+        if (states.all { it.ship.voyage != null })
+            add("Завершите или пропустите корабельные заказы в одном из профилей перед объединением, чтобы сохранить оплаченные грузы.")
+        if (states.all { it.ship.nextVoyage != null })
+            add("Дождитесь одного из записанных подзорной трубой корабельных грузов перед объединением.")
         if (states.all { it.food.heroMeal != null } || states.all { it.food.builderMeal != null })
             add("В обоих профилях есть сытый Мохлик или строитель. Сначала используйте бонус еды в одном профиле, чтобы сохранить второе угощение.")
         if (states.sumOf { it.wallet.coins } > ECONOMY_MAX_BALANCE || states.sumOf { it.wallet.pearls } > ECONOMY_MAX_PEARLS ||
@@ -84,8 +97,8 @@ internal fun economyMergeConflicts(c: Connection, target: UUID, source: UUID): L
 internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
     ensureEconomyProfile(c, target)
     ensureEconomyProfile(c, source)
-    val a = readEconomyProfile(c, target).state
-    val b = readEconomyProfile(c, source).state
+    val a = EconomySkills.normalized(readEconomyProfile(c, target).state)
+    val b = EconomySkills.normalized(readEconomyProfile(c, source).state)
     val conflicts = economyMergeConflicts(c, target, source)
     if (conflicts.isNotEmpty()) throw AuthFailure("ACCOUNT_MERGE_CONFLICT", conflicts.joinToString(" "), 409)
     // Proceeds are not in either wallet yet. Preserve their separate one-time claim,
@@ -112,12 +125,18 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
         leaftailShop=EconomyLeaftailShops.merge(a.leaftailShop,b.leaftailShop),
         marketSlots=maxOf(a.marketSlots,b.marketSlots),
         unlockedItems=(EconomyItemUnlocks.project(a)+EconomyItemUnlocks.project(b)).distinct().sorted(),
-        itemUnlockVersion=1,
+        familiarItems=(EconomyFamiliarItems.project(a)+EconomyFamiliarItems.project(b)).distinct().sorted(),
+        itemUnlockVersion=1, boat=EconomyBoats.merge(a.boat,b.boat,now),
         productionSlots=(a.productionSlots.keys+b.productionSlots.keys).associateWith {
             maxOf(EconomyRules.productionSlotCount(a,it),EconomyRules.productionSlotCount(b,it)) },
         progression=EconomyCollectionProgress.merge(a.progression,b.progression),
-        food=EconomyFoodState(a.food.heroMeal ?: b.food.heroMeal, a.food.builderMeal ?: b.food.builderMeal),
+        food=EconomyFoodState(a.food.heroMeal ?: b.food.heroMeal, a.food.builderMeal ?: b.food.builderMeal,
+            heroMealEffect = if (a.food.heroMeal != null) a.food.heroMealEffect else b.food.heroMealEffect,
+            builderMealSpeedBps = if (a.food.builderMeal != null) a.food.builderMealSpeedBps else b.food.builderMealSpeedBps,
+            builderMealWorkSeconds = if (a.food.builderMeal != null) a.food.builderMealWorkSeconds else b.food.builderMealWorkSeconds),
         residentOrders=EconomyFood.mergeOrders(a.copy(buildings=buildings),b.copy(buildings=buildings),now),
+        tradeRelations=EconomyTradeRelations.merge(a.tradeRelations,b.tradeRelations,now),
+        ship=EconomyShipOrders.merge(EconomyShipOrders.project(a.ship,now),EconomyShipOrders.project(b.ship,now)),
         workshopStarterClaimed=a.workshopStarterClaimed || b.workshopStarterClaimed,
         tutorialOrder=EconomyTutorialOrders.merge(a.tutorialOrder,b.tutorialOrder),
         stageOrders=EconomyStageOrders.merge(a.stageOrders,b.stageOrders),

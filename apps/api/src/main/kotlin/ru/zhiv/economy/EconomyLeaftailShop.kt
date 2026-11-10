@@ -115,6 +115,8 @@ object EconomyLeaftailShops {
 
     /** V2 sources cannot silently reinterpret legacy coin offers as pearl purchases. */
     fun validCatalog(catalog: EconomyCatalog, spec: EconomyLeaftailShopConfig): Boolean {
+        if (spec.relicExchange != null && (catalog.rareDrops == null || catalog.rareDrops.itemIds.any { id ->
+            catalog.items.none { it.id == id && it.category == "special" && !it.tradable } })) return false
         if (!(spec.offers + spec.travelOffers).all { validOffer(catalog, it) }) return false
         if (spec.supplyOffers.any { offer -> catalog.items.none { item -> item.id == offer.itemId && item.tradable &&
                 item.category in setOf("material", "crafted", "provisions", "produce") && offer.unitPriceCoins >= 2L * item.baseSellPrice } }) return false
@@ -150,7 +152,9 @@ object EconomyLeaftailShops {
             if (command.quantity != 1L) invalidEconomy()
         }
         if (offer.unitPrice > ECONOMY_MAX_BALANCE / command.quantity) invalidEconomy()
-        val price = offer.unitPrice * command.quantity
+        val unitPrice = EconomyTradeRelations.discount(state, "leaftail", offer.unitPrice,
+            offer.currency == "coins" && offer.kind in setOf("rod", "hook", "bait", "wardrobe"), now = now)
+        val price = unitPrice * command.quantity
         if (command.totalPrice != price)
             economyFailure("ECONOMY_LEAFTAIL_PRICE_CHANGED", "Цена изменилась. Проверьте стоимость товара")
         val purchased = stock.purchased[offer.id] ?: 0
@@ -176,7 +180,11 @@ object EconomyLeaftailShops {
             EconomyRules.addItems(inventory, reservedItems)
             EconomyRules.assertStorageTransition(state, next, reservedItems)
         }
-        return next to when (offer.kind) {
+        val resaleCoins = if (offer.currency == "coins" && offer.kind == "item") catalog.items.find { it.id == offer.itemId && it.tradable }
+            ?.let { EconomyRules.localSellPrice(it.baseSellPrice, quantity, catalog.localBuyer, it.id) } ?: 0L else 0L
+        val rewarded = if (EconomyTradeRelations.purchaseXpEligible(offer.kind, price, resaleCoins))
+            EconomyTradeRelations.awardPurchase(next, "leaftail", price, now) else next
+        return rewarded to when (offer.kind) {
             "wardrobe" -> "Покупка у Листохвоста добавлена в гардероб"
             "rod" -> "Удочка у Листохвоста добавлена в коллекцию"
             "hook" -> "Крючок у Листохвоста добавлен в коллекцию"

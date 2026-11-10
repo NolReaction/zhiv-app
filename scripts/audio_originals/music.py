@@ -343,11 +343,14 @@ def _arrange(night: bool, bpm: int, sr: int, rng: np.random.Generator) -> np.nda
 
 
 def render(asset_id: str, sample_rate: int = 48000) -> tuple[np.ndarray, dict]:
-    """Render one of two complete original music loops, deterministically."""
-    if asset_id not in ("music.day.01", "music.night.01"):
-        raise ValueError(f"Unknown original music asset: {asset_id}")
+    """Render one of three complete original music loops, deterministically."""
     if not isinstance(sample_rate, int) or sample_rate < 8000 or sample_rate > 192000:
         raise ValueError("sample_rate must be an integer between 8000 and 192000")
+    if asset_id == "music.fishing.01":
+        from fishing_music import render as render_fishing
+        return render_fishing(sample_rate)
+    if asset_id not in ("music.day.01", "music.night.01"):
+        raise ValueError(f"Unknown original music asset: {asset_id}")
     night = asset_id == "music.night.01"
     seed = int.from_bytes(hashlib.sha256(("zhiv-original-score-v1:" + asset_id).encode()).digest()[:8], "little")
     rng = np.random.default_rng(seed)

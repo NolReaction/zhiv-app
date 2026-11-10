@@ -144,7 +144,7 @@ export function createGardenCollectionController(expectedOwner?: string | null) 
         if (view.phase === "paused" && input.sceneAvailable) walk(job);
         else { publish({ jobId, jobIds: orderedMembers(job).map(item => item.id), phase: "waiting", request: null }); reconcile(); }
       } else {
-        if (economyActorConflict(input.snapshot.jobs.filter(item => !members.some(member => member.id === item.id)), "collection", input.now)) return false;
+        if (economyActorConflict(input.snapshot.jobs.filter(item => !members.some(member => member.id === item.id)), "collection", input.now, input.snapshot.boat)) return false;
         sawBusy = false;
         publish({ jobId, jobIds: [jobId, ...members.filter(item => item.id !== jobId).map(item => item.id)], phase: "starting", request: null });
         if (act("start_garden_collection", jobId) === false) { clear(); return false; }
@@ -171,7 +171,7 @@ export function berryCollectionStatus(job: EconomyJob, snapshot: EconomyView, no
     || started && phase === "idle" && now < Date.parse(job.collection!.finishesAt!);
   const members = started ? harvestMembers(snapshot, job) : readyGardenHarvest(snapshot, now);
   const storageShortfall = Math.max(0, harvestSize(members) - snapshot.storage.available);
-  const conflict = !started ? economyActorConflict(snapshot.jobs.filter(item => !members.some(member => member.id === item.id)), "collection", now) : null;
+  const conflict = !started ? economyActorConflict(snapshot.jobs.filter(item => !members.some(member => member.id === item.id)), "collection", now, snapshot.boat) : null;
   const away = Boolean(conflict);
   const label = phase === "claiming" ? "Урожай отправляется в кладовую" : collecting ? "Мохлик собирает урожай"
     : growing ? "Ягоды растут" : phase === "paused" ? "Сбор приостановлен" : started ? "Урожай собран" : "Ягоды созрели";

@@ -8,7 +8,7 @@ export function sameSceneOptions(previous: SceneOptions, next: SceneOptions): bo
     if (key === "residentArrival" || key === "merchantArrival" || key === "lopukhArrival") {
       const before = previous[key], after = next[key];
       if (before && after && before.seen === after.seen && before.enabled === after.enabled
-        && before.onComplete === after.onComplete) continue;
+        && Boolean(before.open) === Boolean(after.open) && before.onComplete === after.onComplete) continue;
     }
     return false;
   }

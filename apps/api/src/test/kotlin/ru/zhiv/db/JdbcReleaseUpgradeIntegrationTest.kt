@@ -35,6 +35,7 @@ class JdbcReleaseUpgradeIntegrationTest {
         // Compare historical data while separately checking V38/V50/V51/V55 metadata.
         val row = when (table) {
             "app_users" -> "(to_jsonb(t)-'security_signal_at')"
+            "game_profiles" -> "(to_jsonb(t)-'fishing_leaderboard_opt_in'-'fishing_visibility_version')"
             "game_achievements" -> "(to_jsonb(t)-'reward_eligible')"
             "admin_actions" -> "(to_jsonb(t)-'accepted_revision')"
             "economy_profiles" -> "((to_jsonb(t)-'revision'-'updated_at') || jsonb_build_object('state',t.state-'marketSlots'-'unlockedItems'-'itemUnlockVersion'))"
@@ -42,6 +43,15 @@ class JdbcReleaseUpgradeIntegrationTest {
             else -> "to_jsonb(t)"
         }
         scalar(source, "SELECT COALESCE(jsonb_agg($row ORDER BY ($row)::text),'[]'::jsonb)::text FROM public.\"$table\" t")
+    }
+
+    private fun assertUnopenedLegacyRewardCourses(source: DataSource, users: List<UUID>) {
+        assertEquals(users.size.toString(), scalar(source, "SELECT count(*) FROM game_daily_rewards"))
+        for (user in users) assertEquals("1:false:7:6:true:true:true", scalar(source,
+            """SELECT next_step::text||':'||completed::text||':'||reward_catalog_version::text||':'||achievement_reward_version::text
+                ||':'||(last_claim_at IS NULL)::text||':'||(last_claim_date IS NULL)::text||':'||(onboarding_claimed_at IS NULL)::text
+                FROM game_daily_rewards WHERE user_id='$user'"""),
+            "V77 freezes the legacy achievement course without claiming or paying a gift")
     }
 
     private fun seedLegacyWorld(source: DataSource, user: UUID, state: WorldState, revision: Long, command: WorldCommand) {
@@ -67,7 +77,50 @@ class JdbcReleaseUpgradeIntegrationTest {
         c.commit()
     }
 
-    @Test fun `populated master V52 upgrades once to V70 retaining progress and already paid rewards`() = runBlocking<Unit> {
+    @Test fun `V82 backfills existing V81 shared and private fishing records including fishers without a tap profile`() = runBlocking<Unit> {
+        val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
+        DatabaseFactory.create(config).use { source ->
+            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("80").load().migrate()
+            val tokens = TokenCodec()
+            val identities = JdbcZhivRepository(source)
+            val economy = JdbcEconomyRepository(source)
+            val games = JdbcGameRepository(source)
+            val fish = "fish_silverfin"
+            val players = listOf("Мохлик", "Рыболов", "Гость").mapIndexed { i, name ->
+                val token = tokens.issue()
+                val owner = identities.bootstrap(name, tokens.issue().hash, token.hash, 365)
+                economy.snapshot(token.hash)
+                val oldBoat = EconomyBoatState(level = 1, records = mapOf(fish to EconomyBoatRecord(600 + i, "2026-11-03T00:00:00Z")))
+                source.connection.use { c ->
+                    if (i < 2) c.economyUpdate("INSERT INTO game_profiles(user_id) VALUES (?)", owner.id)
+                    c.economyUpdate("UPDATE economy_profiles SET state=jsonb_set(state, '{boat}', ?::jsonb) WHERE user_id=?",
+                        economyJson.encodeToString(oldBoat), owner.id)
+                    c.commit()
+                }
+                token to owner
+            }
+            val (viewerToken, viewer) = players.first()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("81").load().migrate()
+            source.connection.use { c ->
+                c.economyUpdate("UPDATE game_profiles SET fishing_leaderboard_opt_in=true WHERE user_id=?", viewer.id)
+                c.commit()
+            }
+            assertEquals("1", scalar(source, "SELECT count(*) FROM game_fishing_records"))
+            val before = scalar(source, "SELECT jsonb_agg(state ORDER BY user_id)::text FROM economy_profiles")
+            DatabaseFactory.migrate(source)
+            DatabaseFactory.migrate(source)
+            assertEquals(before, scalar(source, "SELECT jsonb_agg(state ORDER BY user_id)::text FROM economy_profiles"))
+            assertEquals("3", scalar(source, "SELECT count(*) FROM game_fishing_records"))
+            assertEquals("2", scalar(source, "SELECT count(*) FROM game_profiles"))
+            val board = games.fishingRecords(viewerToken.hash, "global")
+            assertTrue(board.leaderboardOptIn)
+            assertEquals(602, board.entries.single().weightGrams)
+            assertEquals("Гость", board.entries.single().displayName)
+            assertFalse(games.progress(viewerToken.hash).leaderboardOptIn, "guest lifetime tap statistics remain private")
+        }
+    }
+
+    @Test fun `populated master V52 upgrades once to V82 retaining progress and already paid rewards`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.createForMigrations(config).use { source ->
             // Match deployed master's full V1-V52 history, not the new empty-DB B49 path.
@@ -107,11 +160,11 @@ class JdbcReleaseUpgradeIntegrationTest {
             val before = legacyData(source, retainedTables)
             val historySql = "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=52"
             val oldHistory = scalar(source, historySql)
-            val listingsSql = """SELECT jsonb_agg(to_jsonb(l)-'sale_owner_id'-'sale_proceeds_coins'-'sale_buyer_public_id'-'sale_buyer_name'-'sale_claimed_at' ORDER BY id)::text
+            val listingsSql = """SELECT jsonb_agg(to_jsonb(l)-'sale_owner_id'-'sale_proceeds_coins'-'sale_buyer_public_id'-'sale_buyer_name'-'sale_claimed_at'-'sale_buyer_character_id' ORDER BY id)::text
                 FROM economy_market_listings l"""
             val listingsBefore = scalar(source, listingsSql)
             migrateWithLegacyAdminHistory(source)
-            assertEquals("70", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE type='SQL' AND success"))
+            assertEquals("82", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE type='SQL' AND success"))
             assertEquals("0:true", scalar(source,
                 "SELECT generation::text || ':' || (reset_at IS NULL)::text FROM gameplay_generations WHERE singleton"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM gameplay_reset_runs"),
@@ -120,6 +173,8 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals(oldHistory, scalar(source, historySql), "Published master migration metadata remains exact")
             assertEquals(before, legacyData(source, retainedTables), "Accounts, wallets, inventory, jobs and paid receipts survive")
             assertEquals(listingsBefore, scalar(source, listingsSql), "Old market lots keep their price, stock and ownership")
+            assertEquals("0", scalar(source, "SELECT count(*) FROM economy_market_listings WHERE sale_buyer_character_id IS NOT NULL"),
+                "Adding the world character cannot reclassify historical player sales or active listings")
             assertEquals("42", scalar(source, "SELECT revision::text FROM economy_profiles WHERE user_id='${player.id}'"))
             assertEquals("true", scalar(source, "SELECT (sale_claimed_at=closed_at AND sale_proceeds_coins IS NULL)::text FROM economy_market_listings WHERE id='$soldId'"))
             assertEquals("true", scalar(source, "SELECT (status='active' AND sale_claimed_at IS NULL)::text FROM economy_market_listings WHERE id='$activeId'"))
@@ -167,21 +222,26 @@ class JdbcReleaseUpgradeIntegrationTest {
             val tables = source.connection.use { c -> c.economyRows(
                 "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename<>'flyway_schema_history' ORDER BY tablename") { it.getString(1) } }
             val before = legacyData(source, tables)
+            assertEquals("[]", before.getValue("game_daily_rewards"), "Historical accounts have not opened rewards")
+            val unchangedBefore = before - "game_daily_rewards"
             val beforeEconomyRevision = scalar(source, "SELECT revision::text FROM economy_profiles WHERE user_id='${player.id}'").toLong()
             val oldHistorySql = "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=50"
             val oldHistory = scalar(source, oldHistorySql)
             DatabaseFactory.migrate(source)
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
-            assertEquals(before, legacyData(source, tables), "Existing audit, receipts, sessions and balances are unchanged")
+            assertEquals(unchangedBefore, legacyData(source, tables - "game_daily_rewards"), "Existing audit, receipts, sessions and balances are unchanged")
+            assertUnopenedLegacyRewardCourses(source, listOf(admin.id, player.id))
+            val migratedRewards = legacyData(source, listOf("game_daily_rewards"))
             assertEquals((beforeEconomyRevision + 1).toString(), scalar(source,
                 "SELECT revision::text FROM economy_profiles WHERE user_id='${player.id}'"), "V55 advances the profile fence exactly once")
             assertEquals("2", scalar(source, "SELECT count(*) FROM admin_actions WHERE accepted_revision IS NULL"))
             assertEquals(oldHistory, scalar(source, oldHistorySql))
-            assertEquals("70", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("82", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals(receipt, repository.grantReward(token.hash, player.publicId, requestId, reward))
             DatabaseFactory.migrate(source)
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
-            assertEquals(before, legacyData(source, tables))
+            assertEquals(unchangedBefore, legacyData(source, tables - "game_daily_rewards"))
+            assertEquals(migratedRewards, legacyData(source, listOf("game_daily_rewards")), "Restart cannot advance or recreate reward courses")
             val grant = ru.zhiv.admin.AdminEconomyGrantRequest(UUID.randomUUID().toString(), player.publicId, "Компенсация после обновления", coins = 25)
             assertTrue(repository.grantEconomy(token.hash, player.publicId, UUID.fromString(grant.requestId), grant).changed)
             assertEquals("1", scalar(source, "SELECT count(*) FROM admin_actions WHERE action='grant_economy' AND accepted_revision IS NOT NULL"))
@@ -243,6 +303,8 @@ class JdbcReleaseUpgradeIntegrationTest {
                 "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename<>'flyway_schema_history' ORDER BY tablename") { it.getString(1) } }
             val preservedTables = tables.filter { it != "economy_profiles" }
             val before = legacyData(source, preservedTables)
+            assertEquals("[]", before.getValue("game_daily_rewards"), "Historical account has not opened rewards")
+            val unchangedBefore = before - "game_daily_rewards"
             val expectedProfile = scalar(source, """SELECT jsonb_build_object('state',state,
                 'immutable',to_jsonb(e)-'state'-'revision'-'updated_at','revision',revision+1)::text
                 FROM economy_profiles e WHERE user_id='${player.id}'""")
@@ -250,13 +312,15 @@ class JdbcReleaseUpgradeIntegrationTest {
             val history = scalar(source, historySql)
             DatabaseFactory.migrate(source)
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
-            assertEquals(before, legacyData(source, preservedTables))
+            assertEquals(unchangedBefore, legacyData(source, preservedTables - "game_daily_rewards"))
+            assertUnopenedLegacyRewardCourses(source, listOf(player.id))
+            val migratedRewards = legacyData(source, listOf("game_daily_rewards"))
             assertEquals(expectedProfile, scalar(source, """SELECT jsonb_build_object(
                 'state',state-'marketSlots'-'unlockedItems'-'itemUnlockVersion',
                 'immutable',to_jsonb(e)-'state'-'revision'-'updated_at','revision',revision)::text
                 FROM economy_profiles e WHERE user_id='${player.id}'"""), "V55 changes only knowledge metadata and its revision fence")
             assertEquals(history, scalar(source, historySql))
-            assertEquals("70", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("82", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             for (table in listOf("game_presence_clients", "game_presence_accounts", "game_presence_daily"))
                 assertEquals("0", scalar(source, "SELECT count(*) FROM $table"))
             val presence = JdbcPresenceRepository(source)
@@ -266,6 +330,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(player.publicId, identity.findBySession(token.hash)?.publicId)
+            assertEquals(migratedRewards, legacyData(source, listOf("game_daily_rewards")), "Restart cannot advance or recreate reward courses")
         }
     }
 
@@ -302,7 +367,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(before, legacyData(source, unchangedTables))
             assertEquals(beforeHistory, scalar(source, historySql))
-            assertEquals("70", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("82", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory_receipts"))
             DatabaseFactory.migrate(source)
@@ -366,7 +431,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals(before, legacyData(source, unchangedTables), "Only the explicitly converted world profile may change")
             assertEquals("true", scalar(source, "SELECT bool_and(reward_eligible)::text FROM game_achievements"), "Existing ownership keeps its finite reward eligibility")
             assertEquals(oldHistory, scalar(source, historySql), "Existing migration records/checksums must stay intact")
-            assertEquals("70", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("82", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback_actions"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
@@ -379,6 +444,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals(before, legacyData(source, unchangedTables), "Repeated startup must not reapply economy effects")
             assertEquals(upgradedHistory, scalar(source, "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h"))
 
+            assertEquals("false:0", scalar(source, "SELECT fishing_leaderboard_opt_in::text || ':' || fishing_visibility_version FROM game_profiles WHERE user_id='${player.id}'"))
             assertEquals(player.publicId, JdbcZhivRepository(source).findBySession(token.hash)?.publicId)
             assertEquals(12345L, JdbcGameRepository(source).progress(token.hash).lifetimeTaps)
             val restored = JdbcWorldRepository(source).snapshot(token.hash)
@@ -428,7 +494,9 @@ class JdbcReleaseUpgradeIntegrationTest {
             source.connection.use { c ->
                 val row = readEconomyProfile(c, player.id)
                 assertEquals(20L, row.revision)
-                assertEquals(EconomyItemUnlocks.persist(expected, setOf("berries")).copy(wardrobe = expected.wardrobe.sorted()), row.state)
+                // Current reads recognize owned stock and active escrow; building access alone adds no familiarity.
+                assertEquals(EconomyItemUnlocks.persist(expected, setOf("berries")).copy(wardrobe = expected.wardrobe.sorted(),
+                    familiarItems = listOf("berries", "planks", "wood")), row.state)
                 assertEquals(expected, c.economyRows("SELECT state FROM economy_profiles WHERE user_id=?", player.id) {
                     economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single(), "V34 changes only storage buildings")
             }
@@ -447,7 +515,8 @@ class JdbcReleaseUpgradeIntegrationTest {
                     economyJson.decodeFromString<EconomyState>(it.getString(1))
                 }.single()
                 val expected = EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = false)
-                assertEquals(expected.copy(itemUnlockVersion = 0, buildings = expected.buildings - setOf("bridge", "lighthouse")),
+                assertEquals(expected.copy(itemUnlockVersion = 0, progression = expected.progression.copy(skills = null), familiarItems = null, boat = null,
+                    buildings = expected.buildings - setOf("bridge", "lighthouse")),
                     EconomyMoney.redenominate(initialized), "Historical initializers predate the permanent-knowledge marker")
             }
             DatabaseFactory.migrate(source)

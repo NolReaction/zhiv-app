@@ -1,5 +1,6 @@
 export type WorldHelpTarget =
   | { kind: "pantry" }
+  | { kind: "boat" }
   | { kind: "expeditions"; sector?: "forest" | "coast" | "caves" }
   | { kind: "station"; stationId: string; recipeId?: string }
   | { kind: "upgrade"; stationId: string }
@@ -7,7 +8,7 @@ export type WorldHelpTarget =
   /** @deprecated Old links map to the orders journal or contextual meal controls. */
   | { kind: "food"; tab?: "meals" | "orders"; residentId?: "plesk" | "builder" }
   | { kind: "resident"; residentId: "plesk" | "builder" }
-  | { kind: "profile"; tab?: "profile" | "mood" | "friends" | "settings" }
+  | { kind: "profile"; tab?: "profile" | "mood" | "skills" | "friends" | "settings" }
   | { kind: "collection" }
   | { kind: "wardrobe" }
   | { kind: "people" }

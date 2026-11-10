@@ -9,7 +9,8 @@ import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 import { fishSpeciesId, type FishSpeciesId } from "@/features/world/activities/fishing/fish-species";
 import { MINING_PORTAL_SECONDS } from "@/features/world/activities/mining/forest-mining";
 import { forestJobFishingPlan, forestJobFishingFrame, forestJobFishingCleanup, type ForestJobFishingPlan } from "@/features/world/activities/fishing/forest-job-fishing";
-import { syncForestSupplyJourney, type ForestSupplyTravel } from "./forest-supply-journey";
+import { isForestLocalSupplyRoute, syncForestSupplyJourney, type ForestSupplyTravel } from "./forest-supply-journey";
+import { isForestOutsideRoute, syncForestOutsideJourney, type ForestOutsideTravel } from "./forest-outside-journey";
 
 export type ForestJourneyTravel = {
   jobId: string;
@@ -31,6 +32,7 @@ export type ForestJourneyTravel = {
   catchRevealed?: boolean;
   mining?: { entry: WorldPoint; doorway: WorldPoint; workCue: WorldPoint; phaseAt: number; prepared: boolean };
   gathering?: ForestSupplyTravel;
+  outside?: ForestOutsideTravel;
   jobFishing?: ForestJobFishingPlan;
   jobStartedAt?: number;
   jobAge?: number;
@@ -52,6 +54,8 @@ export const forestJourneyEnding = (state: ForestSessionState) => Boolean(state.
  * walker; the mine hides its body only after the portal crossing completes. */
 export function forestJourneyActorAway(state: ForestSessionState, journey: EconomySceneJourney | null | undefined, now: number) {
   const travel = state.journeyTravel;
+  if (travel?.outside) return travel.phase === "away" && !travel.outside.unavailable;
+  if (isForestOutsideRoute(journey?.routeId) && !travel) return false;
   return economyJourneyAway(journey, now)
     && !travel?.ending
     && !(travel?.gathering && travel.phase !== "away")
@@ -249,7 +253,7 @@ function revealFishingCatch(travel: ForestJourneyTravel, journey: EconomySceneJo
  * Rest is the truthful fallback if a map has no usable water near its marker. */
 export function forestJourneyFishingFrame(state: ForestSessionState, scene: FixedWorldScene, still = false): ForestFishingFrame | null {
   const travel = state.journeyTravel;
-  if (!travel || travel.mining || travel.gathering || travel.scene !== scene || state.life.garden.basket?.held) return null;
+  if (!travel || travel.mining || travel.gathering || travel.outside || travel.scene !== scene || state.life.garden.basket?.held) return null;
   if (forestJourneyWalking(state)) {
     const body = clearingActivityFrame(state.clearing, { still });
     if (body.residing || body.homeSleeping || body.bush?.occupied || body.opacity < 1) return null;
@@ -276,6 +280,10 @@ export function syncForestJourneyTravel(state: ForestSessionState, scene: FixedW
   journey: EconomySceneJourney | null | undefined, now: number, still: boolean, cancelledExplorations: readonly string[] = [],
   quarryBuilt = true) {
   if (syncForestSupplyJourney(state,scene,journey,now,still,cancelledExplorations)) return;
+  if (syncForestOutsideJourney(state,scene,journey,now,still,cancelledExplorations)) return;
+  // These controllers retry after the old visible tackle/portal settles. Do
+  // not send their new ID through generic travel, which hides unknown routes.
+  if ((isForestOutsideRoute(journey?.routeId) || isForestLocalSupplyRoute(journey?.routeId)) && state.journeyTravel) journey = null;
   // A new confirmed assignment replaces an ordinary walk from its actual
   // feet. Portal crossings and visible catch/tackle cleanup finish first;
   // the previous cosmetic road home is never a prerequisite for departure.

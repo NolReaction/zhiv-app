@@ -497,13 +497,25 @@ test("DEV client module reevaluation retains the exact visual controls and exist
   try {
     const first = await hot.ssrLoadModule("/features/world/dev/world-dev-store.ts?studio-hmr=first"), controls = first.worldDevStore;
     controls.patch({ timeOfDay: "night", lightAzimuth: 132, lightElevation: 55, lightQuality: "high", previewBuildings: true, levels: { ...controls.getSnapshot().levels, home: 3 } });
+    const { TRADE_SHIP_VOYAGE, TRADE_SHIP_GANGWAY } = await hot.ssrLoadModule("/features/world/objects/trade-ship/trade-ship-motion.ts");
+    controls.triggerTradeShip("arrive");
+    controls.advanceTradeShip(TRADE_SHIP_VOYAGE.arrivalDuration + TRADE_SHIP_GANGWAY.deployDuration / 2, 100, true);
+    const deployingBridge = controls.getTradeShipMotion();
+    assert.equal(deployingBridge.phase, "deploying"); assert.ok(deployingBridge.gangway > 0 && deployingBridge.gangway < 1);
     const configured = controls.getSnapshot(); let updates = 0; const unsubscribe = controls.subscribe(() => updates++);
     const refreshed = await hot.ssrLoadModule("/features/world/dev/world-dev-store.ts?studio-hmr=second");
     assert.notEqual(refreshed.createWorldDevStore, first.createWorldDevStore, "The control module was reevaluated");
     assert.equal(refreshed.worldDevStore, controls); assert.equal(refreshed.worldDevStore.getSnapshot(), configured);
     assert.equal(configured.timeOfDay, "night"); assert.equal(configured.lightAzimuth, 132); assert.equal(configured.lightElevation, 55);
     assert.equal(configured.lightQuality, "high"); assert.equal(configured.levels.home, 3);
+    assert.equal(refreshed.worldDevStore.getTradeShipMotion(), deployingBridge, "HMR preserves the active bridge and its shared clock");
+    refreshed.worldDevStore.advanceTradeShip(.1, 100, true);
+    assert.equal(controls.getTradeShipMotion(), deployingBridge, "refresh cannot advance the same browser frame twice");
+    refreshed.worldDevStore.advanceTradeShip(.1, 101, true);
+    assert.ok(controls.getTradeShipMotion().gangway > deployingBridge.gangway);
+    assert.equal(updates, 0, "bridge frames cannot publish scene overrides during refresh");
     refreshed.worldDevStore.patch({ lightAzimuth: 145 }); assert.equal(updates, 1); assert.equal(controls.getSnapshot().lightAzimuth, 145); unsubscribe();
+    controls.reset(); assert.equal(controls.getSnapshot().tradeShipPreview, false);
   } finally {
     await hot.close();
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow); else delete globalThis.window;

@@ -2,7 +2,7 @@ import type { z } from "zod";
 
 type Kind = "grant" | "adjust" | "mail" | "manage" | "reward";
 export const adminAttemptKey = (kind: Kind, actor: string, target: string) => `zhiv:admin-${kind}:${actor}:${target}`;
-export function readAdminAttempt<T>(kind: Kind, actor: string, target: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>): T | null {
+export function readAdminAttempt<T>(kind: Kind, actor: string, target: string, schema: z.ZodType<T, unknown>): T | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.sessionStorage.getItem(adminAttemptKey(kind, actor, target));

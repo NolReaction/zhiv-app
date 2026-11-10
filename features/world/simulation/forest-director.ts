@@ -596,7 +596,7 @@ export function advanceForestDirector(state: ForestSessionState, dt: number, opt
     dusk: options.dusk, rain: options.rain, butterflies: options.butterflies, fireflies: options.fireflies });
   advanceForestGarden(state.life.garden, dt, { rain: options.rain });
   const garden = state.life.garden;
-  if (!options.blocked && garden.basket?.held && garden.elapsed >= (garden.basket.dropRetryAt ?? 0)) {
+  if (!options.blocked && garden.basket?.held && !garden.basket.journeyOwner && garden.elapsed >= (garden.basket.dropRetryAt ?? 0)) {
     if (parkForestGardenBasket(garden, state.clearing.position, baseClearingNavigation(state.clearing))) {
       syncGardenObstacle(state); releaseClearingPoint(state.clearing);
     } else {

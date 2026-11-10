@@ -9,13 +9,25 @@ const policy = { ...jointPlanningPolicy, constructionSpeedups: false, parallelPr
 test("one-time gift projection uses completed home tiers, ends after seven claims and conserves inventory", async () => {
   const loaded = await loadJourneyRules();
   try {
-    const report = simulateJourney(loaded, "visits3", 40, { ...policy, buyProductionSlots: true });
+    const delivered = [];
+    const observed = { ...loaded, rules: { ...loaded.rules,
+      applyEconomyCommand(state, command, now, ...args) {
+        const quote = command.action === "complete_resident_order"
+          ? structuredClone(state.tutorialOrder?.ingredientsClaimed && !state.tutorialOrder.completed
+            ? state.tutorialOrder.terms : loaded.stageOrders.stageResidentOrder(state, loaded.catalog)) : null;
+        const result = loaded.rules.applyEconomyCommand(state, command, now, ...args);
+        if (quote) delivered.push(quote);
+        return result;
+      } } };
+    const report = simulateJourney(observed, "visits3", 40, { ...policy, buyProductionSlots: true });
     const gifts = report.dailyRewards;
     const completedOrders = report.actions.complete_resident_order ?? 0;
     const courses = [...loaded.catalog.onboarding.residentOrders, ...loaded.catalog.stageOrders.flatMap(stage => stage.orders)];
     assert(completedOrders >= loaded.catalog.onboarding.residentOrders.length, "the calendar projection still completes the first course");
     assert(completedOrders <= courses.length, "permanent requests cannot be paid again");
-    const delivered = courses.slice(0, completedOrders), orderInputs = {};
+    assert.equal(delivered.length, completedOrders);
+    assert.equal(new Set(delivered.map(order => order.id)).size, delivered.length, "each accepted project quote pays once");
+    const orderInputs = {};
     for (const order of delivered) for (const [id, quantity] of Object.entries(order.items))
       orderInputs[id] = (orderInputs[id] ?? 0) + quantity;
     assert.equal(report.coinFlow.remaining, report.coinFlow.initial + report.coinFlow.sales + report.coinFlow.gifts + report.coinFlow.orders
@@ -24,10 +36,11 @@ test("one-time gift projection uses completed home tiers, ends after seven claim
     assert.equal(report.coinFlow.orders, delivered.reduce((sum, order) => sum + order.coins, 0));
     assert.equal(gifts.claims, 7, "A month of visits can claim the seven gifts only once");
     assert.equal(gifts.completed, true);
-    assert.equal(gifts.pearlsReceived, 1000, "The account chain grants 500 visible pearls in raw storage units");
+    assert.equal(gifts.pearlsReceived, 140, "The account chain grants 70 visible pearls in raw storage units");
     assert(!report.excludedIncome.includes("daily_rewards"));
     assert(report.excludedIncome.includes("player_market"));
-    assert(gifts.claimRows.some(row => row.homeLevel >= 2));
+    assert(gifts.claimRows.every(row => Number.isInteger(row.homeLevel) && row.homeLevel >= 1 && row.homeLevel <= 5),
+      "Gift tiers follow the saved home; the visit strategy need not reach home 2 in seven days");
     const earnedItems = {};
     const cycle = [
       { wood: 2, stone: 1 }, { fiber: 2, berries: 2 }, { planks: 1, wood: 1 },
@@ -38,7 +51,7 @@ test("one-time gift projection uses completed home tiers, ends after seven claim
       assert.equal(row.step, index + 1);
       assert.deepEqual(row.reward, loaded.progressionRewards.dailyRewardCycle(row.homeLevel)[row.step - 1]);
       assert.equal(row.reward.coins, [30, 30, 40, 40, 50, 50, 80][row.step - 1] * row.homeLevel);
-      assert.equal(row.reward.pearls, [80, 100, 120, 140, 160, 180, 220][row.step - 1]);
+      assert.equal(row.reward.pearls, [10, 10, 20, 20, 20, 20, 40][row.step - 1]);
       assert.deepEqual(row.reward.items, cycle[row.step - 1], "completed homes keep the same compact stock without advanced gifts");
       if (index > 0) {
         assert(Date.parse(row.at) - Date.parse(gifts.claimRows[index - 1].at) >= 20 * 3_600_000);
@@ -51,11 +64,11 @@ test("one-time gift projection uses completed home tiers, ends after seven claim
     }
     assert.deepEqual(gifts.itemsReceived, earnedItems);
     assert.equal(gifts.coinsReceived, gifts.claimRows.reduce((sum, row) => sum + row.reward.coins, 0));
-    assert.equal(gifts.pearlsReceived, report.pearlsRemaining + report.pearlsSpent);
+    assert.equal(gifts.pearlsReceived + report.pearlFlow.progression, report.pearlsRemaining + report.pearlsSpent);
     assert.deepEqual(Object.fromEntries(Object.entries(report.itemFlow).filter(([, flow]) => flow.initial > 0)
       .map(([id, flow]) => [id, flow.initial])), { wood: 3, stone: 5 });
     assert.deepEqual(loaded.catalog.buildings.find(building => building.id === "warehouse").levels
-      .map(level => level.warehouseCapacity), Array.from({ length: 10 }, (_, index) => (index + 1) * 50));
+      .map(level => level.warehouseCapacity), Array.from({ length: 15 }, (_, index) => (index + 1) * 50));
     assert.deepEqual(Object.fromEntries(Object.entries(report.itemFlow).filter(([, flow]) => flow.orderInputs > 0)
       .map(([id, flow]) => [id, flow.orderInputs])), orderInputs);
     for (const [id, flow] of Object.entries(report.itemFlow))
@@ -87,7 +100,7 @@ test("gift capacity rejection does not credit its wallet or advance its seven-st
     assert.equal(report.dailyRewards.storageDeferrals, denied + naturalDeferrals);
     assert(report.dailyRewards.claims > 0);
     assert.equal(report.dailyRewards.claimRows[0].step, 1);
-    assert.equal(report.dailyRewards.pearlsReceived, report.pearlsRemaining);
+    assert.equal(report.dailyRewards.pearlsReceived + report.pearlFlow.progression, report.pearlsRemaining);
     assert.equal(report.dailyRewards.coinsReceived, report.dailyRewards.claimRows.reduce((sum, row) => sum + row.reward.coins, 0));
     assert.equal(report.dailyRewards.itemsReceived.wood, report.dailyRewards.claimRows.reduce((sum, row) => sum + (row.reward.items.wood ?? 0), 0));
     assert.equal(report.coinFlow.remaining, report.coinFlow.initial + report.coinFlow.sales + report.coinFlow.gifts + report.coinFlow.orders
@@ -137,7 +150,7 @@ test("the completed chain stops checking gifts while ordinary progression contin
     assert.equal(giftViews, viewsAtCompletion, "Completed days do not count as storage deferrals or future gift work");
     assert(commandsAfterCompletion > 0, "Production and upgrades continue after the last gift");
     assert.equal(report.dailyRewards.completed, true);
-    assert.equal(report.dailyRewards.pearlsReceived, 1000);
-    assert.equal(report.pearlsRemaining + report.pearlsSpent, 1000);
+    assert.equal(report.dailyRewards.pearlsReceived, 140);
+    assert.equal(report.pearlsRemaining + report.pearlsSpent, 140 + report.pearlFlow.progression);
   } finally { await loaded.close(); }
 });

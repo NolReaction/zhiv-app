@@ -1,0 +1,39 @@
+UNVALIDATED EXPERIMENT — NOT CONNECTED TO STABLE SIMULATOR
+
+Archived on user-requested stop. Requires policy review, integration and matched baseline reruns.
+Integration previously added opportunisticRoutes=true option and called usefulMaterialTrip() after current order/build work was blocked.
+The function uses current local run/sourceOpen/sources/pending/actors helpers; materialRouteStarts is an experiment-only event array.
+
+  function usefulMaterialTrip() {
+    if (!opportunisticRoutes || actors.economyActorConflict(state.jobs, "departure", clock)) return false;
+    // A long trip must not strand a crop that will become collectible during
+    // this visit. Overnight bundles remain manual single departures.
+    if (state.jobs.some(job => job.collection && !job.collection.startedAt && Date.parse(job.finishesAt) <= activeEnd)) return false;
+    const desired = {}, pool = { ...state.inventory };
+    function expand(items, ancestors = []) {
+      for (const [id, amount] of Object.entries(items ?? {})) {
+        const covered = Math.min(amount, pool[id] ?? 0); pool[id] = (pool[id] ?? 0) - covered;
+        const missing = Math.max(0, amount - covered - pending(id));
+        if (!missing || ancestors.includes(id)) continue;
+        desired[id] = (desired[id] ?? 0) + missing;
+        const source = sources(id)[0];
+        if (source) expand(Object.fromEntries(Object.entries(source.cost.items).map(([item, count]) => [item, count * Math.ceil(missing / source.rewards[id])])), [...ancestors, id]);
+      }
+    }
+    expand(currentCourse()?.items ?? buildDefinition(nextConstruction())?.cost.items);
+    const value = id => catalog.items.find(item => item.id === id)?.baseSellPrice ?? 0;
+    const candidates = catalog.explorations.filter(route => route.activity !== "mining" && !catalog.fishing.routeIds.includes(route.id)
+      && sourceOpen(route) && Object.entries(route.requiredRecipes ?? {}).every(([id, count]) => (state.progression.recipes[id] ?? 0) >= count))
+      .map(route => ({ route, useful: Object.entries(route.rewards).reduce((sum, [id, count]) => sum + Math.min(count, desired[id] ?? 0) * value(id), 0),
+        cost: route.cost.coins + Object.entries(route.cost.items).reduce((sum, [id, count]) => sum + count * value(id), 0) }))
+      .filter(row => row.useful > row.cost && Object.values(row.route.rewards).reduce((sum, count) => sum + count, 0) <= rules.economyStorage(state).capacity)
+      .sort((a, b) => (b.useful - b.cost) - (a.useful - a.cost));
+    for (const { route, useful, cost } of candidates) {
+      const previous = state.jobs.length;
+      if (!run(route)) continue;
+      if (state.jobs.length > previous && state.jobs.some(job => job.targetId === route.id && Date.parse(job.startedAt) >= clock - manualMilliseconds))
+        materialRouteStarts.push({ route: route.id, day: (clock - epoch) / (24 * hour), usefulValue: useful, costValue: cost });
+      return true;
+    }
+    return false;
+  }

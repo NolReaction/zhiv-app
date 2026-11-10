@@ -45,7 +45,7 @@ export function WorldProductionEffects({ economy, anchors, ready }: {
       if (!anchor || !item || event.source !== "claim" || event.ownerPublicId !== owner) return [];
       return <div key={event.id} hidden className={styles.effect} data-production-gain={event.id} data-map-object={anchor.objectId}
         ref={element => { if (element) elements.current.set(event.id, element); else elements.current.delete(event.id); }}
-        style={{ left: anchor.x + anchor.pointerOffset, top: anchor.y + CONSTRUCTION_MARKER.gap } as CSSProperties}>
+        style={{ left: anchor.x + anchor.pointerOffset, top: anchor.facadeY ?? anchor.y + CONSTRUCTION_MARKER.gap } as CSSProperties}>
         <span className={styles.halo} /><span className={styles.ring} />
         <span className={styles.item}><PlayerItemIcon state={economy.snapshot} itemId={item.itemId} size={32} /><strong>+{item.quantity.toLocaleString("ru-RU")}</strong></span>
         <span className={styles.glints}><i /><i /><i /></span>

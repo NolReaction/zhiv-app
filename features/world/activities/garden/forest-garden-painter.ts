@@ -1,13 +1,15 @@
 import type { PixelDirection, PixelPose, PixelRigOptions } from "@/features/mochlik/pixel-sprite";
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 import { FOREST_GARDEN_LIMITS, gardenHarvestOrders, type ForestGardenState } from "./forest-garden";
-import { heroSourceAnchor, type FaunaActor, type HeroAnchorPose } from "@/features/world/scene/hero-anchors";
+import { type FaunaActor, type HeroAnchorPose } from "@/features/world/scene/hero-anchors";
 import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 import { forestFruitAppearance, forestFruitVisual } from "./forest-fruit-appearance";
 import { forestBushSoilGeometry } from "./forest-bush-soil";
 import { forestGardenBerryLayout, type BerryLayout } from "./forest-garden-layout";
 import { economyGardenGrowth, type EconomySceneGardenOrder } from "@/features/world/state/economy/economy-garden-state";
 import { drawForestFruit, forestClusterFruit } from "./forest-fruit-painter";
+
+import { forestBasketArm, forestBasketRig, forestBasketPickHands, type ForestBasketArm } from "./forest-basket-motion";
 
 const TAU = Math.PI * 2;
 const unit = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
@@ -20,7 +22,7 @@ const COLLECT = { lowerEnd: .65, pickStart: .85, cycle: 1, liftStart: 4.15, end:
 export type ForestGardenBasketVisual = WorldPoint & { size: number; berries: number; behind: boolean; grounded: boolean; itemId?: string;
   /** Cosmetic deposited fruit, including different species in the same basket. */
   itemIds?: (string | undefined)[] };
-type GardenArm = { shoulder: WorldPoint; elbow: WorldPoint; hand: WorldPoint };
+type GardenArm = ForestBasketArm;
 export type ForestGardenVisualFrame = {
   pose: PixelPose; direction: PixelDirection; frame: number; rig?: PixelRigOptions;
   basket: ForestGardenBasketVisual | null;
@@ -145,13 +147,6 @@ export function drawForestGardenPlants(ctx: CanvasRenderingContext2D, scene: Fix
   ctx.restore();
 }
 
-/** A two-link paw stays bent; the wrist is the actual prop contact point. */
-function gardenArm(shoulder: WorldPoint, hand: WorldPoint, side: number, size: number): GardenArm {
-  const dx = hand.x - shoulder.x, dy = hand.y - shoulder.y, distance = Math.hypot(dx, dy);
-  const bend = Math.min(size * .065, Math.max(size * .02, (size * .29 - distance) * .45));
-  return { shoulder, hand, elbow: { x: shoulder.x + dx * .48 + side * bend * .35,
-    y: shoulder.y + dy * .48 + bend } };
-}
 function canPoint(can: { x: number; y: number; side: number; size: number; tilt: number }, x: number, y: number) {
   const u = can.size / 14, cosine = Math.cos(can.tilt), sine = Math.sin(can.tilt);
   return { x: can.x + can.side * u * (x * cosine - y * sine), y: can.y + u * (x * sine + y * cosine) };
@@ -160,6 +155,7 @@ function canPoint(can: { x: number; y: number; side: number; size: number; tilt:
 /** Stable feet, short articulated paws, and identical prop endpoints at phase boundaries. */
 export function forestGardenVisualFrame(garden: ForestGardenState | undefined, actor: FaunaActor,
   motion: HeroAnchorPose, still = false): ForestGardenVisualFrame | null {
+  if (garden?.basket?.journeyOwner) return null;
   const routine = garden?.routine ?? (garden?.basket?.held ? { kind: "harvest-berries" as const,
     bushId: "", phase: "approach-bush" as const, elapsed: 0, carryingBasket: true } : null);
   if (!garden || !routine) return null;
@@ -179,31 +175,12 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
   const crouch = routine.phase === "take-basket" ? Math.round(2 * smooth(t / .24) * (1 - smooth((t - .3) / .5)))
     : routine.phase === "deposit" ? Math.round(2 * smooth(t / .8) * (1 - smooth((t - 1.2) / .3))) : 0;
   const anchorPose = { pose, frame, direction }, rig = stationary || carries ? { gardening: true, crouch } : undefined;
-  const anchor = (x: number, y: number) => heroSourceAnchor(actor, { x, y }, anchorPose);
-  const walkingBob = pose === "carry" && frame % 2 ? -1 : 0;
-  const shoulders = [anchor(14, 31 + walkingBob + crouch), anchor(34, 31 + walkingBob + crouch)];
-  const rests = [anchor(14, 35 + walkingBob + crouch), anchor(34, 35 + walkingBob + crouch)];
-  let hands = [...rests];
-  // Lower than the face: the basket rests against the belly, with paws over the handle.
-  const held = { x: actor.x, y: actor.y - actor.size * .15 };
-  const ground = { x: actor.x - side * actor.size * .31, y: actor.y + actor.size * .035 };
   const basketSize = garden.basket?.size ?? actor.size * .28;
-  const grip = (position: WorldPoint) => [
-    { x: position.x - basketSize * .23, y: position.y - basketSize * 12 / 14 },
-    { x: position.x + basketSize * .23, y: position.y - basketSize * 12 / 14 },
-  ].map((hand, index) => {
-    const offset = position.x - actor.x, near = offset < 0 ? 0 : 1;
-    // The near paw grips the near end of a side handle, then both paws spread
-    // onto their ordinary grip as the basket reaches the belly.
-    if (index !== near) return hand;
-    return { ...hand, x: hand.x - Math.sign(offset) * basketSize * .46 * smooth((Math.abs(offset) / actor.size - .08) / .2) };
-  });
-  // A side basket is supported by the near paw. The other joins only once the
-  // handle comes within reach, instead of spanning the full width of the body.
-  const basketHands = (position: WorldPoint) => grip(position).map((hand, index) => {
-    const distance = Math.hypot(hand.x - shoulders[index].x, hand.y - shoulders[index].y);
-    return mixPoint(rests[index], hand, 1 - unit((distance / actor.size - .21) / .045));
-  });
+  const basketRig = forestBasketRig(actor, anchorPose, basketSize, crouch);
+  const { shoulders, rests, held } = basketRig;
+  const basketHands = basketRig.hands;
+  let hands = [...rests];
+  const ground = { x: actor.x - side * actor.size * .31, y: actor.y + actor.size * .035 };
   let basket: ForestGardenBasketVisual | null = null, pickedBerry: ForestGardenVisualFrame["pickedBerry"] = null;
   if (garden.basket && carries) {
     let position = held, grounded = false;
@@ -233,15 +210,9 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
         const pick = picks[index], baseCluster = plant ? forestGardenBerryLayout(plant, plant.position)[0] : undefined;
         const cluster = baseCluster && pick ? gardenCropCluster(baseCluster, pick.slot) : baseCluster;
         const fruit = cluster ? forestClusterFruit(cluster, pick?.fruitIndex ?? index, pick?.crop.itemId) : { ...rests[side < 0 ? 0 : 1], size: actor.size * .016 };
-        const reaching = side < 0 ? 0 : 1, lowering = 1 - reaching;
-        const center = { x: actor.x, y: actor.y - actor.size * .24 };
-        const rim = { x: ground.x, y: ground.y - basketSize * 8 / 14 };
-        hands = [...rests];
-        hands[reaching] = phase < .25 ? mixPoint(rests[reaching], fruit, phase / .25) : phase < .35 ? fruit
-          : phase < .6 ? mixPoint(fruit, center, (phase - .35) / .25) : mixPoint(center, rests[reaching], (phase - .6) / .2);
-        hands[lowering] = phase < .35 ? rests[lowering] : phase < .6 ? mixPoint(rests[lowering], center, (phase - .35) / .25)
-          : phase < .8 ? mixPoint(center, rim, (phase - .6) / .2) : mixPoint(rim, rests[lowering], (phase - .8) / .2);
-        if (phase >= .3 && phase < .8) pickedBerry = { ...hands[phase < .6 ? reaching : lowering], size: fruit.size,
+        const transfer = forestBasketPickHands(actor, rests, fruit, ground, basketSize, side, phase);
+        hands = transfer.hands;
+        if (transfer.picked) pickedBerry = { ...transfer.picked, size: fruit.size,
           itemId: pick?.crop.itemId, ...(pick ? { jobId: pick.crop.jobId } : {}) };
       }
     }
@@ -261,11 +232,11 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
     }
   }
   return { pose, frame, direction, rig, basket, can, pickedBerry,
-    arms: rig ? shoulders.map((shoulder, index) => gardenArm(shoulder, hands[index], index ? 1 : -1, actor.size)) : [],
+    arms: rig ? shoulders.map((shoulder, index) => forestBasketArm(shoulder, hands[index], index ? 1 : -1, actor.size)) : [],
     actor, elapsed: t, still };
 }
 
-function drawGardenArms(ctx: CanvasRenderingContext2D, frame: ForestGardenVisualFrame, paws = false) {
+export function drawGardenArms(ctx: CanvasRenderingContext2D, frame: Pick<ForestGardenVisualFrame, "actor" | "arms">, paws = false) {
   const u = frame.actor.size / 48;
   const pixel = (point: WorldPoint) => ({ x: frame.actor.x + Math.round((point.x - frame.actor.x) / u) * u,
     y: frame.actor.y + Math.round((point.y - frame.actor.y) / u) * u });
@@ -319,7 +290,7 @@ export function drawForestGardenBasket(ctx: CanvasRenderingContext2D, basket: Fo
 export function forestGardenGroundBasket(garden: ForestGardenState | undefined, size: number,
   frame: ForestGardenVisualFrame | null): ForestGardenBasketVisual | null {
   if (frame?.basket) return frame.basket.grounded ? { ...frame.basket } : null;
-  if (!garden?.basket || garden.routine?.carryingBasket || garden.basket.held) return null;
+  if (!garden?.basket || garden.basket.journeyOwner || garden.routine?.carryingBasket || garden.basket.held) return null;
   return { ...garden.basket.position, size: garden.basket.size ?? size * .28,
     berries: garden.production === undefined ? garden.basket.berries : 0, behind: false, grounded: true };
 }
@@ -327,7 +298,7 @@ export function forestGardenGroundBasket(garden: ForestGardenState | undefined, 
 /** A parked basket remains attached to its safe ground point after cancellation. */
 export function drawForestGardenGround(ctx: CanvasRenderingContext2D, garden: ForestGardenState | undefined,
   size: number, frame: ForestGardenVisualFrame | null, actor?: WorldPoint, layer: "behind" | "front" = "behind") {
-  if (!garden?.basket) return;
+  if (!garden?.basket || garden.basket.journeyOwner) return;
   // Active props own their two draw passes; a parked basket uses its real sole.
   if (frame?.basket) return;
   if (garden.routine?.carryingBasket || garden.basket.held) return;
@@ -338,13 +309,13 @@ export function drawForestGardenGround(ctx: CanvasRenderingContext2D, garden: Fo
 }
 
 export function drawForestGardenProps(ctx: CanvasRenderingContext2D, frame: ForestGardenVisualFrame | null,
-  layer: "behind" | "front", deferGroundBasket = false) {
+  layer: "behind" | "front", deferGroundBasket = false, paintBasket = drawForestGardenBasket) {
   if (!frame) return;
   ctx.save(); ctx.imageSmoothingEnabled = false;
   const behind = frame.direction === "back";
   if (behind === (layer === "behind")) drawGardenArms(ctx, frame);
   if (frame.basket && !(deferGroundBasket && frame.basket.grounded)
-    && frame.basket.behind === (layer === "behind")) drawForestGardenBasket(ctx, frame.basket);
+    && frame.basket.behind === (layer === "behind")) paintBasket(ctx, frame.basket);
   if (layer === "behind") { if (behind) drawGardenArms(ctx, frame, true); ctx.restore(); return; }
   if (frame.can) {
     const can = frame.can, u = can.size / 14;

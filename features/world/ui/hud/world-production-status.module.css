@@ -44,6 +44,10 @@
   width: 5px; height: 5px; border-right: 1px solid #dbc485a8; border-bottom: 1px solid #dbc485a8;
   background: #243626; transform: translateX(-50%) rotate(45deg); z-index: -1;
 }
+.marker[data-below="true"] > .pill::after, .markerSplit[data-below="true"]::after {
+  top: auto; bottom: calc(100% - 3px); transform: translateX(-50%) rotate(225deg);
+}
+.markerSplit[data-below="true"]::after { bottom: calc(100% - 14px); }
 .sectionButton .pill::after { display: none; }
 .icon { width: 20px; height: 22px; flex: 0 0 20px; display: grid; place-items: center; position: relative; }
 .caption { min-width: 0; font-size: .67rem; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -.02em; }

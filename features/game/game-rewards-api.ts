@@ -2,7 +2,7 @@ import { gamePresenceHeaders, reportInactivePresence } from "@/features/activity
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
 import { economyViewSchema } from "@/features/economy/domain/model";
-import { GAME_ACHIEVEMENT_TARGETS } from "./achievement-progress";
+import { GAME_ACHIEVEMENT_TARGETS, LEGACY_GAME_ACHIEVEMENT_TARGETS } from "./achievement-progress";
 import type { GameAchievementId } from "./game-api";
 
 const count = z.number().int().nonnegative().safe();
@@ -16,31 +16,31 @@ const achievementRewardSchema = z.object({ achievementId, level: count.positive(
   eligible: z.boolean(), blockedReason: z.enum(["not_earned", "admin_grant", "no_reward"]).nullable() })
   .refine(value => GAME_ACHIEVEMENT_TARGETS[value.achievementId][value.level - 1] === value.target
     && (!value.eligible || Boolean(value.earnedAt && !value.claimedAt && !value.blockedReason && value.pearls > 0)));
-export const gameRewardsSchema = z.object({ ownerPublicId: owner, serverTime: z.string().datetime(), catalogVersion: z.union([z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
-  daily: z.object({ step, homeLevel: z.number().int().min(1).max(5).optional(), completed: z.boolean().default(false), claimable: z.boolean(), nextClaimAt: z.string().datetime().nullable(), lastClaimAt: z.string().datetime().nullable(),
+export const gameRewardsSchema = z.object({ ownerPublicId: owner, serverTime: z.string().datetime(), catalogVersion: z.union([z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9)]),
+  daily: z.object({ step, homeLevel: z.number().int().min(1).max(5).optional(), completed: z.boolean().prefault(false), claimable: z.boolean(), nextClaimAt: z.string().datetime().nullable(), lastClaimAt: z.string().datetime().nullable(),
     lastClaimDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(), reward: gameRewardSchema,
     cycle: z.array(z.object({ step, reward: gameRewardSchema })).length(7).refine(rows => rows.every((row, index) => row.step === index + 1)) })
     .refine(value => value.completed ? value.step === 7 && !value.claimable && value.nextClaimAt === null && value.lastClaimAt !== null
       : value.nextClaimAt !== null),
-  achievementRewards: z.array(achievementRewardSchema).min(21).max(33),
+  achievementRewards: z.array(achievementRewardSchema).min(21).max(43),
   onboarding: z.object({ claimedAt: z.string().datetime().nullable() }).optional(),
 }).refine(value => {
-  const expected = Object.entries(GAME_ACHIEVEMENT_TARGETS).flatMap(([id, targets]) => targets.map((_, index) => `${id}:${index + 1}`))
-    .slice(0, value.catalogVersion === 5 ? 33 : 21);
+  const expected = Object.entries(value.catalogVersion >= 8 ? GAME_ACHIEVEMENT_TARGETS : LEGACY_GAME_ACHIEVEMENT_TARGETS).flatMap(([id, targets]) => targets.map((_, index) => `${id}:${index + 1}`))
+    .slice(0, value.catalogVersion >= 9 ? 43 : value.catalogVersion >= 8 ? 40 : value.catalogVersion >= 5 ? 33 : 21);
   return value.achievementRewards.length === expected.length
     && value.achievementRewards.every((row, index) => `${row.achievementId}:${row.level}` === expected[index]);
 });
 export const gameRewardClaimSchema = z.discriminatedUnion("kind", [
-  z.object({ requestId: z.string().uuid(), ownerPublicId: owner, kind: z.literal("daily") }).strict(),
-  z.object({ requestId: z.string().uuid(), ownerPublicId: owner, kind: z.literal("onboarding") }).strict(),
-  z.object({ requestId: z.string().uuid(), ownerPublicId: owner, kind: z.literal("achievement"), achievementId, level: count.positive().max(4) }).strict(),
+  z.object({ requestId: z.guid(), ownerPublicId: owner, kind: z.literal("daily") }).strict(),
+  z.object({ requestId: z.guid(), ownerPublicId: owner, kind: z.literal("onboarding") }).strict(),
+  z.object({ requestId: z.guid(), ownerPublicId: owner, kind: z.literal("achievement"), achievementId, level: count.positive().max(4) }).strict(),
 ]);
 const claim = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("daily"), step, reward: gameRewardSchema, claimedAt: z.string().datetime() }),
   z.object({ kind: z.literal("onboarding"), reward: gameRewardSchema, claimedAt: z.string().datetime() }),
   z.object({ kind: z.literal("achievement"), achievementId, level: count.positive().max(4), reward: gameRewardSchema, claimedAt: z.string().datetime() }),
 ]);
-export const gameRewardResultSchema = z.object({ requestId: z.string().uuid(), rewards: gameRewardsSchema, economy: economyViewSchema,
+export const gameRewardResultSchema = z.object({ requestId: z.guid(), rewards: gameRewardsSchema, economy: economyViewSchema,
   acceptedRevision: count, replayed: z.boolean(), claim, message: z.string().max(500) })
   .refine(value => value.rewards.ownerPublicId === value.economy.ownerPublicId && value.acceptedRevision <= value.economy.revision);
 
@@ -50,7 +50,7 @@ export type AchievementReward = GameRewards["achievementRewards"][number];
 export type GameRewardClaim = z.infer<typeof gameRewardClaimSchema>;
 export type GameRewardResult = z.infer<typeof gameRewardResultSchema>;
 
-async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, signal?: AbortSignal, command?: GameRewardClaim): Promise<T> {
+async function request<T>(path: string, schema: z.ZodType<T, unknown>, signal?: AbortSignal, command?: GameRewardClaim): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (signal?.aborted) abort(); else signal?.addEventListener("abort", abort, { once: true });
@@ -74,5 +74,5 @@ async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unkno
     return parsed.data;
   } finally { clearTimeout(timer); signal?.removeEventListener("abort", abort); }
 }
-export const getGameRewards = (signal?: AbortSignal) => request("/api/v1/game/rewards?catalog=5", gameRewardsSchema, signal);
-export const claimGameReward = (command: GameRewardClaim, signal?: AbortSignal) => request("/api/v1/game/rewards/claims?catalog=5", gameRewardResultSchema, signal, gameRewardClaimSchema.parse(command));
+export const getGameRewards = (signal?: AbortSignal) => request("/api/v1/game/rewards?catalog=9", gameRewardsSchema, signal);
+export const claimGameReward = (command: GameRewardClaim, signal?: AbortSignal) => request("/api/v1/game/rewards/claims?catalog=9", gameRewardResultSchema, signal, gameRewardClaimSchema.parse(command));

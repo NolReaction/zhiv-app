@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
-import { createLiquidation, recipeBuildingLevel } from "./economy-math.mjs";
+import { recipeMasteryReachable } from "./recipe-mastery.mjs";
+import { explorationLootSummary } from "./exploration-loot.mjs";
+import { createLiquidation, expectedRecipeRewards, recipeBuildingLevel } from "./economy-math.mjs";
 
 /** Timed production can create value; an unattended bundle must not create
  * extra raw materials or outperform its unlocked elementary station jobs. */
 export function auditProductionBalance(catalog) {
+  catalog = { ...catalog, recipes: catalog.recipes.filter(source => !source.retired), explorations: catalog.explorations.filter(source => !source.retired) };
   const value = createLiquidation(catalog);
-  const net = recipe => value(recipe.rewards) - value(recipe.cost.items) - recipe.cost.coins;
+  const net = recipe => value(expectedRecipeRewards(recipe)) - value(recipe.cost.items) - recipe.cost.coins;
   const rows = [];
-  const mining = catalog.explorations.filter(route => route.activity === "mining" && route.requiredBuildings?.quarry && route.id.startsWith("quarry_"));
+  const mining = catalog.explorations.filter(route => route.activity === "mining" && route.requiredBuildings?.quarry && (catalog.version >= 13 || route.id.startsWith("quarry_")));
   const station = recipe => recipe.buildingId ?? (recipe.activity === "mining" ? "quarry" : null);
   const level = recipe => recipeBuildingLevel(recipe) ?? recipe.requiredBuildings?.quarry;
   const definitions = [...catalog.recipes, ...mining];
@@ -15,6 +18,10 @@ export function auditProductionBalance(catalog) {
     const batchLimit = recipe.buildingId ? recipe.maxBatch : 1;
     const free = recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length;
     const long = recipe.seconds >= 14400;
+    if (catalog.version >= 13) {
+      assert(recipe.seconds <= 3600, `${recipe.id}: unit production cannot exceed one hour`);
+      assert.equal(Object.values(recipe.rewards).reduce((sum, count) => sum + count, 0), 1, `${recipe.id}: a new job must yield exactly one item`);
+    }
     assert(Number.isInteger(batchLimit) && batchLimit >= 1 && batchLimit <= catalog.maxBatch,
       `${recipe.id}: explicit production batch limit required`);
     if (free || long) assert.equal(batchLimit, 1, `${recipe.id}: free gathering and long orders cannot be bulk queued`);
@@ -60,13 +67,15 @@ export function auditProductionBalance(catalog) {
       }
     }
     rows.push({ id: recipe.id, hours: recipe.seconds / 3600, output: Object.values(recipe.rewards).reduce((a, b) => a + b, 0),
-      revenue: value(recipe.rewards), inputValue: value(recipe.cost.items) + recipe.cost.coins,
+      revenue: value(expectedRecipeRewards(recipe)), inputValue: value(recipe.cost.items) + recipe.cost.coins,
       net: net(recipe), netPerHour: net(recipe) * 3600 / recipe.seconds, activeWorkHours: activeSeconds / 3600 });
   }
   for (const route of catalog.explorations.filter(route => !mining.includes(route))) {
-    assert(net(route) > 0, `${route.id}: expedition consumes more sale value than it returns`);
-    rows.push({ id: route.id, hours: route.seconds / 3600, output: Object.values(route.rewards).reduce((a, b) => a + b, 0),
-      revenue: value(route.rewards), inputValue: value(route.cost.items) + route.cost.coins, net: net(route), netPerHour: net(route) * 3600 / route.seconds });
+    const { expectedRewards } = explorationLootSummary(route), expectedRoute = { ...route, rewards: expectedRewards };
+    assert(net(expectedRoute) > 0, `${route.id}: expedition consumes more sale value than it returns on average`);
+    rows.push({ id: route.id, hours: route.seconds / 3600, output: Object.values(expectedRewards).reduce((a, b) => a + b, 0),
+      revenue: value(expectedRewards), inputValue: value(route.cost.items) + route.cost.coins, net: net(expectedRoute),
+      netPerHour: net(expectedRoute) * 3600 / route.seconds });
   }
   // Every recipe edge must move towards a later product. A new conversion back
   // to raw inputs requires an explicit new audit, rather than a silent cycle.
@@ -87,7 +96,7 @@ export function auditProductionBalance(catalog) {
   return rows;
 }
 
-/** Current authored project contracts. Waits belong to deliveries, not buildings. */
+/** Current project contracts retain their identity; v14 gates work by materials. */
 export function auditProjectCourses(catalog) {
   const items = new Set(catalog.items.map(item => item.id));
   const buildings = new Map(catalog.buildings.map(building => [building.id, building]));
@@ -116,13 +125,19 @@ export function auditProjectCourses(catalog) {
       && Number.isSafeInteger(quantity) && quantity > 0), "Invalid project completion reward");
   }
   const third = courses.get(3), fourth = courses.get(4);
-  assert(third?.orders.length === 8 && third.intervalSeconds === 23 * 3600,
-    "Third stage project must keep eight deliveries and seven 23-hour waits");
+  const interval = catalog.version >= 14 ? 0 : 23 * 3600;
+  assert(third?.orders.length === 8 && third.intervalSeconds === interval,
+    "Third stage must retain eight deliveries and its versioned interval");
   assert.deepEqual(third.completionRewards, { living_resin: 1 }, "Third stage must guarantee its home relic");
-  assert(fourth?.orders.length === 12 && fourth.intervalSeconds === 23 * 3600,
-    "Fourth stage project must keep twelve deliveries and eleven 23-hour waits");
-  assert.equal(fourth.orders.reduce((sum, order) => sum + order.coins, 0), 50000,
+  assert(fourth?.orders.length === 12 && fourth.intervalSeconds === interval,
+    "Fourth stage must retain twelve deliveries and its versioned interval");
+  if (catalog.version < 13) assert.equal(fourth.orders.reduce((sum, order) => sum + order.coins, 0), 50000,
     "Fourth stage one-time project financing must total 50000 coins");
+  else {
+    const value = createLiquidation(catalog);
+    for (const stage of courses.values()) for (const order of stage.orders)
+      assert.equal(order.coins, Math.ceil(value(order.items) * 125 / 100), `${order.id}: project must pay item value plus 25 percent`);
+  }
   assert.deepEqual(fourth.completionRewards, { ancient_core: 1, moon_crystal: 1 }, "Fourth stage must guarantee both home relics");
   assert(fourth.orders.slice(4).every(order => order.requiredBuildings?.bridge === 1), "Fourth stage deliveries from five onward require the bridge");
   const final = fourth.orders.at(-1);
@@ -155,15 +170,20 @@ export function auditProjectCourses(catalog) {
 export function auditFourthStageBudget(catalog, requiredConstruction) {
   const constructionCoins = requiredConstruction.reduce((sum, node) => sum + node.cost.coins, 0);
   const constructionSeconds = requiredConstruction.reduce((sum, node) => sum + node.seconds, 0);
-  assert.equal(constructionCoins, 70500, "Fourth stage mandatory construction must total 70500 coins (starting with unrestored landmarks)");
-  assert.equal(constructionSeconds, 96 * 3600, "Fourth stage mandatory construction must total 96 hours");
+  if (catalog.version < 13) {
+    assert.equal(constructionCoins, 70500, "Fourth stage mandatory construction must total 70500 coins (starting with unrestored landmarks)");
+    assert.equal(constructionSeconds, 96 * 3600, "Fourth stage mandatory construction must total 96 hours");
+  } else if (catalog.version < 15) for (const node of requiredConstruction) {
+    assert.equal(node.cost.coins, Math.ceil(node.seconds * catalog.timeEconomy.constructionCoinsPerMinute / 60),
+      `${node.buildingId}:${node.level}: construction price must follow builder time`);
+  }
   const stage = catalog.stageOrders.find(stage => stage.homeLevel === 4);
   const ruins = catalog.explorations.find(route => route.id === "ancient_ruins");
   assert(ruins, "Fourth stage needs a real ruins expedition");
   const runs = new Map(), queueSeconds = {};
   const expand = (itemId, count, path = new Set()) => {
     assert(!path.has(itemId), `Fourth stage recipe cycle at ${itemId}`);
-    const recipe = catalog.recipes.filter(recipe => (recipe.rewards[itemId] ?? 0) > 0).sort((a, b) =>
+    const recipe = catalog.recipes.filter(recipe => !recipe.retired && !recipe.experiment && (recipe.rewards[itemId] ?? 0) > 0).sort((a, b) =>
       a.requiredHomeLevel - b.requiredHomeLevel || recipeBuildingLevel(a) - recipeBuildingLevel(b)
       || Object.keys(a.requiredRecipes ?? {}).length - Object.keys(b.requiredRecipes ?? {}).length
       || a.id.localeCompare(b.id))[0];
@@ -185,4 +205,53 @@ export function auditFourthStageBudget(catalog, requiredConstruction) {
   return { constructionCoins, constructionSeconds, constructionCount: requiredConstruction.length,
     projectCoins: stage.orders.reduce((sum, order) => sum + order.coins, 0), longWorkshopJobs, longWorkshopRuns,
     productionQueueSeconds: queueSeconds, timingBasis: "Occupied queues and delivery waits are separate; visits, coins, mining, fishing and wall-clock playthrough are not simulated" };
+}
+
+/** Type reachability at each advertised home unlock, without later-home tools,
+ * NPC purchases or player-market stock. This proves availability, not quantity,
+ * affordability, random-fish deadlines or a feasible visit schedule. */
+export function auditBuildingUnlocks(catalog) {
+  const sources = [...catalog.recipes, ...catalog.explorations].filter(source => !source.retired && !source.experiment);
+  const rows = [];
+  for (let home = 1; home <= 5; home++) {
+    const levels = { home, garden: 1, warehouse: 1 }, items = new Set(), recipes = new Set(), routes = new Set();
+    const permits = definition => home >= definition.requiredHomeLevel
+      && Object.entries(definition.requiredBuildings ?? {}).every(([id, level]) => (levels[id] ?? 0) >= level);
+    const materials = definition => Object.keys(definition.cost.items).every(id => items.has(id));
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const obtain = id => { if (!items.has(id)) { items.add(id); changed = true; } };
+      for (const source of sources) {
+        if (!permits(source) || !materials(source)
+          || source.buildingId && (levels[source.buildingId] ?? 0) < recipeBuildingLevel(source)
+          || !recipeMasteryReachable(catalog, source, recipes, routes, home)) continue;
+        for (const id of Object.keys(source.rewards)) obtain(id);
+        if (source.buildingId && !recipes.has(source.id)) { recipes.add(source.id); changed = true; }
+        if (!source.buildingId && !routes.has(source.id)) { routes.add(source.id); changed = true; }
+        if (!source.buildingId && home >= catalog.rareDrops.requiredHomeLevel)
+          for (const id of catalog.rareDrops.itemIds) obtain(id);
+        if (catalog.fishing.routeIds.includes(source.id)) for (const fish of catalog.fishing.classes)
+          if (catalog.fishing.rods.some(rod => rod.requiredHomeLevel <= home
+            && rod.classOddsBps[fish.rarity] > 0 && (fish.rarity !== "legendary" || rod.rarity === "legendary"))) obtain(fish.itemId);
+      }
+      for (const building of catalog.buildings.filter(building => building.id !== "home")) {
+        const next = building.levels.find(level => level.level === (levels[building.id] ?? 0) + 1);
+        if (!next || !permits(next) || !materials(next)) continue;
+        levels[building.id] = next.level; changed = true;
+      }
+    }
+    for (const building of catalog.buildings) for (const level of building.levels) {
+      if (catalog.version < 14 && building.id === "warehouse" && level.level >= 4) continue; // Legacy relic levels had no home gate.
+      const advertisedHome = building.id === "home" ? level.level - 1 : level.requiredHomeLevel;
+      if (advertisedHome !== home) continue;
+      const missing = Object.keys(level.cost.items).filter(id => !items.has(id));
+      assert(missing.length === 0 && permits(level),
+        `${building.id}:${level.level}: materials or prerequisites unavailable at advertised home ${home}: ${missing.join(", ")}`);
+      if (building.id !== "home") assert((levels[building.id] ?? 0) >= level.level,
+        `${building.id}:${level.level}: construction unavailable at advertised home ${home}`);
+      rows.push({ buildingId: building.id, level: level.level, homeLevel: home });
+    }
+  }
+  return rows;
 }

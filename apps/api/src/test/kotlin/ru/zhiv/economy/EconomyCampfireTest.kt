@@ -51,7 +51,7 @@ class EconomyCampfireTest {
         val state = EconomyRules.initial().copy(buildings = EconomyRules.initial().buildings + ("home" to 5),
             inventory = EconomyRules.catalog.items.associate { it.id to 1L },
             progression = EconomyProgression(recipes = EconomyRules.catalog.recipes.associate { it.id to 100L }))
-        for (other in EconomyRules.catalog.recipes.filter { it.buildingId == "dryer" && it.id != recipe.id }) {
+        for (other in EconomyRules.catalog.recipes.filter { it.buildingId == "dryer" && it.id != recipe.id && it.experiment?.initialFire != true }) {
             assertTrue(other.buildingLevel >= 1)
             failure("ECONOMY_BUILDING_REQUIRED") { apply(state, "start_production", other.id) }
         }

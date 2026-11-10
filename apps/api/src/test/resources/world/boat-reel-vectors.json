@@ -1,0 +1,3052 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "0-1-3200-follow",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "rulesVersion": 1,
+        "seed": 0,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 1,
+        "startedAt": "2026-11-03T10:00:00.000Z",
+        "expiresAt": "2026-11-03T10:02:00.000Z"
+      },
+      "inputs": [
+        {
+          "tick": 1,
+          "held": true
+        },
+        {
+          "tick": 3,
+          "held": false
+        },
+        {
+          "tick": 4,
+          "held": true
+        },
+        {
+          "tick": 5,
+          "held": false
+        },
+        {
+          "tick": 6,
+          "held": true
+        },
+        {
+          "tick": 7,
+          "held": false
+        },
+        {
+          "tick": 9,
+          "held": true
+        },
+        {
+          "tick": 10,
+          "held": false
+        },
+        {
+          "tick": 11,
+          "held": true
+        },
+        {
+          "tick": 12,
+          "held": false
+        },
+        {
+          "tick": 13,
+          "held": true
+        },
+        {
+          "tick": 14,
+          "held": false
+        },
+        {
+          "tick": 16,
+          "held": true
+        },
+        {
+          "tick": 17,
+          "held": false
+        },
+        {
+          "tick": 18,
+          "held": true
+        },
+        {
+          "tick": 19,
+          "held": false
+        },
+        {
+          "tick": 20,
+          "held": true
+        },
+        {
+          "tick": 21,
+          "held": false
+        },
+        {
+          "tick": 22,
+          "held": true
+        },
+        {
+          "tick": 23,
+          "held": false
+        },
+        {
+          "tick": 25,
+          "held": true
+        },
+        {
+          "tick": 26,
+          "held": false
+        },
+        {
+          "tick": 27,
+          "held": true
+        },
+        {
+          "tick": 28,
+          "held": false
+        },
+        {
+          "tick": 29,
+          "held": true
+        },
+        {
+          "tick": 30,
+          "held": false
+        },
+        {
+          "tick": 32,
+          "held": true
+        },
+        {
+          "tick": 33,
+          "held": false
+        },
+        {
+          "tick": 34,
+          "held": true
+        },
+        {
+          "tick": 35,
+          "held": false
+        },
+        {
+          "tick": 36,
+          "held": true
+        },
+        {
+          "tick": 37,
+          "held": false
+        },
+        {
+          "tick": 38,
+          "held": true
+        },
+        {
+          "tick": 39,
+          "held": false
+        },
+        {
+          "tick": 41,
+          "held": true
+        },
+        {
+          "tick": 42,
+          "held": false
+        },
+        {
+          "tick": 43,
+          "held": true
+        },
+        {
+          "tick": 44,
+          "held": false
+        },
+        {
+          "tick": 46,
+          "held": true
+        },
+        {
+          "tick": 47,
+          "held": false
+        },
+        {
+          "tick": 48,
+          "held": true
+        },
+        {
+          "tick": 49,
+          "held": false
+        },
+        {
+          "tick": 50,
+          "held": true
+        },
+        {
+          "tick": 51,
+          "held": false
+        },
+        {
+          "tick": 52,
+          "held": true
+        },
+        {
+          "tick": 53,
+          "held": false
+        },
+        {
+          "tick": 55,
+          "held": true
+        },
+        {
+          "tick": 56,
+          "held": false
+        },
+        {
+          "tick": 59,
+          "held": true
+        },
+        {
+          "tick": 60,
+          "held": false
+        },
+        {
+          "tick": 61,
+          "held": true
+        },
+        {
+          "tick": 62,
+          "held": false
+        },
+        {
+          "tick": 64,
+          "held": true
+        },
+        {
+          "tick": 65,
+          "held": false
+        },
+        {
+          "tick": 67,
+          "held": true
+        },
+        {
+          "tick": 68,
+          "held": false
+        },
+        {
+          "tick": 70,
+          "held": true
+        },
+        {
+          "tick": 71,
+          "held": false
+        },
+        {
+          "tick": 73,
+          "held": true
+        },
+        {
+          "tick": 74,
+          "held": false
+        },
+        {
+          "tick": 75,
+          "held": true
+        },
+        {
+          "tick": 76,
+          "held": false
+        },
+        {
+          "tick": 78,
+          "held": true
+        },
+        {
+          "tick": 79,
+          "held": false
+        },
+        {
+          "tick": 81,
+          "held": true
+        },
+        {
+          "tick": 82,
+          "held": false
+        },
+        {
+          "tick": 84,
+          "held": true
+        },
+        {
+          "tick": 85,
+          "held": false
+        },
+        {
+          "tick": 86,
+          "held": true
+        },
+        {
+          "tick": 87,
+          "held": false
+        },
+        {
+          "tick": 89,
+          "held": true
+        },
+        {
+          "tick": 90,
+          "held": false
+        },
+        {
+          "tick": 92,
+          "held": true
+        },
+        {
+          "tick": 93,
+          "held": false
+        },
+        {
+          "tick": 94,
+          "held": true
+        },
+        {
+          "tick": 95,
+          "held": false
+        },
+        {
+          "tick": 97,
+          "held": true
+        },
+        {
+          "tick": 98,
+          "held": false
+        },
+        {
+          "tick": 100,
+          "held": true
+        },
+        {
+          "tick": 101,
+          "held": false
+        },
+        {
+          "tick": 102,
+          "held": true
+        },
+        {
+          "tick": 103,
+          "held": false
+        },
+        {
+          "tick": 105,
+          "held": true
+        },
+        {
+          "tick": 106,
+          "held": false
+        },
+        {
+          "tick": 108,
+          "held": true
+        },
+        {
+          "tick": 109,
+          "held": false
+        },
+        {
+          "tick": 111,
+          "held": true
+        },
+        {
+          "tick": 112,
+          "held": false
+        },
+        {
+          "tick": 113,
+          "held": true
+        },
+        {
+          "tick": 114,
+          "held": false
+        },
+        {
+          "tick": 116,
+          "held": true
+        },
+        {
+          "tick": 117,
+          "held": false
+        },
+        {
+          "tick": 119,
+          "held": true
+        },
+        {
+          "tick": 120,
+          "held": false
+        },
+        {
+          "tick": 121,
+          "held": true
+        },
+        {
+          "tick": 122,
+          "held": false
+        },
+        {
+          "tick": 124,
+          "held": true
+        },
+        {
+          "tick": 125,
+          "held": false
+        },
+        {
+          "tick": 127,
+          "held": true
+        },
+        {
+          "tick": 128,
+          "held": false
+        },
+        {
+          "tick": 129,
+          "held": true
+        },
+        {
+          "tick": 130,
+          "held": false
+        },
+        {
+          "tick": 132,
+          "held": true
+        },
+        {
+          "tick": 133,
+          "held": false
+        },
+        {
+          "tick": 135,
+          "held": true
+        },
+        {
+          "tick": 136,
+          "held": false
+        },
+        {
+          "tick": 138,
+          "held": true
+        },
+        {
+          "tick": 139,
+          "held": false
+        },
+        {
+          "tick": 140,
+          "held": true
+        },
+        {
+          "tick": 141,
+          "held": false
+        },
+        {
+          "tick": 143,
+          "held": true
+        },
+        {
+          "tick": 144,
+          "held": false
+        },
+        {
+          "tick": 146,
+          "held": true
+        },
+        {
+          "tick": 147,
+          "held": false
+        },
+        {
+          "tick": 174,
+          "held": true
+        },
+        {
+          "tick": 175,
+          "held": false
+        },
+        {
+          "tick": 176,
+          "held": true
+        },
+        {
+          "tick": 177,
+          "held": false
+        },
+        {
+          "tick": 178,
+          "held": true
+        },
+        {
+          "tick": 180,
+          "held": false
+        },
+        {
+          "tick": 181,
+          "held": true
+        },
+        {
+          "tick": 182,
+          "held": false
+        },
+        {
+          "tick": 183,
+          "held": true
+        },
+        {
+          "tick": 184,
+          "held": false
+        },
+        {
+          "tick": 186,
+          "held": true
+        },
+        {
+          "tick": 188,
+          "held": false
+        },
+        {
+          "tick": 189,
+          "held": true
+        },
+        {
+          "tick": 190,
+          "held": false
+        },
+        {
+          "tick": 191,
+          "held": true
+        },
+        {
+          "tick": 192,
+          "held": false
+        },
+        {
+          "tick": 193,
+          "held": true
+        },
+        {
+          "tick": 194,
+          "held": false
+        },
+        {
+          "tick": 195,
+          "held": true
+        },
+        {
+          "tick": 196,
+          "held": false
+        },
+        {
+          "tick": 197,
+          "held": true
+        },
+        {
+          "tick": 198,
+          "held": false
+        },
+        {
+          "tick": 200,
+          "held": true
+        },
+        {
+          "tick": 202,
+          "held": false
+        },
+        {
+          "tick": 203,
+          "held": true
+        },
+        {
+          "tick": 204,
+          "held": false
+        },
+        {
+          "tick": 205,
+          "held": true
+        },
+        {
+          "tick": 206,
+          "held": false
+        },
+        {
+          "tick": 207,
+          "held": true
+        },
+        {
+          "tick": 208,
+          "held": false
+        },
+        {
+          "tick": 209,
+          "held": true
+        },
+        {
+          "tick": 210,
+          "held": false
+        },
+        {
+          "tick": 212,
+          "held": true
+        },
+        {
+          "tick": 214,
+          "held": false
+        },
+        {
+          "tick": 215,
+          "held": true
+        },
+        {
+          "tick": 216,
+          "held": false
+        },
+        {
+          "tick": 217,
+          "held": true
+        },
+        {
+          "tick": 218,
+          "held": false
+        },
+        {
+          "tick": 219,
+          "held": true
+        },
+        {
+          "tick": 220,
+          "held": false
+        },
+        {
+          "tick": 221,
+          "held": true
+        },
+        {
+          "tick": 222,
+          "held": false
+        },
+        {
+          "tick": 224,
+          "held": true
+        },
+        {
+          "tick": 226,
+          "held": false
+        },
+        {
+          "tick": 227,
+          "held": true
+        },
+        {
+          "tick": 228,
+          "held": false
+        },
+        {
+          "tick": 229,
+          "held": true
+        },
+        {
+          "tick": 230,
+          "held": false
+        },
+        {
+          "tick": 231,
+          "held": true
+        },
+        {
+          "tick": 232,
+          "held": false
+        },
+        {
+          "tick": 233,
+          "held": true
+        },
+        {
+          "tick": 234,
+          "held": false
+        }
+      ],
+      "endTick": 235,
+      "expected": {
+        "tick": 235,
+        "bar": 4058,
+        "velocity": 33,
+        "fish": 4189,
+        "progress": 10000,
+        "status": "caught"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 4980,
+          "velocity": -20,
+          "fish": 5030,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 2,
+          "bar": 4988,
+          "velocity": 8,
+          "fish": 5057,
+          "progress": 2564,
+          "status": "active"
+        },
+        {
+          "tick": 10,
+          "bar": 5149,
+          "velocity": 21,
+          "fish": 5196,
+          "progress": 2820,
+          "status": "active"
+        },
+        {
+          "tick": 29,
+          "bar": 5276,
+          "velocity": -5,
+          "fish": 5288,
+          "progress": 3428,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 5298,
+          "velocity": 22,
+          "fish": 5289,
+          "progress": 3460,
+          "status": "active"
+        },
+        {
+          "tick": 53,
+          "bar": 5316,
+          "velocity": 22,
+          "fish": 5297,
+          "progress": 4196,
+          "status": "active"
+        },
+        {
+          "tick": 54,
+          "bar": 5316,
+          "velocity": 0,
+          "fish": 5297,
+          "progress": 4228,
+          "status": "active"
+        },
+        {
+          "tick": 55,
+          "bar": 5296,
+          "velocity": -20,
+          "fish": 5255,
+          "progress": 4260,
+          "status": "active"
+        },
+        {
+          "tick": 100,
+          "bar": 3541,
+          "velocity": -61,
+          "fish": 3365,
+          "progress": 5700,
+          "status": "active"
+        },
+        {
+          "tick": 200,
+          "bar": 2560,
+          "velocity": 11,
+          "fish": 2719,
+          "progress": 8900,
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "name": "1-3-3200-follow",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "rulesVersion": 1,
+        "seed": 1,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 3,
+        "startedAt": "2026-11-03T10:00:00.000Z",
+        "expiresAt": "2026-11-03T10:02:00.000Z"
+      },
+      "inputs": [
+        {
+          "tick": 1,
+          "held": true
+        },
+        {
+          "tick": 2,
+          "held": false
+        },
+        {
+          "tick": 5,
+          "held": true
+        },
+        {
+          "tick": 6,
+          "held": false
+        },
+        {
+          "tick": 9,
+          "held": true
+        },
+        {
+          "tick": 10,
+          "held": false
+        },
+        {
+          "tick": 11,
+          "held": true
+        },
+        {
+          "tick": 12,
+          "held": false
+        },
+        {
+          "tick": 15,
+          "held": true
+        },
+        {
+          "tick": 16,
+          "held": false
+        },
+        {
+          "tick": 17,
+          "held": true
+        },
+        {
+          "tick": 18,
+          "held": false
+        },
+        {
+          "tick": 20,
+          "held": true
+        },
+        {
+          "tick": 21,
+          "held": false
+        },
+        {
+          "tick": 23,
+          "held": true
+        },
+        {
+          "tick": 24,
+          "held": false
+        },
+        {
+          "tick": 25,
+          "held": true
+        },
+        {
+          "tick": 26,
+          "held": false
+        },
+        {
+          "tick": 27,
+          "held": true
+        },
+        {
+          "tick": 28,
+          "held": false
+        },
+        {
+          "tick": 30,
+          "held": true
+        },
+        {
+          "tick": 31,
+          "held": false
+        },
+        {
+          "tick": 32,
+          "held": true
+        },
+        {
+          "tick": 33,
+          "held": false
+        },
+        {
+          "tick": 34,
+          "held": true
+        },
+        {
+          "tick": 35,
+          "held": false
+        },
+        {
+          "tick": 36,
+          "held": true
+        },
+        {
+          "tick": 37,
+          "held": false
+        },
+        {
+          "tick": 39,
+          "held": true
+        },
+        {
+          "tick": 40,
+          "held": false
+        },
+        {
+          "tick": 41,
+          "held": true
+        },
+        {
+          "tick": 42,
+          "held": false
+        },
+        {
+          "tick": 44,
+          "held": true
+        },
+        {
+          "tick": 45,
+          "held": false
+        },
+        {
+          "tick": 48,
+          "held": true
+        },
+        {
+          "tick": 49,
+          "held": false
+        },
+        {
+          "tick": 51,
+          "held": true
+        },
+        {
+          "tick": 52,
+          "held": false
+        },
+        {
+          "tick": 54,
+          "held": true
+        },
+        {
+          "tick": 55,
+          "held": false
+        },
+        {
+          "tick": 57,
+          "held": true
+        },
+        {
+          "tick": 58,
+          "held": false
+        },
+        {
+          "tick": 60,
+          "held": true
+        },
+        {
+          "tick": 61,
+          "held": false
+        },
+        {
+          "tick": 63,
+          "held": true
+        },
+        {
+          "tick": 64,
+          "held": false
+        },
+        {
+          "tick": 66,
+          "held": true
+        },
+        {
+          "tick": 67,
+          "held": false
+        },
+        {
+          "tick": 68,
+          "held": true
+        },
+        {
+          "tick": 69,
+          "held": false
+        },
+        {
+          "tick": 71,
+          "held": true
+        },
+        {
+          "tick": 72,
+          "held": false
+        },
+        {
+          "tick": 74,
+          "held": true
+        },
+        {
+          "tick": 75,
+          "held": false
+        },
+        {
+          "tick": 76,
+          "held": true
+        },
+        {
+          "tick": 77,
+          "held": false
+        },
+        {
+          "tick": 79,
+          "held": true
+        },
+        {
+          "tick": 80,
+          "held": false
+        },
+        {
+          "tick": 81,
+          "held": true
+        },
+        {
+          "tick": 82,
+          "held": false
+        },
+        {
+          "tick": 131,
+          "held": true
+        },
+        {
+          "tick": 132,
+          "held": false
+        },
+        {
+          "tick": 133,
+          "held": true
+        },
+        {
+          "tick": 135,
+          "held": false
+        },
+        {
+          "tick": 136,
+          "held": true
+        },
+        {
+          "tick": 137,
+          "held": false
+        },
+        {
+          "tick": 138,
+          "held": true
+        },
+        {
+          "tick": 139,
+          "held": false
+        },
+        {
+          "tick": 140,
+          "held": true
+        },
+        {
+          "tick": 142,
+          "held": false
+        },
+        {
+          "tick": 143,
+          "held": true
+        },
+        {
+          "tick": 144,
+          "held": false
+        },
+        {
+          "tick": 145,
+          "held": true
+        },
+        {
+          "tick": 146,
+          "held": false
+        },
+        {
+          "tick": 147,
+          "held": true
+        },
+        {
+          "tick": 148,
+          "held": false
+        },
+        {
+          "tick": 149,
+          "held": true
+        },
+        {
+          "tick": 150,
+          "held": false
+        },
+        {
+          "tick": 151,
+          "held": true
+        },
+        {
+          "tick": 152,
+          "held": false
+        },
+        {
+          "tick": 153,
+          "held": true
+        },
+        {
+          "tick": 154,
+          "held": false
+        },
+        {
+          "tick": 155,
+          "held": true
+        },
+        {
+          "tick": 156,
+          "held": false
+        },
+        {
+          "tick": 157,
+          "held": true
+        },
+        {
+          "tick": 158,
+          "held": false
+        },
+        {
+          "tick": 159,
+          "held": true
+        },
+        {
+          "tick": 160,
+          "held": false
+        },
+        {
+          "tick": 161,
+          "held": true
+        },
+        {
+          "tick": 162,
+          "held": false
+        },
+        {
+          "tick": 163,
+          "held": true
+        },
+        {
+          "tick": 165,
+          "held": false
+        },
+        {
+          "tick": 166,
+          "held": true
+        },
+        {
+          "tick": 167,
+          "held": false
+        },
+        {
+          "tick": 169,
+          "held": true
+        },
+        {
+          "tick": 171,
+          "held": false
+        },
+        {
+          "tick": 172,
+          "held": true
+        },
+        {
+          "tick": 173,
+          "held": false
+        },
+        {
+          "tick": 174,
+          "held": true
+        },
+        {
+          "tick": 175,
+          "held": false
+        },
+        {
+          "tick": 176,
+          "held": true
+        },
+        {
+          "tick": 177,
+          "held": false
+        },
+        {
+          "tick": 178,
+          "held": true
+        },
+        {
+          "tick": 179,
+          "held": false
+        },
+        {
+          "tick": 180,
+          "held": true
+        },
+        {
+          "tick": 181,
+          "held": false
+        },
+        {
+          "tick": 182,
+          "held": true
+        },
+        {
+          "tick": 183,
+          "held": false
+        },
+        {
+          "tick": 184,
+          "held": true
+        },
+        {
+          "tick": 185,
+          "held": false
+        },
+        {
+          "tick": 186,
+          "held": true
+        },
+        {
+          "tick": 187,
+          "held": false
+        },
+        {
+          "tick": 188,
+          "held": true
+        },
+        {
+          "tick": 190,
+          "held": false
+        },
+        {
+          "tick": 192,
+          "held": true
+        },
+        {
+          "tick": 194,
+          "held": false
+        },
+        {
+          "tick": 196,
+          "held": true
+        },
+        {
+          "tick": 198,
+          "held": false
+        },
+        {
+          "tick": 199,
+          "held": true
+        },
+        {
+          "tick": 200,
+          "held": false
+        },
+        {
+          "tick": 201,
+          "held": true
+        },
+        {
+          "tick": 202,
+          "held": false
+        },
+        {
+          "tick": 203,
+          "held": true
+        },
+        {
+          "tick": 204,
+          "held": false
+        },
+        {
+          "tick": 205,
+          "held": true
+        },
+        {
+          "tick": 206,
+          "held": false
+        },
+        {
+          "tick": 207,
+          "held": true
+        },
+        {
+          "tick": 208,
+          "held": false
+        },
+        {
+          "tick": 209,
+          "held": true
+        },
+        {
+          "tick": 210,
+          "held": false
+        },
+        {
+          "tick": 213,
+          "held": true
+        },
+        {
+          "tick": 214,
+          "held": false
+        },
+        {
+          "tick": 218,
+          "held": true
+        },
+        {
+          "tick": 219,
+          "held": false
+        },
+        {
+          "tick": 221,
+          "held": true
+        },
+        {
+          "tick": 222,
+          "held": false
+        },
+        {
+          "tick": 223,
+          "held": true
+        },
+        {
+          "tick": 224,
+          "held": false
+        },
+        {
+          "tick": 225,
+          "held": true
+        },
+        {
+          "tick": 226,
+          "held": false
+        },
+        {
+          "tick": 228,
+          "held": true
+        },
+        {
+          "tick": 229,
+          "held": false
+        },
+        {
+          "tick": 230,
+          "held": true
+        },
+        {
+          "tick": 231,
+          "held": false
+        },
+        {
+          "tick": 232,
+          "held": true
+        },
+        {
+          "tick": 233,
+          "held": false
+        }
+      ],
+      "endTick": 235,
+      "expected": {
+        "tick": 235,
+        "bar": 5308,
+        "velocity": -36,
+        "fish": 5238,
+        "progress": 10000,
+        "status": "caught"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 4980,
+          "velocity": -20,
+          "fish": 4944,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 2,
+          "bar": 4988,
+          "velocity": 8,
+          "fish": 4888,
+          "progress": 2564,
+          "status": "active"
+        },
+        {
+          "tick": 10,
+          "bar": 4664,
+          "velocity": -41,
+          "fish": 4440,
+          "progress": 2820,
+          "status": "active"
+        },
+        {
+          "tick": 29,
+          "bar": 3747,
+          "velocity": -34,
+          "fish": 3598,
+          "progress": 3428,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 3696,
+          "velocity": -51,
+          "fish": 3580,
+          "progress": 3460,
+          "status": "active"
+        },
+        {
+          "tick": 53,
+          "bar": 3102,
+          "velocity": -52,
+          "fish": 2846,
+          "progress": 4196,
+          "status": "active"
+        },
+        {
+          "tick": 54,
+          "bar": 3034,
+          "velocity": -68,
+          "fish": 2790,
+          "progress": 4228,
+          "status": "active"
+        },
+        {
+          "tick": 55,
+          "bar": 2997,
+          "velocity": -37,
+          "fish": 2734,
+          "progress": 4260,
+          "status": "active"
+        },
+        {
+          "tick": 100,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 1361,
+          "progress": 5700,
+          "status": "active"
+        },
+        {
+          "tick": 200,
+          "bar": 5265,
+          "velocity": 73,
+          "fish": 5477,
+          "progress": 8900,
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "name": "4294967295-5-3200-follow",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "rulesVersion": 1,
+        "seed": 4294967295,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 5,
+        "startedAt": "2026-11-03T10:00:00.000Z",
+        "expiresAt": "2026-11-03T10:02:00.000Z"
+      },
+      "inputs": [
+        {
+          "tick": 1,
+          "held": true
+        },
+        {
+          "tick": 2,
+          "held": false
+        },
+        {
+          "tick": 6,
+          "held": true
+        },
+        {
+          "tick": 7,
+          "held": false
+        },
+        {
+          "tick": 10,
+          "held": true
+        },
+        {
+          "tick": 11,
+          "held": false
+        },
+        {
+          "tick": 13,
+          "held": true
+        },
+        {
+          "tick": 14,
+          "held": false
+        },
+        {
+          "tick": 16,
+          "held": true
+        },
+        {
+          "tick": 17,
+          "held": false
+        },
+        {
+          "tick": 19,
+          "held": true
+        },
+        {
+          "tick": 20,
+          "held": false
+        },
+        {
+          "tick": 22,
+          "held": true
+        },
+        {
+          "tick": 23,
+          "held": false
+        },
+        {
+          "tick": 25,
+          "held": true
+        },
+        {
+          "tick": 26,
+          "held": false
+        },
+        {
+          "tick": 28,
+          "held": true
+        },
+        {
+          "tick": 29,
+          "held": false
+        },
+        {
+          "tick": 32,
+          "held": true
+        },
+        {
+          "tick": 33,
+          "held": false
+        },
+        {
+          "tick": 34,
+          "held": true
+        },
+        {
+          "tick": 35,
+          "held": false
+        },
+        {
+          "tick": 37,
+          "held": true
+        },
+        {
+          "tick": 38,
+          "held": false
+        },
+        {
+          "tick": 40,
+          "held": true
+        },
+        {
+          "tick": 41,
+          "held": false
+        },
+        {
+          "tick": 43,
+          "held": true
+        },
+        {
+          "tick": 44,
+          "held": false
+        },
+        {
+          "tick": 47,
+          "held": true
+        },
+        {
+          "tick": 48,
+          "held": false
+        },
+        {
+          "tick": 49,
+          "held": true
+        },
+        {
+          "tick": 50,
+          "held": false
+        },
+        {
+          "tick": 52,
+          "held": true
+        },
+        {
+          "tick": 53,
+          "held": false
+        },
+        {
+          "tick": 71,
+          "held": true
+        },
+        {
+          "tick": 72,
+          "held": false
+        },
+        {
+          "tick": 73,
+          "held": true
+        },
+        {
+          "tick": 76,
+          "held": false
+        },
+        {
+          "tick": 77,
+          "held": true
+        },
+        {
+          "tick": 78,
+          "held": false
+        },
+        {
+          "tick": 79,
+          "held": true
+        },
+        {
+          "tick": 80,
+          "held": false
+        },
+        {
+          "tick": 81,
+          "held": true
+        },
+        {
+          "tick": 83,
+          "held": false
+        },
+        {
+          "tick": 84,
+          "held": true
+        },
+        {
+          "tick": 85,
+          "held": false
+        },
+        {
+          "tick": 86,
+          "held": true
+        },
+        {
+          "tick": 87,
+          "held": false
+        },
+        {
+          "tick": 88,
+          "held": true
+        },
+        {
+          "tick": 89,
+          "held": false
+        },
+        {
+          "tick": 90,
+          "held": true
+        },
+        {
+          "tick": 91,
+          "held": false
+        },
+        {
+          "tick": 99,
+          "held": true
+        },
+        {
+          "tick": 100,
+          "held": false
+        },
+        {
+          "tick": 102,
+          "held": true
+        },
+        {
+          "tick": 103,
+          "held": false
+        },
+        {
+          "tick": 105,
+          "held": true
+        },
+        {
+          "tick": 106,
+          "held": false
+        },
+        {
+          "tick": 108,
+          "held": true
+        },
+        {
+          "tick": 109,
+          "held": false
+        },
+        {
+          "tick": 110,
+          "held": true
+        },
+        {
+          "tick": 111,
+          "held": false
+        },
+        {
+          "tick": 113,
+          "held": true
+        },
+        {
+          "tick": 114,
+          "held": false
+        },
+        {
+          "tick": 115,
+          "held": true
+        },
+        {
+          "tick": 116,
+          "held": false
+        },
+        {
+          "tick": 123,
+          "held": true
+        },
+        {
+          "tick": 124,
+          "held": false
+        },
+        {
+          "tick": 125,
+          "held": true
+        },
+        {
+          "tick": 127,
+          "held": false
+        },
+        {
+          "tick": 128,
+          "held": true
+        },
+        {
+          "tick": 130,
+          "held": false
+        },
+        {
+          "tick": 131,
+          "held": true
+        },
+        {
+          "tick": 132,
+          "held": false
+        },
+        {
+          "tick": 133,
+          "held": true
+        },
+        {
+          "tick": 134,
+          "held": false
+        },
+        {
+          "tick": 135,
+          "held": true
+        },
+        {
+          "tick": 137,
+          "held": false
+        },
+        {
+          "tick": 138,
+          "held": true
+        },
+        {
+          "tick": 139,
+          "held": false
+        },
+        {
+          "tick": 140,
+          "held": true
+        },
+        {
+          "tick": 141,
+          "held": false
+        },
+        {
+          "tick": 142,
+          "held": true
+        },
+        {
+          "tick": 143,
+          "held": false
+        },
+        {
+          "tick": 144,
+          "held": true
+        },
+        {
+          "tick": 145,
+          "held": false
+        },
+        {
+          "tick": 146,
+          "held": true
+        },
+        {
+          "tick": 148,
+          "held": false
+        },
+        {
+          "tick": 150,
+          "held": true
+        },
+        {
+          "tick": 152,
+          "held": false
+        },
+        {
+          "tick": 153,
+          "held": true
+        },
+        {
+          "tick": 154,
+          "held": false
+        },
+        {
+          "tick": 155,
+          "held": true
+        },
+        {
+          "tick": 156,
+          "held": false
+        },
+        {
+          "tick": 157,
+          "held": true
+        },
+        {
+          "tick": 158,
+          "held": false
+        },
+        {
+          "tick": 159,
+          "held": true
+        },
+        {
+          "tick": 161,
+          "held": false
+        },
+        {
+          "tick": 162,
+          "held": true
+        },
+        {
+          "tick": 163,
+          "held": false
+        },
+        {
+          "tick": 164,
+          "held": true
+        },
+        {
+          "tick": 165,
+          "held": false
+        },
+        {
+          "tick": 166,
+          "held": true
+        },
+        {
+          "tick": 167,
+          "held": false
+        },
+        {
+          "tick": 168,
+          "held": true
+        },
+        {
+          "tick": 169,
+          "held": false
+        },
+        {
+          "tick": 170,
+          "held": true
+        },
+        {
+          "tick": 171,
+          "held": false
+        },
+        {
+          "tick": 172,
+          "held": true
+        },
+        {
+          "tick": 173,
+          "held": false
+        },
+        {
+          "tick": 174,
+          "held": true
+        },
+        {
+          "tick": 176,
+          "held": false
+        },
+        {
+          "tick": 177,
+          "held": true
+        },
+        {
+          "tick": 178,
+          "held": false
+        },
+        {
+          "tick": 179,
+          "held": true
+        },
+        {
+          "tick": 180,
+          "held": false
+        },
+        {
+          "tick": 186,
+          "held": true
+        },
+        {
+          "tick": 187,
+          "held": false
+        },
+        {
+          "tick": 191,
+          "held": true
+        },
+        {
+          "tick": 192,
+          "held": false
+        },
+        {
+          "tick": 194,
+          "held": true
+        },
+        {
+          "tick": 195,
+          "held": false
+        },
+        {
+          "tick": 197,
+          "held": true
+        },
+        {
+          "tick": 198,
+          "held": false
+        },
+        {
+          "tick": 200,
+          "held": true
+        },
+        {
+          "tick": 201,
+          "held": false
+        },
+        {
+          "tick": 203,
+          "held": true
+        },
+        {
+          "tick": 204,
+          "held": false
+        },
+        {
+          "tick": 205,
+          "held": true
+        },
+        {
+          "tick": 206,
+          "held": false
+        },
+        {
+          "tick": 207,
+          "held": true
+        },
+        {
+          "tick": 208,
+          "held": false
+        },
+        {
+          "tick": 209,
+          "held": true
+        },
+        {
+          "tick": 210,
+          "held": false
+        },
+        {
+          "tick": 211,
+          "held": true
+        },
+        {
+          "tick": 213,
+          "held": false
+        },
+        {
+          "tick": 214,
+          "held": true
+        },
+        {
+          "tick": 216,
+          "held": false
+        },
+        {
+          "tick": 217,
+          "held": true
+        },
+        {
+          "tick": 219,
+          "held": false
+        },
+        {
+          "tick": 220,
+          "held": true
+        },
+        {
+          "tick": 221,
+          "held": false
+        },
+        {
+          "tick": 222,
+          "held": true
+        },
+        {
+          "tick": 224,
+          "held": false
+        },
+        {
+          "tick": 225,
+          "held": true
+        },
+        {
+          "tick": 226,
+          "held": false
+        },
+        {
+          "tick": 227,
+          "held": true
+        },
+        {
+          "tick": 228,
+          "held": false
+        },
+        {
+          "tick": 229,
+          "held": true
+        },
+        {
+          "tick": 230,
+          "held": false
+        },
+        {
+          "tick": 231,
+          "held": true
+        },
+        {
+          "tick": 232,
+          "held": false
+        },
+        {
+          "tick": 233,
+          "held": true
+        }
+      ],
+      "endTick": 235,
+      "expected": {
+        "tick": 235,
+        "bar": 5316,
+        "velocity": 94,
+        "fish": 5591,
+        "progress": 10000,
+        "status": "caught"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 4980,
+          "velocity": -20,
+          "fish": 4930,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 2,
+          "bar": 4988,
+          "velocity": 8,
+          "fish": 4860,
+          "progress": 2564,
+          "status": "active"
+        },
+        {
+          "tick": 10,
+          "bar": 4584,
+          "velocity": -84,
+          "fish": 4300,
+          "progress": 2820,
+          "status": "active"
+        },
+        {
+          "tick": 29,
+          "bar": 3314,
+          "velocity": -52,
+          "fish": 2970,
+          "progress": 3428,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 3246,
+          "velocity": -68,
+          "fish": 2900,
+          "progress": 3460,
+          "status": "active"
+        },
+        {
+          "tick": 53,
+          "bar": 1624,
+          "velocity": -51,
+          "fish": 1290,
+          "progress": 4196,
+          "status": "active"
+        },
+        {
+          "tick": 54,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 1220,
+          "progress": 4228,
+          "status": "active"
+        },
+        {
+          "tick": 55,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 1150,
+          "progress": 4260,
+          "status": "active"
+        },
+        {
+          "tick": 100,
+          "bar": 2569,
+          "velocity": -52,
+          "fish": 2287,
+          "progress": 5700,
+          "status": "active"
+        },
+        {
+          "tick": 200,
+          "bar": 4494,
+          "velocity": -83,
+          "fish": 4208,
+          "progress": 8900,
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "name": "4294967295-5-4000-follow",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "rulesVersion": 1,
+        "seed": 4294967295,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 4000,
+        "difficulty": 5,
+        "startedAt": "2026-11-03T10:00:00.000Z",
+        "expiresAt": "2026-11-03T10:02:00.000Z"
+      },
+      "inputs": [
+        {
+          "tick": 1,
+          "held": true
+        },
+        {
+          "tick": 2,
+          "held": false
+        },
+        {
+          "tick": 6,
+          "held": true
+        },
+        {
+          "tick": 7,
+          "held": false
+        },
+        {
+          "tick": 10,
+          "held": true
+        },
+        {
+          "tick": 11,
+          "held": false
+        },
+        {
+          "tick": 13,
+          "held": true
+        },
+        {
+          "tick": 14,
+          "held": false
+        },
+        {
+          "tick": 16,
+          "held": true
+        },
+        {
+          "tick": 17,
+          "held": false
+        },
+        {
+          "tick": 19,
+          "held": true
+        },
+        {
+          "tick": 20,
+          "held": false
+        },
+        {
+          "tick": 22,
+          "held": true
+        },
+        {
+          "tick": 23,
+          "held": false
+        },
+        {
+          "tick": 25,
+          "held": true
+        },
+        {
+          "tick": 26,
+          "held": false
+        },
+        {
+          "tick": 28,
+          "held": true
+        },
+        {
+          "tick": 29,
+          "held": false
+        },
+        {
+          "tick": 32,
+          "held": true
+        },
+        {
+          "tick": 33,
+          "held": false
+        },
+        {
+          "tick": 34,
+          "held": true
+        },
+        {
+          "tick": 35,
+          "held": false
+        },
+        {
+          "tick": 37,
+          "held": true
+        },
+        {
+          "tick": 38,
+          "held": false
+        },
+        {
+          "tick": 40,
+          "held": true
+        },
+        {
+          "tick": 41,
+          "held": false
+        },
+        {
+          "tick": 43,
+          "held": true
+        },
+        {
+          "tick": 44,
+          "held": false
+        },
+        {
+          "tick": 47,
+          "held": true
+        },
+        {
+          "tick": 48,
+          "held": false
+        },
+        {
+          "tick": 76,
+          "held": true
+        },
+        {
+          "tick": 77,
+          "held": false
+        },
+        {
+          "tick": 78,
+          "held": true
+        },
+        {
+          "tick": 80,
+          "held": false
+        },
+        {
+          "tick": 81,
+          "held": true
+        },
+        {
+          "tick": 83,
+          "held": false
+        },
+        {
+          "tick": 84,
+          "held": true
+        },
+        {
+          "tick": 85,
+          "held": false
+        },
+        {
+          "tick": 86,
+          "held": true
+        },
+        {
+          "tick": 87,
+          "held": false
+        },
+        {
+          "tick": 88,
+          "held": true
+        },
+        {
+          "tick": 90,
+          "held": false
+        },
+        {
+          "tick": 97,
+          "held": true
+        },
+        {
+          "tick": 98,
+          "held": false
+        },
+        {
+          "tick": 101,
+          "held": true
+        },
+        {
+          "tick": 102,
+          "held": false
+        },
+        {
+          "tick": 104,
+          "held": true
+        },
+        {
+          "tick": 105,
+          "held": false
+        },
+        {
+          "tick": 107,
+          "held": true
+        },
+        {
+          "tick": 108,
+          "held": false
+        },
+        {
+          "tick": 129,
+          "held": true
+        },
+        {
+          "tick": 130,
+          "held": false
+        },
+        {
+          "tick": 131,
+          "held": true
+        },
+        {
+          "tick": 133,
+          "held": false
+        },
+        {
+          "tick": 134,
+          "held": true
+        },
+        {
+          "tick": 136,
+          "held": false
+        },
+        {
+          "tick": 137,
+          "held": true
+        },
+        {
+          "tick": 138,
+          "held": false
+        },
+        {
+          "tick": 139,
+          "held": true
+        },
+        {
+          "tick": 141,
+          "held": false
+        },
+        {
+          "tick": 142,
+          "held": true
+        },
+        {
+          "tick": 143,
+          "held": false
+        },
+        {
+          "tick": 144,
+          "held": true
+        },
+        {
+          "tick": 145,
+          "held": false
+        },
+        {
+          "tick": 146,
+          "held": true
+        },
+        {
+          "tick": 147,
+          "held": false
+        },
+        {
+          "tick": 148,
+          "held": true
+        },
+        {
+          "tick": 149,
+          "held": false
+        },
+        {
+          "tick": 150,
+          "held": true
+        },
+        {
+          "tick": 151,
+          "held": false
+        },
+        {
+          "tick": 152,
+          "held": true
+        },
+        {
+          "tick": 154,
+          "held": false
+        },
+        {
+          "tick": 155,
+          "held": true
+        },
+        {
+          "tick": 156,
+          "held": false
+        },
+        {
+          "tick": 157,
+          "held": true
+        },
+        {
+          "tick": 158,
+          "held": false
+        },
+        {
+          "tick": 159,
+          "held": true
+        },
+        {
+          "tick": 160,
+          "held": false
+        },
+        {
+          "tick": 161,
+          "held": true
+        },
+        {
+          "tick": 162,
+          "held": false
+        },
+        {
+          "tick": 163,
+          "held": true
+        },
+        {
+          "tick": 164,
+          "held": false
+        },
+        {
+          "tick": 165,
+          "held": true
+        },
+        {
+          "tick": 167,
+          "held": false
+        },
+        {
+          "tick": 168,
+          "held": true
+        },
+        {
+          "tick": 169,
+          "held": false
+        },
+        {
+          "tick": 170,
+          "held": true
+        },
+        {
+          "tick": 171,
+          "held": false
+        },
+        {
+          "tick": 172,
+          "held": true
+        },
+        {
+          "tick": 173,
+          "held": false
+        },
+        {
+          "tick": 174,
+          "held": true
+        },
+        {
+          "tick": 175,
+          "held": false
+        },
+        {
+          "tick": 176,
+          "held": true
+        },
+        {
+          "tick": 177,
+          "held": false
+        },
+        {
+          "tick": 178,
+          "held": true
+        },
+        {
+          "tick": 180,
+          "held": false
+        },
+        {
+          "tick": 188,
+          "held": true
+        },
+        {
+          "tick": 189,
+          "held": false
+        },
+        {
+          "tick": 191,
+          "held": true
+        },
+        {
+          "tick": 192,
+          "held": false
+        },
+        {
+          "tick": 194,
+          "held": true
+        },
+        {
+          "tick": 195,
+          "held": false
+        },
+        {
+          "tick": 197,
+          "held": true
+        },
+        {
+          "tick": 198,
+          "held": false
+        },
+        {
+          "tick": 200,
+          "held": true
+        },
+        {
+          "tick": 201,
+          "held": false
+        },
+        {
+          "tick": 203,
+          "held": true
+        },
+        {
+          "tick": 204,
+          "held": false
+        },
+        {
+          "tick": 205,
+          "held": true
+        },
+        {
+          "tick": 206,
+          "held": false
+        },
+        {
+          "tick": 207,
+          "held": true
+        },
+        {
+          "tick": 208,
+          "held": false
+        },
+        {
+          "tick": 210,
+          "held": true
+        },
+        {
+          "tick": 213,
+          "held": false
+        },
+        {
+          "tick": 214,
+          "held": true
+        },
+        {
+          "tick": 216,
+          "held": false
+        },
+        {
+          "tick": 217,
+          "held": true
+        },
+        {
+          "tick": 219,
+          "held": false
+        },
+        {
+          "tick": 220,
+          "held": true
+        },
+        {
+          "tick": 221,
+          "held": false
+        },
+        {
+          "tick": 222,
+          "held": true
+        },
+        {
+          "tick": 223,
+          "held": false
+        },
+        {
+          "tick": 224,
+          "held": true
+        },
+        {
+          "tick": 226,
+          "held": false
+        },
+        {
+          "tick": 227,
+          "held": true
+        },
+        {
+          "tick": 228,
+          "held": false
+        },
+        {
+          "tick": 229,
+          "held": true
+        },
+        {
+          "tick": 230,
+          "held": false
+        },
+        {
+          "tick": 231,
+          "held": true
+        },
+        {
+          "tick": 232,
+          "held": false
+        },
+        {
+          "tick": 233,
+          "held": true
+        },
+        {
+          "tick": 234,
+          "held": false
+        }
+      ],
+      "endTick": 235,
+      "expected": {
+        "tick": 235,
+        "bar": 5297,
+        "velocity": 51,
+        "fish": 5591,
+        "progress": 10000,
+        "status": "caught"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 4980,
+          "velocity": -20,
+          "fish": 4930,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 2,
+          "bar": 4988,
+          "velocity": 8,
+          "fish": 4860,
+          "progress": 2564,
+          "status": "active"
+        },
+        {
+          "tick": 10,
+          "bar": 4584,
+          "velocity": -84,
+          "fish": 4300,
+          "progress": 2820,
+          "status": "active"
+        },
+        {
+          "tick": 29,
+          "bar": 3314,
+          "velocity": -52,
+          "fish": 2970,
+          "progress": 3428,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 3246,
+          "velocity": -68,
+          "fish": 2900,
+          "progress": 3460,
+          "status": "active"
+        },
+        {
+          "tick": 53,
+          "bar": 2000,
+          "velocity": 0,
+          "fish": 1290,
+          "progress": 4196,
+          "status": "active"
+        },
+        {
+          "tick": 54,
+          "bar": 2000,
+          "velocity": 0,
+          "fish": 1220,
+          "progress": 4228,
+          "status": "active"
+        },
+        {
+          "tick": 55,
+          "bar": 2000,
+          "velocity": 0,
+          "fish": 1150,
+          "progress": 4260,
+          "status": "active"
+        },
+        {
+          "tick": 100,
+          "bar": 2567,
+          "velocity": -64,
+          "fish": 2287,
+          "progress": 5700,
+          "status": "active"
+        },
+        {
+          "tick": 200,
+          "bar": 4528,
+          "velocity": -81,
+          "fish": 4208,
+          "progress": 8900,
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "name": "1-3-3200-release",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "rulesVersion": 1,
+        "seed": 1,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 3,
+        "startedAt": "2026-11-03T10:00:00.000Z",
+        "expiresAt": "2026-11-03T10:02:00.000Z"
+      },
+      "inputs": [],
+      "endTick": 282,
+      "expected": {
+        "tick": 282,
+        "bar": 1600,
+        "velocity": 0,
+        "fish": 6859,
+        "progress": 0,
+        "status": "escaped"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 4980,
+          "velocity": -20,
+          "fish": 4944,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 2,
+          "bar": 4942,
+          "velocity": -38,
+          "fish": 4888,
+          "progress": 2564,
+          "status": "active"
+        },
+        {
+          "tick": 10,
+          "bar": 4100,
+          "velocity": -150,
+          "fish": 4440,
+          "progress": 2820,
+          "status": "active"
+        },
+        {
+          "tick": 29,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 3598,
+          "progress": 2658,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 3580,
+          "progress": 2613,
+          "status": "active"
+        },
+        {
+          "tick": 53,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 2846,
+          "progress": 2117,
+          "status": "active"
+        },
+        {
+          "tick": 54,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 2790,
+          "progress": 2149,
+          "status": "active"
+        },
+        {
+          "tick": 55,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 2734,
+          "progress": 2181,
+          "status": "active"
+        },
+        {
+          "tick": 100,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 1361,
+          "progress": 3621,
+          "status": "active"
+        },
+        {
+          "tick": 200,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 5477,
+          "progress": 3664,
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "name": "0-1-3200-hold",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "rulesVersion": 1,
+        "seed": 0,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 1,
+        "startedAt": "2026-11-03T10:00:00.000Z",
+        "expiresAt": "2026-11-03T10:02:00.000Z"
+      },
+      "inputs": [
+        {
+          "tick": 0,
+          "held": true
+        }
+      ],
+      "endTick": 77,
+      "expected": {
+        "tick": 77,
+        "bar": 8400,
+        "velocity": 0,
+        "fish": 4331,
+        "progress": 0,
+        "status": "escaped"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 5026,
+          "velocity": 26,
+          "fish": 5030,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 2,
+          "bar": 5076,
+          "velocity": 50,
+          "fish": 5057,
+          "progress": 2564,
+          "status": "active"
+        },
+        {
+          "tick": 10,
+          "bar": 6187,
+          "velocity": 197,
+          "fish": 5196,
+          "progress": 2820,
+          "status": "active"
+        },
+        {
+          "tick": 29,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 5288,
+          "progress": 2119,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 5289,
+          "progress": 2074,
+          "status": "active"
+        },
+        {
+          "tick": 53,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 5297,
+          "progress": 1039,
+          "status": "active"
+        },
+        {
+          "tick": 54,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 5297,
+          "progress": 994,
+          "status": "active"
+        },
+        {
+          "tick": 55,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 5255,
+          "progress": 949,
+          "status": "active"
+        }
+      ]
+    }
+  ],
+  "weights": [
+    {
+      "minGrams": 150,
+      "maxGrams": 2500,
+      "first": 0,
+      "second": 10000,
+      "expected": 150
+    },
+    {
+      "minGrams": 80,
+      "maxGrams": 800,
+      "first": 10000,
+      "second": 10000,
+      "expected": 800
+    },
+    {
+      "minGrams": 5000,
+      "maxGrams": 90000,
+      "first": 9999,
+      "second": 1,
+      "expected": 5008
+    },
+    {
+      "minGrams": 1500,
+      "maxGrams": 40000,
+      "first": 3333,
+      "second": 7777,
+      "expected": 11479
+    }
+  ]
+}

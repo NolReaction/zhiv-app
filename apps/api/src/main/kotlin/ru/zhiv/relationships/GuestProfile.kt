@@ -2,6 +2,8 @@ package ru.zhiv.relationships
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
+import ru.zhiv.economy.EconomyBoatState
+import ru.zhiv.economy.EconomyBoatWorkshop
 import ru.zhiv.economy.EconomyRules
 import ru.zhiv.game.GameRewards
 import java.util.UUID
@@ -10,11 +12,17 @@ import java.util.UUID
 @Serializable data class GuestAchievement(val id: String, val level: Int)
 @Serializable data class GuestCollections(val travel: List<String>, val fishing: List<String>, val quarry: List<String>)
 @Serializable data class GuestTapStats(val lifetimeTaps: Long, val bestSeries: Long)
+@Serializable data class GuestFishingRecord(val fishId: String, val weightGrams: Int)
+@Serializable data class GuestBoatModules(val hull: Int, val engine: Int, val tank: Int, val storage: Int)
+@Serializable data class GuestFishingSummary(val rodId: String?, val hookId: String?, val baitId: String?,
+    val modules: GuestBoatModules, val completedVoyages: Long, val records: List<GuestFishingRecord>)
 @Serializable data class GuestProfile(
     val ownerPublicId: String, val circleId: String, val user: GuestProfileUser,
     val homeLevel: Int, val completedExplorations: Long,
     val achievements: List<GuestAchievement>, val collections: GuestCollections, val serverTime: String,
     val tapStats: GuestTapStats? = null,
+    val playerXp: Long = 0,
+    val fishingSummary: GuestFishingSummary? = null,
 )
 interface GuestProfileRepository {
     suspend fun profile(sessionHash: ByteArray, circleId: UUID): GuestProfile
@@ -34,6 +42,16 @@ object GuestProfileRules {
     init {
         require(policy.getValue("version").jsonPrimitive.int == 1)
         require(achievementIds.distinct().size == achievementIds.size && achievementIds.all { it in GameRewards.tiers })
+    }
+    fun fishingSummary(boat: EconomyBoatState, rodId: String?, hookId: String?, baitId: String?): GuestFishingSummary {
+        val fishing = checkNotNull(EconomyRules.catalog.fishing)
+        val modules = EconomyBoatWorkshop.modules(boat)
+        val species = EconomyRules.catalog.boat?.weights.orEmpty()
+        val records = boat.records.filterKeys { it in species }.map { (id, record) -> GuestFishingRecord(id, record.weightGrams) }
+            .sortedWith(compareByDescending<GuestFishingRecord> { it.weightGrams }.thenBy { it.fishId }).take(3)
+        return GuestFishingSummary(fishing.rods.find { it.id == (rodId ?: "reed_rod") }?.id,
+            fishing.hooks.find { it.id == (hookId ?: "bare_hook") }?.id, fishing.baits.find { it.itemId == baitId }?.itemId,
+            GuestBoatModules(modules.hull, modules.engine, modules.tank, modules.storage), boat.completedVoyages, records)
     }
     fun achievements(awarded: Map<String, Int>): List<GuestAchievement> = achievementIds.mapNotNull { id ->
         awarded[id]?.takeIf { it > 0 }?.let { GuestAchievement(id, minOf(it, GameRewards.tiers.getValue(id).size)) }

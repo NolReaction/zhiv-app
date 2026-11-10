@@ -170,12 +170,16 @@ test("fresh tier berries stay with supplies while their prepared dishes appear i
 test("pantry content retains real capacity and relic stock without duplicating the header upgrade action", () => {
   const job = { id: "da818fb4-6c9e-4b42-9b78-60669b234f0a", kind: "construction", targetId: "warehouse", recipeId: null, targetLevel: 10,
     startedAt: new Date(now - 60_000).toISOString(), finishesAt: new Date(now + 45_000).toISOString(), rewards: {}, cost: { coins: 200, items: {} }, catalogVersion: 2 };
-  for (const [level, jobs] of [[1, []], [9, []], [9, [job]], [10, []]]) {
+  for (const [level, jobs] of [[1, []], [9, []], [9, [job]], [10, []], [14, []], [15, []]]) {
     const state = snapshot({ buildings: { home: 5, warehouse: level }, jobs, inventory: { wood: 4, ancient_core: 10, moon_crystal: 1, living_resin: 3 } });
     const before = structuredClone(state), economy = controller({ snapshot: state });
     const html = render(economy);
     assert.ok(html.includes(`aria-label="Кладовая: занято ${state.storage.used} из ${state.storage.capacity} мест"`));
     assert.match(html, /aria-label="Бревно: 4"/);
+    assert.ok(html.includes(`Ур. ${level} / 15`));
+    assert.match(html, /До ур. 10 — материалы и монеты. Дальше — только реликвии./);
+    if (level < 15) assert.ok(html.includes(`${jobs.length ? "После улучшения" : "Следующее улучшение"}: +50 мест`));
+    else assert.match(html, /Все улучшения получены/);
     assert.doesNotMatch(html, /Расширить кладовую|Кладовая расширяется|Расширение готово|Максимальная вместимость|Реликвии для следующего расширения/);
     const relics = render(economy, { initialTab: "relics" });
     for (const [id, quantity] of [["ancient_core", 10], ["moon_crystal", 1], ["living_resin", 3]]) {
@@ -210,7 +214,7 @@ test("quick sale shows catalog markdown and sends the displayed minimum quote wi
 });
 
 test("all seven first-stage goods display and send their fixed NPC price without markdown", () => {
-  const fixedPrices = { berries: 10, strawberries: 40, wood: 30, stone: 40, planks: 40, berry_compote: 30, grilled_fish: 55 };
+  const fixedPrices = { berries: 10, strawberries: 50, wood: 30, stone: 30, planks: 50, berry_compote: 50, grilled_fish: 45 };
   for (const [itemId, price] of Object.entries(fixedPrices)) {
     const state = snapshot({ inventory: { [itemId]: 2 } });
     const view = inspectSale(state, { itemId });
@@ -225,9 +229,10 @@ test("all seven first-stage goods display and send their fixed NPC price without
   }
 });
 
-test("penny stock starts at a payable batch, and wallet limits use the whole-stack rounded price", () => {
+test("legacy penny stock starts at a payable batch, and wallet limits use the whole-stack rounded price", () => {
   const state = snapshot({ inventory: { crumb_bait: 10 }, wallet: { coins: 9_999_999_990, pearls: 0 } });
   state.catalog.localBuyer = { payoutBps: 6000 };
+  state.catalog.items.find(item => item.id === "crumb_bait").baseSellPrice = 10;
   const view = inspectSale(state, { itemId: "crumb_bait" });
   const input = view.elements.find(element => element.type === "input");
   assert.equal(input.props.min, 2); assert.equal(input.props.max, 3); assert.equal(input.props.value, "2");
@@ -241,8 +246,9 @@ test("penny stock starts at a payable batch, and wallet limits use the whole-sta
   assert.match(empty.html, /нужно хотя бы 2 шт/);
 });
 
-test("fish points to Pleska's full price and an available navigation callback", () => {
+test("legacy fish markdown points to Pleska's full price and an available navigation callback", () => {
   const state = snapshot({ inventory: { fish_common: 4 } }); state.catalog.localBuyer = { payoutBps: 6000 };
+  state.catalog.items.find(item => item.id === "fish_common").baseSellPrice = 40;
   let opened = 0;
   const view = inspectSale(state, { itemId: "fish_common", onOpenFishingShop() { opened++; } });
   assert.match(view.html, /Плёска купит дороже: 40 монет за штуку/);

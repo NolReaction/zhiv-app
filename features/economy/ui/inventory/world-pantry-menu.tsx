@@ -6,7 +6,7 @@ import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Popover } from "radix-ui";
-import { ChevronLeft, ChevronRight, ChevronUp, Compass, Fish, Gift, Package, RefreshCw, Snowflake, Sparkles, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Compass, Fish, Gift, Package, RefreshCw, Snowflake, Sparkles, X } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { FISH_SPECIES_IDS } from "@/features/world/activities/fishing/fish-species";
 import { fishSelectionMatches, fishStockEntries, type FishSelection } from "@/features/economy/domain/fish-stock";
@@ -181,7 +181,12 @@ export function PantryFishPopover({ economy, classIds, constructionGoal, onOpenF
   return <Popover.Root modal={false} open={open} onOpenChange={value => { if (!value) { latest.current = { ...latest.current, choice: null }; setChoice(null); taps.clear(); } }}>
     <Popover.Anchor virtualRef={{ current: open ? choice.element : null }} />
     <div ref={host} className={styles.fridgeFish} data-pantry-fish-session aria-label="Рыба и еда в холодильнике">
-      {classIds.map(classId => <PantryFishClassRow key={classId} economy={economy} classId={classId} selectedFishId={open ? choice.fishId : undefined}
+      {classIds.map(classId => <PantryFishClassRow key={`${state.ownerPublicId}:${classId}`} economy={economy} classId={classId} selectedFishId={open ? choice.fishId : undefined}
+        onCollapse={() => {
+          if (latest.current.economy.snapshot.ownerPublicId !== acceptedOwner || latest.current.choice?.owner !== acceptedOwner
+            || latest.current.choice.classId !== classId) return;
+          latest.current = { ...latest.current, choice: null }; setChoice(null); taps.clear();
+        }}
         saleId={open ? `${headingId}-sale` : undefined} onFocusSale={() => {
           if (latest.current.choice?.owner === latest.current.economy.snapshot.ownerPublicId) panel.current?.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
         }} onSelectFish={choose} feedback={taps.feedback} />)}
@@ -192,13 +197,16 @@ export function PantryFishPopover({ economy, classIds, constructionGoal, onOpenF
       onEscapeKeyDown={event => { event.stopPropagation(); if (nestedPickerOpen.current) event.preventDefault(); }} onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}
       onInteractOutside={event => {
         const target = event.target as HTMLElement | null;
-        if (nestedPickerOpen.current || target?.closest?.("[data-pantry-fish-card]") && host.current?.contains(target)) event.preventDefault();
+        if (nestedPickerOpen.current || target?.closest?.("[data-pantry-fish-card], [data-pantry-fish-toggle]") && host.current?.contains(target)) event.preventDefault();
       }} onCloseAutoFocus={event => {
         event.preventDefault();
         const source = origin.current, current = latest.current;
         origin.current = null;
         if (source?.element.isConnected && !source.element.disabled && host.current?.isConnected
-          && source.owner === current.economy.snapshot.ownerPublicId) source.element.focus({ preventScroll: true });
+          && source.owner === current.economy.snapshot.ownerPublicId) {
+          const group = source.element.closest<HTMLDetailsElement>("details[data-pantry-fish-class]");
+          (group && !group.open ? group.querySelector<HTMLElement>("summary") : source.element)?.focus({ preventScroll: true });
+        }
       }}>
       <header className={styles.fishPopoverHeading}><strong id={headingId}>{state.catalog.items.find(item => item.id === choice.classId)?.name ?? choice.classId}</strong>
         <Popover.Close asChild><button ref={close} type="button" data-pantry-fish-close aria-label="Закрыть выбор рыбы"><X size={16} aria-hidden="true" /></button></Popover.Close>
@@ -216,9 +224,9 @@ export function PantryFishPopover({ economy, classIds, constructionGoal, onOpenF
   </Popover.Root>;
 }
 
-/** A native horizontal rail leaves vertical page scrolling and inventory counts alone. */
-export function PantryFishClassRow({ economy, classId, selectedFishId, onSelectFish, feedback, saleId, onFocusSale }: {
-  economy: ReadyEconomy; classId: string; selectedFishId?: string; saleId?: string; onFocusSale?: () => void; onSelectFish?: FishRailSelection["onSelectFish"]; feedback?: TapFeedback;
+/** Native class disclosure keeps stock totals visible and species in a horizontal rail. */
+export function PantryFishClassRow({ economy, classId, selectedFishId, onSelectFish, feedback, saleId, onFocusSale, onCollapse }: {
+  economy: ReadyEconomy; classId: string; selectedFishId?: string; saleId?: string; onFocusSale?: () => void; onCollapse?: () => void; onSelectFish?: FishRailSelection["onSelectFish"]; feedback?: TapFeedback;
 }) {
   const state = economy.snapshot, entries = fishStockEntries(state, classId), headingId = useId();
   const rail = useRef<HTMLDivElement>(null);
@@ -241,9 +249,9 @@ export function PantryFishClassRow({ economy, classId, selectedFishId, onSelectF
   const rarity = fishClassForItem(classId, state.catalog.fishing)?.rarity ?? "common";
   const rarityDescription = `Редкость: ${pantryRarityNames[rarity]}`;
   const total = entries.reduce((sum, entry) => sum + entry.quantity, 0);
-  return <section className={styles.fishClassRow} data-pantry-fish-class={classId} data-fish-rarity={fishClassForItem(classId, state.catalog.fishing)?.rarity}
-    aria-label={`${name}: ${number(total)}`}>
-    <header className={styles.fishClassHeading}><span className={styles.fishClassArt}><ItemIcon itemId={classId} size={32} /></span><h3 id={headingId}>{name}</h3><strong aria-label={`Всего: ${number(total)}`}>×{number(total)}</strong></header>
+  return <details className={styles.fishClassRow} data-pantry-fish-class={classId} data-fish-rarity={fishClassForItem(classId, state.catalog.fishing)?.rarity}
+    aria-label={`${name}: ${number(total)}`} onToggle={event => { if (!event.currentTarget.open) onCollapse?.(); }}>
+    <summary className={styles.fishClassHeading} data-pantry-fish-toggle={classId}><span className={styles.fishClassArt}><ItemIcon itemId={classId} size={32} /></span><span id={headingId}>{name}</span><strong aria-label={`Всего: ${number(total)}`}>×{number(total)}</strong><ChevronDown size={15} className={styles.fishClassChevron} aria-hidden="true" /></summary>
     <span hidden id={`${headingId}-rarity`}>{rarityDescription}</span>
     <div className={styles.fishRailFrame}>
       <div ref={rail} className={styles.fishRail} role="group" aria-labelledby={headingId} data-pantry-fish-rail={classId} onScroll={event => {
@@ -265,7 +273,7 @@ export function PantryFishClassRow({ economy, classId, selectedFishId, onSelectF
       {edges.left && <span className={`${styles.railHint} ${styles.railHintLeft}`} data-rail-edge="left" aria-hidden="true"><ChevronLeft size={14} /></span>}
       {edges.right && <span className={styles.railHint} data-rail-edge="right" aria-hidden="true"><ChevronRight size={14} /></span>}
     </div>
-  </section>;
+  </details>;
 }
 
 export function RelicPantrySection({ state, onExplore, rarityDescriptionId }: { state: EconomyView; onExplore: () => void; rarityDescriptionId?: string }) {
@@ -302,6 +310,13 @@ export function WorldPantryMenu({ economy, onExplore, onOpenFishingShop, constru
 
   const { used, reserved, capacity, available, overflow } = state.storage;
   const occupied = used + reserved;
+  const warehouse = state.catalog.buildings.find(building => building.id === "warehouse");
+  const warehouseLevel = state.buildings.warehouse ?? 1;
+  const maximumLevel = warehouse?.levels.at(-1)?.level ?? warehouseLevel;
+  const nextLevel = warehouse?.levels.find(level => level.level === warehouseLevel + 1);
+  const warehouseConstruction = state.jobs.some(job => job.kind === "construction" && job.targetId === "warehouse");
+  const relicIds = new Set(state.catalog.items.filter(item => item.category === "special").map(item => item.id));
+  const firstRelicLevel = warehouse?.levels.find(level => Object.keys(level.cost.items).some(id => relicIds.has(id)))?.level;
   // This is a view of the same inventory, not another capacity or reward store.
   const fishIds = new Set<string>([...FISH_SPECIES_IDS, ...(state.catalog.fishing?.classes.map(fish => fish.itemId) ?? []), ...(state.catalog.food?.meals.map(meal => meal.itemId) ?? []), ...state.catalog.items.filter(item => item.category === "provisions").map(item => item.id)]);
   const ownedItems = state.catalog.items.filter(item => item.category !== "special" && (state.inventory[item.id] ?? 0) > 0);
@@ -327,6 +342,11 @@ export function WorldPantryMenu({ economy, onExplore, onOpenFishingShop, constru
     <div className={styles.capacity} data-guide-pantry-capacity data-full={available === 0 || undefined}>
       <div><span className={styles.capacityLabel}><Package size={14} aria-hidden="true" />Занято <strong>{number(occupied)} <span>/ {number(capacity)}</span></strong></span><span>{available > 0 ? `Свободно ${number(available)}` : "Все места заняты"}</span></div>
       <progress value={Math.min(capacity, occupied)} max={Math.max(1, capacity)} aria-label={`Кладовая: занято ${occupied} из ${capacity} мест`} />
+      <div className={styles.expansion} data-warehouse-expansion>
+        <span>Ур. {warehouseLevel} / {maximumLevel}</span>
+        <span>{nextLevel?.warehouseCapacity ? `${warehouseConstruction ? "После улучшения" : "Следующее улучшение"}: +${number(nextLevel.warehouseCapacity - capacity)} мест` : "Все улучшения получены"}</span>
+      </div>
+      {firstRelicLevel && <p className={styles.expansionCost} data-warehouse-cost>До ур. {firstRelicLevel - 1} — материалы и монеты. Дальше — только реликвии.</p>}
       {reserved > 0 && <p className={styles.muted}>На рынке {number(reserved)}</p>}
     </div>
     {overflow > 0 && <p className={styles.hint}>Сверх вместимости: {number(overflow)}. Запасы сохранены. Продайте или используйте часть вещей, чтобы получать новые.</p>}

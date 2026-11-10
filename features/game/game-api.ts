@@ -2,7 +2,7 @@ import { gamePresenceHeaders, reportInactivePresence } from "@/features/activity
 import { playerTagSchema } from "@/lib/player-tag";
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
-import { GAME_ACHIEVEMENT_TARGETS } from "@/features/game/achievement-progress";
+import { GAME_ACHIEVEMENT_TARGETS, LEGACY_GAME_ACHIEVEMENT_TARGETS } from "@/features/game/achievement-progress";
 
 const count = z.number().int().nonnegative().safe();
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
@@ -10,7 +10,7 @@ const owner = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2
 
 export const gameProgressSchema = z.object({
   ownerPublicId: owner,
-  items: z.array(z.enum(["flower", "leaf_bed", "keepsakes", "leaf_garland"])).max(4).refine(items => new Set(items).size === items.length).default([]),
+  items: z.array(z.enum(["flower", "leaf_bed", "keepsakes", "leaf_garland"])).max(4).refine(items => new Set(items).size === items.length).prefault([]),
   lifetimeTaps: count,
   bestSeries: count,
   month,
@@ -20,7 +20,7 @@ export const gameProgressSchema = z.object({
   serverTime: z.string().datetime(),
 });
 export const gameSessionSchema = z.object({
-  sessionId: z.string().uuid(),
+  sessionId: z.guid(),
   nextSequence: count,
   expiresAt: z.string().datetime(),
   startedAt: z.string().datetime().nullable().optional(),
@@ -28,7 +28,7 @@ export const gameSessionSchema = z.object({
   progress: gameProgressSchema,
 });
 const gameBatchSchema = z.object({
-  sessionId: z.string().uuid(),
+  sessionId: z.guid(),
   sequence: count,
   acceptedTaps: count,
   runTaps: count,
@@ -40,8 +40,8 @@ const gameBatchSchema = z.object({
 const gameLeaderboardSchema = z.object({
   ownerPublicId: owner,
   scope: z.enum(["global", "friends"]),
-  metric: z.enum(["monthly_taps", "best_series"]).default("monthly_taps"),
-  bestSeries: count.default(0),
+  metric: z.enum(["monthly_taps", "best_series"]).prefault("monthly_taps"),
+  bestSeries: count.prefault(0),
   month,
   serverTime: z.string().datetime(),
   entries: z.array(z.object({
@@ -58,7 +58,7 @@ const gameLeaderboardSchema = z.object({
 });
 
 const gameAchievementIdSchema = z.enum(["seven_day_streak", "thousand_taps", "five_friends", "ten_thousand_series", "linked_email", "saved_recovery_code", "full_collection",
-  "first_path", "familiar_trails", "explorer", "master_recipes", "home_builder", "river_atlas", "first_sale", "lucky_find", "patient_angler", "campfire_cook", "helpful_neighbor", "generous_garden"]);
+  "first_path", "familiar_trails", "explorer", "master_recipes", "home_builder", "river_atlas", "first_sale", "lucky_find", "patient_angler", "campfire_cook", "helpful_neighbor", "generous_garden", "forest_cuisine"]);
 const gameAchievementTierSchema = z.object({ level: count.positive(), progress: count,
   target: count.positive(), unlockedAt: z.string().datetime().nullable() });
 const gameAchievementSchema = z.object({
@@ -68,7 +68,8 @@ const gameAchievementSchema = z.object({
   unlockedAt: z.string().datetime().nullable(),
   tiers: z.array(gameAchievementTierSchema).min(1).max(4).optional(),
 }).refine(value => {
-  const targets: readonly number[] = GAME_ACHIEVEMENT_TARGETS[value.id];
+  const currentTargets: readonly number[] = GAME_ACHIEVEMENT_TARGETS[value.id];
+  const targets: readonly number[] = value.tiers?.length === LEGACY_GAME_ACHIEVEMENT_TARGETS[value.id].length ? LEGACY_GAME_ACHIEVEMENT_TARGETS[value.id] : currentTargets;
   if (!value.tiers) return Object.keys(GAME_ACHIEVEMENT_TARGETS).indexOf(value.id) < 7 && value.target === targets[0]
     && value.progress <= value.target && (!value.unlockedAt || value.progress === value.target);
   if (value.tiers.length !== targets.length || value.tiers.some((tier, index) => tier.level !== index + 1 || tier.target !== targets[index]
@@ -80,9 +81,9 @@ const gameAchievementSchema = z.object({
 export const gameAchievementsSchema = z.object({
   ownerPublicId: owner,
   serverTime: z.string().datetime(),
-  achievements: z.array(gameAchievementSchema).min(3).max(19)
+  achievements: z.array(gameAchievementSchema).min(3).max(20)
     .refine(items => new Set(items.map(item => item.id)).size === items.length
-      && ([3, 6, 7, 15, 19].includes(items.length))
+      && ([3, 6, 7, 15, 19, 20].includes(items.length))
       && items.every((item, index) => item.id === Object.keys(GAME_ACHIEVEMENT_TARGETS)[index])
       && (items.length >= 15 ? items.every(item => !!item.tiers) : items.every(item => !item.tiers))),
 });
@@ -103,7 +104,7 @@ export type GameVisibilityRequest = { leaderboardOptIn: boolean; expectedVersion
 
 async function gameRequest<T>(
   path: string,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  schema: z.ZodType<T, unknown>,
   method: "GET" | "POST" | "PATCH",
   body: unknown,
   externalSignal?: AbortSignal,
@@ -155,7 +156,7 @@ export function getGameLeaderboard(scope: GameLeaderboardScope = "global", signa
   return gameRequest(`/api/v1/game/leaderboard?scope=${scope}&metric=${metric}`, gameLeaderboardSchema, "GET", undefined, signal);
 }
 export function getGameAchievements(signal?: AbortSignal): Promise<GameAchievements> {
-  return gameRequest("/api/v1/game/achievements?catalog=6", gameAchievementsSchema, "GET", undefined, signal);
+  return gameRequest("/api/v1/game/achievements?catalog=8", gameAchievementsSchema, "GET", undefined, signal);
 }
 export function updateGameVisibility(body: GameVisibilityRequest, signal?: AbortSignal): Promise<GameProgress> {
   return gameRequest("/api/v1/game/visibility", gameProgressSchema, "PATCH", body, signal);

@@ -191,6 +191,92 @@ test("uncertain purchase uses same receipt, blocks other writes and survives ses
   assert.equal(next.getSnapshot().uncertain, false); assert.equal(cache.data.size, 0);
 });
 
+test("a lost cast response restores the original hold duration and request ID after reloading", async () => {
+  const cache = storage(), sent = [], voyageId = crypto.randomUUID(), challengeId = crypto.randomUUID();
+  const before = { ...state(), boat: { voyage: { id: voyageId, castsUsed: 0 } } };
+  const afterCast = { ...state(1), boat: { voyage: { id: voyageId, castsUsed: 1, challenge: { id: challengeId } } } };
+  let authoritative = before;
+  const t = transport({ get: async () => authoritative, send: async command => {
+    sent.push(structuredClone(command));
+    if (sent.length === 1) { authoritative = afterCast; throw Error("Response lost after cast"); }
+    return { ...result(afterCast), replayed: true };
+  } });
+  const original = createEconomySession(owner, t, () => assert.fail(), cache), stop = original.activate();
+  await original.refresh();
+  assert.equal(original.act("begin_boat_cast", voyageId, 1, 0, undefined, undefined, { castHeldMs: 843 }), true);
+  await flush();
+  assert.equal(original.getSnapshot().uncertain, true);
+  stop();
+
+  const restored = createEconomySession(owner, t, () => assert.fail(), cache), deactivate = restored.activate();
+  await restored.refresh();
+  await restored.retry();
+  assert.equal(sent.length, 2);
+  assert.ok(sent[0].requestId);
+  assert.deepEqual(sent[1], sent[0]);
+  assert.equal(sent[1].castHeldMs, 843);
+  assert.equal(Object.hasOwn(sent[1], "reel"), false);
+  assert.deepEqual(restored.getSnapshot().snapshot.boat.voyage, afterCast.boat.voyage);
+  assert.equal(restored.getSnapshot().uncertain, false);
+  assert.equal(cache.data.size, 0);
+  deactivate();
+});
+
+test("only a confirmed local departure animates the river entrance, including a retry in the same tab", async () => {
+  const voyageId = crypto.randomUUID(), dock = state(), river = { ...state(1), boat: { voyage: { id: voyageId } } };
+  for (const restoreSession of [false, true]) {
+    const cache = storage(), sent = [];
+    let published = dock;
+    const t = transport({ get: async () => published, send: async command => {
+      sent.push(command.requestId);
+      if (sent.length === 1) { published = river; throw Error("Connection lost after departure"); }
+      return { ...result(river), replayed: true };
+    } });
+    let session = createEconomySession(owner, t, () => assert.fail(), cache);
+    let stop = session.activate();
+    await session.refresh();
+    assert(session.act("depart_boat", economyCatalog.boat.routeId)); await flush();
+    assert.equal(session.getSnapshot().localBoatDepartureId, undefined);
+    if (restoreSession) {
+      stop(); session = createEconomySession(owner, t, () => assert.fail(), cache); stop = session.activate();
+      await session.refresh();
+    }
+    await session.retry();
+    assert.equal(sent[0], sent[1]);
+    assert.equal(session.getSnapshot().localBoatDepartureId, restoreSession ? undefined : voyageId);
+    stop();
+  }
+  const spectator = createEconomySession(owner, transport({ get: async () => river }), () => assert.fail());
+  const close = spectator.activate(); await spectator.refresh();
+  assert.equal(spectator.getSnapshot().localBoatDepartureId, undefined);
+  close();
+});
+
+test("only the tab whose dock action won receives its own settlement after a competing unload or sale", async () => {
+  for (const winner of ["claim_boat", "sell_boat_catch"]) {
+    const id = crypto.randomUUID(), rejected = winner === "claim_boat" ? "sell_boat_catch" : "claim_boat";
+    const boat = { level: 1, completedVoyages: 0, voyage: { id, catches: [] } };
+    const before = { ...state(), boat }, afterState = { ...state(1), boat: { level: 1, completedVoyages: 1 } };
+    let published = before, accepted, resolveLoser;
+    const first = createEconomySession(owner, transport({ get: async () => published, send: async command => {
+      accepted = command; published = afterState; return result(afterState);
+    } }), () => assert.fail());
+    const second = createEconomySession(owner, transport({ get: async () => published, send: () => new Promise((_resolve, reject) => {
+      resolveLoser = () => reject(new ApiError("Запрос устарел", 409));
+    }) }), () => assert.fail());
+    const stopFirst = first.activate(), stopSecond = second.activate();
+    await Promise.all([first.refresh(), second.refresh()]);
+    assert(second.act(rejected, id, 1, rejected === "sell_boat_catch" ? 50 : 0));
+    assert(first.act(winner, id, 1, winner === "sell_boat_catch" ? 50 : 0));
+    await flush(); resolveLoser(); await flush();
+    assert.equal(second.getSnapshot().snapshot.revision, 1);
+    assert.equal(second.getSnapshot().localBoatSettlement, undefined);
+    assert.deepEqual(first.getSnapshot().localBoatSettlement, { requestId: accepted.requestId, voyageId: id, revision: 1,
+      ...(winner === "sell_boat_catch" ? { saleCoins: 50 } : {}) });
+    stopFirst(); stopSecond();
+  }
+});
+
 test("definitive conflict refreshes balance and permits a deliberate new command", async () => {
   let sent = 0, latest = state();
   const session = createEconomySession(owner, transport({ get: async () => latest, send: async () => {
@@ -488,4 +574,30 @@ test("unrelated commands, foreign owners, stale revisions and mismatched sale qu
     assert.equal(session.getSnapshot().localSale, undefined);
     assert.equal(lost, answer.ownerPublicId === other ? 1 : 0);
   }
+});
+
+
+test("partial ship cargo retains exact identifiers and quantity across a lost receipt", async () => {
+  const cache = storage(), sent = []; let authoritative = state();
+  const t = transport({ get: async () => authoritative, send: async command => {
+    sent.push(structuredClone(command));
+    if (sent.length === 1) { authoritative = state(1); throw Error("Committed cargo response lost"); }
+    return { ...result(authoritative), replayed: true };
+  } });
+  const original = createEconomySession(owner, t, () => assert.fail(), cache), stop = original.activate();
+  await original.refresh();
+  const voyageId = "7a58066f-b814-4ff0-8536-e21cfa9de196";
+  const cargo = { voyageId, orderId: `${voyageId}:1`, itemId: "planks" };
+  assert.equal(original.act("load_ship_cargo", cargo.orderId, 2, 0, undefined, cargo), true);
+  cargo.itemId = "rope";
+  await flush(); assert.equal(original.getSnapshot().uncertain, true); stop();
+  const restored = createEconomySession(owner, t, () => assert.fail(), cache), deactivate = restored.activate();
+  await restored.refresh(); await restored.retry();
+  assert.deepEqual(sent[1], sent[0]);
+  assert.equal(sent[1].voyageId, voyageId);
+  assert.equal(sent[1].orderId, `${voyageId}:1`);
+  assert.equal(sent[1].itemId, "planks");
+  assert.equal(sent[1].quantity, 2);
+  assert.equal(restored.getSnapshot().uncertain, false);
+  deactivate();
 });

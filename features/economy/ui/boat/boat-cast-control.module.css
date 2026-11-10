@@ -1,0 +1,160 @@
+.surface {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  appearance: none;
+  background: transparent;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.surface:focus-visible {
+  outline: 2px solid #e3d49b;
+  outline-offset: -5px;
+}
+
+.actionCue {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 8px 15px;
+  border: 1px solid #e3cd96;
+  border-radius: 8px;
+  background: linear-gradient(#e8ce93, #cba767);
+  color: #203332;
+  box-shadow: inset 0 1px #f8e5b4, 0 3px 10px #031c2b65;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.actionCue[data-fishing-cue="cast"] {
+  left: 50%;
+  bottom: max(17%, calc(90px + env(safe-area-inset-bottom)));
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+[data-fishing-stage="landed"] .actionCue[data-fishing-cue="cast"] { display: none; }
+
+.actionCue[data-fishing-cue="reel"] {
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 52px);
+  min-width: 150px;
+  text-align: left;
+}
+
+.actionCue small { display: block; margin-top: 2px; font-size: 11px; font-weight: 500; }
+.surface:focus-visible .actionCue { outline: 2px solid #fff2c5; outline-offset: 3px; }
+.surface[aria-pressed="true"] .actionCue { background: #baddc0; border-color: #e3efd6; box-shadow: inset 0 2px 3px #487c6b33; }
+
+@media (max-width: 400px) {
+  .actionCue[data-fishing-cue="reel"] {
+    right: max(10px, env(safe-area-inset-right));
+    min-width: 0;
+    width: 112px;
+    gap: 4px;
+    padding-inline: 6px;
+    font-size: 12px;
+  }
+  .actionCue[data-fishing-cue="reel"] svg { width: 16px; flex-shrink: 0; }
+}
+
+@media (max-height: 500px) {
+  .actionCue[data-fishing-cue="cast"] { bottom: calc(max(6px, env(safe-area-inset-bottom)) + 55px); }
+  .actionCue[data-fishing-cue="reel"] { bottom: calc(max(6px, env(safe-area-inset-bottom)) + 45px); }
+}
+
+.meter {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: max(15%, 64px);
+  width: min(258px, calc(100% - 48px));
+  box-sizing: border-box;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 13px;
+  padding: 10px 14px 13px;
+  border: 1px solid #adbca757;
+  border-radius: 8px;
+  background: linear-gradient(160deg, #122e32f5, #112629f7);
+  box-shadow: 0 4px 14px #03181e6b;
+  pointer-events: none;
+  user-select: none;
+}
+
+.caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: #dce6d7;
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.15;
+}
+
+.caption b { color: #f9e8b6; font-variant-numeric: tabular-nums; }
+
+.track {
+  position: relative;
+  height: 11px;
+  border-radius: 4px;
+  background: linear-gradient(to right,
+    #ab5951 0%, #b9624c calc(var(--target) - 36%), #e2b863 calc(var(--target) - 17%),
+    #9acb83 calc(var(--target) - var(--green-radius)), #81c7a0 var(--target),
+    #9acb83 calc(var(--target) + var(--green-radius)), #e2b863 calc(var(--target) + 17%),
+    #b9624c calc(var(--target) + 36%), #ab5951 100%);
+  box-shadow: inset 0 0 0 1px #102e2b66;
+}
+
+.window {
+  position: absolute;
+  inset-block: -2px;
+  left: calc(var(--target) - var(--green-radius));
+  width: calc(var(--green-radius) + var(--green-radius));
+  box-sizing: border-box;
+  border: 1px solid #e3f7cd;
+  border-radius: 3px;
+}
+
+.needle {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: var(--marker);
+  width: 3px;
+  border-radius: 2px;
+  transform: translateX(-50%);
+  background: #fff8dc;
+  box-shadow: 0 0 0 1px #343831;
+}
+
+.needle::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  width: 8px;
+  height: 5px;
+  transform: translateX(-50%);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  background: #fff8dc;
+}
+
+@media (max-height: 430px) {
+  .meter { bottom: 52px; gap: 9px; padding: 7px 11px 9px; }
+}

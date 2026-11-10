@@ -234,9 +234,11 @@ class JdbcGameRepositoryIntegrationTest {
         assertTrue(OffsetDateTime.parse(newSession.expiresAt) <= currentMonth.plusMonths(1).atStartOfDay().atOffset(ZoneOffset.UTC))
     }
 
-    @Test fun `visibility requires opt in and stale or different owner writes cannot republish`() = runBlocking<Unit> {
+    @Test fun `guest statistics preference remains versioned without changing leaderboard participation`() = runBlocking<Unit> {
         val p = player(); val other = player()
         score(p, 20)
+        assertNotNull(games.leaderboard(p.hash).myRank)
+        assertTrue(games.leaderboard(other.hash).leaderboardOptIn)
         assertFalse(games.leaderboard(other.hash).entries.any { it.isMe })
         val yes = games.setVisibility(p.hash, true, 0, p.publicId)
         assertEquals(1L, yes.visibilityVersion)
@@ -245,7 +247,7 @@ class JdbcGameRepositoryIntegrationTest {
         val no = games.setVisibility(p.hash, false, 1, p.publicId)
         assertEquals(2L, no.visibilityVersion)
         assertEquals("GAME_VISIBILITY_CONFLICT", assertFailsWith<AuthFailure> { games.setVisibility(p.hash, true, 0, p.publicId) }.code)
-        assertNull(games.leaderboard(p.hash).myRank)
+        assertNotNull(games.leaderboard(p.hash).myRank)
         assertEquals("GAME_OWNER_CHANGED", assertFailsWith<AuthFailure> { games.setVisibility(other.hash, true, 0, p.publicId) }.code)
         assertEquals("GAME_OWNER_CHANGED", assertFailsWith<AuthFailure> { games.openSession(other.hash, UUID.randomUUID(), p.publicId) }.code)
         assertFalse(games.progress(other.hash).leaderboardOptIn)
@@ -349,14 +351,14 @@ class JdbcGameRepositoryIntegrationTest {
         """.trimIndent(),player.id,UUID.randomUUID(),at,at.plusSeconds(30),localDate,player.hash)
     }
 
-    @Test fun `friends scope filters before ranking and excludes pending groups removed deleted and private players`() = runBlocking<Unit> {
+    @Test fun `friends scope filters before ranking and includes every direct friend and excludes pending groups removed and deleted players`() = runBlocking<Unit> {
         val me=player("Мой рейтинг"); val friend=player("Друг"); val pending=player("Заявка")
-        val stranger=player("Посторонний"); val privateFriend=player("Скрытый")
+        val stranger=player("Посторонний"); val freshFriend=player("Новый друг")
         val removed=player("Удалённая связь"); val deleted=player("Удалённый участник"); val groupPeer=player("Общая группа")
-        val players=listOf(me,friend,pending,stranger,privateFriend,removed,deleted,groupPeer)
-        players.forEachIndexed { i,p -> score(p,10+i); if (p!=privateFriend) games.setVisibility(p.hash,true,0,p.publicId) }
+        val players=listOf(me,friend,pending,stranger,freshFriend,removed,deleted,groupPeer)
+        players.forEachIndexed { i,p -> score(p,10+i); if (p!=freshFriend) games.setVisibility(p.hash,true,0,p.publicId) }
         val relationships=JdbcRelationshipRepository(source)
-        connect(me,friend); connect(me,privateFriend)
+        connect(me,friend); connect(me,freshFriend)
         val removedCircle=connect(me,removed); relationships.removePerson(me.hash,removedCircle)
         connect(me,deleted); execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?",deleted.id)
         relationships.sendRequest(me.hash,pending.publicId,UUID.randomUUID())
@@ -376,14 +378,12 @@ class JdbcGameRepositoryIntegrationTest {
         }
         val board=games.leaderboard(me.hash,"friends")
         assertEquals("friends",board.scope)
-        assertEquals(listOf("Друг","Мой рейтинг"),board.entries.map { it.displayName })
-        assertEquals(listOf(1L,2L),board.entries.map { it.rank })
-        assertEquals(2L,board.myRank)
+        assertEquals(listOf("Новый друг","Друг","Мой рейтинг"),board.entries.map { it.displayName })
+        assertEquals(listOf(1L,2L,3L),board.entries.map { it.rank })
+        assertEquals(3L,board.myRank)
         games.setVisibility(friend.hash,false,1,friend.publicId)
-        assertEquals(listOf("Мой рейтинг"),games.leaderboard(me.hash,"friends").entries.map { it.displayName })
         games.setVisibility(me.hash,false,1,me.publicId)
-        assertNull(games.leaderboard(me.hash,"friends").myRank)
-        assertTrue(games.leaderboard(me.hash,"friends").entries.isEmpty())
+        assertEquals(board.entries,games.leaderboard(me.hash,"friends").entries)
         assertEquals("global",games.leaderboard(stranger.hash).scope)
     }
 
@@ -478,7 +478,7 @@ class JdbcGameRepositoryIntegrationTest {
         assertEquals(3,json.getValue("achievements").jsonArray.size)
         val legacy=client.get("/api/v1/game/achievements?catalog=2") { header(HttpHeaders.Cookie,cookie) }
         assertEquals(3,Json.parseToJsonElement(legacy.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
-        for (query in listOf("catalog=7","catalog=3&catalog=3","catalog=6&catalog=6"))
+        for (query in listOf("catalog=9","catalog=3&catalog=3","catalog=6&catalog=6","catalog=7&catalog=7"))
             assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/achievements?$query") { header(HttpHeaders.Cookie,cookie) }.status)
         val expanded=client.get("/api/v1/game/achievements?catalog=3") { header(HttpHeaders.Cookie,cookie) }
         assertEquals(6,Json.parseToJsonElement(expanded.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
@@ -513,6 +513,31 @@ class JdbcGameRepositoryIntegrationTest {
             assertEquals(targets,tiers.map { it.jsonObject.getValue("target").jsonPrimitive.long })
             assertTrue(tiers.all { it.jsonObject.getValue("progress").jsonPrimitive.long==0L && it.jsonObject.getValue("unlockedAt")==JsonNull })
         }
+        val latest=client.get("/api/v1/game/achievements?catalog=7") { header(HttpHeaders.Cookie,cookie) }
+        assertEquals(HttpStatusCode.OK,latest.status)
+        assertEquals("no-store",latest.headers[HttpHeaders.CacheControl])
+        val latestJson=Json.parseToJsonElement(latest.bodyAsText()).jsonObject
+        assertEquals(p.publicId,latestJson.getValue("ownerPublicId").jsonPrimitive.content)
+        val latestCards=latestJson.getValue("achievements").jsonArray
+        assertEquals(19,latestCards.size)
+        assertEquals(activityCards.map { it.jsonObject.getValue("id") },latestCards.map { it.jsonObject.getValue("id") })
+        for (card in latestCards) {
+            val item=card.jsonObject
+            assertEquals(GameRewards.tiers.getValue(item.getValue("id").jsonPrimitive.content),
+                item.getValue("tiers").jsonArray.map { it.jsonObject.getValue("target").jsonPrimitive.long })
+        }
+        assertEquals(4,latestCards.single { it.jsonObject.getValue("id").jsonPrimitive.content=="explorer" }.jsonObject.getValue("tiers").jsonArray.size)
+        assertEquals(listOf(5L,10L,35L,61L),latestCards.single { it.jsonObject.getValue("id").jsonPrimitive.content=="master_recipes" }
+            .jsonObject.getValue("tiers").jsonArray.map { it.jsonObject.getValue("target").jsonPrimitive.long })
+        val cooking=client.get("/api/v1/game/achievements?catalog=8") { header(HttpHeaders.Cookie,cookie) }
+        assertEquals(HttpStatusCode.OK,cooking.status)
+        assertEquals("no-store",cooking.headers[HttpHeaders.CacheControl])
+        val cookingCards=Json.parseToJsonElement(cooking.bodyAsText()).jsonObject.getValue("achievements").jsonArray
+        assertEquals(20,cookingCards.size)
+        assertEquals(latestCards.toList(),cookingCards.take(19),"catalog7 retains exactly its previous cards")
+        val cookingCard=cookingCards.last().jsonObject
+        assertEquals("forest_cuisine",cookingCard.getValue("id").jsonPrimitive.content)
+        assertEquals(listOf(3L,8L,16L),cookingCard.getValue("tiers").jsonArray.map { it.jsonObject.getValue("target").jsonPrimitive.long })
         for (query in listOf("metric=unknown","metric=best_series&metric=best_series"))
             assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/leaderboard?$query") { header(HttpHeaders.Cookie,cookie) }.status)
 
@@ -642,17 +667,17 @@ class JdbcGameRepositoryIntegrationTest {
         assertEquals("0",scalar("SELECT count(*) FROM game_achievements WHERE user_id=?",fresh.id))
     }
 
-    @Test fun `series leaderboard gives equal places independently of current month and respects friends consent`() = runBlocking<Unit> {
+    @Test fun `series leaderboard gives equal places independently of current month including every direct friend`() = runBlocking<Unit> {
         val owner=player();val a=player("Рекорд А");val b=player("Рекорд Б");val hidden=player()
         execute("INSERT INTO game_profiles(user_id,lifetime_taps,best_series,leaderboard_opt_in) VALUES (?,30,10,true),(?,30,20,true),(?,30,20,true),(?,100,100,false)",owner.id,a.id,b.id,hidden.id)
         connect(owner,a);connect(owner,b);connect(owner,hidden)
         val board=games.leaderboard(owner.hash,"friends","best_series")
         assertEquals("best_series",board.metric);assertEquals(0L,board.monthlyTaps)
-        assertEquals(listOf(1L,1L,3L),board.entries.map { it.rank })
-        assertEquals(listOf(20L,20L,10L),board.entries.map { it.score });assertEquals(3L,board.myRank)
+        assertEquals(listOf(1L,2L,2L,4L),board.entries.map { it.rank })
+        assertEquals(listOf(100L,20L,20L,10L),board.entries.map { it.score });assertEquals(4L,board.myRank)
         assertTrue(games.leaderboard(owner.hash,"friends","monthly_taps").entries.isEmpty())
         games.setVisibility(a.hash,false,0,a.publicId)
-        assertEquals(2L,games.leaderboard(owner.hash,"friends","best_series").myRank)
+        assertEquals(4L,games.leaderboard(owner.hash,"friends","best_series").myRank)
     }
 
     @Test fun `accepted thresholds award new achievements and verified streak reconciles items`() = runBlocking<Unit> {

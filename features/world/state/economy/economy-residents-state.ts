@@ -11,6 +11,8 @@ export type EconomySceneResidents = {
 export type ResidentArrivalPresentation = {
   seen: boolean;
   enabled: boolean;
+  /** The greeting remains open after the physical arrival has completed. */
+  open?: boolean;
   onComplete: () => void;
 };
 

@@ -18,11 +18,13 @@ function memoryStorage() {
 test("normal upgrade preserves generation-zero progress; a reset clears only old gameplay for this account", () => {
   const storage = memoryStorage(), tab = generation.createGameplayGeneration();
   const old = [`zhiv.world-onboarding.v1:${owner}`, `zhiv.app-onboarding.paused.v1:${owner}`,
+    `zhiv.trade-ship-arrival.v1:${owner}`,
     `zhiv:game-outbox:v1:${owner}`, `zhiv:game-input:v1:${owner}:queued`,
     `zhiv:forest-memory:v1:${encodeURIComponent(`zhiv:mochlik:presence:${owner}`)}`,
     `zhiv.earth-atlas.v1:${owner}`, `zhiv:construction-goal:v1:${owner}`, `zhiv.section-guide.v1:${owner}:market`,
     `zhiv.clicker-archive.v054:${owner}`, "zhiv.pending-check-in.v2"];
   const preserved = [`zhiv.world-onboarding.v1:${other}`, "zhiv:account-action", "zhiv.pending-bootstrap.v1",
+    `zhiv.trade-ship-arrival.v1:${other}`,
     `zhiv:updates:read:v1:${owner}`, `zhiv.earth.location-consent.v1:${owner}`, "zhiv.push-owner.v1"];
   for (const key of [...old, ...preserved]) storage.setItem(key, JSON.stringify({ ownerPublicId: owner, saved: true }));
   assert.equal(tab.adopt(owner, 0, [storage]), true);
@@ -78,6 +80,8 @@ test("real onboarding, tap, reward, discovery and production stores ignore old s
   finally { if (windowBefore === undefined) delete globalThis.window; else globalThis.window = windowBefore; }
   const { createWorldOnboardingStore } = await vite.ssrLoadModule("/features/world/state/world-onboarding-storage.ts");
   const { createAppOnboardingStore } = await vite.ssrLoadModule("/features/app/onboarding/app-onboarding-storage.ts");
+  const { createTradeShipArrivalStore, tradeShipArrivalStorageKey, TRADE_SHIP_ARRIVAL_DURATION } =
+    await vite.ssrLoadModule("/features/world/state/trade-ship-arrival-storage.ts");
   const { gameJournalStore } = await vite.ssrLoadModule("/features/game/game-sync-journal.ts");
   const { gameTabInbox } = await vite.ssrLoadModule("/features/game/game-tab-inbox.ts");
   const { createGameRewardsSession } = await vite.ssrLoadModule("/features/game/game-rewards-session.ts");
@@ -92,12 +96,22 @@ test("real onboarding, tap, reward, discovery and production stores ignore old s
   storage.setItem(`zhiv:game-input:v1:${owner}:old`, "old input");
   storage.setItem(`zhiv:game-rewards:pending:v1:${owner}`, JSON.stringify({ requestId: crypto.randomUUID(), ownerPublicId: owner, kind: "daily" }));
   storage.setItem(`zhiv.earth-atlas.v1:${owner}`, JSON.stringify({ version: 1, ids: ["forest"] }));
+  const oldShipKey = `zhiv.trade-ship-arrival.v1:${owner}`;
+  const oldShip = JSON.stringify({ version: 1, started: true, elapsed: TRADE_SHIP_ARRIVAL_DURATION, hornClaimed: true });
+  storage.setItem(oldShipKey, oldShip);
   const forest = `zhiv:mochlik:presence:${owner}`;
   storage.setItem(`zhiv:forest-memory:v1:${encodeURIComponent(forest)}`, "old forest");
   const world = createWorldOnboardingStore(owner, storage), app = createAppOnboardingStore(owner, storage);
   world.restore(); app.restore();
   assert.equal(world.getSnapshot().progress, null);
   assert.equal(app.getSnapshot().progress, null); assert.equal(app.getSnapshot().paused, false);
+  const ship = createTradeShipArrivalStore(owner, storage); ship.restore();
+  assert.equal(ship.getSnapshot().progress, null, "reset cannot inherit a docked ship or its consumed horn");
+  assert.notEqual(tradeShipArrivalStorageKey(owner), oldShipKey);
+  ship.start(); ship.checkpoint(5);
+  assert.equal(ship.claimHorn(), true, "the new game's introduction owns a new horn contact");
+  storage.setItem(oldShipKey, oldShip); // Late pagehide from a pre-reset document.
+  ship.restore(); assert.equal(ship.getSnapshot().progress.elapsed, 5, "old-tab saves cannot complete the new introduction");
   assert.equal(gameJournalStore(owner, storage).read(), null);
   assert.equal(gameTabInbox(owner, storage).snapshot(false).pendingTaps, 0);
   assert.equal(storage.getItem(forestMemoryKey(forest)), null, "a null remote snapshot cannot reupload the old local forest");

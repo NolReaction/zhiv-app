@@ -244,3 +244,22 @@ test("the real sharing hook persists native denial before a stale automatic leas
     assert.equal(unwrap(store.getDevEarthPeople(b.token)).people.length, 1);
   } finally { hooks.destroy(state); await tick(); globalThis.fetch = originalFetch; d.restore(); }
 });
+
+
+test("entry and an automatic publication lease share one pending request without publishing a pre-lease capture", async () => {
+  const d = device(), a = account("Первый вход"), b = account("Друг"), circle = connect(a, b); grant(a, circle);
+  const s = sharing(a, d), m = mountPresence(a, s, { mapVisible: true });
+  try {
+    m.render(); await tick(); m.render();
+    assert.equal(d.watches.length, 1, "the publication effect must not restart the pending entry lookup");
+    assert.equal(d.watches[0].options.maximumAge, 0);
+    assert.deepEqual(d.cleared, []);
+    d.fix(0, 55, Date.now() - 1); m.render(); await tick();
+    assert.equal(s.calls.uploads.length, 0, "a capture made before lease acknowledgement cannot be published");
+    assert.deepEqual(unwrap(store.getDevEarthPeople(b.token)).people, []);
+    d.fix(0, 56); m.render(); await tick();
+    assert.equal(s.calls.uploads.length, 1);
+    assert.equal(unwrap(store.getDevEarthPeople(b.token)).people[0].latitude, 56);
+    assert.equal(d.watches.length, 1);
+  } finally { m.destroy(); s.stop(); d.restore(); }
+});

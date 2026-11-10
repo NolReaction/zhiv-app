@@ -35,6 +35,14 @@ const artworkLamps: Record<string, readonly ArtworkLamp[]> = {
     { id: "workshop-window", u: .233, v: .58, width: .04, height: .072, radius: .25, intensity: .58,
       contour: [[.214, .544], [.249, .552], [.249, .618], [.214, .604]] },
   ],
+  "market-lvl-1.png": [
+    { id: "market-lantern-west", u: .449, v: .255, width: .018, height: .028,
+      radius: .4, intensity: 1.08, color: "#ffd395" },
+    { id: "market-lantern-east", u: .633, v: .377, width: .012, height: .022,
+      radius: .34, intensity: .96, color: "#ffc982" },
+  ],
+  "pleska-market.png": [{ id: "plesk-shop-lantern", u: .481, v: .679, width: .025, height: .03,
+    radius: .57, intensity: 1.08, color: "#ffe0a2" }],
   "lighthouse-level-1.png": [{ id: "lighthouse-lens", u: .51, v: .326, width: .055, height: .065,
     radius: .85, intensity: 1.24, color: "#ffe5a6", beam: 4.1 }],
 };

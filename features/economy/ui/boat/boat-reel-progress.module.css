@@ -1,0 +1,7 @@
+.track { position: relative; display: block; width: 100%; height: 6px; min-width: 0; border-radius: 99px; background: #294e55; box-shadow: inset 0 1px 2px #0829327a; }
+.native { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; }
+.fill { position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(90deg, #56a9cf 0%, #62bdb5 33%, #94cb92 68%, #ecd18a 100%); clip-path: inset(0 calc(100% - var(--reel-progress)) 0 0 round 99px); transition: clip-path 140ms linear; }
+.track[data-danger] .fill { background: #f1a18b; }
+.milestone { position: absolute; z-index: 1; top: 1px; bottom: 1px; width: 2px; border-radius: 1px; transform: translateX(-50%); background: #b6caba6b; box-shadow: 0 0 0 1px #0c384e38; pointer-events: none; }
+.milestone[data-reached] { background: #f8edc9; }
+@media (prefers-reduced-motion: reduce) { .fill { transition: none; } }

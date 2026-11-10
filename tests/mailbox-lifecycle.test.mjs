@@ -3,11 +3,12 @@ import test, { after, afterEach } from "node:test";
 import { Children, isValidElement } from "react";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
-const root = fileURLToPath(new URL("..", import.meta.url)), hooksId = "virtual:mailbox-hooks", sonnerId = "virtual:mailbox-toasts";
+const root = fileURLToPath(new URL("..", import.meta.url)), hooksId = "virtual:mailbox-hooks", sonnerId = "virtual:mailbox-toasts", audioId = "virtual:mailbox-audio";
 const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-mailbox-life-${process.pid}`,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false }, plugins: [{ name: "mailbox-hooks", enforce: "pre",
-    resolveId(id) { if ([hooksId, sonnerId].includes(id)) return `\0${id}`; },
+    resolveId(id) { if ([hooksId, sonnerId, audioId].includes(id)) return `\0${id}`; },
     load(id) {
+      if (id === `\0${audioId}`) return "export const played=[]; export const getAudioRuntime=()=>({play:event=>played.push(event)});";
       if (id === `\0${sonnerId}`) return `export const shown=[],dismissed=[];export const toast={custom(render,options){shown.push({render,options});return options.id;},dismiss(id){dismissed.push(id);}};`;
       if (id === `\0${hooksId}`) return `
         let slots=[],cursor=0,layout=[],passive=[];
@@ -27,7 +28,8 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
     },
     transform(source, id) {
       if (id.endsWith("/features/mailbox/use-mailbox.ts") || id.endsWith("/features/mailbox/mailbox-notifications.tsx") || id.endsWith("/features/mailbox/mailbox-dialog.tsx"))
-        return source.replace('from "react";', `from "${hooksId}";`).replace('from "sonner";', `from "${sonnerId}";`);
+        return source.replace('from "react";', `from "${hooksId}";`).replace('from "sonner";', `from "${sonnerId}";`)
+          .replace('from "@/features/audio/runtime/audio-service";', `from "${audioId}";`);
     },
   }] });
 after(() => vite.close());
@@ -36,13 +38,14 @@ const { MailboxNotifications } = await vite.ssrLoadModule("/features/mailbox/mai
 const { MailboxPanel, MailboxDialog } = await vite.ssrLoadModule("/features/mailbox/mailbox-dialog.tsx");
 const { createMailboxSession } = await vite.ssrLoadModule("/features/mailbox/session.ts");
 const hooks = await vite.ssrLoadModule(hooksId), toasts = await vite.ssrLoadModule(sonnerId);
+const audio = await vite.ssrLoadModule(audioId);
 const owner = "7K3P-2Q9M-W8ZR", other = "7K3P-2Q9M-W8ZS", id = "00000000-0000-4000-8000-000000000001", time = "2026-10-18T12:00:00Z";
 const mailPage = (publicId = owner) => ({ ownerPublicId: publicId, unreadCount: 1, nextCursor: null, serverTime: time,
   messages: [{ id, type: "admin_notice", title: "Настоящее письмо", body: "private plaintext", createdAt: time, readAt: null, notify: true, attachments: null }],
   latestUnreadNotification: { id, createdAt: time } });
 const flush = async () => { for (let i = 0; i < 8; i++) await new Promise(resolve => setImmediate(resolve)); };
 let restore = () => {};
-afterEach(async () => { hooks.reset(); await flush(); restore(); toasts.shown.length = toasts.dismissed.length = 0; });
+afterEach(async () => { hooks.reset(); await flush(); restore(); toasts.shown.length = toasts.dismissed.length = audio.played.length = 0; });
 function environment() {
   hooks.reset(); const descriptors = new Map(), events = new Map(), requests = [], intervals = new Map(), cache = new Map(); let focus = true, counter = 0;
   const install = (key, value) => { descriptors.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, writable: true, configurable: true }); };
@@ -60,6 +63,34 @@ function environment() {
   const commit = () => { hooks.commitLayout(); hooks.commitPassive(); };
   return { requests, intervals, cache, render: MailboxHook, commit, setFocus(value) { focus = value; }, fire(name) { for (const fn of events.get(name) ?? []) fn(); }, events };
 }
+
+test("the mailbox plays a reward once on a newly credited gift, and stays quiet on reads, failures and replays", async () => {
+  const env = environment(), props = { ownerPublicId: owner, isOnline: true };
+  const mailbox = env.render(props); env.commit(); await flush();
+  const letters = mailPage();
+  const otherGift = crypto.randomUUID();
+  letters.messages = [id, otherGift].map(id => ({ ...letters.messages[0], id, gift: { pearls: 20, claimedAt: null } }));
+  env.requests.at(-1).resolve(letters); await flush();
+  mailbox.open(); await flush();
+  env.requests.at(-1).resolve(letters); await flush();
+  mailbox.select(id);
+  const failed = mailbox.claimGift(id);
+  env.requests.at(-1).resolve({ code: "ECONOMY_CAPACITY", message: "Кошелёк полон" }, 409);
+  await failed; assert.equal(audio.played.length, 0);
+
+  const claim = mailbox.claimGift(id), before = env.requests.length;
+  await mailbox.claimGift(id);
+  assert.equal(env.requests.length, before);
+  const receipt = { ownerPublicId: owner, id, gift: { pearls: 20, claimedAt: time }, serverTime: time };
+  env.requests.at(-1).resolve({ ...receipt, replayed: false });
+  await claim;
+  await mailbox.claimGift(id);
+  mailbox.select(otherGift);
+  const replay = mailbox.claimGift(otherGift);
+  env.requests.at(-1).resolve({ ...receipt, id: otherGift, replayed: true });
+  await replay;
+  assert.deepEqual(audio.played.map(({ id, cueId }) => ({ id, cueId })), [{ id: `mail-gift:${owner}:${id}`, cueId: "ui.reward" }]);
+});
 
 test("the single hook aborts hidden, unfocused and offline work, then resumes one account polling lifecycle", async () => {
   const env = environment(), props = { ownerPublicId: owner, isOnline: true, enabled: true };

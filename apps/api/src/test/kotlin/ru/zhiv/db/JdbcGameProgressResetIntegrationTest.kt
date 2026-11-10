@@ -66,7 +66,7 @@ class JdbcGameProgressResetIntegrationTest {
         return postgres.execInContainer(*command.toTypedArray())
     }
 
-    @Test fun `release reset keeps auth and friends clears history restarts rewards and is idempotent`(): Unit = runBlocking {
+    @Test fun `release reset keeps auth friends and checkins restarts gameplay and is idempotent`(): Unit = runBlocking {
         val script = generateSequence(Path.of("").toAbsolutePath()) { it.parent }
             .map { it.resolve("scripts/reset-game-progress.sql") }.first { Files.exists(it) }
         postgres.copyFileToContainer(MountableFile.forHostPath(script), "/tmp/reset-game-progress.sql")
@@ -136,8 +136,9 @@ class JdbcGameProgressResetIntegrationTest {
                 INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision)
                   VALUES ('10000000-0000-4000-8000-000000000001','a0000000-0000-4000-8000-00000000000a',
                     '{"expectedRevision":39}','Old receipt predating an individual reset',40);
-                INSERT INTO game_profiles(user_id,lifetime_taps,best_series)
-                  VALUES ('10000000-0000-4000-8000-000000000001',5000,100);
+                UPDATE economy_profiles SET state = state || '{"boat":{"records":{"fish_dace":{"weightGrams":285,"caughtAt":"2026-11-10T00:00:00Z"}}}}'::jsonb;
+                INSERT INTO game_profiles(user_id,lifetime_taps,best_series,fishing_leaderboard_opt_in,fishing_visibility_version)
+                  VALUES ('10000000-0000-4000-8000-000000000001',5000,100,false,39);
                 INSERT INTO game_items(user_id,item_id) VALUES ('10000000-0000-4000-8000-000000000001','flower');
                 INSERT INTO game_achievements(user_id,achievement_id)
                   VALUES ('10000000-0000-4000-8000-000000000001','thousand_taps'),
@@ -159,6 +160,25 @@ class JdbcGameProgressResetIntegrationTest {
                   VALUES ('10000000-0000-4000-8000-000000000001',7,'{"oldScene":true}',clock_timestamp());
                 INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price)
                   VALUES ('60000000-0000-4000-8000-000000000006','10000000-0000-4000-8000-000000000001','fish',5,100);
+                INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price,status,closed_at,
+                    seller_fee_bps,sale_owner_id,sale_proceeds_coins,sale_buyer_name,sale_buyer_character_id)
+                  VALUES ('61000000-0000-4000-8000-000000000006','10000000-0000-4000-8000-000000000001',
+                    'berries',2,20,'sold',clock_timestamp(),500,'10000000-0000-4000-8000-000000000001',
+                    19,'Берест · Персонаж мира','berest');
+                INSERT INTO neighbor_settings(singleton,version,settings) VALUES (true,1,'{}');
+                INSERT INTO neighbor_identity(user_id,first_buy_consumed)
+                  VALUES ('10000000-0000-4000-8000-000000000001',true);
+                INSERT INTO neighbor_shop_cycles(user_id,cycle_day,offers)
+                  VALUES ('10000000-0000-4000-8000-000000000001',CURRENT_DATE,'[]');
+                INSERT INTO neighbor_daily_usage(user_id,trade_day,used_lots,spent_coins)
+                  VALUES ('10000000-0000-4000-8000-000000000001',CURRENT_DATE,2,40);
+                INSERT INTO neighbor_global_usage(trade_day,spent_coins) VALUES (CURRENT_DATE,40);
+                INSERT INTO neighbor_receipts(user_id,request_id,signature,message,accepted_revision)
+                  VALUES ('10000000-0000-4000-8000-000000000001','62000000-0000-4000-8000-000000000006',
+                    '{}','Историческая покупка',30);
+                INSERT INTO neighbor_purchases(id,listing_id,user_id,item_id,quantity,total_price,proceeds_coins,source)
+                  VALUES ('63000000-0000-4000-8000-000000000006','61000000-0000-4000-8000-000000000006',
+                    '10000000-0000-4000-8000-000000000001','berries',2,20,19,'auto');
                 INSERT INTO notification_preferences(user_id,preferences)
                   VALUES ('10000000-0000-4000-8000-000000000001','{"rateLimitsEnabled":true}');
                 INSERT INTO notification_subscriptions(endpoint_hash,user_id,session_id,endpoint,p256dh,auth)
@@ -204,7 +224,7 @@ class JdbcGameProgressResetIntegrationTest {
                   WHERE category='checkin';
             """.trimIndent())
             val protectedProjections = listOf(
-                "SELECT jsonb_agg(to_jsonb(u)-'last_check_in_at' ORDER BY id)::text FROM app_users u",
+                "SELECT jsonb_agg(to_jsonb(u) ORDER BY id)::text FROM app_users u",
                 "SELECT jsonb_agg(to_jsonb(a) ORDER BY user_id,achievement_id)::text FROM game_achievements a WHERE achievement_id IN ('linked_email','saved_recovery_code')",
                 "SELECT jsonb_agg(to_jsonb(a) ORDER BY user_id,achievement_id)::text FROM game_achievement_reward_claims a WHERE achievement_id IN ('linked_email','saved_recovery_code')",
                 "SELECT jsonb_agg(to_jsonb(m) ORDER BY id)::text FROM player_mail_messages m WHERE source_key<>'welcome:v1'",
@@ -216,17 +236,18 @@ class JdbcGameProgressResetIntegrationTest {
                 assertEquals(1L, connection.economyRows("SELECT count(*) FROM earth_sharing_recipients WHERE frozen") { it.getLong(1) }.single(),
                     "Recipient freeze choice is preserved separately from GPS rows")
             }
+            assertNotEquals("[]", before.getValue("game_fishing_records"), "An opted-in fisher has a published record before reset")
             val preview = reset()
             assertEquals(0, preview.exitCode, preview.stderr)
             assertEquals(before, snapshot(source), "No-argument SQL invocation must be read only")
 
-            execute(source, "UPDATE flyway_schema_history SET version='71' WHERE version='70'")
+            execute(source, "UPDATE flyway_schema_history SET version='83' WHERE version='82'")
             val unreviewed = snapshot(source)
             val wrongVersion = reset(true)
             assertNotEquals(0, wrongVersion.exitCode)
-            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V70"), wrongVersion.stderr)
+            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V82"), wrongVersion.stderr)
             assertEquals(unreviewed, snapshot(source), "An unreviewed migration must fail before deletion")
-            execute(source, "UPDATE flyway_schema_history SET version='70' WHERE version='71'")
+            execute(source, "UPDATE flyway_schema_history SET version='82' WHERE version='83'")
 
             execute(source, "CREATE TABLE ci_unreviewed_game_reset_guard(value text)")
             val unexpected = snapshot(source)
@@ -241,6 +262,11 @@ class JdbcGameProgressResetIntegrationTest {
             assertTrue(overflow.stderr.contains("exhausted revision fence"), overflow.stderr)
             assertEquals(exhausted, snapshot(source))
             execute(source, "UPDATE economy_profiles SET revision=10")
+            execute(source, "UPDATE game_profiles SET fishing_visibility_version=9007199254740990")
+            val staleFishingFence = snapshot(source)
+            assertNotEquals(0, reset(true).exitCode)
+            assertEquals(staleFishingFence, snapshot(source), "An exhausted fishing consent version rolls back the reset")
+            execute(source, "UPDATE game_profiles SET fishing_visibility_version=39")
 
             // A trigger silently modifying a kept row must cause a full rollback.
             execute(source, """
@@ -265,10 +291,12 @@ class JdbcGameProgressResetIntegrationTest {
             for (table in tables("preserved_tables") + "flyway_schema_history")
                 assertEquals(before.getValue(table), after.getValue(table), "Preserved full contents: $table")
             for (table in tables("cleared_tables")) assertEquals("[]", after.getValue(table), "Cleared: $table")
-            assertTrue(!after.getValue("notification_events").contains("checkin:test"))
+            assertEquals("[]", after.getValue("economy_market_listings"), "All old stock and unclaimed proceeds are reset")
+            assertEquals("[]", after.getValue("economy_market_receipts"), "Generation and revisions fence the cleared receipts")
+            assertTrue(after.getValue("notification_events").contains("checkin:test"))
             assertTrue(after.getValue("notification_events").contains("mail:b0000000-0000-4000-8000-00000000000b"))
             assertTrue(!after.getValue("notification_events").contains("job:test"))
-            assertTrue(!after.getValue("notification_batches").contains("b1000000-0000-4000-8000-000000000002"))
+            assertTrue(after.getValue("notification_batches").contains("b1000000-0000-4000-8000-000000000002"))
 
             val user = UUID.fromString("10000000-0000-4000-8000-000000000001")
             source.connection.use { connection ->
@@ -279,6 +307,11 @@ class JdbcGameProgressResetIntegrationTest {
                 assertEquals(EconomyRules.initial().tutorialOrder, fresh.state.tutorialOrder)
                 assertTrue(fresh.state.jobs.isEmpty())
                 connection.createStatement().use { statement ->
+                    statement.executeQuery("SELECT fishing_leaderboard_opt_in,fishing_visibility_version FROM game_profiles WHERE user_id='$user'").use { rows ->
+                        assertTrue(rows.next())
+                        assertEquals(false, rows.getBoolean(1))
+                        assertEquals(41L, rows.getLong(2))
+                    }
                     statement.executeQuery("SELECT state::text,revision FROM world_profiles").use { rows ->
                         assertTrue(rows.next())
                         assertEquals(WorldState(), worldJson.decodeFromString<WorldState>(rows.getString(1)))
@@ -313,13 +346,13 @@ class JdbcGameProgressResetIntegrationTest {
             }.code)
             assertEquals(after, snapshot(source), "Rejected stale retries must not change any fresh or preserved data")
             source.connection.use { connection ->
-                assertEquals(0L, connection.economyRows("SELECT count(*) FROM app_users WHERE last_check_in_at IS NOT NULL") { it.getLong(1) }.single())
+                assertEquals(1L, connection.economyRows("SELECT count(*) FROM app_users WHERE last_check_in_at IS NOT NULL") { it.getLong(1) }.single())
                 assertEquals(setOf("linked_email", "saved_recovery_code"), connection.economyRows(
                     "SELECT achievement_id FROM game_achievements") { it.getString(1) }.toSet())
                 assertEquals(listOf("linked_email"), connection.economyRows(
                     "SELECT achievement_id FROM game_achievement_reward_claims") { it.getString(1) })
                 assertEquals(5L, connection.economyRows("SELECT count(*) FROM active_direct_friend_ids(?)", user) { it.getLong(1) }.single())
-                assertEquals(0L, connection.economyRows("SELECT check_in_count FROM account_check_in_summary(?)", user) { it.getLong(1) }.single())
+                assertEquals(1L, connection.economyRows("SELECT check_in_count FROM account_check_in_summary(?)", user) { it.getLong(1) }.single())
             }
             presence.requireGeneration(hash, 1)
             val rewards = JdbcProgressionRewardsRepository(source)
@@ -364,7 +397,7 @@ class JdbcGameProgressResetIntegrationTest {
             val repeated = reset(true)
             assertEquals(0, repeated.exitCode, repeated.stderr)
             assertTrue(repeated.stderr.contains("already completed"), repeated.stderr)
-            assertEquals(progressed, snapshot(source), "Repeating release 0.7.1 must preserve every new row and reward")
+            assertEquals(progressed, snapshot(source), "Repeating release 0.7.2 must preserve every new row and reward")
             assertEquals(1L, presence.currentGeneration(), "A repeated release does not advance generation")
         }
     }

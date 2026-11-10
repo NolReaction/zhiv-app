@@ -45,17 +45,27 @@ test("all command publishes produce one reward, never an early confirmation", ()
   }
   const final = view(5, { notice: "Получено", inventoryGains: [receipt("claim", 5)] });
   const events = tracker.update(final, true, 101);
-  assert.equal(events.length, 1); assert.equal(events[0].cueId, "ui.reward"); assert.equal(events[0].occurredAt, 101);
+  assert.equal(events.length, 1); assert.equal(events[0].cueId, "ui.collect"); assert.equal(events[0].occurredAt, 101);
   assert.deepEqual(tracker.update(final), []);
   assert.deepEqual(tracker.update(view(6, { ...final, snapshot: { ownerPublicId: owner, revision: 6 } })), []);
 });
 
 test("fast coalesced requests require a fresh explicit receipt", () => {
   const tracker = createEconomyAudioFeedbackTracker(); tracker.update(view(8));
-  assert.equal(tracker.update(view(9, { inventoryGains: [receipt("fast", 9)], notice: "Получено" }))[0].cueId, "ui.reward");
+  assert.equal(tracker.update(view(9, { inventoryGains: [receipt("fast", 9)], notice: "Получено" }))[0].cueId, "ui.collect");
   assert.deepEqual(tracker.update(view(9, { inventoryGains: [receipt("different-id-same-revision", 9)] })), []);
   assert.deepEqual(tracker.update(view(10, { notice: "Продано" })), []);
   assert.deepEqual(tracker.update(view(11, { inventoryGains: [receipt("other-owner", 11, other)] })), []);
+});
+
+test("collecting, buying and returning from an expedition have distinct receipt-driven feedback", () => {
+  for (const [extra, expected] of [[{}, "ui.collect"], [{ source: "purchase" }, "ui.confirm"],
+    [{ expedition: { routeId: "forest", title: "Лес", xp: 12, rareItemIds: [] } }, "ui.reward"]]) {
+    const tracker = createEconomyAudioFeedbackTracker(); tracker.update(view(0));
+    const next = view(1, { inventoryGains: [{ ...receipt("accepted", 1), ...extra }] });
+    assert.deepEqual(tracker.update(next).map(event => event.cueId), [expected]);
+    assert.deepEqual(tracker.update(next), [], "the same accepted result cannot repeat a signature");
+  }
 });
 
 test("generic confirmation requires a clean observed local busy cycle and newer revision", () => {
@@ -100,13 +110,13 @@ test("bounded receipt retention also rejects old revisions after eviction", () =
   const tracker = createEconomyAudioFeedbackTracker(); tracker.update(view(0));
   for (let revision = 1; revision <= ECONOMY_AUDIO_RECEIPT_LIMIT + 8; revision++) {
     const events = tracker.update(view(revision, { inventoryGains: [receipt(`receipt-${revision}`, revision)] }));
-    assert.equal(events.length, 1); assert.equal(events[0].cueId, "ui.reward");
+    assert.equal(events.length, 1); assert.equal(events[0].cueId, "ui.collect");
   }
   assert.deepEqual(tracker.update(view(ECONOMY_AUDIO_RECEIPT_LIMIT + 9, { inventoryGains: [receipt("receipt-1", 1)] })), []);
 });
 
 test("real session claim and pearl speedup each produce exactly one matching reward", async () => {
-  for (const [kind, action, cueId] of [["exploration", "claim_job", "ui.reward"],
+  for (const [kind, action, cueId] of [["exploration", "claim_job", "ui.collect"],
     ["construction", "claim_job", "ui.construction-complete"], ["construction", "speedup_construction", "ui.construction-complete"]]) {
     const pending = job(kind); let latest = state(0, [pending]), finish;
     const tracker = createEconomyAudioFeedbackTracker(), events = [];
@@ -172,8 +182,41 @@ test("real session definitive failure has one error; timeout and reads do not", 
     const stop = session.activate();
     try {
       await session.refresh(); session.act("start_production", "planks"); await flush();
-      assert.deepEqual(events.map(event => event.cueId), failure instanceof ApiError ? ["ui.click", "ui.error"] : ["ui.click"]);
+      assert.deepEqual(events.map(event => event.cueId), failure instanceof ApiError ? ["ui.production-start", "ui.error"] : ["ui.production-start"]);
       await session.refresh(); assert.equal(events.length, failure instanceof ApiError ? 2 : 1);
     } finally { stop(); unsubscribe(); }
   }
+});
+
+test("the workshop confirms the paid job and installed module separately, once per accepted action", async () => {
+  const { createBoatWorkshopDemo } = await vite.ssrLoadModule("/features/economy/dev/boat-workshop-demo.ts");
+  let now = Date.parse("2026-11-10T00:00:00Z");
+  const demo = createBoatWorkshopDemo({ ownerPublicId: owner, now: () => now });
+  const session = createEconomySession(owner, { get: async () => demo.read(), send: async command => demo.send(command) }, () => assert.fail());
+  const tracker = createEconomyAudioFeedbackTracker(), cues = [];
+  const unsubscribe = session.subscribe(() => cues.push(...tracker.update(session.getSnapshot()).map(event => event.cueId)));
+  const stop = session.activate();
+  try {
+    await session.refresh();
+    assert.equal(session.getSnapshot().localBoatUpgrade, undefined);
+    for (const [action, target, phase, module, sound] of [
+      ["start_boat_upgrade", "repair", "installed", "hull", "ui.construction-complete"],
+      ["start_boat_upgrade", "oars", "started", "engine", "ui.production-start"],
+      ["claim_boat_upgrade", null, "installed", "engine", "ui.construction-complete"],
+    ]) {
+      const work = demo.read().boat.work;
+      if (work) now = Date.parse(work.finishesAt) + 1;
+      const count = cues.length;
+      assert.equal(session.act(action, target ?? work.id), true);
+      await flush();
+      const receipt = session.getSnapshot().localBoatUpgrade;
+      assert.equal(receipt.phase, phase);
+      assert.equal(receipt.module, module);
+      assert.equal(receipt.tier, 1);
+      assert.deepEqual(cues.slice(count), [sound]);
+      await session.refresh();
+      assert.equal(cues.length, count + 1, "polling does not replay the work");
+      assert.deepEqual(createEconomyAudioFeedbackTracker().update(session.getSnapshot()), []);
+    }
+  } finally { unsubscribe(); stop(); }
 });

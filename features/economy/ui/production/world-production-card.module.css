@@ -25,3 +25,9 @@ button.card.card[data-blocked="true"] { background: #e8dfc3; }
 .accessible { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 
 .accessReason { display: block; color: #875b35; font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+.actionEntry { gap: 6px; }
+button.cookAction.cookAction { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 46px; padding: 10px 14px; border: 1px solid #48694c; border-radius: 11px; background: #36573d; color: #fff4d7; font: inherit; font-weight: 700; cursor: pointer; }
+button.cookAction.cookAction:hover { background: #294b32; }
+button.cookAction.cookAction:focus-visible { outline: 2px solid #b68a36; outline-offset: 3px; }
+.cookAction small { margin-left: auto; font-size: 11px; font-weight: 400; opacity: .85; }
+.actionEntry .notice { position: static; pointer-events: auto; }

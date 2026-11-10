@@ -65,7 +65,7 @@ test("all other campfire recipes remain locked at zero even with a high house an
   state.buildings.home = 5;
   state.inventory = Object.fromEntries(catalog.items.map(item => [item.id, 1]));
   state.progression.recipes = Object.fromEntries(catalog.recipes.map(recipe => [recipe.id, 100]));
-  for (const other of catalog.recipes.filter(recipe => recipe.buildingId === "dryer" && recipe.id !== "cook_grilled_fish")) {
+  for (const other of catalog.recipes.filter(recipe => recipe.buildingId === "dryer" && recipe.id !== "cook_grilled_fish" && !recipe.experiment?.initialFire)) {
     assert.ok(other.buildingLevel >= 1);
     reject(state, "start_production", other.id, "ECONOMY_BUILDING_REQUIRED");
   }
@@ -163,7 +163,7 @@ test("production Kotlin nullable campfire flags allow the complete economy respo
     const snapshot = session.getSnapshot().snapshot;
     assert.equal(snapshot.ownerPublicId, wire.ownerPublicId);
     for (const recipe of snapshot.catalog.recipes) {
-      assert.equal(recipeBuildingLevel(recipe), recipe.id === "cook_grilled_fish" ? 0 : recipe.buildingLevel);
+      assert.equal(recipeBuildingLevel(recipe), recipe.id === "cook_grilled_fish" || recipe.experiment?.initialFire ? 0 : recipe.buildingLevel);
       assert.equal(recipe.baseCampfire, recipe.id === "cook_grilled_fish" ? true : undefined);
     }
     wire.catalog.recipes.find(recipe => recipe.id === "grow_berries").baseCampfire = false;

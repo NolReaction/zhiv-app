@@ -1,0 +1,10 @@
+.page { min-height: 100svh; display: grid; place-items: center; padding: 24px; background: #141c17; color: #ebeedf; }
+.card { width: min(100%, 540px); padding: clamp(22px, 5vw, 38px); border: 1px solid #485640; border-radius: 24px; background: #202c23; }
+.card h1 { margin: 12px 0; font-size: clamp(23px, 4vw, 32px); line-height: 1.2; }
+.card p { line-height: 1.55; color: #c5cfb8; }
+.back { display: flex; align-items: center; gap: 8px; margin-bottom: 30px; color: #d7e1bd; }
+.label { margin: 14px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+.actions a, .actions button { min-height: 44px; padding: 10px 14px; border: 1px solid #6d8055; border-radius: 12px; color: #ecf2dc; background: #35462d; font: inherit; cursor: pointer; }
+.actions :focus-visible, .back:focus-visible { outline: 2px solid #e4d186; outline-offset: 4px; }
+.loading { min-height: 100svh; display: grid; place-items: center; color: #ebeedf; background: #141c17; }

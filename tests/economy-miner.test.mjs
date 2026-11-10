@@ -30,7 +30,7 @@ test("mining and a fed hero depart simultaneously while only Mochlik consumes hi
   assert.equal(read(p).food.heroMeal, "grilled_fish"); assert.equal(actors.economyCommandUsesActor({ action: "start_exploration", targetId: "quarry_stone" }), false);
   const departed = send(p, "start_exploration", "forest").state, hero = departed.jobs.find(job => job.targetId === "forest");
   assert.equal(hero.actorId, "mochlik"); assert.equal(hero.meal.itemId, "grilled_fish"); assert.equal(departed.food.heroMeal, null);
-  assert.equal(Date.parse(hero.finishesAt) - now, Math.ceil(1800 / 1.1) * 1000);
+  assert.equal(Date.parse(hero.finishesAt) - now, Math.ceil(1680 / 1.1) * 1000);
   assert.throws(() => send(p, "start_exploration", "quarry_clay", 180), { code: "ECONOMY_MINER_BUSY" });
   send(p, "claim_job", mining.id, 180);
   assert.equal(send(p, "start_exploration", "quarry_clay", 180).state.jobs.length, 2);
@@ -66,7 +66,7 @@ test("missing and explicit null legacy owners still reserve Mochlik without stea
 test("parallel rare-material claims settle independent private clocks in either order without exposing them", () => {
   for (const miningFirst of [true, false]) {
     const p = player(3), state = row(p).state;
-    state.rareDropState = { version: 1, remainingSeconds: 1800, itemId: "ancient_core" };
+    state.rareDropState = { version: 1, remainingSeconds: 1680, itemId: "ancient_core" };
     state.minerRareDropState = { version: 1, remainingSeconds: 180, itemId: "moon_crystal" };
     const mine = send(p, "start_exploration", "quarry_stone").state.jobs[0];
     const hero = send(p, "start_exploration", "forest").state.jobs.find(job => job.actorId === "mochlik");
@@ -89,7 +89,7 @@ test("parallel rare-material claims settle independent private clocks in either 
   }
 });
 
-test("failed mineral delivery and cancelled work cannot advance or refund either clock and receipts cannot recreate it", () => {
+test("failed mineral delivery and rejecting cancellation of ready work preserve both clocks", () => {
   const p = player(3), state = row(p).state;
   state.rareDropState = { version: 1, remainingSeconds: 1700, itemId: "ancient_core" };
   state.minerRareDropState = { version: 1, remainingSeconds: 180, itemId: "moon_crystal" };
@@ -98,7 +98,23 @@ test("failed mineral delivery and cancelled work cannot advance or refund either
   const claim = request(p, "claim_job", mine.id, 180);
   assert.throws(() => economy.commandDevEconomy(p.token, claim, now + 180000), { code: "ECONOMY_STORAGE_FULL" });
   assert.deepEqual(read(p, 180), before); assert.deepEqual(row(p).state, rawBefore); assert.equal(row(p).receipts.has(claim.requestId), false);
-  const cancel = request(p, "cancel_exploration", mine.id, 180), canceled = economy.commandDevEconomy(p.token, cancel, now + 180000).state;
+  const cancel = request(p, "cancel_exploration", mine.id, 180);
+  assert.throws(() => economy.commandDevEconomy(p.token, cancel, now + 180000), { code: "ECONOMY_CANCEL_READY" });
+  assert.deepEqual(row(p).state, rawBefore); assert.equal(row(p).receipts.has(cancel.requestId), false);
+  assert.deepEqual(row(p).state.rareDropState, clocks.hero); assert.deepEqual(row(p).state.minerRareDropState, clocks.miner);
+  row(p).state.inventory = {};
+  const paid = send(p, "claim_job", mine.id, 180).state;
+  assert.equal(paid.inventory.moon_crystal, 1); assert.equal(paid.inventory.stone, 1);
+  assert.deepEqual(row(p).state.rareDropState, clocks.hero); assert.notDeepEqual(row(p).state.minerRareDropState, clocks.miner);
+});
+
+test("cancelling unfinished mining preserves both clocks and replay cannot recreate its job", () => {
+  const p = player(3), state = row(p).state;
+  state.rareDropState = { version: 1, remainingSeconds: 1700, itemId: "ancient_core" };
+  state.minerRareDropState = { version: 1, remainingSeconds: 180, itemId: "moon_crystal" };
+  const mine = send(p, "start_exploration", "quarry_stone").state.jobs[0], clocks = structuredClone({ hero: state.rareDropState, miner: state.minerRareDropState });
+  row(p).state.inventory = { wood: 50 };
+  const cancel = request(p, "cancel_exploration", mine.id, 179), canceled = economy.commandDevEconomy(p.token, cancel, now + 179000).state;
   assert.deepEqual(row(p).state.rareDropState, clocks.hero); assert.deepEqual(row(p).state.minerRareDropState, clocks.miner);
   assert.deepEqual(canceled.inventory, { wood: 50 }); assert.equal(canceled.progression.routes.quarry_stone, undefined);
   row(p).state.inventory = {};
@@ -111,13 +127,20 @@ test("failed mineral delivery and cancelled work cannot advance or refund either
 test("cancelling a supplied miner job returns only its saved inputs once and full storage keeps the refund pending", () => {
   const p = player(3), route = model.economyCatalog.explorations.find(entry => entry.id === "deep_cave");
   Object.assign(row(p).state.buildings, route.requiredBuildings); row(p).state.buildings.home = route.requiredHomeLevel;
-  row(p).state.inventory = { ...route.cost.items }; row(p).state.wallet.coins = 730;
-  const started = send(p, "start_exploration", route.id).state, first = started.jobs[0];
+  // These provisions were paid before the bulk route was retired. Seed the
+  // persisted job, never use a new retired-route start to manufacture a refund.
+  const paidJob = () => model.economyJobSchema.parse({ id: crypto.randomUUID(), kind: "exploration", actorId: "miner",
+    targetId: route.id, recipeId: null, targetLevel: null, startedAt: new Date(now).toISOString(),
+    finishesAt: new Date(now + route.seconds * 1000).toISOString(), rewards: { ...route.rewards },
+    cost: structuredClone(route.cost), catalogVersion: 12 });
+  row(p).state.inventory = {}; row(p).state.wallet.coins = 730; row(p).state.jobs = [paidJob()];
+  const started = read(p), first = started.jobs[0];
   assert.equal(first.actorId, "miner"); assert.deepEqual(started.inventory, {}); assert.deepEqual(first.cost, route.cost);
   const cancel = request(p, "cancel_exploration", first.id), returned = economy.commandDevEconomy(p.token, cancel, now).state;
   assert.deepEqual(returned.inventory, first.cost.items); assert.equal(returned.wallet.coins, started.wallet.coins + first.cost.coins);
   assert.equal(returned.completedExplorations, 0); assert.equal(returned.progression.routes[route.id], undefined);
-  const replacement = send(p, "start_exploration", route.id).state.jobs[0];
+  const replacement = paidJob();
+  row(p).state.jobs = [replacement]; row(p).state.inventory = {};
   const replay = economy.commandDevEconomy(p.token, cancel, now); assert.equal(replay.replayed, true);
   assert.deepEqual(replay.state.inventory, {}); assert.deepEqual(replay.state.jobs, [replacement]);
   row(p).state.inventory = { wood: read(p).storage.capacity };

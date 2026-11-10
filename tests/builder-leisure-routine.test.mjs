@@ -135,7 +135,10 @@ test("a checked optional escape that becomes occupied also defers, retaining its
 test("facade stops remain in the bounded actual place list and finish with a short inspection", () => {
   const scene = world(), places = builderLocalPlaces(scene), mind = nearGoal(scene, true);
   const facades = places.wander.filter(stop => stop.id.startsWith("builder-look-"));
-  assert.equal(facades.length, 3, "many generic interests cannot truncate the builder's role places");
+  const withoutInterests = structuredClone(scene); withoutInterests.navigation.interests = [];
+  const roleOnly = builderLocalPlaces(withoutInterests).wander.filter(stop => stop.id.startsWith("builder-look-"));
+  assert.ok(roleOnly.length >= 2, "the current map has reachable facade stops");
+  assert.deepEqual(facades.map(stop => stop.id), roleOnly.map(stop => stop.id), "generic interests cannot truncate reachable role places");
   assert.ok(facades.some(stop => stop.id === "builder-look-lopukh-home"));
   for (const facade of facades) {
     assert.ok(builderRoute(places, places.rest.position, [facade]));

@@ -12,32 +12,48 @@ class EconomyOrderProgressionTest {
     private val catalog = EconomyRules.catalog
     @Serializable private data class ScaleVector(val templateId: String, val home: Int, val items: Map<String, Long>, val coins: Long)
     @Serializable private data class AvailabilityVector(val label: String, val buildings: Map<String, Int>, val ownedRods: List<String>,
-        val ownedHooks: List<String>, val present: List<String>, val missing: List<String>)
+        val ownedHooks: List<String>, val present: List<String>, val missing: List<String>, val recipes: Map<String, Long> = emptyMap(),
+        val completedExplorations: Map<String, Long> = emptyMap(), val fishCatches: Map<String, Long> = emptyMap())
     @Serializable private data class Vectors(val scaling: List<ScaleVector>, val availability: List<AvailabilityVector>)
     private val vectors = economyJson.decodeFromString<Vectors>(checkNotNull(javaClass.getResourceAsStream("/world/orders-progression-vectors.json"))
         .bufferedReader().use { it.readText() })
     @Serializable private data class BalanceVector(val templateId: String, val home: Int, val items: Map<String, Long>,
         val npcValue: Long, val manufacturingSeconds: Long,
-        val previousCoins: Long, val coins: Long)
+        val previousCoins: Long = 0, val coins: Long)
     @Serializable private data class BalanceVectors(val policy: String, val npcValueMultiplierNumerator: Long,
         val npcValueMultiplierDenominator: Long, val manufacturingCoinsPerMinute: Long, val roundingCoins: Long,
         val orders: List<BalanceVector>)
 
-    @Test fun `all repeated order quotes include manufacturing chains with one final rounding in shared browser vectors`() {
-        val balance = economyJson.decodeFromString<BalanceVectors>(checkNotNull(javaClass.getResourceAsStream("/world/resident-order-balance-vectors.json"))
+    @Serializable private data class TimeBalanceVectors(val policy: String, val catalogVersion: Int,
+        val orderBonusBps: Long, val roundingCoins: Long, val orders: List<BalanceVector>)
+
+    @Test fun `historical v12 balance vectors preserve their original mathematical contract`() {
+        val previous = economyJson.decodeFromString<BalanceVectors>(checkNotNull(javaClass.getResourceAsStream("/world/resident-order-balance-vectors.json"))
             .bufferedReader().use { it.readText() })
-        assertEquals(3L, balance.npcValueMultiplierNumerator)
-        assertEquals(2L, balance.npcValueMultiplierDenominator)
-        assertEquals(1L, balance.manufacturingCoinsPerMinute)
-        assertEquals(10L, balance.roundingCoins)
-        assertEquals("npc-value-plus-manufacturing-time", balance.policy)
+        assertEquals("npc-value-plus-manufacturing-time", previous.policy)
+        assertEquals(85, previous.orders.size)
+        assertEquals(3L, previous.npcValueMultiplierNumerator)
+        assertEquals(2L, previous.npcValueMultiplierDenominator)
+        assertEquals(1L, previous.manufacturingCoinsPerMinute)
+        assertEquals(10L, previous.roundingCoins)
+        previous.orders.forEach { row ->
+            assertEquals((row.npcValue * 90 + row.manufacturingSeconds + 599) / 600 * 10, row.coins, row.templateId)
+            assertTrue(row.coins >= row.previousCoins)
+        }
+    }
+
+    @Test fun `current orders include baseline item value and one final 25 percent bonus in shared browser vectors`() {
+        val balance = economyJson.decodeFromString<TimeBalanceVectors>(checkNotNull(javaClass.getResourceAsStream("/world/time-economy-order-vectors.json"))
+            .bufferedReader().use { it.readText() })
+        assertEquals("baseline-time-value-plus-order-bonus", balance.policy)
+        assertEquals(catalog.version, balance.catalogVersion)
+        assertEquals(2500L, balance.orderBonusBps)
+        assertEquals(1L, balance.roundingCoins)
         val templates = catalog.food!!.orders.templates.associateBy { it.id }
         val items = catalog.items.associateBy { it.id }
-        val manufacturingRecipes = catalog.recipes.filter { it.cost.items.isNotEmpty() && it.rewards.size == 1 }
+        val manufacturingRecipes = catalog.recipes.filter { !it.retired && it.cost.items.isNotEmpty() && it.rewards.size == 1 }
             .groupBy { it.rewards.keys.single() }
-        val canonicalRecipeIds = mapOf("iron_ingot" to "smelt_iron", "glass" to "make_glass", "reinforced_parts" to "make_reinforced_parts")
-        assertEquals(canonicalRecipeIds.keys, manufacturingRecipes.filterValues { it.size > 1 }.keys,
-            "New alternative processes require an explicit baseline recipe, never an unavailable future minimum")
+        val canonicalRecipeIds = catalog.timeEconomy!!.baselineRecipes
         fun manufacturingRecipe(itemId: String): EconomyRecipe? {
             val candidates = manufacturingRecipes[itemId] ?: return null
             val canonicalId = canonicalRecipeIds[itemId]
@@ -72,9 +88,10 @@ class EconomyOrderProgressionTest {
                 assertRecipeAvailable(dependency, buildings, label, active + recipe.id)
             }
         }
-        assertEquals(85, templates.size)
-        assertEquals(templates.keys, balance.orders.map { it.templateId }.toSet())
-        assertEquals(85, balance.orders.size)
+        val baselineIds = balance.orders.map { it.templateId }.toSet()
+        assertEquals(163, baselineIds.size, "Every current ordinary order has an independently calculated vector")
+        assertEquals(baselineIds, templates.keys)
+        assertEquals(163, balance.orders.size)
         balance.orders.forEach { expected ->
             val source = templates.getValue(expected.templateId)
             assertEquals(source.requiredHomeLevel, expected.home, source.id)
@@ -85,27 +102,19 @@ class EconomyOrderProgressionTest {
                 val label = "${expected.templateId}@$home"
                 val npcValue = actual.items.entries.sumOf { (id, quantity) -> quantity * items.getValue(id).baseSellPrice }
                 val seconds = actual.items.entries.sumOf { (id, quantity) -> quantity * manufacturingSeconds(id) }
-                // ceil10(1.5 * NPC value + seconds / 60), keeping both terms exact until the final rounding.
-                val quotedCoins = (npcValue * 90L + seconds + 599L) / 600L * 10L
+                // Manufacturing time is already included recursively in item prices.
+                val quotedCoins = (npcValue * (10000L + balance.orderBonusBps) + 9999L) / 10000L
                 assertEquals(expected.items, actual.items, label)
                 assertEquals(expected.npcValue, npcValue, label)
                 assertEquals(expected.manufacturingSeconds, seconds, label)
                 assertEquals(expected.coins, quotedCoins, label)
                 assertEquals(expected.coins, actual.coins, label)
-                assertTrue(actual.coins >= expected.previousCoins, "$label: no existing ordinary payout is reduced")
             }
         }
-        assertEquals(47, balance.orders.count { it.coins != it.previousCoins })
-        assertEquals(0L, manufacturingSeconds("berries"), "Growing raw ingredients is outside the manufacturing premium")
+        assertEquals(0L, manufacturingSeconds("berries"))
         assertEquals(0L, manufacturingSeconds("fiber"))
-        assertEquals(0L, manufacturingSeconds("fish_common"), "Fishing time is outside the manufacturing premium")
-        assertEquals(32 * 60L, manufacturingSeconds("iron_ingot"), "Use 30 minute early smelting plus two minutes of charcoal, not future tempered iron")
-        assertEquals(96 * 60L, balance.orders.single { it.templateId == "builder_iron_fittings" }.manufacturingSeconds)
-        assertEquals(1630L, templates.getValue("builder_iron_fittings").coins)
-        assertEquals(170L, templates.getValue("starter_fresh_berries").coins)
-        assertEquals(230L, templates.getValue("builder_trail_snack").coins)
-        assertEquals(110L, templates.getValue("builder_bench_repair").coins, "Round after adding time, never before")
-        assertEquals(450L, templates.getValue("repeat3_smoked_berries").coins)
+        assertEquals(0L, manufacturingSeconds("fish_common"))
+        assertEquals(17 * 60L, manufacturingSeconds("iron_ingot"), "Early smelting plus charcoal uses the explicit baseline")
     }
 
     @Test fun `browser and Kotlin share scaled quotes and complete dependency reachability`() {
@@ -117,8 +126,9 @@ class EconomyOrderProgressionTest {
         }
         vectors.availability.forEach { scenario ->
             val state = EconomyRules.initial().copy(buildings = scenario.buildings,
+                progression = EconomyProgression(recipes = scenario.recipes, routes = scenario.completedExplorations),
                 inventory = catalog.items.associate { it.id to 100L },
-                fishing = EconomyFishing(ownedRods = scenario.ownedRods, ownedHooks = scenario.ownedHooks))
+                fishing = EconomyFishing(ownedRods = scenario.ownedRods, ownedHooks = scenario.ownedHooks, catches = scenario.fishCatches))
             val reachable = EconomyFood.obtainableOrderItems(state)
             scenario.present.forEach { assertTrue(it in reachable, "${scenario.label}: expected $it") }
             scenario.missing.forEach { assertFalse(it in reachable, "${scenario.label}: unexpected $it") }
@@ -132,7 +142,9 @@ class EconomyOrderProgressionTest {
         val onlyHome = EconomyRules.initial().copy(buildings = mapOf("home" to 5, "garden" to 1, "warehouse" to 1))
         val lockedItems = setOf("ore", "clay", "sand", "hardwood", "resin", "charcoal", "iron_ingot", "reinforced_parts")
         assertTrue(EconomyFood.eligibleOrderTemplates(onlyHome).all { order -> order.items.keys.none { it in lockedItems } })
-        val allBuildings = onlyHome.copy(buildings = catalog.buildings.associate { it.id to it.levels.last().level })
+        val allBuildings = onlyHome.copy(buildings = catalog.buildings.associate { it.id to it.levels.last().level },
+            progression = EconomyProgression(recipes = catalog.recipes.associate { it.id to 10L },
+                routes = catalog.explorations.associate { it.id to 10L }))
         val requested = EconomyFood.eligibleOrderTemplates(allBuildings).flatMap { it.items.keys }.toSet()
         catalog.items.filter { it.category in setOf("material", "crafted") }.forEach { assertTrue(it.id in requested, it.id) }
     }
@@ -153,7 +165,7 @@ class EconomyOrderProgressionTest {
 
     @Test fun `income boost preserves and pays an already saved 400 coin delivery`() {
         val template = catalog.food!!.orders.templates.single { it.id == "builder_wood_supply" }
-        assertEquals(90L, template.coins)
+        assertEquals(75L, template.coins)
         val initial = EconomyRules.initial()
         val board = EconomyFood.normalizedOrders(initial, now)
         val slots = board.slots.toMutableList()
@@ -169,9 +181,9 @@ class EconomyOrderProgressionTest {
         assertEquals(catalog.food!!.orders.templates.single { it.id == next.templateId }.coins, next.coins)
     }
 
-    @Test fun `saved 180 coin trail snack survives reload and catalog update while the next card quotes 230`() {
+    @Test fun `saved 180 coin trail snack survives reload and catalog update while the next card quotes 288`() {
         val updated = catalog.food!!.orders.templates.single { it.id == "builder_trail_snack" }
-        assertEquals(230L, updated.coins)
+        assertEquals(288L, updated.coins)
         fun onlySnack(terms: EconomyResidentOrderTemplate) = catalog.copy(food = catalog.food!!.copy(
             orders = catalog.food!!.orders.copy(templates = listOf(terms))))
         val previousCatalog = onlySnack(updated.copy(coins = 180))
@@ -194,7 +206,7 @@ class EconomyOrderProgressionTest {
         val next = EconomyFood.residentOrderBoard(completed, now.plusSeconds(1), updatedCatalog).offers.single()
         assertEquals(updated.id, next.templateId)
         assertEquals(updated.items, next.items)
-        assertEquals(230L, next.coins)
+        assertEquals(288L, next.coins)
         assertNotEquals(promised.id, next.id)
         val reloaded = economyJson.decodeFromString<EconomyState>(economyJson.encodeToString(completed))
         assertEquals(next, EconomyFood.residentOrderBoard(reloaded, now.plusSeconds(1), updatedCatalog).offers.single())

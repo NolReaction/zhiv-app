@@ -10,6 +10,8 @@ after(() => vite.close());
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const food = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { playerProgressionCatalog } = await vite.ssrLoadModule("/features/economy/domain/player-progression.ts");
+const { PEARL_DISPLAY_DIVISOR } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const api = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const vectors = JSON.parse(await readFile(new URL("../apps/api/src/test/resources/world/orders-v2-vectors.json", import.meta.url), "utf8"));
@@ -126,12 +128,19 @@ test("completion is immediately repeatable with new goods and never consumes rep
   const state = fresh(); state.wallet.pearls = 10;
   const templates = [];
   for (let index = 0; index < 12; index++) {
-    const offer = board(state).offers[index % 3]; templates.push(offer.templateId);
+    const offer = board(state).offers[index % board(state).offers.length]; templates.push(offer.templateId);
     const neighbours = board(state).offers.filter(entry => entry.slot !== offer.slot);
     state.inventory = { ...offer.items };
-    const beforeCoins = state.wallet.coins;
+    const beforeCoins = state.wallet.coins, beforePearls = state.wallet.pearls;
     apply(state, "complete_resident_order", offer.id);
-    assert.equal(state.wallet.coins, beforeCoins + offer.coins); assert.equal(state.wallet.pearls, 10);
+    const player = state.progression.player;
+    const earnedPearls = playerProgressionCatalog.levelRewards.filter(reward => player.awardedLevels.includes(reward.level))
+      .reduce((sum, reward) => sum + reward.rewardPearls, 0)
+      + playerProgressionCatalog.season.milestones.filter(reward => player.season.awardedMilestones.includes(reward.points))
+        .reduce((sum, reward) => sum + reward.rewardPearls, 0);
+    assert.equal(state.wallet.coins, beforeCoins + offer.coins);
+    assert(state.wallet.pearls >= beforePearls, "Completing an order never spends pearls");
+    assert.equal(state.wallet.pearls, 10 + earnedPearls * PEARL_DISPLAY_DIVISOR, "Only recorded level and season rewards increase the pearl balance");
     assert.equal(board(state).freeReplacementsRemaining, 3); assert.equal(state.residentOrders.completed, index + 1);
     assert.deepEqual(board(state).offers.filter(entry => entry.slot !== offer.slot), neighbours);
     assert.ok(board(state).offers.every(entry => Date.parse(entry.availableAt) <= now));
@@ -168,7 +177,7 @@ test("legacy cooldowns migrate without spending or state writes and old offer ID
   assert.deepEqual(state, previous);
   failWithoutChanges(state, "complete_resident_order", "order_82934_0_0_plesk_river_catch", "ECONOMY_ORDER_CHANGED");
   apply(state, "replace_resident_order", actual.offers[0].id);
-  assert.equal(state.residentOrders.version, 2); assert.equal(state.residentOrders.completed, 7); assert.equal(state.residentOrders.earnedCoins, 1234);
+  assert.equal(state.residentOrders.version, 3); assert.equal(state.residentOrders.completed, 7); assert.equal(state.residentOrders.earnedCoins, 1234);
 });
 
 test("unlocking a building does not reroll initial cards even before the first order command", () => {
@@ -176,7 +185,7 @@ test("unlocking a building does not reroll initial cards even before the first o
   state.jobs.push({ id: crypto.randomUUID(), kind: "construction", targetId: "home", recipeId: null, targetLevel: 5,
     startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now).toISOString(), rewards: {}, cost: { coins: 0, items: {} }, catalogVersion: 3 });
   apply(state, "claim_job", state.jobs[0].id);
-  assert.equal(state.buildings.home, 5); assert.equal(state.residentOrders.version, 2);
+  assert.equal(state.buildings.home, 5); assert.equal(state.residentOrders.version, 3);
   assert.deepEqual(board(state).offers, before.offers);
 });
 
@@ -210,13 +219,15 @@ test("paid replacement receipts replay once, reject altered quotes, and fence co
   const stateAfter = read(p); assert.equal(stateAfter.wallet.pearls, 40); assert.equal(stateAfter.residentOrders.freeReplacementsUsed, 3);
 });
 
-test("eleven meals keep distinct boosts, preserve the six fish tiers and retain old paid timing", () => {
-  assert.equal(catalog.food.meals.length, 11);
+test("twenty-six meals keep distinct boosts, preserve the six fish tiers and retain old paid timing", () => {
+  assert.equal(catalog.food.meals.length, 26);
   assert.deepEqual(catalog.food.meals.filter(meal => ["grilled_fish", "fish_soup", "berry_fish", "hearty_fish", "epic_fish", "legendary_fish"].includes(meal.itemId)).map(meal => [meal.heroSpeedBps, meal.builderSpeedBps]), [[1000,1000],[2500,2500],[4000,3500],[6000,5000],[8000,7000],[10000,9000]]);
-  assert.deepEqual(catalog.food.meals.filter(meal => ["strawberry_compote", "blueberry_compote", "currant_jelly", "blackberry_preserve", "cranberry_glaze"].includes(meal.itemId))
+  assert.deepEqual(catalog.food.meals.filter(meal => ["strawberry_compote", "blueberry_compote", "currant_jelly", "blackberry_preserve", "cranberry_glaze",
+    "ember_berries", "strawberry_kissel", "cranberry_bream"].includes(meal.itemId))
     .map(meal => [meal.itemId, meal.heroSpeedBps, meal.builderSpeedBps]), [
-      ["strawberry_compote", 800, 1200], ["blueberry_compote", 1200, 800], ["currant_jelly", 2000, 3000],
-      ["blackberry_preserve", 4500, 3000], ["cranberry_glaze", 7500, 5500],
+      ["strawberry_compote", 800, 2500], ["blueberry_compote", 1200, 2000], ["currant_jelly", 2000, 5000],
+      ["blackberry_preserve", 4500, 8000], ["cranberry_glaze", 7500, 10000],
+      ["ember_berries", 1000, 1500], ["strawberry_kissel", 1500, 2000], ["cranberry_bream", 5500, 7500],
     ]);
   for (const meal of catalog.food.meals) {
     const state = fresh(); state.inventory = { [meal.itemId]: 1 };
@@ -224,6 +235,8 @@ test("eleven meals keep distinct boosts, preserve the six fish tiers and retain 
     const route = catalog.explorations.find(route => route.id === "forest");
     assert.equal(Date.parse(state.jobs[0].finishesAt) - now, Math.ceil(route.seconds * 10000 / (10000 + meal.heroSpeedBps)) * 1000);
     assert.equal(state.jobs[0].meal.speedBps, meal.heroSpeedBps);
+    assert.equal(state.food.heroMealEffect.remainingWorkSeconds, meal.heroWorkSeconds - route.seconds,
+      "one short trip spends its real work and leaves the serving's remaining budget");
     const builder = fresh(), target = catalog.buildings.find(building => building.id === "workshop").levels[0];
     builder.wallet.coins = target.cost.coins; builder.inventory = { ...target.cost.items, [meal.itemId]: 1 }; Object.assign(builder.buildings, target.requiredBuildings);
     apply(builder, "feed_builder", meal.itemId); apply(builder, "start_construction", "workshop");

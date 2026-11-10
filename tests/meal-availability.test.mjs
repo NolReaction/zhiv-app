@@ -18,18 +18,17 @@ function controller(overrides = {}) {
 }
 const ids = meals => meals.map(meal => meal.itemId);
 
-test("contextual meals hide future recipes but retain owned portions and opened recipes without ingredients", () => {
+test("contextual meals show only owned portions, including gifts from locked recipes", () => {
   const economy = controller(), state = economy.snapshot;
-  const initial = ids(visibleMeals(state));
-  assert.ok(initial.includes("grilled_fish")); assert.ok(!initial.includes("legendary_fish"));
-  const futureMeal = state.catalog.food.meals.find(meal => !initial.includes(meal.itemId)); assert.ok(futureMeal);
+  assert.deepEqual(visibleMeals(state), []);
+  const futureMeal = state.catalog.food.meals.find(meal => meal.itemId === "legendary_fish"); assert.ok(futureMeal);
   state.inventory[futureMeal.itemId] = 1;
   assert.ok(ids(visibleMeals(state)).includes(futureMeal.itemId), "a gifted or traded portion remains usable before its recipe opens");
   assert.equal(availableMealRecipe(state, futureMeal.itemId), undefined);
   state.inventory = {}; state.buildings.home = 5; state.buildings.dryer = 5;
   state.progression = { recipes: { cook_grilled_fish: 1 } };
-  assert.ok(ids(visibleMeals(state)).includes(futureMeal.itemId));
-  assert.ok(availableMealRecipe(state, futureMeal.itemId));
+  assert.deepEqual(visibleMeals(state), [], "opening a recipe never inserts an unavailable portion into the meal picker");
+  assert.ok(availableMealRecipe(state, "grilled_fish"), "even a presently cookable meal stays hidden without a ready portion");
 });
 
 test("the meal source retains its exact cooking recipe and all opening requirements", () => {
@@ -83,7 +82,8 @@ test("meal recipes require personally collected prerequisite production, while o
   state.inventory.fish_soup = 1;
   assert.equal(ids(visibleMeals(state)).includes("fish_soup"), true, "gifted or bought meals remain usable before their recipe opens");
   state.progression = { recipes: { cook_grilled_fish: 1 } };
+  state.fishing = { catches: { fish: 8 } };
   assert.equal(availableMealRecipe(state, "fish_soup")?.id, "cook_fish_soup");
   state.inventory = {};
-  assert.equal(ids(visibleMeals(state)).includes("fish_soup"), true, "opened dishes remain listed even without ingredients");
+  assert.equal(ids(visibleMeals(state)).includes("fish_soup"), false, "opened recipes stay in the cookbook, not the empty pantry");
 });

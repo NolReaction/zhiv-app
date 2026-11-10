@@ -58,6 +58,19 @@ test("an unreachable entry is rejected rather than snapped across the house", ()
   assert.equal(compiled.diagnostics.find(item => item.id === "home").reason, "unreachable-door-entry");
 });
 
+test("the longer authored porch still rejects blockers between its landing and entry", () => {
+  const original = compileWorldInteractions(scene()).home;
+  assert.ok(original && distance(original.entry, original.dock) > 25, "the moved doorway needs the extended porch");
+  for (const kind of ["water", "obstacle", "building"]) {
+    const map = scene(), middle = { x: (original.entry.x + original.dock.x) / 2, y: (original.entry.y + original.dock.y) / 2 };
+    const points = rect(middle.x - 1, middle.y - 1, 2, 2);
+    if (kind === "water") map.water.surfaces.push({ id: "blocked-porch", points });
+    if (kind === "obstacle") map.navigation.obstacles.push({ id: "blocked-porch", points });
+    if (kind === "building") map.sites.push({ ...structuredClone(map.sites[0]), id: "other", collision: points });
+    assert.equal(compileWorldInteractions(map).home, null, `${kind} cannot be crossed by the porch extension`);
+  }
+});
+
 test("bush jumps reject every hard blocker and require a safe standing point", () => {
   for (const kind of ["water", "obstacle", "building", "entry"]) {
     const map = scene(), bush = map.bushes[0];

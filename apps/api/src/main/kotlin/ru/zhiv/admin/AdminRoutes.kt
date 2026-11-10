@@ -62,6 +62,14 @@ fun Route.adminRoutes(repository: AdminRepository, codec: TokenCodec, config: Ap
                     call.parameter("kind", ""), call.parameter("resource", ""), call.parameter("direction", "all"),
                     offset, limit, call.optionalParameter("at"))))
             }
+            get("/analytics/events/export") {
+                val hash = call.adminSessionHash(config, codec)
+                val limit = call.parameter("limit", "1000").toIntOrNull()?.takeIf { it in 1..1000 } ?: badQuery()
+                val allTime = call.parameter("allTime", "false").toBooleanStrictOrNull() ?: badQuery()
+                call.respond(repository.analyticsEventsExport(hash, AdminAnalyticsExportQuery(call.analyticsQuery(),
+                    call.parameter("kind", ""), call.parameter("resource", ""), call.parameter("direction", "all"),
+                    allTime, call.optionalParameter("cursor"), limit)))
+            }
             get("/users") {
                 val hash = call.adminSessionHash(config, codec)
                 val (offset, limit) = call.page()

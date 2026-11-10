@@ -8,7 +8,7 @@ import { readAdminAttempt, saveAdminAttempt } from "./admin-attempt-journal";
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_PEARLS } from "@/features/economy/domain/money";
 
 const delta = z.number().int().min(-1_000_000_000).max(1_000_000_000);
-export const adminAdjustmentSchema = z.object({ requestId: z.string().uuid(), confirmationPublicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/),
+export const adminAdjustmentSchema = z.object({ requestId: z.guid(), confirmationPublicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/),
   reason: z.string().refine(validAdminReason), expectedRevision: z.number().int().nonnegative().safe(),
   coinsDelta: delta, pearlsDelta: delta, delivery: z.enum(["silent", "notify"]), playerMessage: playerMessageSchema.optional(),
 }).strict().refine(value => (value.coinsDelta !== 0 || value.pearlsDelta !== 0)

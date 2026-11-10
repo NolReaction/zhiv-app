@@ -209,6 +209,9 @@
 .presetBuildings > div { display: flex; justify-content: space-between; gap: 6px; min-width: 0; font-size: 11px; }
 .presetBuildings dt { color: var(--dev-muted); overflow-wrap: anywhere; }
 .presetBuildings dd { margin: 0; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.presetDetails { min-width: 0; border-block: 1px solid var(--dev-line); }
+.presetDetails > summary { padding-block: 10px; min-height: 44px; box-sizing: border-box; cursor: pointer; font-size: 12px; color: #e3edcf; }
+.presetDetails .presetBuildings { padding-bottom: 12px; }
 .cheatSection { padding-top: 0; display: block; }
 .cheatSection > summary { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; list-style: none; font-weight: 650; }
 .cheatSection > summary::-webkit-details-marker { display: none; }

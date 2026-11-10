@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { ArrowRight, Check, Clock3 } from "lucide-react";
+import { CookingExperimentIcon } from "@/features/items/item-icon";
 import { PlayerItemIcon } from "@/features/economy/ui/fishing/fish-discovery";
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, type EconomyJob } from "@/features/economy/domain/model";
 import { productionStationSupported } from "@/features/economy/domain/production-slots";
@@ -9,6 +10,7 @@ import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-st
 import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";
 import { berryCollectionStatus } from "@/features/economy/integration/garden-collection";
 import { worldCountdown, worldJobProgress } from "@/features/economy/ui/shared/world-stations";
+import { jobTapBoostPercent, TapBoostWorkBadge } from "./tap-boost-work-badge";
 import styles from "./production-work.module.css";
 
 type Confirmation = { owner: string; revision: number; jobId: string; deadline: number };
@@ -46,6 +48,7 @@ function ProductionWorkCell({ economy, job, openPantry, compact }: { economy: Re
   const { snapshot: state } = economy;
   const renderedOwner = state.ownerPublicId, renderedRevision = state.revision;
   const status = worldJobProgress(state, job, economy.now);
+  const boostPercent = jobTapBoostPercent(state, job.id, economy.now);
   const berry = berryCollectionStatus(job, state, economy.now, collection);
   const storageShortfall = Math.max(status.storageShortfall, berry?.storageShortfall ?? 0);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -59,7 +62,8 @@ function ProductionWorkCell({ economy, job, openPantry, compact }: { economy: Re
   const descriptionId = useId();
   const outputs = Object.entries(job.rewards);
   const name = (id: string) => state.catalog.items.find(item => item.id === id)?.name ?? id;
-  const title = outputs.map(([id, amount]) => `${name(id)}${amount === 1 && outputs.length === 1 ? "" : ` ×${number(amount)}`}`).join(" + ") || state.catalog.recipes.find(recipe => recipe.id === job.recipeId)?.name || "Производство";
+  const experimental = Boolean(job.cooking || state.catalog.recipes.find(recipe => recipe.id === job.recipeId)?.experiment);
+  const title = experimental ? "Кулинарный опыт" : outputs.map(([id, amount]) => `${name(id)}${amount === 1 && outputs.length === 1 ? "" : ` ×${number(amount)}`}`).join(" + ") || state.catalog.recipes.find(recipe => recipe.id === job.recipeId)?.name || "Производство";
   const cancellationReason = productionCancellationReason(economy, job);
   const confirming = Boolean(confirmation && countdown > 0 && confirmation.owner === state.ownerPublicId && confirmation.revision === state.revision && confirmation.jobId === job.id && !status.ready && !job.collection?.startedAt);
   const pendingMatches = submitted && !economy.error;
@@ -128,13 +132,16 @@ function ProductionWorkCell({ economy, job, openPantry, compact }: { economy: Re
     }
   }
   const label = confirming ? "Удалить?" : status.ready ? berry?.button ?? "Забрать" : pendingMatches ? "Отменяется…" : "Отменить";
-  return <div ref={root} className={`${styles.work} ${compact ? styles.compact : ""}`} data-job-id={job.id} data-ready={status.ready || undefined} data-confirm-cancel={confirming || undefined}
+  const timeLabel = berry && !berry.growing ? berry.label : status.ready ? "Готово к получению" : worldCountdown(status.seconds);
+  return <div ref={root} className={`${styles.work} ${compact ? styles.compact : ""}`} data-job-id={job.id} data-ready={status.ready || undefined} data-confirm-cancel={confirming || undefined} data-tap-boost-power={boostPercent || undefined}
     onKeyDown={event => { if (event.key === "Escape" && confirming) { event.preventDefault(); event.stopPropagation(); dismiss(); } }}
     onBlurCapture={event => { if (confirming && !event.currentTarget.contains(event.relatedTarget as Node | null)) resetConfirmation(); }}>
     <button ref={button} type="button" className={styles.main} data-production-control="true" disabled={disabled} aria-expanded={confirming} aria-describedby={confirming ? descriptionId : undefined}
       aria-label={`${confirming ? "Подтвердить отмену" : status.ready ? berry?.button ?? "Забрать" : "Отменить производство"}: ${title}`} title={confirming ? refund : undefined} onClick={interact}>
-      <span className={styles.products}>{outputs.map(([id]) => <PlayerItemIcon key={id} state={state} itemId={id} size={compact ? 32 : 38} />)}</span>
-      <strong>{title}</strong><span className={styles.time} data-job-countdown={!status.ready && (!berry || berry.growing) || undefined}>{berry && !berry.growing ? berry.label : status.ready ? "Готово к получению" : worldCountdown(status.seconds)}</span>
+      <span className={styles.products}>{experimental ? <CookingExperimentIcon recipeId={job.recipeId ?? ""} size={compact ? 32 : 38} /> : outputs.map(([id]) => <PlayerItemIcon key={id} state={state} itemId={id} size={compact ? 32 : 38} />)}</span>
+      <strong>{title}</strong><span className={styles.time} data-job-countdown={!status.ready && (!berry || berry.growing) || undefined} data-boost-time={boostPercent > 0 || undefined}>
+        {boostPercent > 0 ? <>{timeLabel}<TapBoostWorkBadge percent={boostPercent} compact /></> : timeLabel}
+      </span>
       <span className={`${styles.actionLine} ${confirming ? styles.confirmLabel : status.ready ? styles.action : styles.cancelHint}`} data-production-action="true">
         {confirming ? <>{label}<span className={styles.countdown} aria-hidden="true">{countdown} с</span></> : <>{status.ready && (berry?.collecting ? <Clock3 size={13} aria-hidden="true" /> : <Check size={13} aria-hidden="true" />)}{label}</>}
       </span>

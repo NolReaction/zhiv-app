@@ -1,0 +1,173 @@
+.garage {
+  display: grid;
+  flex: 1 0 auto;
+  grid-template-columns: minmax(0, 1fr) minmax(215px, 31%);
+  grid-template-rows: minmax(118px, 1fr) auto auto;
+  grid-template-areas: "stage inspector" "rail inspector" "dock dock";
+  min-width: 0;
+  overflow: clip;
+  overflow-anchor: none;
+  border: 1px solid #65715a;
+  border-radius: 10px;
+  background: #1b2a23;
+  color: #f2e8cf;
+}
+.stage {
+  position: relative;
+  grid-area: stage;
+  overflow: hidden;
+  isolation: isolate;
+  border-bottom: 1px solid #796a4b;
+  background: linear-gradient(180deg,#09170d08 65%,#211d1459),url('/world/boat-garage/garage.webp?v=side-profile-2') center 61% / cover;
+}
+.readiness {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px solid #b19b6d;
+  border-radius: 4px;
+  background: #20271ded;
+  color: #f4d497;
+  font-size: 11px;
+}
+.readiness[data-ready] { border-color: #859a6d; color: #d2e6b5; }
+.assembly { display: grid; position: absolute; inset: 18px 10px 5px; place-items: center; container-type: size; }
+.rig { position: relative; width: 100%; height: 100%; }
+.rig > svg { display: block; width: 100%; height: 100%; }
+@supports (width: 1cqw) { .rig { width: min(100cqw, 204.0816cqh); height: auto; aspect-ratio: 1000 / 490; } }
+.hotspots { position: absolute; inset: 0; pointer-events: none; }
+.hotspot { display: grid; position: absolute; width: 44px; height: 44px; padding: 0; place-items: center; transform: translate(-50%,-50%); pointer-events: auto; border: 0; border-radius: 50%; background: transparent; }
+.hotspot > span { display: block; width: 14px; height: 14px; border: 2px solid #f4dfb5; border-radius: 50%; background: #2c3f2e; box-shadow: 0 0 0 3px #17271da8; }
+.hotspot > small { position: absolute; top: 50%; left: calc(50% + 12px); transform: translateY(-50%); padding: 2px 6px; border-radius: 3px; background: #19291fee; color: #ede6cc; font-size: 10px; white-space: nowrap; pointer-events: none; }
+.hotspot[aria-pressed=true] > span { background: #efc47c; box-shadow: 0 0 0 4px #44371f99; }
+.hotspot[aria-pressed=true] > small { background: #e6c48e; color: #302b1f; }
+.dock { grid-area: dock; }
+.rail { grid-area: rail; min-width: 0; padding: clamp(7px, 1vw, 14px); }
+.modules { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 7px; }
+.module {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: 54px auto auto 5px auto;
+  gap: 5px;
+  align-items: center;
+  justify-items: center;
+  padding: 9px 5px;
+  border: 1px solid #5e6b55;
+  border-radius: 5px;
+  background: linear-gradient(155deg,#344336,#24342a);
+  color: #e6e4cb;
+  text-align: center;
+}
+.module:hover { border-color: #bba576; }
+.module[aria-pressed=true] { border-color: #e0b76d; background: linear-gradient(140deg,#514a34,#373d2c); box-shadow: inset 0 0 0 1px #b3945866; }
+.moduleImage { display: block; width: 94%; height: 54px; filter: drop-shadow(0 2px 2px #07110c90); }
+.module > strong { font-size: 12px; line-height: 1.2; color: #f6eaca; }
+.tier { color: #bec7ae; font-variant-numeric: tabular-nums; font-size: 10px; }
+.level { display: flex; justify-content: center; gap: 2px; height: 4px; width: 72%; }
+.level i { min-width: 0; flex: 1; background: #18281e; border: 1px solid #7a8061; }
+.level i[data-complete] { background: #d6b476; border-color: #f2d68b; }
+.cardHint { font-size: 10px; line-height: 1.4; color: #ebcc8f; }
+.inspector { grid-area: inspector; display: grid; gap: 10px; align-content: center; min-width: 0; padding: clamp(10px, 1.6vw, 22px); border-left: 1px solid #626f525a; background: linear-gradient(150deg,#304034,#24352b); }
+.inspectorTop, .costHeading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.inspectorTop h3 { margin: 0; color: #f7e9c6; font-size: 19px; line-height: 1.25; }
+.inspectorTop > span { color: #e9c985; font-size: 11px; font-variant-numeric: tabular-nums; }
+.description { color: #becab6; font-size: 12px; line-height: 1.45; }
+.effect { padding-block: 7px; border-block: 1px solid #81906d55; }
+.effect small, .costHeading { color: #c2cdb8; font-size: 10px; }
+.effect > div, .costHeading > span:last-child { display: flex; align-items: center; gap: 6px; }
+.effect > div { flex-wrap: wrap; font-size: 12px; }
+.effect strong, .effect svg { color: #efca81; }
+.free { color: #d2dfad; font-size: 12px; }
+.inspector .buy { display: flex; flex-wrap: nowrap; align-items: center; justify-content: center; gap: 7px; min-height: 42px; margin-top: 2px; }
+.reason { display: flex; align-items: flex-start; gap: 5px; color: #edcc98; font-size: 11px; }
+.reason svg { flex-shrink: 0; margin-top: 2px; }
+.inspector > [data-boat-work] { margin: 0; padding: 1px; border: 0; background: transparent; }
+.garage button:focus-visible { outline: 2px solid #ffe3a2; outline-offset: 2px; }
+@media (max-width: 680px), (max-height: 540px) {
+  .rail { padding: 6px; }
+  .modules { gap: 4px; }
+  .module { grid-template-rows: 30px auto auto; gap: 2px; padding: 5px 1px; }
+  .moduleImage { height: 30px; }
+  .module > strong { font-size: 11px; }
+  .module { line-height: 1.15; }
+  .tier { font-size: 10px; }
+  .level, .cardHint { display: none; }
+  .inspector { gap: 5px; padding: 8px 10px; }
+  .inspectorTop h3 { font-size: 16px; }
+  .description, .reason { line-height: 1.3; }
+  .effect { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 2px 8px; padding-block: 4px; }
+  .inspector .buy { min-height: 42px; margin: 0; padding: 5px 7px; }
+  .readiness { top: 5px; right: 5px; padding: 2px 5px; font-size: 10px; }
+  .assembly { inset: 12px 4px 0; }
+  .hotspot > small { display: none; }
+  .hotspot[aria-pressed=true] > small, .hotspot:focus-visible > small { display: block; }
+}
+@media (max-width: 680px) and (min-height: 501px), (max-width: 519px) {
+  .garage {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(96px, 1fr) auto auto auto;
+    grid-template-areas: "stage" "rail" "inspector" "dock";
+  }
+  .inspector { border-left: 0; border-top: 1px solid #626f525a; }
+}
+@media (max-height: 500px) and (min-width: 520px) {
+  .garage { grid-template-columns: minmax(0, 1fr) minmax(205px, 36%); grid-template-areas: "stage inspector" "rail inspector" "dock inspector"; grid-template-rows: minmax(65px, 1fr) auto auto; }
+  .inspector { padding: 5px 8px; }
+  .module { grid-template-rows: 20px auto auto; padding: 3px 1px; }
+  .moduleImage { height: 20px; }
+}
+@media (max-width: 360px) and (max-height: 610px) {
+  .garage { grid-template-rows: minmax(78px, 1fr) auto auto auto; }
+  .inspector { gap: 3px; }
+  .module { grid-template-rows: 24px auto auto; padding: 4px 1px; }
+  .moduleImage { height: 24px; }
+}
+@media (max-width: 300px) {
+  .modules { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (forced-colors: active) { .module[aria-pressed=true], .hotspot[aria-pressed=true] { outline: 2px solid Highlight; } }
+
+.upgradeFeedback {
+  position: absolute;
+  z-index: 3;
+  inset: auto 0 4px;
+  display: grid;
+  justify-items: center;
+  pointer-events: none;
+}
+.upgradeFeedback > span {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border: 1px solid #e7c081;
+  border-radius: 5px;
+  background: #26372a;
+  color: #fff0c8;
+  font-size: 11px;
+}
+.garage[data-feedback-phase] .upgradeFeedback > span { display: inline-flex; }
+.garage[data-feedback-module="engine"] [data-boat-module="engine"],
+.garage[data-feedback-module="hull"] [data-boat-module="hull"],
+.garage[data-feedback-module="tank"] [data-boat-module="tank"],
+.garage[data-feedback-module="storage"] [data-boat-module="storage"] { outline: 2px solid #e7c081; outline-offset: -2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .garage[data-feedback-phase] .upgradeFeedback > span { animation: install-notice 300ms ease-out both; }
+  .garage[data-feedback-module="hull"][data-feedback-phase="installed"] [data-boat-part="repair"],
+  .garage[data-feedback-module="engine"][data-feedback-phase="installed"] [data-boat-part="engine"],
+  .garage[data-feedback-module="tank"][data-feedback-phase="installed"] [data-boat-part="tank"],
+  .garage[data-feedback-module="storage"][data-feedback-phase="installed"] [data-boat-module="storage"] .moduleImage {
+    animation: fit-part 750ms ease-out;
+  }
+}
+@keyframes install-notice { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fit-part {
+  0% { transform: translateY(-6px); opacity: .65; }
+  55% { transform: translateY(1px); opacity: 1; filter: drop-shadow(0 0 6px #f3c77d); }
+  100% { transform: translateY(0); }
+}

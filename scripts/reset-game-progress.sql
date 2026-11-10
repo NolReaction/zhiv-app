@@ -17,13 +17,15 @@ SET LOCAL statement_timeout = '3min';
 DO $$
 DECLARE
     cleared_tables text[] := ARRAY[
-        'check_in_audiences', 'check_ins', 'earth_latest_locations', 'earth_frozen_locations',
+        'economy_market_listings', 'economy_market_receipts',
+        'neighbor_shop_cycles', 'neighbor_identity', 'neighbor_daily_usage',
+        'neighbor_global_usage', 'neighbor_receipts', 'neighbor_purchases',
         'economy_barter_offers', 'economy_barter_receipts', 'economy_barter_showcases',
         'economy_commands',
-        'economy_market_daily_turnover', 'economy_market_listings', 'economy_market_receipts',
+        'economy_market_daily_turnover',
         'economy_market_showcases', 'forest_memory_receipts',
         'game_achievement_tiers', 'game_daily_rewards', 'game_reward_claims', 'onboarding_progress',
-        'game_items', 'game_monthly_scores', 'game_presence_clients', 'game_presence_accounts', 'game_presence_daily',
+        'game_fishing_records', 'game_items', 'game_monthly_scores', 'game_presence_clients', 'game_presence_accounts', 'game_presence_daily',
         'game_sessions', 'game_tap_activity_minutes',
         'game_tap_activity_seconds', 'world_commands', 'world_ledger'
     ];
@@ -33,6 +35,7 @@ DECLARE
         'economy_profiles', 'world_profiles', 'forest_memory', 'game_profiles', 'economy_conversion_audit', 'economy_ledger'
     ];
     preserved_tables text[] := ARRAY[
+        'app_users', 'check_in_audiences', 'check_ins', 'earth_latest_locations', 'earth_frozen_locations',
         'account_action_proofs', 'account_group_owner_transfers', 'account_identity_retirements',
         'account_login_flows', 'account_login_identities', 'account_merge_previews',
         'account_merge_sources', 'account_operation_receipts', 'account_recovery_attempts',
@@ -42,14 +45,15 @@ DECLARE
         'circle_sharing_preferences', 'circles', 'direct_invite_links', 'direct_invite_redemptions',
         'direct_person_favorites', 'direct_requests', 'earth_sharing_settings', 'earth_sharing_recipients',
         'game_tap_collection_metadata', 'identity_bootstrap_keys', 'managed_promo_codes',
+        'neighbor_settings',
         'notification_preferences', 'notification_subscriptions', 'player_feedback',
         'player_feedback_actions', 'player_security_observations', 'private_person_nicknames', 'promo_redemptions',
         'recipient_sharing_preferences', 'user_incidents', 'user_status_write_keys', 'user_timezone_write_keys'
     ];
-    -- Identity rows change only their obsolete check-in timestamp. Security badges
-    -- and non-welcome service mail are retained exactly; other progress is removed.
+    -- Identity and social/check-in data remain untouched. Security badges and
+    -- non-welcome service mail are retained exactly; other game progress is removed.
     partial_tables text[] := ARRAY[
-        'app_users', 'game_achievements', 'game_achievement_reward_claims', 'player_mail_messages', 'notification_events', 'notification_batches',
+        'game_achievements', 'game_achievement_reward_claims', 'player_mail_messages', 'notification_events', 'notification_batches',
         'gameplay_generations', 'gameplay_reset_runs'
     ];
     expected_tables text[];
@@ -60,13 +64,12 @@ DECLARE
     preserved_fingerprints jsonb := '{}'::jsonb;
     service_fingerprint text;
     batch_fingerprint text;
-    account_fingerprint text;
     security_fingerprint text;
     security_claim_fingerprint text;
     mail_fingerprint text;
     reset_history_fingerprint text;
     previous_generation bigint;
-    release_reset_id constant text := '0.7.1';
+    release_reset_id constant text := '0.7.2';
     reset_time timestamptz;
     apply_mode boolean := current_setting('zhiv.reset_game_progress', true) = 'on';
 BEGIN
@@ -79,16 +82,21 @@ BEGIN
     END IF;
     -- V68 adds the reset generation and release ledger; migration itself never resets data.
     -- V69 onboarding progress is cleared; V70 expands achievement constraints without new tables.
+    -- V71 neighbor settings stay; this explicit global release reset discards all personal trade progress.
+    -- V76 only retunes default neighbor settings; V77 adds a reward-course column and tier constraints.
+    -- V78 adds resident activity inside economy state. Replacing the entire JSON also clears
+    -- progression XP, seasonal contribution and tap boosts without relying on a field allowlist.
     -- Every later migration still requires an explicit inventory/policy review.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 70
+    -- V82 indexes all confirmed fish records. They are removed with the economy during a reset.
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 82
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,70) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,82) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL','71:SQL','72:SQL','73:SQL','74:SQL','75:SQL','76:SQL','77:SQL','78:SQL','79:SQL','80:SQL','81:SQL','82:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V70. Game reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V82. Game reset cancelled.';
     END IF;
 
     IF apply_mode THEN
@@ -129,14 +137,12 @@ BEGIN
             preserved_fingerprints := preserved_fingerprints || jsonb_build_object(table_name, fingerprint);
         END IF;
     END LOOP;
-    RAISE NOTICE 'RESET check-in timestamps, non-security achievements and welcome mail; retain auth, friends and service mail.';
+    RAISE NOTICE 'RESET gameplay, XP, tap boosts, seasonal progress, non-security achievements and welcome mail; retain auth, friends, check-ins, locations and service mail.';
     RAISE NOTICE 'Release %, gameplay generation % -> %', release_reset_id, previous_generation, previous_generation + 1;
     IF NOT apply_mode THEN
         RAISE NOTICE 'Preview only. No application data was changed.';
         RETURN;
     END IF;
-    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO account_fingerprint
-    FROM (SELECT md5((to_jsonb(u) - 'last_check_in_at')::text) AS h FROM public.app_users u) rows;
     SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO security_fingerprint
     FROM (SELECT md5(to_jsonb(a)::text) AS h FROM public.game_achievements a
         WHERE achievement_id IN ('linked_email','saved_recovery_code')) rows;
@@ -149,12 +155,12 @@ BEGIN
     SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO reset_history_fingerprint
     FROM (SELECT md5(to_jsonb(r)::text) AS h FROM public.gameplay_reset_runs r) rows;
     -- Profile initialization synchronizes notifications. Restore only retained
-    -- service-mail events, never old check-in reminders or welcome-gift messages.
+    -- service-mail and check-in events; discard game and welcome-gift messages.
     CREATE TEMP TABLE game_reset_service_events ON COMMIT DROP AS
-    SELECT e.* FROM public.notification_events e WHERE category = 'mail' AND EXISTS (
+    SELECT e.* FROM public.notification_events e WHERE category = 'checkin' OR (category = 'mail' AND EXISTS (
         SELECT 1 FROM public.player_mail_messages m WHERE m.user_id=e.user_id
             AND e.source_key='mail:' || m.id::text AND m.source_key <> 'welcome:v1'
-    );
+    ));
     SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO service_fingerprint
     FROM (SELECT md5(to_jsonb(e)::text) AS h FROM game_reset_service_events e) rows;
 
@@ -173,10 +179,11 @@ BEGIN
         SELECT user_id, revision::numeric FROM public.economy_profiles
         UNION ALL SELECT user_id, revision::numeric FROM public.world_profiles
         UNION ALL SELECT user_id, revision::numeric FROM public.forest_memory
-        UNION ALL SELECT user_id, visibility_version::numeric FROM public.game_profiles
+        UNION ALL SELECT user_id, greatest(visibility_version, fishing_visibility_version)::numeric FROM public.game_profiles
         UNION ALL SELECT user_id, accepted_revision::numeric FROM public.economy_commands
         UNION ALL SELECT user_id, accepted_revision::numeric FROM public.economy_market_receipts
         UNION ALL SELECT user_id, accepted_revision::numeric FROM public.economy_barter_receipts
+        UNION ALL SELECT user_id, accepted_revision::numeric FROM public.neighbor_receipts
         UNION ALL SELECT user_id, accepted_revision::numeric FROM public.game_reward_claims
         UNION ALL SELECT user_id, accepted_revision::numeric FROM public.promo_redemptions
         UNION ALL SELECT user_id, accepted_revision::numeric FROM public.forest_memory_receipts
@@ -187,11 +194,12 @@ BEGIN
         RAISE EXCEPTION 'Invalid or exhausted revision fence. Game reset rolled back.';
     END IF;
 
+    -- All market stock, sold lots and unclaimed proceeds belong to the old game.
+    -- Generation and monotonic revisions fence every stale command after their receipts are removed.
     EXECUTE 'TRUNCATE TABLE ' || (
         SELECT string_agg(format('public.%I', name), ', ')
         FROM unnest(cleared_tables || reinitialized_tables) AS t(name)
     ) || ' RESTART IDENTITY RESTRICT';
-    UPDATE public.app_users SET last_check_in_at = NULL WHERE last_check_in_at IS NOT NULL;
     DELETE FROM public.game_achievements WHERE achievement_id NOT IN ('linked_email','saved_recovery_code');
     DELETE FROM public.game_achievement_reward_claims WHERE achievement_id NOT IN ('linked_email','saved_recovery_code');
     DELETE FROM public.player_mail_messages WHERE source_key = 'welcome:v1';
@@ -208,8 +216,8 @@ BEGIN
     SELECT user_id, (previous_revision + 1)::bigint FROM game_reset_revision_fences;
     -- The ranking starts empty and private; an old visibility request cannot
     -- opt a player back in using the previous consent version.
-    INSERT INTO public.game_profiles(user_id, visibility_version)
-    SELECT user_id, (previous_revision + 1)::bigint FROM game_reset_revision_fences;
+    INSERT INTO public.game_profiles(user_id, visibility_version, fishing_visibility_version)
+    SELECT user_id, (previous_revision + 1)::bigint, (previous_revision + 1)::bigint FROM game_reset_revision_fences;
     -- The reset gives the fresh starter pack once. Keep a new conversion fence
     -- so a later individual profile recreation cannot award it a second time.
     INSERT INTO public.economy_conversion_audit(user_id, legacy_sparks, legacy_wood, legacy_stone,
@@ -233,7 +241,8 @@ BEGIN
             OR w.revision IS DISTINCT FROM (f.previous_revision + 1)::bigint
             OR m.revision IS DISTINCT FROM (f.previous_revision + 1)::bigint
             OR g.visibility_version IS DISTINCT FROM (f.previous_revision + 1)::bigint
-            OR g.lifetime_taps <> 0 OR g.best_series <> 0 OR g.leaderboard_opt_in
+            OR g.fishing_visibility_version IS DISTINCT FROM (f.previous_revision + 1)::bigint
+            OR g.lifetime_taps <> 0 OR g.best_series <> 0 OR g.leaderboard_opt_in OR g.fishing_leaderboard_opt_in
             OR e.state IS DISTINCT FROM public.economy_v4_initial_state('{}'::jsonb, true)
             OR w.state IS DISTINCT FROM '{"schemaVersion":1,"resources":{"sparks":0,"wood":0,"stone":0}}'::jsonb
             OR m.snapshot IS NOT NULL OR m.lease_token IS NOT NULL
@@ -252,12 +261,6 @@ BEGIN
             RAISE EXCEPTION 'Preserved table % changed. Game reset rolled back.', table_name;
         END IF;
     END LOOP;
-    SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
-    FROM (SELECT md5((to_jsonb(u) - 'last_check_in_at')::text) AS h FROM public.app_users u) rows;
-    IF fingerprint IS DISTINCT FROM account_fingerprint
-        OR EXISTS (SELECT 1 FROM public.app_users WHERE last_check_in_at IS NOT NULL) THEN
-        RAISE EXCEPTION 'Preserved table app_users changed outside the check-in timestamp. Game reset rolled back.';
-    END IF;
     SELECT md5(coalesce(string_agg(h, '' ORDER BY h), '')) INTO fingerprint
     FROM (SELECT md5(to_jsonb(a)::text) AS h FROM public.game_achievements a) rows;
     IF fingerprint IS DISTINCT FROM security_fingerprint THEN
@@ -296,6 +299,6 @@ BEGIN
             AND generation = previous_generation + 1 AND completed_at = reset_time) THEN
         RAISE EXCEPTION 'Reset generation invariant failed. Game reset rolled back.';
     END IF;
-    RAISE NOTICE 'Release % fresh start completed. Auth, friends and security achievements preserved; gameplay, check-ins and records cleared.', release_reset_id;
+    RAISE NOTICE 'Release % fresh start completed. Auth, friends, check-ins, locations and security achievements preserved; gameplay, XP and records cleared.', release_reset_id;
 END $$;
 COMMIT;

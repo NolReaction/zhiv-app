@@ -95,7 +95,9 @@ export function compileWorldInteractions(scene: FixedWorldScene): WorldInteracti
     else {
       const length = distance(entry, doorway);
       // Search a bounded one-dimensional docking interval, never a nearest cell
-      // on the opposite side of a wall. The final point keeps the full foot radius.
+      // on the opposite side of a wall. This bounded porch accommodates every
+      // authored home level; legacy arbitrary-angle routes keep their shorter
+      // independent allowance. The final point keeps the full foot radius.
       for (let step = 1; length > EPS && step <= 32 && !dock; step++) {
         const offset = WORLD_INTERACTION_LIMITS.homeDock * step / 32;
         const candidate = { x: entry.x + (entry.x - doorway.x) * offset / length,

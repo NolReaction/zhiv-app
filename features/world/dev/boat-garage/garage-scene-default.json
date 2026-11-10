@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "canvas": {
+    "width": 1671,
+    "height": 941
+  },
+  "cameras": {
+    "portrait": {
+      "x": 835.5,
+      "y": 470.5,
+      "width": 1280
+    },
+    "landscape": {
+      "x": 835.5,
+      "y": 470.5,
+      "width": 1671
+    }
+  },
+  "assets": [
+    {
+      "id": "garage",
+      "name": "Гараж",
+      "src": "/world/boat-garage/garage.webp",
+      "width": 1671,
+      "height": 941
+    },
+    {
+      "id": "stand",
+      "name": "Опорная стойка",
+      "src": "/world/boat-garage/stand.webp",
+      "width": 1774,
+      "height": 887
+    },
+    {
+      "id": "side-stand",
+      "name": "Винтовая опора · SVG",
+      "src": "/world/boat-garage/stand-side.svg",
+      "width": 320,
+      "height": 320
+    }
+  ],
+  "nodes": [
+    {
+      "id": "garage",
+      "name": "Фон гаража",
+      "assetId": "garage",
+      "parentId": null,
+      "socketId": null,
+      "x": 0,
+      "y": 0,
+      "width": 1671,
+      "height": 941,
+      "scale": 1,
+      "rotation": 0,
+      "pivotX": 0,
+      "pivotY": 0,
+      "zIndex": 0,
+      "visible": true,
+      "locked": true,
+      "sockets": []
+    },
+    {
+      "id": "stand-left",
+      "name": "Левая стойка",
+      "assetId": "side-stand",
+      "parentId": null,
+      "socketId": null,
+      "x": 579.5,
+      "y": 789,
+      "width": 320,
+      "height": 320,
+      "scale": 0.5714285714285714,
+      "rotation": 0,
+      "pivotX": 0.5,
+      "pivotY": 0.95,
+      "zIndex": 10,
+      "visible": true,
+      "locked": false,
+      "sockets": [
+        {
+          "id": "contact",
+          "name": "Контакт с килем",
+          "x": 0.5,
+          "y": 0.075
+        },
+        {
+          "id": "foot",
+          "name": "Подошва",
+          "x": 0.5,
+          "y": 0.95
+        }
+      ]
+    },
+    {
+      "id": "stand-right",
+      "name": "Правая стойка",
+      "assetId": "side-stand",
+      "parentId": null,
+      "socketId": null,
+      "x": 1075.5,
+      "y": 789,
+      "width": 320,
+      "height": 320,
+      "scale": 0.5714285714285714,
+      "rotation": 0,
+      "pivotX": 0.5,
+      "pivotY": 0.95,
+      "zIndex": 10,
+      "visible": true,
+      "locked": false,
+      "sockets": [
+        {
+          "id": "contact",
+          "name": "Контакт с килем",
+          "x": 0.5,
+          "y": 0.075
+        },
+        {
+          "id": "foot",
+          "name": "Подошва",
+          "x": 0.5,
+          "y": 0.95
+        }
+      ]
+    },
+    {
+      "id": "boat",
+      "name": "Лодка · группа",
+      "assetId": null,
+      "parentId": null,
+      "socketId": null,
+      "x": 836,
+      "y": 620,
+      "width": 1000,
+      "height": 650,
+      "scale": 1,
+      "rotation": 0,
+      "pivotX": 0.5,
+      "pivotY": 0.75,
+      "zIndex": 20,
+      "visible": true,
+      "locked": false,
+      "sockets": [
+        {
+          "id": "engine",
+          "name": "Двигатель",
+          "x": 0.05,
+          "y": 0.66
+        },
+        {
+          "id": "cargo",
+          "name": "Ящик",
+          "x": 0.5,
+          "y": 0.65
+        },
+        {
+          "id": "fuel",
+          "name": "Бак",
+          "x": 0.22,
+          "y": 0.66
+        },
+        {
+          "id": "actor",
+          "name": "Мохлик",
+          "x": 0.43,
+          "y": 0.61
+        }
+      ]
+    }
+  ]
+}

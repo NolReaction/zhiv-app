@@ -10,6 +10,8 @@ const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const stages = await vite.ssrLoadModule("/features/economy/domain/stage-orders.ts");
+const { playerProgressionCatalog } = await vite.ssrLoadModule("/features/economy/domain/player-progression.ts");
+const { PEARL_DISPLAY_DIVISOR } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const now = Date.now();
 beforeEach(() => identities.resetDevStoreForTests());
 after(() => vite.close());
@@ -30,7 +32,7 @@ function fixture(p, { coins = 5000, pearls = 0, items = { wood: 30, stone: 30, b
   return row;
 }
 
-test("fresh account starts with a fixed supply and keeps garden and exploration free", () => {
+for (const expeditionFinds of [{}, { planks: 1 }]) test(`fresh account starts with a fixed supply and keeps garden and exploration free (${Object.keys(expeditionFinds).length ? "saved bonus" : "no bonus"})`, () => {
   const p = player(), state = read(p);
   assert.equal(model.economyViewSchema.safeParse(state).success, true);
   assert.deepEqual(state.wallet, { coins: 100, pearls: 0 }); assert.deepEqual(state.inventory, { wood: 3, stone: 5 });
@@ -39,13 +41,21 @@ test("fresh account starts with a fixed supply and keeps garden and exploration 
   assert.deepEqual(state.storage, { capacity: 50, used: 8, reserved: 0, available: 42, overflow: 0 });
   const grown = issue(p, "start_production", "grow_berries").state.jobs[0];
   const walking = issue(p, "start_exploration", "forest").state.jobs.find(job => job.kind === "exploration");
+  assert.deepEqual(walking.rewards, model.economyCatalog.explorations.find(route => route.id === "forest").rewards);
+  assert.deepEqual(walking.cost, { coins: 0, items: {} });
+  // Fix both legal draw outcomes in the private saved job; the public quote deliberately hides them.
+  const saved = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.jobs.find(job => job.id === walking.id);
+  saved.expeditionFinds = { ...expeditionFinds };
+  assert.equal(read(p).jobs.find(job => job.id === walking.id).expeditionFinds, undefined);
   assert.deepEqual(read(p).inventory, state.inventory);
+  assert.deepEqual(read(p).wallet, state.wallet);
   const returnedAt = Date.parse(walking.finishesAt);
   issue(p, "claim_job", walking.id, 1, returnedAt);
   const collecting = issue(p, "start_collection", grown.id, 1, returnedAt).state.jobs[0];
   const collected = issue(p, "claim_job", grown.id, 1, Date.parse(collecting.collection.finishesAt)).state;
   const expected = { ...state.inventory, ...grown.rewards };
-  for (const [item, amount] of Object.entries(walking.rewards)) expected[item] = (expected[item] ?? 0) + amount;
+  for (const rewards of [walking.rewards, expeditionFinds])
+    for (const [item, amount] of Object.entries(rewards)) expected[item] = (expected[item] ?? 0) + amount;
   assert.deepEqual(collected.inventory, expected);
   assert.equal(collected.completedExplorations, 1);
   assert.deepEqual(issue(p, "sell", "berries", expected.berries).state.wallet, { coins: state.wallet.coins + rules.economyLocalSellPrice(model.economyCatalog.items.find(item => item.id === "berries").baseSellPrice, expected.berries, model.economyCatalog.localBuyer, "berries"), pearls: state.wallet.pearls });
@@ -69,10 +79,14 @@ test("new quarry and workshop furnace need home two before spending, while start
 
 test("an empty account can rebuild its first stage from the free bush and forest without buying a slot", () => {
   const p = player();
-  fixture(p, { coins: 0, items: {}, home: 1, completedExplorations: 0, buildings: { warehouse: 1 } });
+  const profile = fixture(p, { coins: 0, items: {}, home: 1, completedExplorations: 0, buildings: { warehouse: 1 } });
   let clock = now;
   const complete = (action, targetId) => {
     const started = issue(p, action, targetId, 1, clock).state, job = started.jobs.at(-1);
+    if (action === "start_exploration") {
+      // Even the legal minimum roll must leave a path from an empty inventory to house two.
+      profile.state.jobs.find(saved => saved.id === job.id).expeditionFinds = {};
+    }
     clock = Date.parse(job.finishesAt);
     if (job.collection) {
       const collecting = issue(p, "start_collection", job.id, 1, clock).state.jobs.find(item => item.id === job.id);
@@ -94,15 +108,24 @@ test("an empty account can rebuild its first stage from the free bush and forest
   complete("start_production", "cook_compote"); complete("start_production", "cook_compote"); tutorial();
   complete("start_exploration", "forest"); complete("start_construction", "workshop");
   complete("start_production", "make_planks"); complete("start_production", "make_planks"); tutorial();
+  complete("start_production", "gather_wood"); complete("start_production", "gather_wood");
   complete("start_production", "make_planks"); complete("start_production", "make_planks");
   berries(5); issue(p, "sell", "berries", 5, clock); complete("start_exploration", "forest");
   const beforeHome = read(p, clock);
   assert.equal(beforeHome.buildings.home, 1); assert.equal(beforeHome.buildings.quarry, 0); assert.equal(beforeHome.buildings.kiln, 0);
   assert.equal(beforeHome.tutorialOrder.step, 1); assert.equal(beforeHome.stageOrders.stages["1"].completed, true);
-  assert.equal(beforeHome.wallet.coins, 255);
+  assert.equal(beforeHome.wallet.coins, 308);
   assert.throws(() => trade(p, "create_listing", "fiber", 1, 2, clock), { code: "ECONOMY_MARKET_LOCKED" });
+  const homeCost = model.economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 2).cost.coins;
+  const berryPrice = model.economyCatalog.localBuyer.unitPrices.berries;
+  const extraBerries = Math.max(0, Math.ceil((homeCost - beforeHome.wallet.coins) / berryPrice));
+  for (let count = 0; count < extraBerries; count++) { berries(1); issue(p, "sell", "berries", 1, clock); }
   const upgraded = complete("start_construction", "home"); assert.equal(upgraded.buildings.home, 2);
-  assert.deepEqual(upgraded.productionSlots, {}); assert.equal(upgraded.wallet.pearls, 0); assert.ok(upgraded.storage.used <= 50);
+  const earned = upgraded.progression.player;
+  const earnedPearls = [...playerProgressionCatalog.levelRewards.filter(reward => earned.awardedLevels.includes(reward.level)),
+    ...playerProgressionCatalog.season.milestones.filter(reward => earned.season.awardedMilestones.includes(reward.points))]
+    .reduce((sum, reward) => sum + reward.rewardPearls * PEARL_DISPLAY_DIVISOR, 0);
+  assert.deepEqual(upgraded.productionSlots, {}); assert.equal(upgraded.wallet.pearls, earnedPearls); assert.ok(upgraded.storage.used <= 50);
   assert.equal(upgraded.buildings.bridge, 0, "Completing the first house stage does not gift a restored bridge");
   assert.throws(() => trade(p, "create_listing", "fiber", 1, 2, clock), { code: "ECONOMY_MARKET_LOCKED" });
   assert.deepEqual(economy.getDevEconomyMarket(p.token, {}, clock).listings, []);
@@ -181,7 +204,11 @@ test("the browser accepts explicit nullable Kotlin catalog fields and validates 
   }
   for (const definition of [...response.catalog.recipes, ...response.catalog.explorations]) definition.requiredBuildings ??= {};
   for (const route of response.catalog.explorations) route.activity ??= null;
+  response.catalog.tradeRelations.activity = null;
   assert.equal(model.economyViewSchema.safeParse(response).success, true, "Kotlin encodeDefaults/explicitNulls includes null capacity outside warehouses");
+  response.catalog.tradeRelations.activity = { graceSeconds: 0, decaySeconds: 86400, recoveryBps: 1000 };
+  assert.equal(model.economyViewSchema.safeParse(response).success, false, "present activity settings must still be valid");
+  response.catalog.tradeRelations.activity = null;
   const warehouseLevel = response.catalog.buildings.find(building => building.id === "warehouse").levels[0];
   for (const invalidCapacity of [-1, 0, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
     warehouseLevel.warehouseCapacity = invalidCapacity;
@@ -230,7 +257,7 @@ test("a saved retired bulk job keeps its accepted cost, clock and output and cla
 test("legacy overlapping hero jobs can fill eighteen slots but a nineteenth start cannot spend or consume a builder meal", () => {
   const p = player(), warehouse = model.economyCatalog.buildings.find(building => building.id === "warehouse").levels[1];
   const stations = ["garden", "woodlot", "workshop", "dryer", "kiln"];
-  const row = fixture(p, { home: 3, coins: warehouse.cost.coins, items: { ...warehouse.cost.items, wood: 1 },
+  const row = fixture(p, { home: 3, coins: warehouse.cost.coins, items: { ...warehouse.cost.items, wood: (warehouse.cost.items.wood ?? 0) + 1 },
     buildings: { warehouse: 1, garden: 1, woodlot: 1, workshop: 1, dryer: 1, kiln: 1, quarry: 2 } });
   row.state.productionSlots = Object.fromEntries(stations.map(id => [id, 3]));
   row.state.food = { heroMeal: null, builderMeal: "grilled_fish" };
@@ -287,7 +314,7 @@ test("failed spending is atomic and new house unlocks only follow completed cons
   const before = read(p);
   assert.throws(() => issue(p, "start_construction", "home"), { code: "ECONOMY_RESOURCES" });
   assert.deepEqual(read(p), before);
-  assert.throws(() => issue(p, "start_exploration", "cave"), { code: "ECONOMY_HOME_REQUIRED" });
+  assert.throws(() => issue(p, "start_exploration", "quarry_stone"), { code: "ECONOMY_HOME_REQUIRED" });
   assert.throws(() => issue(player(), "start_production", "make_planks"), { code: "ECONOMY_BUILDING_REQUIRED" });
 });
 
@@ -509,8 +536,8 @@ test("cross-building dependencies require completed levels for construction, rec
   const catalog = model.economyCatalog;
   const building = catalog.buildings.find(building => building.id !== "home" && building.levels.some(level => Object.keys(level.requiredBuildings).length));
   const level = building.levels.find(level => Object.keys(level.requiredBuildings).length);
-  const recipe = catalog.recipes.find(recipe => Object.entries(recipe.requiredBuildings).some(([id]) => id !== recipe.buildingId));
-  const route = catalog.explorations.find(route => Object.keys(route.requiredBuildings).length);
+  const recipe = catalog.recipes.find(recipe => !recipe.retired && Object.entries(recipe.requiredBuildings).some(([id]) => id !== recipe.buildingId));
+  const route = catalog.explorations.find(route => !route.retired && Object.keys(route.requiredBuildings).length);
   assert.ok(building && level && recipe && route, "all three action families have explicit progression dependencies");
   for (const [action, targetId, definition, constructingLevel] of [
     ["start_construction", building.id, level, level.level], ["start_production", recipe.id, recipe], ["start_exploration", route.id, route],
@@ -565,7 +592,7 @@ test("catalog v1 jobs retain their original reward and deadline across the wareh
 });
 
  test("free gathering and unattended jobs reject bulk commands atomically", () => {
-  for (const recipe of model.economyCatalog.recipes.filter(recipe => recipe.maxBatch === 1)) {
+  for (const recipe of model.economyCatalog.recipes.filter(recipe => !recipe.retired && recipe.maxBatch === 1)) {
     const p = player(); fixture(p, { items: recipe.cost.items, coins: recipe.cost.coins * 2, home: 5,
       buildings: Object.fromEntries(model.economyCatalog.buildings.map(building => [building.id, building.levels.at(-1).level])) });
     const before = read(p);

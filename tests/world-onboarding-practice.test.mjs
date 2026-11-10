@@ -257,14 +257,15 @@ test("practice points at the one-tap berry card without activating its productio
   assert.deepEqual(h.calls, [["step", "grow"]], "the guide changes only its local lesson, never clicks the action target");
 });
 
-test("berry practice targets the same product after upgrades and explains the automatic recipe's exact time", () => {
-  for (const [gardenLevel, expected] of [[1, "1 мин"], [2, "45 с"], [3, "30 с"]]) {
+test("berry practice keeps the active raspberry recipe after upgrades and does not advertise retired faster recipes", () => {
+  for (const gardenLevel of [1, 2, 3, 4, 5]) {
     const h = harness(started("grow"));
-    h.patchSnapshot({ buildings: { home: 3, warehouse: 1, garden: gardenLevel } });
+    h.patchSnapshot({ buildings: { home: 5, warehouse: 1, garden: gardenLevel } });
     h.revealSurface(true, true);
     const coach = h.render();
     assert.equal(coach.target, '[data-place="garden"] [data-recipe-product="berries"]');
-    assert.ok(coach.text.includes(`за ${expected}`), coach.text);
+    assert.match(coach.text, /за 1 мин/);
+    assert.doesNotMatch(coach.text, /45 с|30 с/);
     assert.equal(coach.primary, undefined);
     assert.deepEqual(h.calls, []);
   }
@@ -709,7 +710,7 @@ test("workshop introduction offers earmarked construction only after the real wo
   assert.match(coach.text, /5 мин/);
   assert.match(coach.text, /запасы не расходуются.*потратил их на другое здание/);
   assert.deepEqual(h.calls, []);
-  assert.match(visibleText(WorkshopConstructionContents({ economy: h.economy })), /60 монет.*Бревно: 2.*Камень: 1/);
+  assert.match(visibleText(WorkshopConstructionContents({ economy: h.economy })), /50 монет.*Бревно: 2.*Камень: 1/);
   h.patchSnapshot({ workshopStarterClaimed: true });
   assert.equal(h.render().title, "Построим мастерскую", "an old grant marker does not promise a new gift");
   h.props.workshopOpen = true;

@@ -166,3 +166,127 @@ test("missing snapshots are not shown as an empty friend list and pending reques
   assert.match(unavailable.markup, /Список друзей пока недоступен/);
   assert.equal(unavailable.elements.filter(element => element.type === "button").length, 0);
 });
+
+test("the world neighbor is permanently present for a player with no human friends, before or after People loads", () => {
+  for (const friends of [undefined, { data: { ...data, people: [] }, loading: false, error: null, onRefresh() {} },
+    { data: null, loading: false, error: "offline", isOnline: false, onRefresh() {} }]) {
+    const visited = [], result = view({ friends, onVisitNeighbor: () => visited.push("berest") });
+    assert.match(result.markup, /data-world-neighbor-friend="berest"/);
+    assert.match(result.markup, /Персонаж мира/);
+    assert.match(result.markup, />Друзья<span[^>]*>1<\/span>/);
+    assert.doesNotMatch(result.markup, /Друзей пока нет|В сети|Был в сети/);
+    assert.deepEqual(visited, []);
+    const card = result.elements.find(element => element.props["aria-label"] === "В гости к Берест");
+    assert.ok(card);
+    assert.equal(card.props.disabled, friends?.isOnline === false);
+    if (!card.props.disabled) { card.props.onClick(); assert.deepEqual(visited, ["berest"]); }
+  }
+});
+
+test("the neighbor participates in game-only counts and name search without becoming a Person", () => {
+  const before = JSON.stringify(data), onVisitNeighbor = () => {};
+  const all = view({ onVisitNeighbor });
+  assert.match(all.markup, />Друзья<span[^>]*>4<\/span>/);
+  assert.equal(all.elements.filter(element => element.type === "li").length, 4);
+  const onlyNeighbor = view({ onVisitNeighbor, query: "бЕРест" });
+  assert.equal(onlyNeighbor.elements.filter(element => element.type === "li").length, 1);
+  assert.match(onlyNeighbor.markup, /data-world-neighbor-friend/);
+  assert.doesNotMatch(view({ onVisitNeighbor, query: "мама" }).markup, /data-world-neighbor-friend/);
+  assert.match(view({ onVisitNeighbor, query: "неизвестный" }).markup, /Никого не нашли/);
+  assert.equal(JSON.stringify(data), before, "the main People data is never supplemented with a pretend account");
+});
+
+test("the friend card follows the server's character name and exclusive appearance", () => {
+  const result = view({ onVisitNeighbor() {}, neighbor: { name: "Дубок", equipment: { palette: "berest_birch_moss", head: "berest_trail_hat", neck: "berest_lantern_scarf", rod: null } } });
+  assert.match(result.markup, /Дубок/);
+  assert.doesNotMatch(result.markup, /Берест/);
+  assert.ok(result.elements.some(element => element.props.appearance?.head === "berest_trail_hat"));
+});
+
+const gameSummary = (patch = {}) => ({ level: 17, market: { available: true, reason: null, count: 5, listings: [
+  { id: "stone-lot", itemId: "stone", quantity: 5, totalPrice: 120 },
+  { id: "wood-lot", itemId: "wood", quantity: 3, totalPrice: 200 },
+  { id: "glass-lot", itemId: "glass", quantity: 1, totalPrice: 500 },
+] }, ...patch });
+const friendWithGame = (patch = {}) => person("game-friend", "Лесной друг", { theirSharingMode: "LATEST_ONLY", gameSummary: gameSummary(), ...patch });
+const friendView = (friend, overrides = {}) => view({ friends: { data: { ...data, people: [friend] }, loading: false, error: null, isOnline: true, onRefresh() {} },
+  onVisitFriend() {}, ...overrides });
+
+test("game cards show the supplied XP level and three priced lot previews without fetching or buying", () => {
+  const friend = friendWithGame(), before = JSON.stringify(friend), visited = [];
+  const result = friendView(friend, { onVisitFriend: value => visited.push(value) });
+  assert.match(result.markup, /data-friend-level="17"/);
+  assert.match(result.markup, /Уровень 17/);
+  assert.equal((result.markup.match(/data-friend-offer=/g) ?? []).length, 3);
+  assert.match(result.markup, /Камень, 5 шт., 120 монет за лот/);
+  assert.match(result.markup, /Цена за лот · ещё 2/);
+  assert.match(result.markup, /Предложения<\/span><strong>5<\/strong>/);
+  assert.doesNotMatch(result.markup, /Купить|Продать|private-status|PRIVATE-/);
+  assert.deepEqual(visited, []); assert.deepEqual(result.calls, []);
+  assert.equal(JSON.stringify(friend), before);
+  result.elements.find(element => element.props["aria-label"] === "В гости к Лесной друг").props.onClick();
+  assert.deepEqual(visited, [friend]);
+});
+
+test("hidden worlds keep the shared game level but never reveal lots even from a stale permissive summary", () => {
+  const result = friendView(friendWithGame({ theirSharingMode: "OFF" }));
+  assert.match(result.markup, /Уровень 17/);
+  assert.match(result.markup, /Мир скрыт/);
+  assert.doesNotMatch(result.markup, /data-friend-offer|Предложения|Камень|Цена за лот/);
+  assert.equal(result.elements.find(element => element.props["aria-label"] === "Лесной друг: мир скрыт").props.disabled, true);
+});
+
+test("legacy summaries, unavailable markets and truly empty markets remain different states", () => {
+  for (const missing of [undefined, null]) {
+    const result = friendView(friendWithGame({ gameSummary: missing }));
+    assert.match(result.markup, /Данные игры пока недоступны/);
+    assert.doesNotMatch(result.markup, /data-friend-level|Пока нет предложений|Предложения<\/span><strong>0/);
+  }
+  const reasons = { buyer_locked: "Откроется после восстановления моста", seller_locked: "Лавка пока закрыта",
+    home_band: "Недоступна на вашем уровне дома", world_hidden: "Мир скрыт" };
+  for (const [reason, message] of Object.entries(reasons)) {
+    const result = friendView(friendWithGame({ gameSummary: gameSummary({ market: { available: false, reason, count: 0, listings: [] } }) }));
+    assert(result.markup.includes(message));
+    assert.doesNotMatch(result.markup, /data-friend-offer|Пока нет предложений/);
+  }
+  const empty = friendView(friendWithGame({ gameSummary: gameSummary({ market: { available: true, reason: null, count: 0, listings: [] } }) }));
+  assert.match(empty.markup, /Предложения<\/span><strong>0<\/strong>/);
+  assert.match(empty.markup, /Пока нет предложений/);
+});
+
+test("cached friend game data remains marked offline or failed and cannot trigger a visit while offline", () => {
+  const friend = friendWithGame(), visited = [];
+  for (const patch of [{ isOnline: false }, { error: "private diagnostic" }, { loading: true }]) {
+    const result = friendView(friend, { friends: { data: { ...data, people: [friend] }, loading: false, error: null, isOnline: true, onRefresh() {}, ...patch },
+      onVisitFriend: value => visited.push(value) });
+    assert.match(result.markup, /Уровень 17/);
+    assert.match(result.markup, /data-friend-offer="stone"/);
+    assert.match(result.markup, /последний загруженный список|Обновляем список/);
+    assert.doesNotMatch(result.markup, /private diagnostic/);
+    if (patch.isOnline === false) {
+      const button = result.elements.find(element => element.props["aria-label"] === "Лесной друг: нужен интернет");
+      assert.equal(button.props.disabled, true); button.props.onClick();
+    }
+  }
+  assert.deepEqual(visited, []);
+});
+
+test("the neighbor preview excludes purchased offers and stale cycles without inventing a player level", () => {
+  const now = Date.parse("2026-11-01T12:00:00Z"), shop = { available: true, reason: null, cycleId: "2026-11-01", refreshAt: "2026-11-02T00:00:00Z", offers: [
+    { id: "purchased", itemId: "stone", quantity: 5, totalPrice: 150, purchased: true },
+    { id: "available", itemId: "rope", quantity: 2, totalPrice: 320, purchased: false },
+  ] };
+  const props = { friends: { data: { ...data, people: [] }, loading: false, error: null, onRefresh() {} }, onVisitNeighbor() {} };
+  const active = view({ ...props, neighborMarket: { shop, now, error: false } });
+  assert.match(active.markup, /Сегодня в лавке<\/span><strong>1/);
+  assert.match(active.markup, /data-friend-offer="rope"/);
+  assert.doesNotMatch(active.markup, /data-friend-level|Уровень|data-friend-offer="stone"/);
+  const pending = view({ ...props, neighborMarket: { shop: null, now, error: false } });
+  assert.match(pending.markup, /Загружаем витрину/); assert.doesNotMatch(pending.markup, /Поставка разобрана/);
+  const failed = view({ ...props, neighborMarket: { shop: null, now, error: true } });
+  assert.match(failed.markup, /Витрина пока недоступна/); assert.doesNotMatch(failed.markup, /Поставка разобрана/);
+  const stale = view({ ...props, neighborMarket: { shop, now: Date.parse(shop.refreshAt), error: false } });
+  assert.match(stale.markup, /Ожидаем новую поставку/); assert.doesNotMatch(stale.markup, /data-friend-offer|Поставка разобрана/);
+  const empty = view({ ...props, neighborMarket: { shop: { ...shop, offers: shop.offers.map(offer => ({ ...offer, purchased: true })) }, now, error: false } });
+  assert.match(empty.markup, /Поставка разобрана/);
+});

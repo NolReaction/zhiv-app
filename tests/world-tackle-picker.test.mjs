@@ -28,7 +28,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
       }
       export const useLayoutEffect = useEffect;
     `; },
-    transform(source, id) { if (id.endsWith("/features/economy/ui/fishing/world-tackle-picker.tsx") || id.endsWith("/features/economy/ui/fishing/use-fishing-command.ts")) return source.replace('from "react";', `from "${hookModule}";`); },
+    transform(source, id) { if (id.endsWith("/features/economy/ui/boat/boat-departure-review.tsx") || id.endsWith("/features/economy/ui/fishing/world-tackle-picker.tsx") || id.endsWith("/features/economy/ui/fishing/use-fishing-command.ts")) return source.replace('from "react";', `from "${hookModule}";`); },
   }],
 });
 after(async () => { await vite.close(); await rm(cacheDir, { recursive: true, force: true }); });
@@ -214,4 +214,26 @@ test("the shared fishing latch rejects equip then immediate departure and recove
   assert.equal(retry.send("equip_fishing_hook", "barbed_hook"), false); accepted = true;
   assert.equal(retry.send("equip_fishing_hook", "barbed_hook"), true); assert.equal(retry.send("start_fishing", "shore"), false);
   assert.deepEqual(economy.calls, [["equip_fishing_hook", "barbed_hook", 1, 0], ["equip_fishing_hook", "barbed_hook", 1, 0]]);
+});
+
+test("boat preparation opens and cancels freely; only the final confirmation sends a departure", async () => {
+  const { BoatDepartureReview } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-departure-review.tsx");
+  const economy = controller(), props = { economy, disabled: false, reason: null, send: economy.act };
+  const review = () => { hooks.render(); return BoatDepartureReview(props); };
+  hooks.reset();
+  let dialog = review();
+  assert.equal(dialog.props.open, false);
+  dialog.props.onOpenChange(true); dialog = review();
+  assert.equal(dialog.props.open, true);
+  const picker = elements(dialog).find(node => node.type === WorldTacklePicker);
+  picker.props.onChoose("bait", "worm_bait");
+  dialog.props.onOpenChange(false); dialog = review();
+  assert.equal(dialog.props.open, false);
+  assert.deepEqual(economy.calls, [["equip_fishing_bait", "worm_bait"]]);
+  dialog.props.onOpenChange(true); dialog = review();
+  const confirm = elements(dialog).find(node => node.props["data-confirm-boat-departure"]);
+  assert.equal(confirm.props.disabled, false); confirm.props.onClick();
+  assert.deepEqual(economy.calls.at(-1), ["depart_boat", economyCatalog.boat.routeId]);
+  props.reason = "Не хватает наживки";
+  assert.equal(elements(review()).find(node => node.props["data-confirm-boat-departure"]).props.disabled, true);
 });

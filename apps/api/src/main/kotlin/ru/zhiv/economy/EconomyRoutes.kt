@@ -10,6 +10,7 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import ru.zhiv.presence.PresenceRepository
 import ru.zhiv.presence.requireGameplayPresence
@@ -19,15 +20,27 @@ import ru.zhiv.http.isTrustedWrite
 import ru.zhiv.http.sessionCookie
 import ru.zhiv.security.TokenCodec
 
+@Serializable
+private data class ReleaseFeatures(val boatFishingEnabled: Boolean, val boatFishingPlayActions: Set<String>)
+
+private val releaseFeatures: ReleaseFeatures = checkNotNull(
+    ReleaseFeatures::class.java.getResourceAsStream("/world/release-features.json")
+).bufferedReader().use { economyJson.decodeFromString<ReleaseFeatures>(it.readText()) }
+
 private fun ApplicationCall.economySession(config: AppConfig, codec: TokenCodec, write: Boolean = false): ByteArray {
     response.header(HttpHeaders.CacheControl, "no-store")
     if (write && !isTrustedWrite(config)) throw AuthFailure("UNTRUSTED_ORIGIN", "Источник запроса не разрешён", 403)
     val token = sessionCookie(config) ?: throw AuthFailure("UNAUTHORIZED", "Войдите в профиль ещё раз", 401)
     return codec.hash(token)
 }
-fun Route.economyRoutes(repository: EconomyRepository, codec: TokenCodec, config: AppConfig, presence: PresenceRepository? = null) {
+fun Route.economyRoutes(
+    repository: EconomyRepository,
+    codec: TokenCodec,
+    config: AppConfig,
+    presence: PresenceRepository? = null,
+    boatFishingEnabled: Boolean = releaseFeatures.boatFishingEnabled,
+) {
     route("/api/v1/economy") {
-        install(RequestBodyLimit) { bodyLimit { 4_096 } }
         rateLimit(RateLimitName("world-read")) {
             get {
                 val hash = call.economySession(config, codec)
@@ -36,10 +49,17 @@ fun Route.economyRoutes(repository: EconomyRepository, codec: TokenCodec, config
             }
         }
         rateLimit(RateLimitName("economy-write")) {
-            post("/commands") {
-                val hash = call.economySession(config, codec, true)
-                call.requireGameplayPresence(presence, hash)
-                call.respond(repository.command(hash, decodeEconomyCommand(call.receive<JsonElement>())))
+            route("/commands") {
+                // A bounded 600-tick boat trace is larger than ordinary command payloads.
+                install(RequestBodyLimit) { bodyLimit { 32_768 } }
+                post {
+                    val hash = call.economySession(config, codec, true)
+                    call.requireGameplayPresence(presence, hash)
+                    val command = decodeEconomyCommand(call.receive<JsonElement>())
+                    if (!boatFishingEnabled && command.action in releaseFeatures.boatFishingPlayActions)
+                        economyFailure("ECONOMY_BOAT_PAUSED", "Лодочная рыбалка временно закрыта")
+                    call.respond(repository.command(hash, command))
+                }
             }
         }
     }

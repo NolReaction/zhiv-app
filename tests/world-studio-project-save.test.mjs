@@ -112,7 +112,8 @@ test("real project POST accepts lighting-only HMR before ACK, follows external T
   await writeFile(path.join(directory, "world/tiled/forest.tmj"), await readFile(path.join(root, "world/tiled/forest.tmj")));
   const files = createWorldStudioProjectFiles({ root: directory }), initial = await files.read();
   await writeFile(path.join(directory, "features/world/tiled/forest.generated.json"), serializeTiledWorld(initial.scene));
-  const liveScene = clone(initial.scene), store = createWorldLightingEditorStore(true, liveScene);
+  let liveScene = clone(initial.scene);
+  const store = createWorldLightingEditorStore(true, liveScene);
   let posts = 0, heldResponse, release;
   const fetcher = async (_url, options) => {
     const post = options.method === "POST";
@@ -124,7 +125,7 @@ test("real project POST accepts lighting-only HMR before ACK, follows external T
       assert.equal(response.status, 200);
       heldResponse = await response.clone().json();
       // Filesystem HMR can arrive before fetch has delivered the POST response.
-      assert.equal(acceptWorldLightingRefresh(liveScene, heldResponse.scene), true);
+      assert.equal(acceptWorldLightingRefresh(liveScene, heldResponse.scene, () => { liveScene = heldResponse.scene; }), true);
       await new Promise(resolve => { release = resolve; });
     }
     return response;
@@ -132,8 +133,8 @@ test("real project POST accepts lighting-only HMR before ACK, follows external T
   const manager = createWorldStudioProjectSave({ editor: store, available: true, fetcher });
   t.after(() => manager.dispose());
   await manager.connect(); manager.setPaused(true);
-  const light = store.getSnapshot().lights[0]; store.selectLight(light.id);
-  store.patchLight({ intensity: light.intensity === .73 ? .71 : .73 });
+  const light = store.getSnapshot().lights.find(item => item.kind === "torch"); store.selectLight(light.id);
+  store.patchLight({ position: { ...light.position, x: light.position.x + 10 } });
   const saving = manager.requestSave();
   for (let attempt = 0; !release && attempt < 2000; attempt++) await wait(5);
   assert.equal(typeof release, "function");
@@ -143,22 +144,22 @@ test("real project POST accepts lighting-only HMR before ACK, follows external T
   assert.equal(posts, 1); assert.equal(manager.getSnapshot().status, "saved");
   assert.equal(store.getSnapshot().canUndo, true); assert.equal(store.getSnapshot().selectedId, light.id);
   const external = async () => {
-    const disk = await files.read(), before = disk.scene.lights[0];
+    const disk = await files.read(), before = disk.scene.lights.find(item => item.id === light.id);
     const next = await files.save({ requestId: `external-${disk.revision.slice(0, 12)}`, expectedRevision: disk.revision,
       patch: { schemaVersion: 3, sceneId: disk.scene.id, casters: [], receivers: [],
         lights: [{ id: before.id, before, after: { ...before, intensity: before.intensity === .51 ? .52 : .51 } }] } });
-    assert.equal(acceptWorldLightingRefresh(liveScene, next.scene), true);
+    assert.equal(acceptWorldLightingRefresh(liveScene, next.scene, () => { liveScene = next.scene; }), true);
     await manager.recheck(); return next;
   };
   const cleanExternal = await external();
   assert.equal(manager.getSnapshot().status, "ready");
-  assert.equal(store.getSnapshot().lights[0].intensity, cleanExternal.scene.lights[0].intensity);
+  assert.equal(store.getSnapshot().lights.find(item => item.id === light.id).intensity, cleanExternal.scene.lights.find(item => item.id === light.id).intensity);
   store.selectLight(light.id); store.patchLight({ intensity: .9 });
   await external();
-  assert.equal(manager.getSnapshot().status, "conflict"); assert.equal(store.getSnapshot().lights[0].intensity, .9);
+  assert.equal(manager.getSnapshot().status, "conflict"); assert.equal(store.getSnapshot().lights.find(item => item.id === light.id).intensity, .9);
   assert.equal(posts, 1);
   manager.dispose();
-  assert.equal(acceptWorldLightingRefresh(liveScene, heldResponse.scene), false);
+  assert.equal(acceptWorldLightingRefresh(liveScene, heldResponse.scene, () => { liveScene = heldResponse.scene; }), false);
 });
 
 test("second edit, deletion and Undo save against acknowledged disk, never original page baseline", async t => {

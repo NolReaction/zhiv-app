@@ -1,4 +1,4 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ChevronDown } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyView } from "@/features/economy/domain/model";
 import { fishingBaitCompatible, fishingClassOdds, fishingState } from "@/features/economy/domain/fishing";
@@ -8,13 +8,13 @@ import { FishingSpeciesFocus, FishingSpeciesOdds } from "./fishing-species-odds"
 import styles from "./fishing-catch-odds.module.css";
 
 type Props = { state: EconomyView; catalog: NonNullable<EconomyView["catalog"]["fishing"]>;
-  override?: Parameters<typeof fishingClassOdds>[2]; preview?: boolean; targetRarity?: FishRarity; showLoadout?: boolean };
+  override?: Parameters<typeof fishingClassOdds>[2]; preview?: boolean; targetRarity?: FishRarity; showLoadout?: boolean; collapsible?: boolean };
 const probabilityFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 4 });
 const percent = (probability: number) => `${probabilityFormat.format(probability * 100)}%`;
 
 /** Both merchants compare the same single-item replacement against equipped gear.
  * Class odds are unconditional; species preferences remain explicitly separate. */
-export function FishingCatchOdds({ state, catalog, override, preview = false, targetRarity, showLoadout = false }: Props) {
+export function FishingCatchOdds({ state, catalog, override, preview = false, targetRarity, showLoadout = false, collapsible = false }: Props) {
   const current = fishingState(state);
   // Choosing a rod clears an incompatible equipped bait, just like equip_rod.
   const removedBait = preview && override?.rodId && override.baitId === undefined && current.equippedBaitId
@@ -25,8 +25,11 @@ export function FishingCatchOdds({ state, catalog, override, preview = false, ta
   const rod = catalog.rods.find(item => item.id === (previewOverride?.rodId ?? current.equippedRodId));
   const hook = catalog.hooks.find(item => item.id === (previewOverride?.hookId ?? current.equippedHookId));
   const baitId = previewOverride?.baitId === undefined ? current.equippedBaitId : previewOverride.baitId;
-  return <section className={styles.odds} data-fishing-catch-odds data-guide-plesk-odds aria-label={preview ? "Шансы с выбранной снастью" : "Шансы текущих снастей"}>
-    <div className={styles.oddsHeading}><strong>Шансы улова</strong><small>{preview ? "Сейчас → с этой снастью" : "На одну рыбу"}</small></div>
+  const Container = collapsible ? "details" : "section", Heading = collapsible ? "summary" : "div";
+  return <Container className={styles.odds} data-fishing-catch-odds data-guide-plesk-odds aria-label={preview ? "Шансы с выбранной снастью" : "Шансы текущих снастей"}>
+    <Heading className={styles.oddsHeading}><strong>Шансы улова</strong>{collapsible ? <ChevronDown size={15} aria-hidden="true" /> : <small>{preview ? "Сейчас → с этой снастью" : "На одну рыбу"}</small>}</Heading>
+    <div className={styles.oddsBody}>
+    {collapsible && <small className={styles.comparisonLabel}>{preview ? "Сейчас → с этой снастью" : "На одну рыбу"}</small>}
     <dl className={styles.rarityOdds} aria-label="Шансы по классам">{odds.map(({ rarity, itemId, probability }) => {
       const before = currentOdds.find(odd => odd.rarity === rarity)?.probability ?? probability;
       const changed = preview && Math.abs(before - probability) > 1e-10;
@@ -50,5 +53,6 @@ export function FishingCatchOdds({ state, catalog, override, preview = false, ta
       && <p className={styles.loadout}>Выбранная удочка пока не ловит этот класс рыбы.</p>}
     <FishingSpeciesFocus state={state} override={previewOverride} />
     <FishingSpeciesOdds state={state} override={previewOverride} />
-  </section>;
+    </div>
+  </Container>;
 }

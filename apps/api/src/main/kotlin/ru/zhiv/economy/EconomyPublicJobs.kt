@@ -5,7 +5,12 @@ import java.time.Instant
 /** Hide an unfinished draw. Authoritative server time reveals the saved completed
  * catch, without changing the delivery or drawing another fish. */
 object EconomyPublicJobs {
-    fun project(job: EconomyJob, now: Instant = Instant.now()): EconomyJob {
+    fun project(savedJob: EconomyJob, now: Instant = Instant.now()): EconomyJob {
+        // A finished expedition still has no revealed bonus until a successful claim.
+        var job = savedJob.copy(expeditionFinds = null)
+        savedJob.cooking?.let { attempt ->
+            job = job.copy(cooking = attempt.copy(successful = null), rewards = EconomyRules.catalog.recipes.find { it.id == savedJob.recipeId }?.rewards ?: emptyMap())
+        }
         val fishing = job.fishing ?: return job
         val finishesAt = runCatching { Instant.parse(job.finishesAt) }.getOrNull()
         if (finishesAt != null && !now.isBefore(finishesAt)) return job.copy(fishing = fishing.copy(catchRevealed = true))

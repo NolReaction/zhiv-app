@@ -40,8 +40,13 @@ export function WorldFishSelection(props: WorldFishSelectionProps) {
     setSubmitting(false);
   }
   const required = fishStockRequirements(requiredItems, state.catalog.fishing);
-  const selectedTotal = (classId: string, selection = choice.selection) => Object.entries(selection)
-    .filter(([id]) => fishClassForItem(id, state.catalog.fishing)?.itemId === classId).reduce((total, [, amount]) => total + amount, 0);
+  const isSpecies = (id: string) => state.catalog.fishing?.fish.some(fish => fish.itemId === id) ?? false;
+  const requirementFor = (itemId: string) => required[itemId] && isSpecies(itemId) ? itemId : fishClassForItem(itemId, state.catalog.fishing)?.itemId;
+  const selectedTotal = (requiredId: string, selection = choice.selection) => Object.entries(selection)
+    .filter(([id]) => requirementFor(id) === requiredId).reduce((total, [, amount]) => total + amount, 0);
+  const eligibleEntries = (requiredId: string) => fishStockEntries(state, requiredId)
+    .filter(entry => requirementFor(entry.itemId) === requiredId);
+  const exact = Object.keys(required).some(isSpecies);
   function currentChoice() {
     const current = latest.current, snapshot = current.props.economy.snapshot;
     return current.choice === choice && sent.current !== choice && !locked(current.props.economy)
@@ -59,7 +64,7 @@ export function WorldFishSelection(props: WorldFishSelectionProps) {
       else {
         if (count >= owned) return previous;
         if (selectedTotal(classId, selection) >= required[classId]) {
-          const other = Object.entries(selection).find(([id, amount]) => id !== itemId && amount > 0 && fishClassForItem(id, state.catalog.fishing)?.itemId === classId);
+          const other = Object.entries(selection).find(([id, amount]) => id !== itemId && amount > 0 && requirementFor(id) === classId);
           if (!other) return previous;
           if (other[1] === 1) delete selection[other[0]]; else selection[other[0]] = other[1] - 1;
         }
@@ -76,7 +81,7 @@ export function WorldFishSelection(props: WorldFishSelectionProps) {
         onCloseAutoFocus={props.onCloseAutoFocus} onEscapeKeyDown={event => event.stopPropagation()}
         onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}>
         <header className={styles.header}><Dialog.Title id={titleId}>Выберите рыбу</Dialog.Title><Dialog.Close asChild><button type="button" aria-label="Закрыть выбор рыбы"><X size={18} aria-hidden="true" /></button></Dialog.Close></header>
-        <Dialog.Description id={descriptionId} className={styles.description}>Подойдёт любой вид нужной редкости. Нажмите на рыбу, чтобы добавить или заменить её.</Dialog.Description>
+        <Dialog.Description id={descriptionId} className={styles.description}>{exact ? "Для этого рецепта нужен указанный вид из вашего запаса. Другие виды и записи в книге улова его не заменяют." : "Подойдёт любой вид нужной редкости. Нажмите на рыбу, чтобы добавить или заменить её."}</Dialog.Description>
         {props.summary && <p className={styles.summary} data-fish-summary>{props.summary}</p>}
         <div className={styles.tools}><button type="button" data-fish-autofill disabled={locked(economy) || submitting} onClick={() => {
           const current = currentChoice(); if (!current) return;
@@ -85,11 +90,11 @@ export function WorldFishSelection(props: WorldFishSelectionProps) {
           if (currentChoice()) { setChoice(previous => ({ ...previous, selection: {} })); setNotice(null); }
         }}><RotateCcw size={14} aria-hidden="true" />Сбросить</button></div>
         <div className={styles.groups}>{Object.entries(required).map(([classId, amount]) => {
-          const total = selectedTotal(classId), entries = fishStockEntries(state, classId);
-          return <section key={classId} className={styles.group} data-fish-required-class={classId}>
+          const total = selectedTotal(classId), entries = eligibleEntries(classId);
+          return <section key={classId} className={styles.group} data-fish-required-class={isSpecies(classId) ? undefined : classId} data-fish-required-species={isSpecies(classId) ? classId : undefined}>
             <h3><span>{itemName(state, classId)}</span><strong data-complete={total === amount || undefined}>{number(total)} / {number(amount)}{total === amount && <Check size={13} aria-hidden="true" />}</strong></h3>
             {entries.length ? <div className={styles.fishList}>{entries.map(entry => {
-              const count = choice.selection[entry.itemId] ?? 0, unknown = entry.itemId === classId;
+              const count = choice.selection[entry.itemId] ?? 0, unknown = !isSpecies(entry.itemId);
               const name = unknown ? "Без указания вида" : itemName(state, entry.itemId);
               return <div key={entry.itemId} className={styles.fish} data-selected={count > 0 || undefined} data-fish-choice={entry.itemId}>
                 <button type="button" className={styles.add} disabled={locked(economy) || submitting || count >= entry.quantity}
@@ -98,7 +103,7 @@ export function WorldFishSelection(props: WorldFishSelectionProps) {
                 <button type="button" className={styles.minus} disabled={locked(economy) || submitting || !count}
                   aria-label={`Убрать одну: ${name}`} onClick={() => change(entry.itemId, classId, -1)}><Minus size={15} aria-hidden="true" /></button>
               </div>;
-            })}</div> : <p className={styles.empty}>Нет рыбы этой редкости.</p>}
+            })}</div> : <p className={styles.empty}>{isSpecies(classId) ? "Нет этого вида в запасе." : "Нет рыбы этой редкости."}</p>}
           </section>;
         })}</div>
         {notice && <p className={styles.notice} role="status">{notice}</p>}

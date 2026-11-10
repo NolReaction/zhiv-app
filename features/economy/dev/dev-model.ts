@@ -1,16 +1,18 @@
 import { wardrobeItems } from "@/features/world/domain/wardrobe";
 import { z } from "zod";
 import { economyCatalog, economyCommandSchema } from "@/features/economy/domain/model";
+import { boatArtifactIds, boatModuleIds, boatUpgradeIds } from "@/features/economy/domain/boat-model";
 
 /** Separate from player commands: only the local development API accepts these. */
 export const economyDevCommandSchema = z.object({
   requestId: economyCommandSchema.shape.requestId,
   ownerPublicId: economyCommandSchema.shape.ownerPublicId,
   expectedRevision: economyCommandSchema.shape.expectedRevision,
-  action: z.enum(["grant_currency", "grant_item", "grant_fishing_gear", "grant_wardrobe", "grant_upgrade_cost", "set_building_level", "finish_jobs", "apply_settlement"]),
+  action: z.enum(["grant_currency", "grant_item", "grant_fishing_gear", "grant_wardrobe", "grant_upgrade_cost", "set_building_level", "finish_jobs", "apply_settlement", "prepare_ship", "grant_ship_cargo", "shorten_ship_wait",
+    "prepare_boat", "grant_boat_upgrade_cost", "finish_boat_work", "finish_boat_travel", "set_boat_blueprint", "set_boat_module_level"]),
   targetId: economyCommandSchema.shape.targetId,
-  quantity: z.number().int().min(0).max(10_000_000).default(1),
-  totalPrice: z.literal(0).default(0),
+  quantity: z.number().int().min(0).max(10_000_000).prefault(1),
+  totalPrice: z.literal(0).prefault(0),
 }).strict().superRefine((command, context) => {
   const invalid = (path: "targetId" | "quantity") => context.addIssue({ code: "custom", path: [path], message: "Недопустимое значение для DEV-команды" });
   if (command.action === "grant_currency" || command.action === "grant_item") {
@@ -24,6 +26,20 @@ export const economyDevCommandSchema = z.object({
     if (command.quantity !== 1) invalid("quantity");
     if (command.targetId !== "all" && !economyCatalog.fishing?.rods.some(rod => rod.id === command.targetId)
       && !economyCatalog.fishing?.hooks.some(hook => hook.id === command.targetId)) invalid("targetId");
+  } else if (command.action === "prepare_ship" || command.action === "shorten_ship_wait" || command.action === "grant_ship_cargo") {
+    if (command.quantity !== 1) invalid("quantity");
+    if (command.action === "grant_ship_cargo" ? !z.string().uuid().safeParse(command.targetId).success : command.targetId !== "ship") invalid("targetId");
+  } else if (command.action === "set_boat_module_level") {
+    if (!boatModuleIds.some(id => id === command.targetId)) invalid("targetId");
+    if (command.quantity > 5) invalid("quantity");
+  } else if (command.action === "set_boat_blueprint") {
+    if (!boatArtifactIds.some(id => id === command.targetId)) invalid("targetId");
+    if (command.quantity > 3) invalid("quantity");
+  } else if (["prepare_boat", "grant_boat_upgrade_cost", "finish_boat_work", "finish_boat_travel"].includes(command.action)) {
+    if (command.quantity !== 1) invalid("quantity");
+    if (command.action === "prepare_boat" ? command.targetId !== "boat"
+      : command.action === "grant_boat_upgrade_cost" ? !boatUpgradeIds.some(id => id === command.targetId)
+      : !z.string().uuid().safeParse(command.targetId).success) invalid("targetId");
   } else if (command.action === "apply_settlement") {
     if (command.targetId !== "home") invalid("targetId");
     if (!economyCatalog.buildings.find(building => building.id === "home")!.levels.some(level => level.level === command.quantity)) invalid("quantity");

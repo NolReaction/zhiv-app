@@ -83,5 +83,7 @@ interface GameRepository {
     suspend fun submitBatch(sessionHash: ByteArray, sessionId: UUID, sequence: Long, tapCount: Int, runId: UUID, tapTimes: List<Long>? = null): GameBatchResponse
     suspend fun setVisibility(sessionHash: ByteArray, visible: Boolean, expectedVersion: Long, ownerPublicId: String): GameProgress
     suspend fun leaderboard(sessionHash: ByteArray, scope: String = "global", metric: String = "monthly_taps"): GameLeaderboard
+    suspend fun fishingRecords(sessionHash: ByteArray, scope: String): FishingRecordsBoard
+    suspend fun setFishingVisibility(sessionHash: ByteArray, request: GameVisibilityRequest): FishingRecordVisibility
     suspend fun achievements(sessionHash: ByteArray): GameAchievements
 }

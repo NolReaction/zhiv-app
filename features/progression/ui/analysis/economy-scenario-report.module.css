@@ -1,0 +1,53 @@
+.report { padding: 22px 24px 26px; min-width: 0; color: #e1ebd4; }
+.heading h3 { margin: 0 0 8px; font-size: 21px; font-weight: 600; letter-spacing: -.025em; }
+.heading p, .note { color: #a7ba9a; font-size: 12px; line-height: 1.65; margin: 8px 0 16px; }
+.goals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
+.goals > div { border: 1px solid #a5bf9038; border-radius: 10px; padding: 15px; background: #202f1c; }
+.goals dt { color: #d1e5a0; font-size: 13px; font-weight: 600; }
+.goals dd { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: #b4c5a7; }
+.warning { padding: 13px 15px; border: 1px solid #d1ba7566; background: #6e602b30; color: #eddfb1; border-radius: 8px; font-size: 12px; line-height: 1.6; }
+.highlights { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 20px 0 12px; }
+.highlights > div { padding: 15px; border: 1px solid #bcd98f50; background: #283c20; border-radius: 10px; }
+.highlights dt { color: #c9dcb8; font-size: 12px; line-height: 1.5; }
+.highlights dd { margin: 8px 0; color: #e1edb0; font-size: clamp(22px, 3vw, 30px); font-variant-numeric: tabular-nums; font-weight: 600; }
+.highlights dd span { font-size: 13px; font-weight: 400; }
+.highlights small { color: #a7ba9a; font-size: 10px; line-height: 1.5; }
+.controls { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; margin: 18px 0; }
+.controls label, .scenarioSelect { display: grid; gap: 7px; font-size: 12px; color: #b7c9a7; min-width: 0; }
+.report select { max-width: 100%; width: 100%; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.actions button { display: inline-flex; align-items: center; gap: 7px; border: 1px solid #a5bf9038; border-radius: 7px; background: #26361f; color: #c8dbb4; padding: 9px 12px; min-height: 40px; font-size: 12px; }
+.actions button:hover { background: #354a2b; }
+.tableViewport { overflow: auto; max-width: 100%; border: 1px solid #a5bf9038; border-radius: 10px; }
+.tableViewport:focus-visible { outline: 2px solid #d1e5a0; outline-offset: 3px; }
+.tableViewport table { border-collapse: collapse; width: 100%; min-width: 950px; text-align: left; font-size: 12px; }
+.tableViewport caption { text-align: left; padding: 12px; color: #a7ba9a; font-size: 11px; }
+.tableViewport th, .tableViewport td { padding: 13px; border-top: 1px solid #a5bf9038; vertical-align: top; font-variant-numeric: tabular-nums; }
+.tableViewport thead th { color: #bdcda8; background: #202f1c; font-weight: 500; }
+.tableViewport tbody th { width: 240px; font-weight: 400; }
+.tableViewport tbody th button { border: none; background: none; padding: 0; color: #d1e5a0; text-align: left; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.tableViewport small { display: block; margin-top: 6px; color: #a7ba9a; font-size: 10px; line-height: 1.5; }
+.detail { margin-top: 20px; padding: 18px; border: 1px solid #a5bf9038; border-radius: 10px; background: #1b2918; }
+.detail h4 { margin: 20px 0 12px; font-size: 13px; font-weight: 600; }
+.metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
+.metrics dt, .snapshot dt { color: #a7ba9a; font-size: 11px; line-height: 1.5; }
+.metrics dd { font-size: 20px; margin: 6px 0 0; }
+.snapshot { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 15px 12px; margin: 0; }
+.snapshot dd { margin: 4px 0 0; font-size: 13px; }
+.snapshot small { display: block; font-size: 10px; color: #a7ba9a; margin-top: 3px; }
+.assumptions { margin-top: 22px; border-top: 1px solid #a5bf9038; padding-top: 16px; }
+.assumptions summary { cursor: pointer; color: #d1e5a0; font-size: 12px; line-height: 1.6; }
+.assumptions p { color: #a7ba9a; font-size: 12px; line-height: 1.7; }
+.assumptions code { overflow-wrap: anywhere; font-size: 11px; }
+@media (max-width: 700px) {
+  .report { padding: 16px 12px 20px; }
+  .goals { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .highlights { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .goals > div { padding: 12px; }
+  .goals dd { margin-top: 4px; }
+  .controls > label { width: 100%; }
+  .detail { padding: 12px; }
+  .metrics { gap: 8px; }
+  .metrics dd { font-size: 17px; }
+  .snapshot { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

@@ -57,10 +57,10 @@ internal fun readEconomyProfile(c: Connection, user: UUID): EconomyProfileRow {
         EconomyProfileRow(it.getLong(1), state.copy(progression = EconomyCollectionProgress.inherit(state.progression, inherited),
             wardrobe = (state.wardrobe + legacyWardrobe).filter { id -> id in clothing }.distinct().sorted()))
     }.single()
-    val history = if (row.state.itemUnlockVersion == 0) legacyEconomyItemHistory(c, user) else emptySet()
+    val history = if (row.state.itemUnlockVersion == 0 || row.state.familiarItems == null) legacyEconomyItemHistory(c, user) else emptySet()
     // Seal the legacy projection in the returned value before a reward writer adds
     // gifted stock. Reading still leaves stored JSON and its revision untouched.
-    return row.copy(state = EconomyItemUnlocks.persist(row.state, history))
+    return row.copy(state = EconomyFamiliarItems.persist(EconomyItemUnlocks.persist(row.state, history), history))
 }
 
 /** Caller holds app_users FOR NO KEY UPDATE. The audit remains a permanent
@@ -75,12 +75,14 @@ internal fun ensureEconomyProfile(c: Connection, user: UUID) {
             ELSE coalesce((SELECT state FROM world_profiles WHERE user_id=?),'{}'::jsonb) END,?)
         ON CONFLICT DO NOTHING
     """.trimIndent(), user, user, user, user, !converted)
-    if (inserted == 1 && EconomyRules.catalog.fishing != null) {
-        val state = readEconomyProfile(c, user).state
+    if (inserted == 1) {
+        val initialized = readEconomyProfile(c, user).state
+        val importedBuildings = initialized.buildings.any { (id, level) -> level > if (id in setOf("home", "garden", "warehouse")) 1 else 0 }
+        val state = if (importedBuildings) EconomySkills.normalized(initialized) else initialized.copy(progression = initialized.progression.copy(skills = EconomySkills.initial()))
         val now = c.economyRows("SELECT clock_timestamp()") { it.getObject(1, OffsetDateTime::class.java).toInstant() }.single()
         // Initial merchant stock belongs to revision zero, just like starter tackle.
         c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",
-            economyJson.encodeToString(state.copy(fishingShop = EconomyFishingShops.create(state, now))), user)
+            economyJson.encodeToString(state.copy(fishingShop = if (EconomyRules.catalog.fishing != null) EconomyFishingShops.create(state, now) else null)), user)
     }
     c.economyUpdate("""
         INSERT INTO economy_conversion_audit(user_id,legacy_sparks,legacy_wood,legacy_stone,coins_granted,wood_granted,stone_granted)
@@ -106,8 +108,8 @@ internal fun ensureEconomyProfile(c: Connection, user: UUID) {
 }
 
 internal fun saveEconomyProfile(c: Connection, user: UUID, state: EconomyState, recordAwards: Boolean = true) {
-    val history = if (state.itemUnlockVersion == 0) legacyEconomyItemHistory(c, user) else emptySet()
-    val persisted = EconomyItemUnlocks.persist(EconomyFishInventory.state(state), history)
+    val history = if (state.itemUnlockVersion == 0 || state.familiarItems == null) legacyEconomyItemHistory(c, user) else emptySet()
+    val persisted = EconomyItemUnlocks.persist(EconomyFishInventory.state(EconomyFamiliarItems.persist(state, history)), history)
     val count = c.economyUpdate("""UPDATE economy_profiles SET state=?::jsonb,revision=revision+1,updated_at=clock_timestamp()
         WHERE user_id=? AND revision<9007199254740991""", economyJson.encodeToString(persisted), user)
     if (count != 1) economyFailure("ECONOMY_REVISION_CONFLICT", "Состояние хозяйства изменилось. Обновите страницу.")
@@ -115,12 +117,12 @@ internal fun saveEconomyProfile(c: Connection, user: UUID, state: EconomyState, 
 }
 internal fun economyView(c: Connection, user: UUID, publicId: String, now: Instant): EconomyView {
     val row = readEconomyProfile(c, user)
-    val s = EconomyStageOrders.pin(row.state, now=now)
+    val s = EconomySkills.normalized(EconomyTapBoost.settle(EconomyStageOrders.pin(row.state, now=now), now))
     return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs.map { EconomyPublicJobs.project(it, now) }, s.migration,
         EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, wardrobe = s.wardrobe, fishingShop = s.fishingShop,
-        productionSlots = s.productionSlots, food = s.food, residentOrders = s.residentOrders,
+        productionSlots = s.productionSlots, food = s.food, residentOrders = s.residentOrders, tradeRelations = s.tradeRelations, ship = EconomyShipOrders.project(s.ship, now),
         workshopStarterClaimed = s.workshopStarterClaimed, tutorialOrder = s.tutorialOrder, stageOrders = s.stageOrders,
-        marketSlots = s.marketSlots, unlockedItems = s.unlockedItems, leaftailShop = s.leaftailShop)
+        marketSlots = s.marketSlots, unlockedItems = s.unlockedItems, familiarItems = EconomyFamiliarItems.project(s), boat = EconomyBoats.publicView(s.boat), leaftailShop = s.leaftailShop, tapBoost = s.tapBoost)
 }
 
 /** Save only public action context before a consumed job disappears. In
@@ -139,11 +141,17 @@ internal fun economyLedgerContext(before: EconomyState, command: EconomyCommand,
         return mapOf("originAction" to "start_production", "targetId" to "garden", "batchId" to batchId,
             "jobIds" to jobs.joinToString(",") { it.id }, "recipeIds" to jobs.mapNotNull { it.recipeId }.joinToString(","))
     }
+    if (now != null && command.action == "accept_weekly_order") {
+        EconomyTradeRelations.weeklyBoard(before, now).offers.find { it.id == command.targetId }?.let { return mapOf("targetId" to it.templateId) }
+    }
+    if (now != null && command.action == "complete_resident_order" && command.targetId.startsWith("weekly1_")) {
+        EconomyTradeRelations.weeklyBoard(before, now).progress?.let { return mapOf("targetId" to it.templateId) }
+    }
     if (command.action in setOf("complete_resident_order", "replace_resident_order") && now != null) {
         val offer = EconomyFood.residentOrderBoard(before, now).offers.find { it.id == command.targetId }
         if (offer != null) return mapOf("targetId" to offer.templateId)
     }
-    if (command.action !in setOf("claim_job", "speedup_construction", "start_collection", "cancel_production", "cancel_exploration"))
+    if (command.action !in setOf("claim_job", "claim_mining_batch", "speedup_construction", "start_collection", "cancel_production", "cancel_exploration"))
         return mapOf("targetId" to command.targetId)
     val job = before.jobs.find { it.id == command.targetId } ?: return emptyMap()
     val action = when (job.kind) {

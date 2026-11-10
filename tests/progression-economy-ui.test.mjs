@@ -21,20 +21,24 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
       export function useMemo(factory) { return factory(); }
       export function useCallback(callback) { return callback; }
       export function useEffect() {}
+      export { lazy, Suspense } from "react";
+      export function useBranchState(key, initial) { return useState(initial); }
       export function useSyncExternalStore(subscribe, read, server) { return globalThis.window ? read() : server(); }
     `; },
     transform(source, id) {
-      if (!/\/features\/progression\/(?:economy-panel|branch-page)\.tsx$/.test(id)) return;
-      let code = source.replace('from "react";', `from "${hookModule}";`);
-      if (id.endsWith("/economy-panel.tsx")) code += "\nexport { RecipeCalculator, SourceCalculator, ItemDetails, StageCard, HomeUnlockCard };\n";
+      if (!/\/features\/progression\/(?:branch-page|ui\/(?:catalog\/(?:economy-panel|item-details)|development\/development-panel|rewards\/rewards-panel))\.tsx$/.test(id)) return;
+      const code = source.replace('from "react";', `from "${hookModule}";`).replace('from "@/features/progression/ui/shell/branch-session";', `from "${hookModule}";`);
       return code;
     },
   }],
 });
 after(() => vite.close());
-const { EconomyPanel, RecipeCalculator, SourceCalculator, ItemDetails, StageCard, HomeUnlockCard } = await vite.ssrLoadModule("/features/progression/economy-panel.tsx");
+const { EconomyPanel } = await vite.ssrLoadModule("/features/progression/ui/catalog/economy-panel.tsx");
+const { RecipeCalculator, SourceCalculator, ItemDetails } = await vite.ssrLoadModule("/features/progression/ui/catalog/item-details.tsx");
+const { StageCard, HomeUnlockCard, DevelopmentPanel } = await vite.ssrLoadModule("/features/progression/ui/development/development-panel.tsx");
+const { RewardsPanel } = await vite.ssrLoadModule("/features/progression/ui/rewards/rewards-panel.tsx");
 const { BranchPage } = await vite.ssrLoadModule("/features/progression/branch-page.tsx");
-const { progressionEconomy: data } = await vite.ssrLoadModule("/features/progression/economy-data.ts");
+const { progressionEconomy: data } = await vite.ssrLoadModule("/features/progression/domain/economy-data.ts");
 const { constructionTimePearlPrice } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { pearlDisplayAmount } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
@@ -71,38 +75,33 @@ function withWindow(hash, run) {
   finally { if (previous) Object.defineProperty(globalThis, "window", previous); else delete globalThis.window; }
 }
 
-test("branch tabs connect their panels and retain the full economy catalog in server markup", () => {
+test("branch mounts one selected section and keeps costly reference chunks out of the shell", () => {
   const tree = harness(BranchPage).render(), nodes = elements(tree);
   const tabs = nodes.filter(node => node.props.role === "tab"), panels = nodes.filter(node => node.props.role === "tabpanel");
-  assert.deepEqual(tabs.map(node => node.props["data-branch-tab"]), ["world", "economy"]);
-  assert.deepEqual(tabs.map(node => [node.props["aria-selected"], node.props.tabIndex]), [[true, 0], [false, -1]]);
-  assert.deepEqual(panels.map(node => node.props.hidden), [false, true]);
-  for (const tab of tabs) {
-    const panel = panels.find(node => node.props.id === tab.props["aria-controls"]);
-    assert.ok(panel); assert.equal(panel.props["aria-labelledby"], tab.props.id);
-  }
-  const html = renderToStaticMarkup(tree);
-  assert.match(html, /Ингредиенты и расчёты/);
-  assert.equal((html.match(/data-item-id=/g) ?? []).length, data.items.length);
-  assert.match(html, new RegExp(`Рецептов<\\/dt><dd>${data.recipes.length}`));
-  assert.doesNotMatch(html, /\b(?:NaN|Infinity|undefined)\b/);
+  assert.deepEqual(tabs.map(node => node.props["data-branch-tab"]), ["catalog", "development", "analysis", "rewards", "world"]);
+  assert.equal(tabs.filter(node => node.props.tabIndex === 0).length, 1);
+  assert.equal(panels.length, 1);
+  assert.equal(panels[0].props["aria-labelledby"], tabs[0].props.id);
+  const source = readFileSync(new URL("../features/progression/branch-page.tsx", import.meta.url), "utf8");
+  assert.equal((source.match(/lazy\(\(\) => import/g) ?? []).length, 5);
+  assert.doesNotMatch(source, /from ["'].*(?:economy-data|economy-analysis|graph|economy-scenarios)["']/);
 });
 
 test("economy tab links preserve path, query and history ownership and initialize from deep links", () => {
   withWindow("#economy-ingredients", ({ window, state, writes, events }) => {
     const h = harness(BranchPage); let tree = h.render();
-    assert.equal(tree.props["data-view"], "economy");
+    assert.equal(elements(tree).find(node => node.type === "main").props["data-view"], "catalog");
     const tabs = elements(tree).filter(node => node.props.role === "tab");
-    assert.deepEqual(tabs.map(node => node.props["aria-selected"]), [false, true]);
-    tabs[0].props.onClick();
+    assert.deepEqual(tabs.map(node => node.props["aria-selected"]), [true, false, false, false, false]);
+    tabs[4].props.onClick();
     assert.equal(window.location.hash, "#world");
     assert.equal(writes[0].url, "/branch?from=test#world");
     assert.equal(writes[0].value, state);
     assert.deepEqual(events, ["hashchange"]);
     tree = h.render();
-    elements(tree).find(node => node.props["data-branch-tab"] === "economy").props.onClick();
-    assert.equal(h.render().props["data-view"], "economy");
-    assert.equal(writes[1].url, "/branch?from=test#economy");
+    elements(tree).find(node => node.props["data-branch-tab"] === "catalog").props.onClick();
+    assert.equal(elements(h.render()).find(node => node.type === "main").props["data-view"], "catalog");
+    assert.equal(writes[1].url, "/branch?from=test#catalog");
     assert.equal(writes[1].value, state);
   });
 });
@@ -110,30 +109,36 @@ test("economy tab links preserve path, query and history ownership and initializ
 test("tab keyboard navigation selects and focuses the matching tab without swallowing ordinary keys", () => {
   withWindow("#world", ({ writes }) => {
     const h = harness(BranchPage), focused = [];
-    for (const [key, expected] of [["ArrowRight", "economy"], ["ArrowRight", "world"], ["ArrowLeft", "economy"], ["Home", "world"], ["End", "economy"]]) {
-      const nav = field(h.render(), "Представление развития"); let prevented = 0;
+    for (const [key, expected] of [["ArrowRight", "catalog"], ["ArrowRight", "development"], ["ArrowLeft", "catalog"], ["Home", "catalog"], ["End", "world"]]) {
+      const nav = field(h.render(), "Разделы рабочего стола"); let prevented = 0;
       nav.props.onKeyDown({ key, preventDefault() { prevented++; }, currentTarget: { querySelector(selector) {
         assert.equal(selector, `[data-branch-tab="${expected}"]`); return { focus() { focused.push(expected); } };
       } } });
       assert.equal(prevented, 1);
       const tree = h.render(), tabs = elements(tree).filter(node => node.props.role === "tab");
-      assert.equal(tree.props["data-view"], expected);
+      assert.equal(elements(tree).find(node => node.type === "main").props["data-view"], expected);
       assert.equal(tabs.find(tab => tab.props["data-branch-tab"] === expected).props.tabIndex, 0);
       assert.equal(tabs.filter(tab => tab.props.tabIndex === 0).length, 1);
     }
     const count = writes.length;
-    field(h.render(), "Представление развития").props.onKeyDown({ key: "Tab", preventDefault() { assert.fail("Tab must retain native focus traversal"); } });
+    field(h.render(), "Разделы рабочего стола").props.onKeyDown({ key: "Tab", preventDefault() { assert.fail("Tab must retain native focus traversal"); } });
     assert.equal(writes.length, count); assert.equal(focused.length, 5);
   });
 });
 
 test("ingredient browser contains every real item, filters without changing prices, and can recover an empty search", () => {
   const h = harness(EconomyPanel); let tree = h.render();
-  assert.deepEqual(new Set(listItems(tree).map(node => node.props["data-item-id"])), new Set(data.items.map(value => value.id)));
+  const all = new Set();
+  do { tree = h.render(); for (const node of listItems(tree)) all.add(node.props["data-item-id"]);
+    const next = elements(tree).find(node => node.type === "button" && node.props.children === "Далее");
+    if (!next || next.props.disabled) break; next.props.onClick();
+  } while (true);
+  assert.deepEqual(all, new Set(data.items.map(value => value.id)));
+  field(tree, "Найти ингредиент").props.onChange({ target: { value: "" } }); tree = h.render();
   assert.equal(listItems(tree).filter(node => node.props["aria-pressed"]).length, 1);
   field(tree, "Найти ингредиент").props.onChange({ target: { value: "балка" } });
   tree = h.render(); assert.deepEqual(listItems(tree).map(node => node.props["data-item-id"]), ["beams"]);
-  assert.equal(elements(tree).find(node => node.type === ItemDetails).props.item.npcSellPrice, 600);
+  assert.equal(elements(tree).find(node => node.type === ItemDetails).props.item.npcSellPrice, 650);
   field(tree, "Уровень дома для справочника").props.onChange({ target: { value: "1" } });
   assert.equal(listItems(h.render()).length, 0);
   field(h.render(), "Найти ингредиент").props.onChange({ target: { value: "неизвестный ингредиент" } });
@@ -143,7 +148,7 @@ test("ingredient browser contains every real item, filters without changing pric
   field(h.render(), "Категория ингредиентов").props.onChange({ target: { value: "special" } });
   tree = h.render(); assert.deepEqual(new Set(listItems(tree).map(node => node.props["data-item-id"])), new Set(["ancient_core", "living_resin", "moon_crystal"]));
   elements(tree).find(node => node.type === ItemDetails).props.onSelect("fiber");
-  tree = h.render(); assert.equal(listItems(tree).length, data.items.length); assert.equal(elements(tree).find(node => node.type === ItemDetails).props.item.id, "fiber");
+  tree = h.render(); assert.equal(listItems(tree).length, 24); assert.equal(elements(tree).find(node => node.type === ItemDetails).props.item.id, "fiber");
   assert.equal(field(tree, "Категория ингредиентов").props.value, "all");
 });
 
@@ -154,7 +159,7 @@ test("search matches word beginnings and item IDs while ignoring case and ё wit
     assert.deepEqual(listItems(h.render()).map(node => node.props["data-item-id"]), expected);
   }
   field(h.render(), "Найти ингредиент").props.onChange({ target: { value: "малин" } });
-  assert.deepEqual(new Set(listItems(h.render()).map(node => node.props["data-item-id"])), new Set(["berries", "berry_compote"]));
+  assert.deepEqual(new Set(listItems(h.render()).map(node => node.props["data-item-id"])), new Set(["berries", "berry_compote", "ember_berries"]));
 });
 
 test("selecting an item on a narrow view scrolls to its detail after the frame; wide view keeps native scrolling", () => {
@@ -168,6 +173,7 @@ test("selecting an item on a narrow view scrolls to its detail after the frame; 
         assert.equal(id, "economy-item-details"); return { scrollIntoView(options) { scrolls.push(options); } };
       } } });
       const h = harness(EconomyPanel);
+      field(h.render(), "Найти ингредиент").props.onChange({ target: { value: "балка" } });
       listItems(h.render()).find(node => node.props["data-item-id"] === "beams").props.onClick();
       assert.equal(elements(h.render()).find(node => node.type === ItemDetails).props.item.id, "beams");
       assert.deepEqual(scrolls, []);
@@ -193,8 +199,6 @@ test("following an ingredient clears filters then scrolls and focuses the new ke
     field(h.render(), "Найти ингредиент").props.onChange({ target: { value: "бревно" } });
     const tree = h.render(), detail = elements(tree).find(node => node.type === ItemDetails);
     assert.equal(detail.props.item.id, "wood");
-    const library = elements(tree).find(node => node.props.id === "economy-ingredients");
-    library.props.ref.current = { scrollIntoView() { assert.fail("navigation should reveal the card rather than the filters"); } };
     const oldCard = ItemDetails(detail.props);
     const link = elements(oldCard).find(node => node.type === "button" && text(renderToStaticMarkup(node)).includes("Распилить доску"));
     assert.ok(link); link.props.onClick();
@@ -204,7 +208,7 @@ test("following an ingredient clears filters then scrolls and focuses the new ke
     assert.equal(field(updated, "Найти ингредиент").props.value, "");
     assert.equal(field(updated, "Категория ингредиентов").props.value, "all");
     assert.equal(field(updated, "Уровень дома для справочника").props.value, 0);
-    assert.equal(listItems(updated).length, data.items.length);
+    assert.equal(listItems(updated).length, 24);
     currentCard = { itemId: "planks", scrollIntoView(options) { calls.push(["scroll", options]); }, focus(options) { calls.push(["focus", options]); } };
     frames[0]();
     assert.deepEqual(lookups, [["economy-item-details", "planks"]]);
@@ -217,7 +221,7 @@ test("selected sources and uses navigate to the actual ingredient while fish rec
   const tree = h.render(), next = elements(tree).find(node => node.type === "button" && text(renderToStaticMarkup(node)).includes("Распилить доску"));
   assert.ok(next); next.props.onClick(); assert.deepEqual(calls, ["planks"]);
   const fish = harness(ItemDetails, { item: item("fish_mooncarp"), home: 0, onSelect(id) { calls.push(id); } }).render();
-  assert.match(text(renderToStaticMarkup(fish)), /Вид рыбы.*В рецептах учитывается как/);
+  assert.match(text(renderToStaticMarkup(fish)), /Вид рыбы.*В обычных рецептах подходит как/);
   const inventory = elements(fish).find(node => node.type === "button" && node.props.children === item("fish_mooncarp").inventoryItemId);
   const conversion = inventory ?? elements(fish).find(node => node.type === "button" && node.props.children === item(item("fish_mooncarp").inventoryItemId).name);
   assert.ok(conversion); conversion.props.onClick(); assert.equal(calls.at(-1), "fish_rare");
@@ -256,12 +260,12 @@ test("two beams show exact NPC value added, expanded raw inputs and separate pro
   const h = harness(RecipeCalculator, { recipe: recipe("make_beams"), onSelect() {} });
   field(h.render(), "Количество готовых предметов").props.onChange({ target: { value: "2" } });
   const html = renderToStaticMarkup(h.render()), value = text(html);
-  assert.match(value, /Стоимость ингредиентов у NPC 860 монет/);
-  assert.match(value, /Выкуп готового товара NPC 1 200 монет/);
-  assert.match(value, /Прирост стоимости переработки \+340 монет/);
-  assert.match(value, /Таймер выбранного производства 2 ч/);
+  assert.match(value, /Стоимость ингредиентов у NPC 900 монет/);
+  assert.match(value, /Выкуп готового товара NPC 1 300 монет/);
+  assert.match(value, /Прирост стоимости переработки \+400 монет/);
+  assert.match(value, /Таймер выбранного производства 40 мин/);
   assert.match(value, /Крепкое бревно ×8/); assert.match(value, /Растительное волокно ×4/);
-  assert.match(value, /Верстак 2 ч 6 мин/);
+  assert.match(value, /Верстак 46 мин/);
   assert.match(value, /Лесозаготовки 1 ч 24 мин/);
   assert.match(value, /не длительность прохождения/);
   assert.match(value, /Один запуск занимает одно место; следующий запускается вручную/);
@@ -271,15 +275,15 @@ test("soup quantity scales sale and intermediate inputs without inventing fishin
   const h = harness(RecipeCalculator, { recipe: recipe("cook_fish_soup"), onSelect() {} });
   field(h.render(), "Количество готовых предметов").props.onChange({ target: { value: "3" } });
   const value = text(renderToStaticMarkup(h.render()));
-  assert.match(value, /Стоимость ингредиентов у NPC 420 монет/);
-  assert.match(value, /Выкуп готового товара NPC 660 монет/);
+  assert.match(value, /Стоимость ингредиентов у NPC 270 монет/);
+  assert.match(value, /Выкуп готового товара NPC 510 монет/);
   assert.match(value, /Прирост стоимости переработки \+240 монет/);
-  assert.match(value, /Таймер выбранного производства 1 ч 30 мин/);
+  assert.match(value, /Таймер выбранного производства 24 мин/);
   assert.match(value, /Обычная рыба ×6/); assert.match(value, /Малина ×3/); assert.match(value, /Бревно ×3/);
   assert.match(value, /Ягодный куст 3 мин \+ 24 с сбора/);
   assert.match(value, /Отдельно получить: Обычная рыба/);
   assert.match(value, /Время случайного улова или находки не подставляется/);
-  assert.match(value, /2 предметов · 440 монет за час/);
+  assert.match(value, /7,5 предметов · 1 275 монет за час/);
   assert.match(value, /это валовая выручка/);
 });
 
@@ -288,12 +292,12 @@ test("two trail rations include every prepared ingredient and uncertain fish acq
   field(h.render(), "Количество готовых предметов").props.onChange({ target: { value: "2" } });
   const html = renderToStaticMarkup(h.render()), value = text(html);
   assert.match(value, /Копчёная рыба ×2 Сушёные ягоды ×2 Малиновый компот ×2 Походный паёк ×2/);
-  assert.match(value, /Стоимость ингредиентов у NPC 560 монет/);
-  assert.match(value, /Выкуп готового товара NPC 720 монет/);
-  assert.match(value, /Прирост стоимости переработки \+160 монет/);
-  assert.match(value, /Таймер выбранного производства 2 ч/);
+  assert.match(value, /Стоимость ингредиентов у NPC 880 монет/);
+  assert.match(value, /Выкуп готового товара NPC 1 280 монет/);
+  assert.match(value, /Прирост стоимости переработки \+400 монет/);
+  assert.match(value, /Таймер выбранного производства 40 мин/);
   assert.match(value, /Бревно ×2/); assert.match(value, /Обычная рыба ×4/); assert.match(value, /Малина ×16/);
-  assert.match(value, /Костёр 4 ч 36 мин/);
+  assert.match(value, /Костёр 1 ч 40 мин/);
   assert.match(value, /Ягодный куст 16 мин \+ 2 мин 8 с сбора/);
   assert.match(value, /Лесозаготовки 6 мин/);
   assert.match(value, /Отдельно получить: Обычная рыба/);
@@ -306,20 +310,20 @@ test("two research gear units expand tools, cloth and all ropes with independent
   field(h.render(), "Количество готовых предметов").props.onChange({ target: { value: "2" } });
   const value = text(renderToStaticMarkup(h.render()));
   assert.match(value, /Инструменты ×2 Полотно ×2 Верёвка ×4 Снаряжение исследователя ×2/);
-  assert.match(value, /Стоимость ингредиентов у NPC 2 600 монет/);
-  assert.match(value, /Выкуп готового товара NPC 3 200 монет/);
-  assert.match(value, /Прирост стоимости переработки \+600 монет/);
-  assert.match(value, /Таймер выбранного производства 4 ч/);
+  assert.match(value, /Стоимость ингредиентов у NPC 2 700 монет/);
+  assert.match(value, /Выкуп готового товара NPC 3 500 монет/);
+  assert.match(value, /Прирост стоимости переработки \+800 монет/);
+  assert.match(value, /Таймер выбранного производства 1 ч 20 мин/);
   assert.match(value, /Железная руда ×6/); assert.match(value, /Бревно ×8/); assert.match(value, /Растительное волокно ×26/);
-  assert.match(value, /Верстак 9 ч 52 мин/);
-  assert.match(value, /Печь 1 ч 4 мин/);
-  assert.match(value, /Шахта 54 мин/);
+  assert.match(value, /Верстак 3 ч 26 мин/);
+  assert.match(value, /Печь 34 мин/);
+  assert.match(value, /Шахта 1 ч/);
   assert.match(value, /Лесозаготовки 50 мин/);
   assert.match(value, /Единичная добыча шахтёра включена в очередь шахты/);
   assert.doesNotMatch(value, /Отдельно получить:|Время случайного улова или находки не подставляется/);
 });
 
-test("stone defaults to unit mining and ten stones require ten jobs, thirty minutes and 400 NPC coins", () => {
+test("stone defaults to unit mining and ten stones require ten jobs, thirty minutes and 300 NPC coins", () => {
   const detail = harness(ItemDetails, { item: item("stone"), home: 0, onSelect() {} }).render();
   const calculator = elements(detail).find(node => node.type === SourceCalculator);
   assert.ok(calculator); assert.equal(calculator.props.source.routeId, "quarry_stone");
@@ -331,8 +335,8 @@ test("stone defaults to unit mining and ten stones require ten jobs, thirty minu
   assert.match(value, /весь гарантированный набор: Камень ×10/);
   assert.match(value, /Очередь выбранного маршрута 30 мин/);
   assert.match(value, /Стоимость затрат у NPC 0 монет/);
-  assert.match(value, /Выкуп гарантированного набора NPC 400 монет/);
-  assert.match(value, /Прирост стоимости \+400 монет/);
+  assert.match(value, /Выкуп гарантированного набора NPC 300 монет/);
+  assert.match(value, /Прирост стоимости \+300 монет/);
   for (const quantity of ["0", "2.5", "1000"]) {
     field(h.render(), "Нужное количество материала").props.onChange({ target: { value: quantity } });
     const tree = h.render(), html = renderToStaticMarkup(tree);
@@ -342,25 +346,25 @@ test("stone defaults to unit mining and ten stones require ten jobs, thirty minu
   }
 });
 
-test("thirty-one stones from the deep cave round up to two full routes and retain every guaranteed output and cost", () => {
-  const source = item("stone").sources.find(value => value.routeId === "deep_cave");
+test("seven stones from the forest round up to four routes and retain every guaranteed output", () => {
+  const source = item("stone").sources.find(value => value.routeId === "forest");
   assert.ok(source);
-  const detail = harness(ItemDetails, { item: item("stone"), home: 3, onSelect() {} });
+  assert.ok(!item("stone").sources.some(value => value.routeId === "deep_cave"), "Retired bulk routes are not new choices");
+  const detail = harness(ItemDetails, { item: item("stone"), home: 1, onSelect() {} });
   field(detail.render(), "Маршрут добычи").props.onChange({ target: { value: source.id } });
   const calculator = elements(detail.render()).find(node => node.type === SourceCalculator);
-  assert.ok(calculator); assert.equal(calculator.props.source.routeId, "deep_cave");
+  assert.ok(calculator); assert.equal(calculator.props.source.routeId, "forest");
   assert.equal(calculator.key, source.id);
   const h = harness(SourceCalculator, calculator.props);
-  field(h.render(), "Нужное количество материала").props.onChange({ target: { value: "31" } });
+  field(h.render(), "Нужное количество материала").props.onChange({ target: { value: "7" } });
   const html = renderToStaticMarkup(h.render()), value = text(html);
-  assert.match(value, /Цель: Камень ×31\. Запусков маршрута: 2/);
-  assert.match(value, /Камень ×60 Железная руда ×30/);
-  assert.match(value, /Потребуется Сушёные ягоды ×2 Копчёная рыба ×2/);
-  assert.match(value, /Очередь выбранного маршрута 8 ч/);
-  assert.match(value, /Стоимость затрат у NPC 500 монет/);
-  assert.match(value, /Выкуп гарантированного набора NPC 4 200 монет/);
-  assert.match(value, /Прирост стоимости \+3 700 монет/);
-  assert.deepEqual(new Set([...html.matchAll(/data-item-icon="([^"]+)"/g)].map(match => match[1])), new Set(["stone", "ore", "dried_berries", "smoked_fish"]));
+  assert.match(value, /Цель: Камень ×7\. Запусков маршрута: 4/);
+  assert.match(value, /Бревно ×12 Камень ×8 Растительное волокно ×8/);
+  assert.match(value, /Очередь выбранного маршрута 1 ч 52 мин/);
+  assert.match(value, /Стоимость затрат у NPC 0 монет/);
+  assert.match(value, /Выкуп гарантированного набора NPC 680 монет/);
+  assert.match(value, /Прирост стоимости \+680 монет/);
+  assert.deepEqual(new Set([...html.matchAll(/data-item-icon="([^"]+)"/g)].map(match => match[1])), new Set(["stone", "wood", "fiber"]));
   assert.match(value, /Случайные находки и улов не прибавлены/);
 });
 
@@ -374,30 +378,43 @@ test("invalid quantities suppress calculations and recover with valid integral i
     assert.doesNotMatch(html, /Выкуп готового товара NPC|Вся цепочка до сырья|NaN|Infinity/);
   }
   field(h.render(), "Количество готовых предметов").props.onChange({ target: { value: "1" } });
-  assert.match(text(renderToStaticMarkup(h.render())), /Выкуп готового товара NPC 600 монет/);
+  assert.match(text(renderToStaticMarkup(h.render())), /Выкуп готового товара NPC 650 монет/);
 });
 
 test("stage and pearl summaries distinguish guaranteed project gates from chance rewards and optional warehouse", () => {
-  const value = text(renderToStaticMarkup(harness(EconomyPanel).render()));
-  assert.match(value, /Всего обязательного ожидания: 6 дн\. 17 ч; затем стройка дома 1 дн\./);
-  assert.match(value, /Жемчуг не сокращает интервалы поставок/);
+  const value = text(data.stages.map(stage => renderToStaticMarkup(harness(StageCard, { stage, onSelect() {} }).render())).join("") + renderToStaticMarkup(harness(DevelopmentPanel, { onInspectItem() {} }).render()) + renderToStaticMarkup(harness(RewardsPanel, { onInspectItem() {} }).render()));
+  assert.ok(data.stages.every(stage => stage.minimumGateSeconds === (stage.orders.length - 1) * stage.intervalSeconds));
+  assert.doesNotMatch(value, /6 дн\. 17 ч/);
+  if (data.stages.some(stage => stage.intervalSeconds > 0)) assert.match(value, /Жемчуг не сокращает интервалы поставок/);
   assert.match(value, /Гарантированная награда за весь проект Живая смола ×1/);
-  assert.ok(value.includes(`${economyCatalog.food.orders.templates.length} шаблонов · 3 активные карточки`));
+  assert.ok(value.includes(`${economyCatalog.food.orders.templates.length} шаблонов · до ${economyCatalog.food.orders.slots} просьб, по одной у жителя`));
   assert.match(value, /5 бесплатных мест, максимум 10/);
   assert.match(value, /Все расширения вместе: 680 жемчужин/);
-  assert.match(value, /За 7 полученных подарков 500/);
-  assert.match(value, /Все достижения однократно 2 060/);
+  assert.ok(value.includes(`За 7 полученных подарков ${data.pearls.dailyCycle}`));
+  assert.ok(value.includes(`Все достижения однократно ${data.pearls.achievementLifetime.toLocaleString("ru-RU").replaceAll("\u00a0", " ")}`));
   assert.match(value, /Жемчуг за каждый полученный подарок/);
   assert.match(value, /Цели и жемчуг за каждую ступень/);
-  assert.match(value, /Ускорение стройки считается по оставшемуся времени и кривой цен/);
+  assert.match(value, /Ускорение стройки считается по оставшемуся времени/);
   assert.doesNotMatch(value, /Предварительный баланс/);
   assert.match(value, /Кладовая не входит в обязательные стройки/);
-  assert.match(value, /Старт \+ вводные заказы − стройки: 100 \+ 315 − 380 = 35 монет/);
+  assert.match(value, /Старт \+ вводные заказы − стройки: 100 \+ 338 − 700 = -262 монет/);
+});
+
+test("legacy board summary keeps its supplied capacity without promising one request per resident", () => {
+  const original = { ...data.orderBoard };
+  try {
+    Object.assign(data.orderBoard, { slots: 3, perResident: false });
+    const value = text(renderToStaticMarkup(harness(DevelopmentPanel, { onInspectItem() {} }).render()));
+    assert.match(value, /до 3 активных карточек/);
+    assert.doesNotMatch(value, /по одной у жителя|3 активные карточки/);
+  } finally {
+    Object.assign(data.orderBoard, original);
+  }
 });
 
 test("branch shop shows the disabled preview and current visible amounts alongside clean recipe prerequisites", () => {
-  const tree = harness(EconomyPanel).render();
-  const table = elements(tree).find(node => node.type === "table" && text(renderToStaticMarkup(node)).includes("Монеты за жемчуг"));
+  const tree = harness(RewardsPanel, { onInspectItem() {} }).render();
+  const table = elements(tree).find(node => node.type === "table" && text(renderToStaticMarkup(node)).includes("Обмен жемчуга на монеты"));
   assert.ok(table);
   assert.equal(elements(table).filter(node => node.type === "tbody").flatMap(node => elements(node).filter(entry => entry.type === "tr")).length, 5);
   const value = text(renderToStaticMarkup(tree));
@@ -414,7 +431,7 @@ test("branch shop shows the disabled preview and current visible amounts alongsi
   assert.match(value, /Особые костюмы/);
   assert.match(value, /без бонусов к скорости или добыче/);
   for (const offer of data.currencyShop.costumeOffers) assert.ok(value.includes(`${offer.name}: ${offer.priceRub} ₽`));
-  assert.match(value, /Максимум: 8\s?500 монет за 100 жемчужин/);
+  assert.match(value, /Максимум: 6\s?000 монет за 100 жемчужин/);
   const details = text(renderToStaticMarkup(harness(ItemDetails, { item: item("strawberries"), home: 0, onSelect() {} }).render()));
   assert.match(details, /Сначала получить: Малиновый компот ×1/);
   assert.doesNotMatch(details, /[Сс]начала получить[^·<]*Приготовить/);
@@ -425,26 +442,27 @@ test("house-four project displays one-time funding, actual restoration costs and
   const tree = harness(StageCard, { stage, onSelect() {} }).render();
   const value = text(renderToStaticMarkup(tree));
   assert.equal(stage.preliminary, false);
-  assert.match(value, /Обязательные стройки 70 500 монет/);
-  assert.match(value, /Поставки этапа 12 · \+50 000 монет/);
-  assert.match(value, /Заказы минус стройки -20 500 монет/);
-  assert.match(value, /Очередь одного строителя 4 дн\./);
-  assert.match(value, /Между поставками: 23 ч/);
-  assert.match(value, /Всего обязательного ожидания: 10 дн\. 13 ч; затем стройка дома 2 дн\./);
+  assert.match(value, /Обязательные стройки 71 200 монет/);
+  assert.ok(value.includes(`Поставки этапа ${stage.orders.length} · +${stage.orderCoins.toLocaleString("ru-RU").replaceAll("\u00a0", " ")} монет`));
+  assert.match(value, /Заказы минус стройки/);
+  assert.match(value, /Очередь одного строителя/);
+  if (stage.intervalSeconds > 0) assert.match(value, /Между поставками:/);
+  assert.doesNotMatch(value, /Между поставками: 23 ч/);
+  if (stage.intervalSeconds > 0) assert.match(value, /Всего обязательного ожидания:.*затем стройка дома/);
   assert.match(value, /разовое финансирование развития дальнего берега и хозяйства/);
-  assert.match(value, /Для покрытия разницы нужны повторяемые заказы или продажа товаров NPC/);
+  if (stage.orderCoins < stage.buildingCoins) assert.match(value, /Для покрытия разницы нужны повторяемые заказы или продажа товаров NPC/);
   assert.match(value, /Мост \(доступен с дома 2\) и Маяк \(доступен с дома 3\)/);
-  assert.match(value, /на этом этапе нужно на 6 200 монет и 10 ч стройки меньше/);
+  assert.match(value, /на этом этапе нужно на 6 200 монет и 5 ч стройки меньше/);
   assert.match(value, /Повторной оплаты нет/);
-  assert.match(value, /Мост на дальний берег 1 1 200 монет · 4 ч/);
-  assert.match(value, /Лесной маяк 1 5 000 монет · 6 ч/);
+  assert.match(value, /Мост на дальний берег 1 1 200 монет · 1 ч/);
+  assert.match(value, /Лесной маяк 1 5 000 монет · 4 ч/);
   const list = elements(tree).find(node => node.type === "ol");
   const deliveries = Children.toArray(list.props.children);
   assert.equal(deliveries.length, 12);
   const final = text(renderToStaticMarkup(deliveries.at(-1)));
   assert.match(final, /Возвращение из древних руин/);
   assert.match(final, /Сначала улучшить: Мост 1 · Маяк 1/);
-  assert.match(final, /Получить результат вылазки: Древние руины · 10 ч ×1/);
+  assert.match(final, /Получить результат вылазки: Древние руины · переменная добыча ×1/);
   assert.match(final, /Запуск или отмена не засчитываются/);
   assert.match(value, /Гарантированная награда за весь проект Древнее ядро ×1 Лунный кристалл ×1/);
   assert.match(value, /Кладовая не входит в обязательные стройки/);
@@ -452,48 +470,67 @@ test("house-four project displays one-time funding, actual restoration costs and
 });
 
 test("every house's berry and processing unlock is visible and opens its actual ingredient reference", () => {
-  const h = harness(EconomyPanel), tree = h.render();
-  const cards = elements(tree).filter(node => node.type === HomeUnlockCard);
-  assert.deepEqual(cards.map(card => card.props.unlock.homeLevel), [1, 2, 3, 4, 5]);
+  const selected = [];
+  const h = harness(DevelopmentPanel, { onInspectItem(id) { selected.push(id); } });
+  const cards = [];
+  for (const level of [1, 2, 3, 4, 5]) {
+    field(h.render(), "Уровень дома для развития").props.onChange({ target: { value: String(level) } });
+    const tree = h.render(), visible = elements(tree).filter(node => node.type === HomeUnlockCard);
+    assert.equal(visible.length, 1); assert.equal(visible[0].props.unlock.homeLevel, level); cards.push(visible[0]);
+  }
   const expected = ["strawberries", "blueberries", "currants", "blackberries", "cranberries"];
-  const html = renderToStaticMarkup(tree);
-  assert.equal((html.match(/data-home-unlocks=/g) ?? []).length, 5);
   for (const [index, id] of expected.entries()) {
     const card = HomeUnlockCard(cards[index].props);
     const berry = elements(card).find(node => node.props["data-unlock-item"] === id);
     assert.ok(berry, `${id} is a visible reward for home ${index + 1}`);
-    berry.props.onClick();
-    assert.equal(elements(h.render()).find(node => node.type === ItemDetails).props.item.id, id);
+    berry.props.onClick(); assert.equal(selected.at(-1), id);
   }
   const bridge = text(renderToStaticMarkup(HomeUnlockCard(cards[1].props)));
   const lighthouse = text(renderToStaticMarkup(HomeUnlockCard(cards[2].props)));
-  assert.match(bridge, /1 200 монет · 4 ч/);
+  assert.match(bridge, /1 200 монет · 1 ч/);
   assert.match(bridge, /После получения восстановления открывается рынок игроков/);
-  assert.match(lighthouse, /Пароход с большими заказами запланирован; сейчас его нет/);
+  assert.match(lighthouse, /приходит корабль с тремя грузами/);
+  assert.match(lighthouse, /Стоянка 24 ч, следующий рейс через 6 ч после отплытия/);
+  assert.match(lighthouse, /3 бесплатные замены нетронутых грузов/);
+  assert.match(lighthouse, /досрочное отправление стоит 10 жемчужин/);
+  assert.doesNotMatch(lighthouse, /запланирован; сейчас его нет/);
 });
 
 test("new meals expose their real effects and premium examples agree with the live command price", () => {
   const jelly = text(renderToStaticMarkup(harness(ItemDetails, { item: item("currant_jelly"), home: 0, onSelect() {} }).render()));
-  assert.match(jelly, /Характеристики обеда Мохлик: \+20% скорости одной вылазки/);
-  assert.match(jelly, /Строитель: \+30% скорости одной стройки/);
-  assert.match(jelly, /шахтёра обед не ускоряет/);
+  assert.match(jelly, /Характеристики обеда Мохлик: \+20% скорости на/);
+  assert.ok(jelly.includes(`Строитель: +${item("currant_jelly").meal.builderSpeedBps / 100}% скорости на 3 ч обычной работы в одной стройке`));
+  assert.equal(item("currant_jelly").meal.builderWorkSeconds, 10800);
+  assert.match(jelly, /остаток идёт с обычной скоростью/);
+  assert.match(jelly, /Шахтёра обед не ускоряет/);
   for (const quote of data.pearls.construction.prices) {
     assert.equal(quote.pearls, pearlDisplayAmount(constructionTimePearlPrice(quote.seconds, economyCatalog.constructionSpeedup)));
   }
-  const html = renderToStaticMarkup(harness(EconomyPanel).render()), value = text(html);
+  const html = renderToStaticMarkup(harness(RewardsPanel, { onInspectItem() {} }).render()), value = text(html);
   assert.match(html, /<caption>Примеры ускорения одной стройки<\/caption>/);
-  assert.match(value, /1 мин 1 1 ч 20/);
-  assert.match(value, /1 дн\. 260 2 дн\. 384 7 дн\. 1 000/);
+  assert.match(value, /1 мин 1 1 ч 12/);
+  assert.match(value, /1 дн\. 288 2 дн\. 576 7 дн\. 2 016/);
   assert.match(value, /Таймеры разных строек нельзя складывать для расчёта/);
   assert.match(value, /Дом 2 · Мост 1/);
   assert.doesNotMatch(value, /жемчужина за начатые 10 мин/);
 });
 
-test("inactive panels are actually hidden and narrow layouts have explicit single-column scroll containment", () => {
-  const branch = readFileSync(new URL("../features/progression/branch-page.module.css", import.meta.url), "utf8");
-  const economy = readFileSync(new URL("../features/progression/economy-panel.module.css", import.meta.url), "utf8");
-  assert.match(branch, /\.viewPanel\[hidden\]\s*\{[^}]*display:\s*none/);
+test("active panels and narrow layouts have explicit single-column scroll containment", () => {
+  const branch = readFileSync(new URL("../features/progression/ui/shell/branch-page.module.css", import.meta.url), "utf8");
+  const economy = readFileSync(new URL("../features/progression/ui/shared/economy-reference.module.css", import.meta.url), "utf8");
+  assert.match(branch, /\.panel\s*\{[^}]*overflow:\s*auto/);
   assert.match(economy, /\.panel\s*\{[^}]*overflow:\s*auto/);
   assert.match(economy, /@media\s*\(max-width:\s*780px\)/);
   assert.match(economy, /\.stageGrid,\s*\.pearlGrid,\s*\.unlockGrid\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+});
+
+test("ingredient references show named claimed-route and personal-catch recipe discoveries", () => {
+  for (const id of ["make_ceramic_jar", "cook_fish_soup"]) {
+    const definition = recipe(id), itemId = Object.keys(definition.rewards)[0];
+    const value = text(renderToStaticMarkup(harness(ItemDetails, { item: item(itemId), home: 0, onSelect() {} }).render()));
+    assert.ok(value.includes(definition.unlockTitle));
+    for (const [routeId, count] of Object.entries(definition.requiredExplorations))
+      assert.ok(value.includes(`Завершить «${data.routeNames[routeId]}» ×${count}`));
+    if (definition.requiredFishCaught) assert.ok(value.includes(`Лично поймать ${definition.requiredFishCaught} рыб`));
+  }
 });

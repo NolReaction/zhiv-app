@@ -265,7 +265,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
             "SELECT to_jsonb(t)::text FROM direct_person_favorites t WHERE user_id IN (?,?) ORDER BY user_id,circle_id",
             "SELECT to_jsonb(t)::text FROM user_status_write_keys t WHERE user_id IN (?,?) ORDER BY user_id,idempotency_key",
             "SELECT to_jsonb(t)::text FROM user_timezone_write_keys t WHERE user_id IN (?,?) ORDER BY user_id,idempotency_key",
-            "SELECT jsonb_build_array(user_id,lifetime_taps,best_series,leaderboard_opt_in,visibility_version)::text FROM game_profiles WHERE user_id IN (?,?) ORDER BY user_id",
+            "SELECT jsonb_build_array(user_id,lifetime_taps,best_series,leaderboard_opt_in,visibility_version,fishing_leaderboard_opt_in,fishing_visibility_version)::text FROM game_profiles WHERE user_id IN (?,?) ORDER BY user_id",
             "SELECT to_jsonb(t)::text FROM game_monthly_scores t WHERE user_id IN (?,?) ORDER BY user_id,month",
             "SELECT to_jsonb(t)::text FROM world_profiles t WHERE user_id IN (?,?) ORDER BY user_id",
             "SELECT to_jsonb(t)::text FROM economy_profiles t WHERE user_id IN (?,?) ORDER BY user_id",
@@ -275,6 +275,11 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
             "SELECT to_jsonb(t)::text FROM economy_ledger t WHERE user_id IN (?,?) ORDER BY user_id,source_key",
             "SELECT to_jsonb(t)::text FROM economy_market_listings t WHERE seller_id IN (?,?) OR buyer_id IN (?,?) ORDER BY id",
             "SELECT to_jsonb(t)::text FROM economy_market_daily_turnover t WHERE user_id IN (?,?) ORDER BY user_id,trade_day",
+            "SELECT to_jsonb(t)::text FROM neighbor_identity t WHERE user_id IN (?,?) ORDER BY user_id",
+            "SELECT to_jsonb(t)::text FROM neighbor_daily_usage t WHERE user_id IN (?,?) ORDER BY user_id,trade_day",
+            "SELECT to_jsonb(t)::text FROM neighbor_shop_cycles t WHERE user_id IN (?,?) ORDER BY user_id,cycle_day",
+            "SELECT to_jsonb(t)::text FROM neighbor_receipts t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
+            "SELECT to_jsonb(t)::text FROM neighbor_purchases t WHERE user_id IN (?,?) ORDER BY user_id,id",
             "SELECT to_jsonb(t)::text FROM economy_market_receipts t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
             "SELECT to_jsonb(t)::text FROM economy_barter_offers t WHERE seller_id IN (?,?) OR buyer_id IN (?,?) ORDER BY id",
             "SELECT to_jsonb(t)::text FROM economy_barter_receipts t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
@@ -337,7 +342,8 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         // burst allowance so repeatedly merging empty accounts cannot refill it.
         c.update("""
             UPDATE game_profiles SET bucket_tokens=0,bucket_updated_at=clock_timestamp(),
-                visibility_version=LEAST(9007199254740991,visibility_version+1),updated_at=clock_timestamp()
+                visibility_version=LEAST(9007199254740991,visibility_version+1),
+                fishing_visibility_version=LEAST(9007199254740991,fishing_visibility_version+1),updated_at=clock_timestamp()
             WHERE user_id=?
         """.trimIndent(),target)
     }
@@ -458,6 +464,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         mergePromoRedemptions(c, id, s.other)
         mergeEconomyProfiles(c, id, s.other)
         mergeEconomyTradeUsage(c, id, s.other)
+        mergeNeighborState(c, id, s.other)
         mergeEconomyMarketReceipts(c, id, s.other)
         mergeEconomyBarterReceipts(c, id, s.other)
         mergeWorldProfiles(c,id,s.other)

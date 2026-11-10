@@ -1,8 +1,11 @@
+import { experimentCanPractice } from "@/features/economy/domain/craft-skill";
 import type { MapObjectSelection, WorldPlace } from "@/features/world/scene/map-engine";
 import { recipeBuildingLevel, type EconomyCatalog, type EconomyCost, type EconomyJob, type EconomyView } from "@/features/economy/domain/model";
-import { fishClassForItem } from "@/features/economy/domain/fishing";
+import { fishClassForItem, fishClassInventory } from "@/features/economy/domain/fishing";
+import { normalizedFishStock } from "@/features/economy/domain/fish-stock";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
 import { recipeResultName } from "@/features/economy/domain/recipe-prerequisites";
+import { recipeUnlockRequirements } from "@/features/economy/domain/recipe-unlock";
 import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order";
 import { stageCourseRequired, stageOrderProgress } from "@/features/economy/domain/stage-orders";
 import { explorationActorId, isMinerJob } from "@/features/economy/domain/actor-availability";
@@ -78,13 +81,13 @@ export function worldMissingRequirements(state: EconomyView, required: Record<st
   return Object.entries(required).filter(([id, level]) => (state.buildings[id] ?? 0) < level).map(([id, level]) => ({ id, level, current: state.buildings[id] ?? 0 }));
 }
 export function worldMaterialSource(state: EconomyView, itemId: string) {
-  const recipes = state.catalog.recipes.filter(entry => (entry.rewards[itemId] ?? 0) > 0);
+  const recipes = state.catalog.recipes.filter(entry => !entry.retired && (entry.rewards[itemId] ?? 0) > 0);
   const recipe = recipes.find(entry => !worldMissingRequirements(state, worldRequirements(entry, entry)).length && !worldRecipeUnlockReason(state, entry));
   if (recipe) return { kind: "production" as const, stationId: recipe.buildingId, targetId: recipe.id };
   const fish = state.catalog.fishing && fishClassForItem(itemId, state.catalog.fishing);
-  const explorations = state.catalog.explorations.filter(entry => ((entry.rewards[itemId] ?? 0) > 0 || fish && state.catalog.fishing?.routeIds.includes(entry.id)) && !worldMissingRequirements(state, worldRequirements(entry)).length);
+  const explorations = state.catalog.explorations.filter(entry => !entry.retired && ((entry.rewards[itemId] ?? 0) > 0 || fish && state.catalog.fishing?.routeIds.includes(entry.id)) && !worldMissingRequirements(state, worldRequirements(entry)).length);
   const exploration = explorations.find(entry => explorationActorId(entry) === "miner")
-    ?? state.catalog.explorations.find(entry => (entry.rewards[itemId] ?? 0) > 0 && explorationActorId(entry) === "miner"
+    ?? state.catalog.explorations.find(entry => !entry.retired && (entry.rewards[itemId] ?? 0) > 0 && explorationActorId(entry) === "miner"
       && entry.requiredHomeLevel <= (state.buildings.home ?? 1)
       && worldMissingRequirements(state, worldRequirements(entry)).every(requirement => requirement.id === "quarry"))
     ?? explorations[0];
@@ -97,10 +100,19 @@ export function worldMaterialSource(state: EconomyView, itemId: string) {
     || recipeBuildingLevel(left) - recipeBuildingLevel(right) || left.seconds - right.seconds)[0];
   return future ? { kind: "production" as const, stationId: future.buildingId, targetId: future.id } : null;
 }
+/** Species ownership comes from today's stock ledger, never the lifetime catch book. */
+export function worldItemAvailable(state: EconomyView, itemId: string) {
+  return state.catalog.fishing?.fish.some(fish => fish.itemId === itemId)
+    ? normalizedFishStock(state)[itemId] ?? 0 : state.inventory[itemId] ?? 0;
+}
+export function worldRecipeCost(state: EconomyView, recipe: WorldRecipe): EconomyCost {
+  return recipe.fishInput?.exactSpecies ? recipe.cost
+    : { ...recipe.cost, items: fishClassInventory(recipe.cost.items, state.catalog.fishing) };
+}
 export function worldCostShortfalls(state: EconomyView, cost: EconomyCost, quantity = 1) {
   return [
     ...(state.wallet.coins < cost.coins * quantity ? [{ id: "coins", required: cost.coins * quantity, available: state.wallet.coins }] : []),
-    ...Object.entries(cost.items).filter(([id, amount]) => (state.inventory[id] ?? 0) < amount * quantity).map(([id, amount]) => ({ id, required: amount * quantity, available: state.inventory[id] ?? 0 })),
+    ...Object.entries(cost.items).filter(([id, amount]) => worldItemAvailable(state, id) < amount * quantity).map(([id, amount]) => ({ id, required: amount * quantity, available: worldItemAvailable(state, id) })),
   ];
 }
 export function worldBatchLimit(state: EconomyView, recipe: WorldRecipe) {
@@ -112,19 +124,32 @@ export function worldMissingRecipeRequirements(state: EconomyView, recipe: World
     .map(([id, count]) => ({ id, count, current: state.progression?.recipes?.[id] ?? 0,
       recipe: state.catalog.recipes.find(entry => entry.id === id) }));
 }
+export function worldRecipeUnlockRequirements(state: EconomyView, recipe: WorldRecipe) {
+  return recipeUnlockRequirements(state, recipe).map(requirement => ({ ...requirement,
+    label: requirement.kind === "recipe" ? `Изготовить и забрать: ${recipeResultName(requirement.id, state.catalog)}`
+      : requirement.kind === "exploration" ? `Получить результат: ${state.catalog.explorations.find(route => route.id === requirement.id)?.name ?? requirement.id}`
+      : "Поймать и забрать рыбу",
+  }));
+}
 export function worldRecipeUnlockReason(state: EconomyView, recipe: WorldRecipe) {
-  const first = worldMissingRecipeRequirements(state, recipe)[0];
+  const first = worldRecipeUnlockRequirements(state, recipe).find(requirement => !requirement.completed);
   if (!first) return null;
-  const action = first.recipe?.buildingId === "dryer" ? "Приготовьте" : "Произведите";
-  return `${action} и заберите: ${recipeResultName(first.id, state.catalog)} (${first.current} / ${first.count})`;
+  if (first.kind === "recipe") {
+    const prior = state.catalog.recipes.find(entry => entry.id === first.id);
+    const action = prior?.buildingId === "dryer" ? "Приготовьте" : "Произведите";
+    return `${action} и заберите: ${recipeResultName(first.id, state.catalog)} (${first.current} / ${first.required})`;
+  }
+  return `${first.label} (${first.current} / ${first.required})`;
 }
 /** Explain permanent access separately from temporary stock, queues and wallet limits. */
 export function worldRecipeAccessReason(state: EconomyView, recipe: WorldRecipe) {
+  if (recipe.retired) return "Этот способ больше недоступен. Выберите действующий рецепт";
   const required = worldMissingRequirements(state, worldRequirements(recipe, recipe));
   const names: Record<string, string> = { home: "дома", dryer: "костра", garden: "ягодного куста", workshop: "мастерской",
     kiln: "печи", warehouse: "кладовой", woodlot: "лесного участка", quarry: "шахты", bridge: "моста", lighthouse: "маяка" };
   if (required.length) return required.map(({ id, level }) => `Доступно с ${level} уровня ${names[id]
     ?? `постройки «${state.catalog.buildings.find(building => building.id === id)?.name ?? id}»`}`).join(". ");
+  if (!experimentCanPractice(state, recipe, state.catalog)) return `Нужна кулинария ${recipe.experiment!.requiredCookingLevel} уровня`;
   return worldRecipeUnlockReason(state, recipe);
 }
 export function worldMaterialAccessReason(state: EconomyView, itemId: string) {
@@ -139,10 +164,11 @@ export function worldProductionReason(state: EconomyView, recipe: WorldRecipe, q
   if (state.jobs.some(job => job.kind === "construction" && job.targetId === recipe.buildingId)) return "Сначала завершите улучшение";
   if (state.jobs.filter(job => job.kind === "production" && job.targetId === recipe.buildingId).length >= productionSlotCount(state, recipe.buildingId)) return "Все места заняты: сначала заберите результат";
   if (quantity > worldBatchLimit(state, recipe)) return "Уменьшите партию или расширьте кладовую";
-  if (worldCostShortfalls(state, recipe.cost, quantity).length) return "Не хватает материалов или монет";
+  if (worldCostShortfalls(state, worldRecipeCost(state, recipe), quantity).length) return "Не хватает материалов или монет";
   return null;
 }
 export function worldConstructionReason(state: EconomyView, stationId: string, target: WorldBuildingLevel) {
+  if (state.boat?.work) return "Строитель занят лодкой. Заберите работу в лодочной мастерской через «В путь»";
   const required = worldMissingRequirements(state, worldRequirements(target));
   if (required.length) return `${state.catalog.buildings.find(building => building.id === required[0].id)?.name ?? "Постройка"}: нужен уровень ${required[0].level}`;
   const tutorial = tutorialOrderProgress(state);

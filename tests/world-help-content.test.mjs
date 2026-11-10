@@ -7,11 +7,14 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-nonmodal-pantry-guides-help-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { worldHelpTopics, worldHelpGroups, searchWorldHelp, searchWorldHelpWithStatus } = await vite.ssrLoadModule("/features/world/ui/help/world-help-content.ts");
+const { mealTimeExample } = await vite.ssrLoadModule("/features/economy/ui/food/meal-speed-description.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { miningBatchCatalog } = await vite.ssrLoadModule("/features/economy/domain/mining-batch.ts");
 const { fishingClassOdds } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
 const { formatPearls } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const { constructionTimePearlPrice } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
-const { CLICKER_IDLE_RESET_MS, CLICKER_LEVELS } = await vite.ssrLoadModule("/features/game/clicker-story.ts");
+const { CLICKER_IDLE_RESET_MS } = await vite.ssrLoadModule("/features/game/clicker-story.ts");
+const { PLAYER_LEVELS } = await vite.ssrLoadModule("/features/economy/domain/player-levels.ts");
 const { progressionRewardsCatalog } = await vite.ssrLoadModule("/features/game/progression-rewards.ts");
 const topics = worldHelpTopics();
 const topic = id => {
@@ -61,6 +64,29 @@ test("Leaftail help explains personal finds, delivery progress, permanent owners
   assert.ok(topic("relics").relatedIds.includes("leaftail-shop"));
 });
 
+test("boat help links busy-player advice to real repair, attempts, delivery and current upgrade rules", () => {
+  const boat = economyCatalog.boat;
+  assert.equal(topic("boat-fishing").group, "travel");
+  assert.deepEqual(topic("boat-fishing").action.target, { kind: "boat" });
+  assert.match(answer("boat-fishing"), /Восстановить бесплатно.*сразу готов/);
+  assert.match(answer("boat-fishing"), /Принять улов.*В кладовую.*Улов останется/);
+  assert.match(answer("boat-fishing"), /Мохлик занят до получения улова/);
+  assert.ok(answer("boat-controls").includes(`${boat.moduleEffects.storage[0]} рыб за ${boat.moduleEffects.storage[0] + boat.spareCasts} забросов`));
+  assert.match(answer("boat-controls"), /Попытка тратится при забросе/);
+  assert.match(answer("boat-controls"), /Рыба продолжает тянуть.*открыть альбом или свернуть игру.*снасть отпущена/);
+  assert.ok(answer("boat-upgrades").includes(`за ${formatPearls(boat.fuel.refillPricePearls)} жемчужин`));
+  assert.ok(answer("boat-upgrades").includes(`за ${boat.fuel.regenSeconds / 60} минут`));
+  assert.equal(topics.some(entry => entry.id === "boat-blueprints"), false);
+  assert.doesNotMatch(answer("boat-fishing"), /Нажмите лодку у причала/);
+  assert.doesNotMatch(answer("boat-upgrades"), /чертеж|подзорная труба/i);
+  assert.match(answer("boat-records"), /продаже у причала вес даёт до 15%/i);
+  assert.match(answer("boat-controls"), /Зажмите воду или пробел.*подвижную зелёную зону.*поплавок нырнёт/);
+  assert.match(answer("boat-records"), /профессиональный навык рыбалки/);
+  assert.match(answer("boat-records"), /автоматически.*«Друзья» и «Мир»/);
+  for (const [query, id] of [["лодочная рыбалка", "boat-fishing"], ["вес рыбы рекорд", "boat-records"]])
+    assert.ok(searchWorldHelp(topics, query).some(entry => entry.id === id), query);
+});
+
 test("search understands normal Russian questions, endings, ё and one-letter mistakes", () => {
   assert.equal(searchWorldHelp(topics, "  \n "), topics);
   for (const [query, expected] of [
@@ -81,7 +107,7 @@ test("search understands normal Russian questions, endings, ё and one-letter mi
     ["не могу забрать урожай", "storage"],
     ["где найти друзей", "friend-profile"],
     ["мастеркая", "production"],
-    ["клдаовая", "storage"],
+    ["клдаовая", "storage-upgrades"],
     ["магазин удочек", "plesk"],
     ["как варить уху", "campfire"],
     ["расскажи про заказы", "resident-orders"],
@@ -90,6 +116,12 @@ test("search understands normal Russian questions, endings, ё and one-letter mi
     ["как выставить больше лотов", "market-slots"],
     ["что значит открыть товар", "item-unlocks"],
     ["как сварить рыбный суп", "fish-soup"],
+    ["корабль", "trade-ship"],
+    ["корабль не появился", "trade-ship"],
+    ["гудок", "trade-ship-effects"],
+    ["порт", "ship-orders"],
+    ["отказаться от поставки", "ship-orders-cancel"],
+    ["отменить добычу", "mining-control"],
   ]) {
     const results = searchWorldHelp(topics, query);
     assert.equal(results[0]?.id, expected, `${query}: ${results.map(entry => entry.id).join(", ")}`);
@@ -102,7 +134,7 @@ test("search understands normal Russian questions, endings, ё and one-letter mi
 
 test("search responds while typing prefixes, preserving endings that resemble unfinished words", () => {
   for (const [query, expected] of [
-    ["моне", "resources"], ["моне нужжж", null], ["масте", "production"], ["клад", "storage"],
+    ["моне", "resources"], ["моне нужжж", null], ["масте", "production"], ["клад", "storage-upgrades"],
     ["плё", "plesk"], ["рыб", "fishing"], ["зак", "resident-orders"], ["строи", "construction"],
     ["строител занят", "construction"], ["как улуч дом", "construction"],
   ]) {
@@ -174,7 +206,7 @@ test("topic navigation points to existing buildings and valid destinations", () 
       assert.ok(economyCatalog.buildings.some(building => building.id === target.stationId), entry.id);
       if (target.recipeId) assert.ok(economyCatalog.recipes.some(recipe => recipe.id === target.recipeId && recipe.buildingId === target.stationId));
     }
-    if (target.kind === "profile") assert.ok(["profile", "mood", "friends", "settings"].includes(target.tab));
+    if (target.kind === "profile") assert.ok(["profile", "mood", "skills", "friends", "settings"].includes(target.tab));
     if (target.kind === "expeditions" && target.sector) assert.ok(["forest", "coast", "caves"].includes(target.sector));
     assert.notEqual(target.kind, "food", `${entry.id}: released help uses real orders or contextual boost surfaces`);
     if (target.kind === "orders" && target.residentId) assert.ok(["plesk", "builder"].includes(target.residentId));
@@ -208,8 +240,8 @@ test("beginner answers explain costs, receipt of results, blocked work and recov
   assert.match(answer("production"), /нехватка выделена рядом с количеством/);
   assert.match(answer("production"), /видны время и материалы/);
   assert.match(answer("production"), /У закрытого продукта указан нужный уровень постройки/);
-  assert.match(answer("production"), /ячейка займётся сразу/);
-  assert.match(answer("production"), /Время начнётся после подтверждения сервера/);
+  assert.match(answer("production"), /В книге костра сначала откроется рецепт: нажмите «Приготовить»/);
+  assert.match(answer("production"), /Работа начинается после подтверждения сервера/);
   assert.match(answer("production"), /«Удалить\?» и таймер 5 секунд/);
   assert.match(answer("production"), /Второе нажатие за это время отменит работу и вернёт монеты и материалы/);
   assert.match(answer("production"), /Без второго нажатия работа продолжится/);
@@ -224,7 +256,7 @@ test("beginner answers explain costs, receipt of results, blocked work and recov
   assert.match(answer("mining"), /Нажмите шахту, чтобы открыть добычу/);
   assert.match(answer("mining"), /После подтверждения постройки с северной тропы придёт шахтёр Камнешмыг/);
   assert.doesNotMatch(answer("mining"), /«В путь»/);
-  assert.match(answer("journeys"), /Отзыв теряет добычу.*не возвращаются/);
+  assert.match(answer("journeys"), /Отзыв не даёт XP и теряет добычу.*не возвращаются/);
   assert.match(answer("storage"), /Отмена лота не освобождает место/);
   assert.match(answer("storage"), /не пропадут/);
   assert.match(answer("saving"), /не очищайте данные браузера и не выходите из аккаунта/);
@@ -235,7 +267,7 @@ test("beginner answers explain costs, receipt of results, blocked work and recov
   assert.match(answer("saving"), /очередь восстанавливается после перезагрузки/);
   assert.match(answer("saving"), /покупки, продажи и получение наград требуют подтверждённой связи/);
   assert.match(answer("saving"), /Продолжить здесь/);
-  assert.match(answer("currency-shop"), /Покупка за реальные деньги.*недоступны/);
+  assert.match(answer("currency-shop"), /Покупки за реальные деньги.*недоступны/);
 });
 
 test("food guidance names the choice tile and makes spending an explicit second action", () => {
@@ -247,15 +279,40 @@ test("food guidance names the choice tile and makes spending an explicit second 
   assert.match(answer("builder-food"), /Выбор блюда покажет бонус и новое время.*Подтвердите «Угостить · 1 порция»: только эта кнопка потратит еду/);
   assert.match(answer("journeys"), /«Ускорение едой» под таймером/);
   assert.match(answer("journeys"), /открытие ничего не тратит/);
-  assert.match(answer("journeys"), /У начатой работы показаны оставшееся время и находки/);
+  assert.match(answer("journeys"), /до отправления видны диапазоны добычи и шансы особых находок/);
+  assert.match(answer("journeys"), /снаряжение открывает более редкие находки/);
+  assert.match(answer("journeys"), /После получения появится отчёт о том, что Мохлик принёс/);
+  assert.match(answer("journeys"), /XP начисляется при получении результата.*первое прохождение/);
+  assert.doesNotMatch(answer("journeys"), /гарантированная добыча/);
+});
+
+test("find guidance matches every ruins outcome and the new useful finds without promising a relic per trip", () => {
+  const text = answer("journey-finds");
+  for (const [routeId, itemIds] of [["ancient_ruins", ["glass_bottle", "quartz", "lens"]], ["forest", ["worm_bait"]], ["far_bank_grove", ["currant_jelly"]]]) {
+    const finds = economyCatalog.explorations.find(route => route.id === routeId).finds;
+    const total = finds.emptyWeight + finds.entries.reduce((sum, entry) => sum + entry.weight, 0);
+    for (const itemId of itemIds) {
+      const entry = finds.entries.find(entry => entry.itemId === itemId);
+      const name = economyCatalog.items.find(item => item.id === itemId).name;
+      const probability = Math.round(100 * entry.weight / total);
+      assert.ok(text.toLowerCase().includes(name.toLowerCase()), itemId);
+      assert.ok(text.includes(`(${probability}%)`), itemId);
+    }
+  }
+  assert.match(text, /одна дополнительная находка или ничего/);
+  assert.match(text, /нет постоянного процента на каждый поход/);
+  assert.match(text, /Находка еды не считается приготовленным рецептом/);
+  assert.ok(topic("journeys").relatedIds.includes("journey-finds"));
 });
 
 test("premium shop guidance offers stage packs and costume previews while keeping checkout unavailable", () => {
   assert.match(answer("currency-shop"), /«\+» рядом с монетами.*«Золото».*рядом с жемчугом - «Жемчуг»/);
   assert.match(answer("currency-shop"), /«Ещё» → «Магазин» открывает наборы/);
   assert.match(answer("currency-shop"), /внизу магазина нажмите «Ввести промокод»/);
-  assert.match(answer("currency-shop"), /Покупка за реальные деньги и обмен жемчуга на золото пока недоступны/);
-  assert.match(answer("currency-shop-exchange"), /«\+» рядом с монетами.*вкладку «Золото». Обмен пока недоступен/);
+  assert.match(answer("currency-shop"), /Покупки за реальные деньги пока недоступны/);
+  assert.match(answer("currency-shop-exchange"), /выберите пакет во вкладке «Золото» и подтвердите обмен/);
+  assert.match(answer("currency-shop-exchange"), /Обратного обмена нет/);
+  assert.doesNotMatch(answer("currency-shop-exchange"), /Пять минут|базового труда|Обмен пока недоступен/);
   const starters = answer("currency-shop-starters");
   assert.match(starters, /текущего завершённого уровня дома/);
   assert.match(starters, /149 ₽ \/ 299 ₽ \/ 399 ₽ \/ 499 ₽ \/ 599 ₽/);
@@ -275,24 +332,30 @@ test("premium shop guidance offers stage packs and costume previews while keepin
 
 test("food, building speed and orders are distinct and use current catalog numbers", () => {
   const food = economyCatalog.food;
-  for (const meal of food.meals) {
+  const hiddenDishes = new Set(economyCatalog.recipes.filter(recipe => recipe.experiment).flatMap(recipe => Object.keys(recipe.rewards)));
+  for (const meal of food.meals.filter(meal => !hiddenDishes.has(meal.itemId) && ["grilled_fish", "fish_soup", "hearty_fish"].includes(meal.itemId))) {
     const name = economyCatalog.items.find(item => item.id === meal.itemId).name;
-    assert.ok(answer("food").includes(`${name} +${meal.heroSpeedBps / 100}%`));
+    assert.ok(answer("food-bonuses").includes(`${name}: ${mealTimeExample(meal.heroSpeedBps, meal.heroWorkSeconds)}`));
   }
   assert.match(answer("food"), /не повышает|шансы рыбы не меняются/);
   assert.match(answer("food"), /бонусы не складываются/);
-  assert.match(answer("food"), /не заменяет обязательные припасы/);
-  assert.match(answer("food"), /Голодать.*не нужно/);
+  assert.match(answer("food"), /не заменяет припасы/);
+  assert.match(answer("food"), /запас базовых минут работы/);
+  assert.match(answer("food"), /остаток сохранится для следующих отправлений/);
+  assert.match(answer("food"), /После первого расхода.*вернуть порцию уже нельзя/);
+  assert.ok(topic("food").relatedIds.includes("food-bonuses"));
+  assert.match(answer("food"), /Есть необязательно/);
   assert.match(answer("food"), /офлайн/);
-  for (const meal of food.meals) {
+  for (const meal of food.meals.filter(meal => !hiddenDishes.has(meal.itemId) && ["grilled_fish", "fish_soup", "hearty_fish"].includes(meal.itemId))) {
     const name = economyCatalog.items.find(item => item.id === meal.itemId).name;
-    assert.ok(answer("builder-food").includes(`${name} +${meal.builderSpeedBps / 100}%`));
+    assert.ok(answer("builder-food-bonuses").includes(`${name}: ${mealTimeExample(meal.builderSpeedBps, meal.builderWorkSeconds)}`));
   }
-  assert.match(answer("builder-food"), /оставшуюся часть/);
-  assert.match(answer("builder-food"), /только один раз/);
+  assert.match(answer("builder-food"), /остаток стройки идёт без еды/);
+  assert.match(answer("builder-food"), /Одна порция на стройку/);
+  assert.ok(topic("builder-food").relatedIds.includes("builder-food-bonuses"));
   assert.match(answer("resident-orders"), /Обычные заказы дают монеты, не сытость/);
   assert.match(answer("resident-orders"), /не резервируются/);
-  assert.ok(answer("resident-orders").includes(`${food.orders.slots} заказа`));
+  assert.ok(answer("resident-orders").includes(`${food.orders.slots} ${food.orders.slots === 5 ? "заказов" : "заказа"}`));
   assert.ok(answer("resident-orders").includes(`${food.orders.refreshSeconds / 3600} ч`));
   assert.ok(answer("resident-orders").includes(`${food.orders.freeReplacements} замены`));
   assert.ok(answer("resident-orders").includes(`${food.orders.replacementWindowSeconds / 3600} ч`));
@@ -303,6 +366,26 @@ test("food, building speed and orders are distinct and use current catalog numbe
   assert.doesNotMatch(answer("resident-orders"), /через 30|ждёт 60/);
   assert.match(answer("campfire"), /Рыба другого класса автоматически не подставляется/);
   assert.match(answer("campfire"), /Сытный ужин требует редкую рыбу/);
+});
+
+test("relationship guidance explains the actual limits, scoped benefits and preserved weekly stages", () => {
+  const relations = economyCatalog.tradeRelations;
+  const friendship = answer("trade-relations"), weekly = answer("weekly-orders"), preparation = answer("order-preparation");
+  assert.ok(friendship.includes(`до ${relations.dailyOrderXpCap} в сутки`));
+  assert.ok(friendship.includes(`до ${relations.dailyPurchaseXpCap} в сутки у торговца`));
+  assert.ok(friendship.includes(`${relations.maxBonusBps / 100}%`));
+  for (const resident of ["Шишколап", "Лопоух", "Камнешмыг", "Плёски", "Листохвоста"]) assert.ok(friendship.includes(resident));
+  assert.match(friendship, /Припасы, рыба и жемчуг без этой скидки/);
+  assert.match(friendship, /Учебные и этапные просьбы репутацию не дают/);
+  assert.match(weekly, /все три этапа/);
+  assert.match(weekly, /семь суток после принятия/);
+  assert.match(weekly, /уже полученные награды сохранятся/);
+  assert.match(weekly, /условия|Условия/);
+  assert.match(preparation, /без запасов и ускорений/);
+  assert.match(preparation, /Купленные дополнительные места позволяют готовить параллельно/);
+  assert.match(preparation, /Время разных производств складывается как работа/);
+  assert.match(preparation, /нужный класс рыбы может не попасться за одну вылазку/);
+  for (const id of ["trade-relations", "weekly-orders", "order-preparation"]) assert.deepEqual(topic(id).action.target, { kind: "orders" });
 });
 
 test("fish-of-the-day guidance explains the actual discount and separates delivery profit from resale", () => {
@@ -332,13 +415,13 @@ test("fishing help quotes the real probability per fish class without promising 
 test("fishing guidance distinguishes an authoritative catch, class stock art and personal discoveries", () => {
   assert.match(answer("plesk"), /нынешние проценты с выбранной снастью в пяти строках/);
   assert.match(answer("plesk"), /Открытие не покупает снасть/);
-  assert.match(answer("fishing-result"), /Пока рыбалка идёт, видно только количество рыб/);
+  assert.match(answer("fishing-result"), /Вид и вес следующей рыбы раскроются после вываживания/);
   assert.match(answer("fishing-result"), /Когда игра подтвердит возвращение.*виды, редкость и количество/);
   assert.match(answer("fishing-result"), /Нажмите «Забрать».*текущие запасы по видам и классам.*навсегда откроются в вашей книге/);
   assert.match(answer("fishing-result"), /прежних вылазок могут остаться общие классы рыб/);
   assert.match(answer("fishing-result"), /Книга помнит прежние поимки, даже если рыба потрачена/);
   assert.match(answer("fishing-result"), /В холодильнике, у Плёски и в выборе ингредиентов показана только оставшаяся рыба/);
-  assert.deepEqual(topic("fishing-result").action.target, { kind: "expeditions", sector: "coast" });
+  assert.deepEqual(topic("fishing-result").action.target, { kind: "boat" });
   assert.ok(topic("collection").relatedIds.includes("fishing-result"));
 });
 
@@ -356,11 +439,15 @@ test("fish selection guidance preserves current species, unknown stock and expli
 });
 
 test("fish commerce answers require an explicit sale and keep market reservation distinct", () => {
-  assert.match(answer("resources"), /Листайте рыбные ряды «Холодильника»/);
+  assert.match(answer("resources"), /В «Холодильнике» нажмите класс рыбы, чтобы раскрыть виды/);
   assert.match(answer("resources"), /Тап по виду открывает его продажу, повторный добавляет 1/);
   assert.match(answer("resources"), /Другой вид меняется в том же окне/);
   assert.match(answer("resources"), /Еда стоит отдельно; только кнопка продажи тратит запас/);
   assert.match(answer("storage"), /улучшение в шапке кладовой/);
+  assert.match(answer("storage"), /уровень 15 - 750/);
+  assert.match(answer("storage"), /До уровня 10 нужны материалы и монеты, дальше - только реликвии/);
+  assert.match(answer("relics"), /каждый уровень 11-15 стоит по одной реликвии каждого вида/);
+  assert.match(answer("storage-upgrades"), /дом 1 до 100 мест; дом 2 до 150 мест; дом 3 до 300 мест; дом 4 до 650 мест; дом 5 до 750 мест/);
   assert.match(answer("plesk"), /В «Улове» классы сначала свёрнуты. Нажмите класс и вид/);
   assert.match(answer("plesk"), /Повторный тап прибавляет 1 до доступного лимита; другой вид начинает с 1/);
   assert.match(answer("plesk"), /Поле и «Все» меняют количество. Только «Продать» спишет рыбу/);
@@ -373,31 +460,39 @@ test("fish commerce answers require an explicit sale and keep market reservation
   assert.match(answer("production"), /Одно место даёт один предмет/);
 });
 
-test("campfire and mining guidance matches compact categories, duration filters and safe equipment choices", () => {
-  for (const label of ["Рыбные блюда", "Напитки", "Ягодные десерты", "Походные припасы"])
+test("campfire and mining guidance matches cookbook categories and safe equipment choices", () => {
+  for (const label of ["Рыбные блюда", "Напитки", "Десерты", "Припасы"])
     assert.ok(answer("campfire").includes(`«${label}»`));
-  for (const label of ["Все", "До 15 мин", "15 мин - 1 ч", "Дольше 1 ч"])
+  for (const label of ["Есть ингредиенты", "Готовится", "Приготовить", "Готовить"])
     assert.ok(answer("campfire").includes(`«${label}»`));
-  assert.match(answer("campfire"), /работы остаются видны при любом фильтре/);
-  assert.match(answer("campfire"), /Рыбный рецепт сначала откроет выбор видов.*«Готовить»/);
-  assert.match(answer("mining"), /В блоке каждого ресурса выберите время и количество/);
-  assert.match(answer("mining"), /короткие, часовые и длинные смены/);
-  assert.match(answer("mining"), /Смешанные смены раскрываются отдельно/);
+  assert.match(answer("campfire"), /нажатие на рецепт открывает.*без траты запасов/i);
+  assert.match(answer("campfire"), /проверьте выбранные виды.*«Готовить»/);
+  assert.match(answer("recipe-unlocks"), /каждый пункт задания/);
+  assert.match(answer("recipe-unlocks"), /после получения результата.*Купленные вещи их не заменяют/);
+  assert.match(answer("cooking-achievements"), /Один рецепт увеличивает разнообразие только при первом получении/);
+  assert.match(answer("mining"), /Выберите ресурс и количество/);
+  assert.ok(answer("mining").includes(`Предел по уровням шахты: ${miningBatchCatalog.maxUnitsByQuarryLevel.join(" / ")} единиц`));
+  assert.ok(answer("mining").includes(`не больше ${miningBatchCatalog.maxBaseSeconds / 60} минут базовой работы`));
+  assert.match(answer("mining"), /Для долгих ресурсов партия меньше.*Бонусы сокращают время, не увеличивая лимит/);
+  assert.match(answer("mining"), /остальная продолжает добываться, даже с закрытой игрой/);
+  assert.doesNotMatch(answer("mining"), /до 100/);
   assert.match(answer("fishing"), /три ячейки: удочка, крючок, наживка/);
   assert.match(answer("fishing"), /Тап по снасти выбирает её, без покупки и отправления/);
 });
 
 test("timers, production slots and prices derive from gameplay catalogs", () => {
   assert.ok(answer("check-in").includes(`${CLICKER_IDLE_RESET_MS / 1000} секунд`));
-  assert.ok(answer("level").includes(`уровней ${CLICKER_LEVELS.length}`));
+  assert.ok(answer("level").includes(`уровней ${PLAYER_LEVELS.length}`));
+  assert.match(answer("level"), /за общий XP.*постройки.*добычу.*выполненные заказы/);
   assert.ok(answer("resources").includes(`${economyCatalog.localBuyer.payoutBps / 100}%`));
   for (const upgrade of economyCatalog.productionSlots.upgrades) {
     assert.ok(answer("production-slots").includes(`${upgrade.slots}-е - за ${formatPearls(upgrade.pricePearls)} жемчужин с дома ${upgrade.requiredHomeLevel}`));
   }
   assert.match(answer("production-slots"), /Третье до покупки второго показывает только замок/);
-  assert.match(answer("production-slots"), /три одинаковых места/);
+  assert.match(answer("production-slots"), /Сначала видны два места; третье появляется с завершённым домом 3/);
+  assert.match(answer("production-slots"), /Ранее купленное третье место сохраняется/);
   assert.match(answer("production-slots"), /обе очереди.*в общей плашке видны «Верстак» и «Печь».*нажатие строки откроет нужное производство/);
-  for (const [label, seconds] of [["1 мин", 60], ["1 ч", 3600], ["24 ч", 86400], ["48 ч", 172800]]) {
+  for (const [label, seconds] of [["5 мин", 300], ["1 ч", 3600], ["24 ч", 86400], ["48 ч", 172800]]) {
     assert.ok(answer("pearls").includes(`${label} - ${formatPearls(constructionTimePearlPrice(seconds))} жемчужин`));
   }
   assert.doesNotMatch(answer("pearls"), /Тариф: .* минут ожидания стоят/);
@@ -437,30 +532,34 @@ test("second-house guidance quotes all seven permanent orders and independent st
   assert.match(answer("second-stage-orders"), /не исчезают и не заменяются/);
   assert.match(answer("second-house-stage"), /50 мест/);
   assert.match(answer("second-house-stage"), /один предмет/);
-  assert.match(answer("mining"), /одну глину за три минуты/);
-  assert.match(answer("mining"), /одну отдельную очередь без платных слотов/);
-  assert.match(answer("mining"), /Мохлик может гулять, рыбачить и собирать ягоды одновременно/);
-  assert.match(answer("mining"), /Обед Мохлика не ускоряет шахту/);
-  assert.match(answer("mining"), /В блоке каждого ресурса выберите время и количество/);
-  for (const label of ["Все", "До 15 мин", "15 мин - 1 ч", "Дольше 1 ч"]) assert.ok(answer("mining").includes(`«${label}»`));
-  assert.match(answer("mining"), /Текущая добыча видна при любом фильтре/);
-  assert.match(answer("mining"), /проверить припасы перед запуском/);
-  assert.match(answer("mining"), /У начатой работы видны добыча и оставшееся время/);
+  assert.match(answer("mining"), /Камень и глина: одна штука за три минуты до бонусов/);
+  assert.match(answer("mining"), /Одна бесплатная очередь/);
+  assert.match(answer("mining"), /Мохлик свободен/);
+  assert.match(answer("mining"), /Обед Мохлика не действует на шахтёра/);
+  assert.match(answer("mining"), /Выберите ресурс и количество/);
+  assert.doesNotMatch(answer("mining"), /Дольше 1 ч|Смешанные смены/);
+  assert.match(answer("mining"), /Забирайте доступную часть сразу.*остальная продолжает добываться/);
+  assert.match(answer("mining"), /сколько готово, получено и осталось, время следующей единицы и всей партии/);
+  assert.match(answer("mining-control"), /«Забрать 1».*одну готовую единицу.*«Всё»/);
+  assert.match(answer("mining-control"), /затем подтвердите «Остановить».*готовая останется/);
+  assert.match(answer("mining-control"), /столько готовой добычи, сколько помещается.*Остаток сохранится/);
   assert.equal(searchWorldHelp(topics, "что делать после дома 2")[0]?.id, "second-house-stage");
 });
 
-test("house-three guidance explains seven full waits, guaranteed resin and optional storage", () => {
+test("house-three guidance explains immediate deliveries, guaranteed resin and the actual house build time", () => {
   const course = economyCatalog.stageOrders.find(entry => entry.homeLevel === 3);
-  assert.equal(course.orders.length, 8); assert.equal(course.intervalSeconds, 82800);
+  assert.equal(course.orders.length, 8); assert.equal(course.intervalSeconds, 0);
   assert.deepEqual(course.completionRewards, { living_resin: 1 });
   assert.match(answer("third-house-stage"), /Первая из 8.*доступна сразу/);
-  assert.match(answer("third-house-stage"), /через 23 ч/);
-  assert.match(answer("third-house-stage"), /с передачи товаров.*не со смены суток UTC/);
-  assert.match(answer("third-house-stage"), /Без ускорений.*минимум 185 ч/);
+  assert.match(answer("third-house-stage"), /Сдайте товары.*следующая поставка станет доступна сразу/);
+  assert.match(answer("third-house-stage"), /Готовьте несколько цепочек параллельно.*местом в кладовой/);
+  const home = economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 4);
+  assert.ok(answer("third-house-stage").includes(`дом 4 строится ${home.seconds / 3600} ч без ускорений`));
+  assert.match(answer("third-house-stage"), /это не срок прохождения всего этапа/);
   assert.match(answer("third-house-stage"), /гарантированно.*Живая смола × 1/);
-  assert.match(answer("third-house-stage"), /Жемчуг и обеды не сокращают интервалы/);
+  assert.match(answer("third-house-stage"), /Начатые проекты сохраняют обещанные условия/);
   assert.match(answer("third-house-stage"), /не истекают и не заменяются/);
-  assert.match(answer("third-house-stage"), /Расширять кладовую необязательно/);
+  assert.doesNotMatch(answer("third-house-stage"), /через 23 ч|минимум 161 ч/);
   assert.deepEqual(topic("third-house-stage").action.target, { kind: "orders" });
 });
 
@@ -485,13 +584,13 @@ test("fish-soup guidance uses the authored recipe and distinct hero/builder bonu
     assert.ok(answer("fish-soup").includes(`${economyCatalog.items.find(item => item.id === id).name} × ${count}`));
   }
   assert.ok(answer("fish-soup").includes(`${recipe.seconds / 60} минут`));
-  assert.ok(answer("fish-soup").includes(`Мохлику +${meal.heroSpeedBps / 100}%`));
-  assert.ok(answer("fish-soup").includes(`строителю +${meal.builderSpeedBps / 100}%`));
+  assert.ok(answer("fish-soup").includes(`вылазка ${mealTimeExample(meal.heroSpeedBps, meal.heroWorkSeconds)}`));
+  assert.ok(answer("fish-soup").includes(`стройка ${mealTimeExample(meal.builderSpeedBps, meal.builderWorkSeconds)}`));
   assert.match(answer("fish-soup"), /Шахтёра не ускоряет/);
   assert.deepEqual(topic("fish-soup").action.target, { kind: "station", stationId: "dryer", recipeId: recipe.id });
 });
 
-test("current landmark answers separate early market restoration from later expeditions and planned boat orders", () => {
+test("landmark help separates claimed-lighthouse arrival, live port orders and future sea travel", () => {
   assert.match(answer("market"), /С дома 2 восстановите мост и получите готовую стройку/);
   assert.match(answer("market"), /Вылазка для открытия не нужна/);
   assert.doesNotMatch(answer("market"), /хотя бы .* завершённая вылазка/);
@@ -499,9 +598,17 @@ test("current landmark answers separate early market restoration from later expe
   assert.match(landmarks, /С дома 2.*мост.*рынок игроков/);
   assert.match(landmarks, /С дома 3 доступен маяк/);
   assert.match(landmarks, /С дома 4.*тропу и рощу.*древним руинам/);
-  assert.match(landmarks, /Пароход с большими заказами.*ещё готовятся/);
-  assert.match(landmarks, /не запускает рейс парохода/);
+  assert.match(landmarks, /получите результат стройки.*своей большой карты.*впервые подходит корабль с готовыми заказами/);
+  assert.match(landmarks, /После выполнения всех грузов он отплывает/);
+  assert.match(landmarks, /Личные заказы доступны нажатием на корабль/);
+  assert.match(landmarks, /морские путешествия ещё готовятся/);
+  assert.doesNotMatch(landmarks, /не запускает рейс парохода|будущий причал/);
   assert.match(answer("relics"), /после восстановления моста.*«Обмен»/);
+  assert.ok(topic("future-world").relatedIds.includes("trade-ship"));
+  assert.ok(topic("trade-ship").relatedIds.includes("trade-ship-effects"));
+  assert.deepEqual(topic("trade-ship-effects").action.target, { kind: "profile", tab: "settings" });
+  assert.ok(topic("mining").relatedIds.includes("mining-control"));
+  assert.deepEqual(topic("mining-control").action.target, { kind: "station", stationId: "quarry" });
 });
 
 test("berry ladder describes each source tier, preparation time and hero or builder effect from the live catalog", () => {
@@ -515,24 +622,27 @@ test("berry ladder describes each source tier, preparation time and hero or buil
     const dishName = economyCatalog.items.find(item => item.id === meal.itemId).name;
     assert.ok(ladder.includes(`Дом ${home}, куст ${crop.buildingLevel}: ${cropName}, ${crop.seconds / 60} мин`));
     assert.ok(ladder.includes(`${dishName}: костёр ${dish.buildingLevel}, ${dish.seconds / 60} мин`));
-    assert.ok(ladder.includes(`вылазки +${meal.heroSpeedBps / 100}%, стройки +${meal.builderSpeedBps / 100}%`));
+    assert.ok(ladder.includes(`вылазка ${mealTimeExample(meal.heroSpeedBps, meal.heroWorkSeconds)}`));
   }
-  assert.match(ladder, /Дом 1.*малина.*клубника/);
+  assert.match(ladder, /Дом 1.*малина.*клубники.*приготовьте и заберите один малиновый компот/);
+  assert.match(ladder, /У остальных ягод нет задания на готовку/);
   assert.match(ladder, /Один слот даёт один предмет/);
-  assert.match(ladder, /Блюдо ускоряет одну работу/);
+  assert.match(ladder, /Пользу блюд для походов и стройки сравните в книге рецептов/);
 });
 
 test("gift budgets and project timing remain distinct from build durations and all help avoids em dashes", () => {
   const giftPearls = progressionRewardsCatalog.daily.reduce((sum, reward) => sum + reward.pearls, 0);
-  assert.ok(answer("rewards").includes(`Все семь подарков дают ${formatPearls(giftPearls)} жемчужин один раз на аккаунт`));
-  assert.ok(answer("currency-shop").includes(`все семь подарков дают ${formatPearls(giftPearls)} жемчужин один раз на аккаунт`));
+  assert.ok(answer("rewards").includes(`Новая цепочка из семи подарков даёт ${formatPearls(giftPearls)} жемчужин один раз на аккаунт`));
+  assert.ok(answer("currency-shop").includes(`новая цепочка из семи подарков даёт ${formatPearls(giftPearls)} жемчужин один раз на аккаунт`));
+  assert.match(answer("rewards"), /ранее начатая сохраняет свои суммы/);
   assert.match(answer("rewards"), /новые сутки UTC.*20 часов/);
   assert.match(answer("rewards"), /цепочка завершена и через неделю не повторяется/);
   const fourth = economyCatalog.stageOrders.find(course => course.homeLevel === 4);
   const fifthHome = economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 5);
-  const minimumHours = ((fourth.orders.length - 1) * fourth.intervalSeconds + fifthHome.seconds) / 3600;
-  assert.ok(answer("fourth-house-stage").includes(`Между поставками ${fourth.intervalSeconds / 3600} ч`));
-  assert.ok(answer("fourth-house-stage").includes(`Без ускорений проект и дом 5 занимают минимум ${minimumHours} ч`));
+  assert.equal(fourth.intervalSeconds, 0);
+  assert.match(answer("fourth-house-stage"), /Следующая поставка открывается сразу после сдачи предыдущей/);
+  assert.ok(answer("fourth-house-stage").includes(`запустите стройку на ${fifthHome.seconds / 3600} ч`));
+  assert.match(answer("fourth-house-stage"), /Уже принятые условия остаются прежними/);
   for (const entry of topics) assert.ok(!answer(entry.id).includes("—"), entry.id);
 });
 
@@ -541,8 +651,40 @@ test("intro help separates its only raspberry order from the house-two course", 
   const intro = answer("tutorial-order"), construction = answer("construction");
   assert.match(intro, /Учебный заказ один/);
   assert.match(intro, /Малина × 1/);
-  assert.match(intro, /15 монет/);
+  assert.match(intro, /13 монет/);
   assert.match(intro, /3 небольшие просьбы для дома 2/);
   assert.match(construction, /один учебный заказ и 3 просьбы этапа/);
   assert.doesNotMatch([intro, answer("start"), construction, answer("workshop-starter")].join(" "), /четыре учебных|четвёртого заказа|трёх учебных/);
+});
+
+test("ship help explains partial loading, expiry, replacements and departure-based cooldown", () => {
+  const orders = answer("ship-orders"), waiting = answer("ship-orders-cancel");
+  assert.match(orders, /три личных заказа на доступные вам товары/);
+  assert.match(orders, /Загружайте товары по частям/);
+  assert.match(orders, /автоматически получите 10 жемчужин/);
+  assert.match(orders, /через 6 часов после завершения всей поставки/);
+  assert.match(orders, /Стоянка ограничена 24 часами/);
+  assert.match(orders, /бесплатно заменить 3 нетронутых груза/);
+  assert.match(waiting, /досрочно за 10 жемчужин с подтверждением/);
+  assert.match(waiting, /Новый придёт через 6 часов/);
+  assert.match(waiting, /незавершённые грузы не оплатятся.*товары не вернутся/);
+  assert.doesNotMatch(orders, /Ещё → Порт|отдельно заберите|от открытия предыдущих/);
+  assert.ok(topic("trade-ship").relatedIds.includes("ship-orders"));
+});
+
+test("cooking help explains optional risk and slow skills without spoiling discoveries", () => {
+  assert.match(answer("cooking-experiments"), /При неудаче ингредиенты сгорают, предметов и возврата нет/);
+  assert.match(answer("cooking-experiments"), /Обычные рецепты всегда удаются/);
+  assert.match(answer("craft-skills"), /базовой длительности работы/);
+  assert.doesNotMatch(answer("craft-skills"), /\d+ час|Навыки Мохлика/);
+  assert.deepEqual(topic("craft-skills").action.target, { kind: "profile", tab: "skills" });
+  assert.match(answer("craft-skills"), /рыбалка, ремесло, печь, собирательство, лесозаготовка, добыча и строительство/);
+  assert.match(answer("craft-skills"), /с 85% до 95%/);
+  assert.match(answer("food"), /только ваши готовые порции/);
+  const playerHelp = topics.map(entry => answer(entry.id)).join(" ");
+  for (const recipe of economyCatalog.recipes.filter(recipe => recipe.experiment)) {
+    for (const id of Object.keys(recipe.rewards)) {
+      assert.ok(!playerHelp.includes(economyCatalog.items.find(item => item.id === id).name), id);
+    }
+  }
 });

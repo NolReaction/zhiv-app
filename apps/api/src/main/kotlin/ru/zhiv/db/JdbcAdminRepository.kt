@@ -88,6 +88,12 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
         readAdminAnalyticsEvents(c, query.resolve(time), query, config.allowedPublicIds, time)
     }
 
+    override suspend fun analyticsEventsExport(sessionHash: ByteArray, query: AdminAnalyticsExportQuery): AdminAnalyticsEventsExport = tx(readOnlySnapshot = true) { c ->
+        actor(c, sessionHash)
+        val time = now(c).toInstant()
+        readAdminAnalyticsEventsExport(c, query.resolve(time), query, config.allowedPublicIds, time)
+    }
+
     override suspend fun economy(sessionHash: ByteArray, query: String, sort: String, offset: Int, limit: Int): AdminEconomy = tx(readOnlySnapshot = true) { c ->
         actor(c, sessionHash)
         pagination(offset, limit)

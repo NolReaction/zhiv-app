@@ -13,6 +13,16 @@ const { premiumCostumes } = await vite.ssrLoadModule("/features/world/domain/pre
 const { formatPearls } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const snapshot = home => ({ catalog: economyCatalog, buildings: { home }, jobs: [] });
 
+test("starter supplies stay within ten percent of their fixed pearl exchange value", () => {
+  const prices = new Map(economyCatalog.items.map(item => [item.id, item.baseSellPrice]));
+  for (const offer of shop.storefrontCatalog.starterPacks) {
+    const supplies = offer.rewards.coins + Object.entries(offer.rewards.items)
+      .reduce((total, [itemId, quantity]) => total + prices.get(itemId) * quantity, 0);
+    assert.ok(supplies <= offer.rewards.pearls / 2 * 50 / 10, `${offer.id}: excessive free supplies ${supplies}`);
+    assert.equal(offer.rewards.items.ancient_core, undefined);
+  }
+});
+
 test("storefront has three ruble-priced pearl packs with the current stored-to-visible scale", () => {
   assert.equal(shop.storefrontCatalog.version, 1);
   assert.equal(shop.storefrontCatalog.currency, "RUB");
@@ -28,7 +38,7 @@ test("every completed house level selects exactly its own one-account starter wi
   assert.deepEqual(packs.map(pack => pack.id), [1, 2, 3, 4, 5].map(level => `starter_home_${level}_v1`));
   assert.deepEqual(packs.map(pack => pack.priceRub), [149, 299, 399, 499, 599]);
   assert.deepEqual(packs.map(pack => pack.rewards.pearls), [300, 700, 1000, 1300, 1600]);
-  assert.deepEqual(packs.map(pack => pack.rewards.coins), [250, 800, 2000, 5000, 8000]);
+  assert.deepEqual(packs.map(pack => pack.rewards.coins), [150, 300, 500, 750, 1000]);
   for (const pack of packs) {
     assert.equal(pack.purchaseLimit, 1);
     assert.ok(Object.values(pack.rewards.items).reduce((sum, count) => sum + count, 0) <= 20);

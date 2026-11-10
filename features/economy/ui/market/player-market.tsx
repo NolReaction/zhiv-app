@@ -13,6 +13,7 @@ import { MarketRefreshProgress } from "@/features/economy/ui/shared/market-refre
 import { marketRefreshAvailable, watchMarketRefreshAvailability } from "@/features/economy/ui/shared/market-refresh-availability";
 import { WorldMarketSlots } from "./world-market-slots";
 import { MarketSaleCard } from "./market-sale-card";
+import { neighborListingGuidance, suggestedMarketListing } from "./neighbor-listing-guidance";
 import styles from "./player-market.module.css";
 
 type Item = EconomyView["catalog"]["items"][number];
@@ -78,7 +79,9 @@ export function ListingForm({ economy }: { economy: ReadyEconomy }) {
 
 export function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; item: Item }) {
   const { snapshot: state, busy, uncertain } = economy;
-  const [amount, setAmount] = useState("1"), [price, setPrice] = useState(String(item.baseSellPrice * 2));
+  const suggested = suggestedMarketListing(item.id, state.inventory[item.id] ?? 0, state.catalog);
+  const firstQuantity = suggested.minimumQuantity;
+  const [amount, setAmount] = useState(String(suggested.quantity)), [price, setPrice] = useState(String(suggested.price));
   const [choosingFish, setChoosingFish] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const focusOrigin = useRef<{ element: HTMLButtonElement | null; owner: string; itemId: string } | null>(null);
@@ -93,6 +96,7 @@ export function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; ite
   const rawMinimum = quantity ? marketMinimumPrice(item.id, quantity, state.catalog) : item.baseSellPrice;
   const minimum = Math.ceil(rawMinimum / quantum) * quantum;
   const valid = Boolean(quantity && totalPrice && totalPrice >= minimum && totalPrice % quantum === 0);
+  const neighborHint = neighborListingGuidance(economy.neighbor, state.ownerPublicId, item.id, quantity, totalPrice, economy.now, state.catalog);
   const slots = marketSlotCount(state, state.catalog);
   const full = (economy.market?.mine.length ?? 0) >= slots;
   const disabled = !valid || full || busy || uncertain || economy.retryAt > economy.now || !canTrade(state) || !marketItemUnlocked(state, item.id, state.catalog);
@@ -131,11 +135,27 @@ export function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; ite
   }
   return <div className={styles.card}>
     <div className={styles.fields}>
-      <label className={styles.field} htmlFor={quantityId}>Количество<input id={quantityId} type="number" inputMode="numeric" min={1} max={quantityMax} step={1} value={amount} disabled={busy || uncertain || choosingFish} onChange={event => setAmount(event.target.value)} /></label>
+      <label className={styles.field} htmlFor={quantityId}>Количество<input id={quantityId} type="number" inputMode="numeric" min={1} max={quantityMax} step={1} value={amount} disabled={busy || uncertain || choosingFish} onChange={event => {
+        setAmount(event.target.value);
+        const nextQuantity = integer(event.target.value, quantityMax), currentPrice = Number(price);
+        if (nextQuantity && Number.isSafeInteger(currentPrice) && currentPrice > 0 && currentPrice % quantum === 0) {
+          const floor = Math.ceil(marketMinimumPrice(item.id, nextQuantity, state.catalog) / quantum) * quantum;
+          const ceiling = Math.floor(item.baseSellPrice * limits.maxPriceMultiplier * nextQuantity / quantum) * quantum;
+          setPrice(String(Math.max(floor, Math.min(ceiling, currentPrice))));
+        }
+      }} /></label>
       <label className={styles.field} htmlFor={priceId}>Цена всего лота<input id={priceId} type="number" inputMode="numeric" min={minimum} max={maximum || undefined} step={quantum} value={price} disabled={busy || uncertain || choosingFish} onChange={event => setPrice(event.target.value)} /></label>
     </div>
-    <p className={styles.muted}>{quantity ? `Допустимая цена: ${number(minimum)}–${number(maximum)} монет за ${number(quantity)} шт.` : `До ${quantityMax} предметов в этом предложении.`}</p>
+    <p className={styles.muted}>{minimum > maximum && quantity
+      ? `Для продажи на рынке соберите не меньше ${number(firstQuantity)} шт. этого товара.`
+      : quantity ? `Допустимая цена: ${number(minimum)}–${number(maximum)} монет за ${number(quantity)} шт.` : `До ${quantityMax} предметов в этом предложении.`}</p>
     {valid && <p className={styles.muted}>Получите {number(totalPrice! - marketSaleFee(totalPrice!, limits.feeBps))} монет после сбора {limits.feeBps / 100}%. Заберите их здесь после продажи.</p>}
+    {neighborHint && <div className={styles.neighborHint} data-neighbor-listing-hint>
+      <p>{neighborHint.reason ?? `${neighborHint.name} может купить этот лот не раньше чем через ${duration(neighborHint.seconds)}${neighborHint.firstSale ? " — первая продажа" : ""}. На момент покупки проверяются свободный бюджет и условия выкупа.`}</p>
+      <p>Сегодня осталось до {number(neighborHint.remaining)} монет на выкуп; для этой партии — до {number(neighborHint.ceiling)}.</p>
+      {neighborHint.canAdjustPrice && <button type="button" className={styles.textButton} disabled={busy || uncertain || choosingFish}
+        onClick={() => setPrice(String(neighborHint.ceiling))}>Поставить {number(neighborHint.ceiling)} монет</button>}
+    </div>}
     <details className={styles.marketRules}><summary>Что происходит с товаром?</summary><p>Предметы ждут покупателя на прилавке и занимают место в кладовой. При отмене они вернутся. После продажи заберите монеты, чтобы освободить прилавок.</p></details>
     <button ref={trigger} className={styles.primary} disabled={disabled} onClick={() => {
       if (disabled || pending.current) return;
@@ -159,7 +179,7 @@ export function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; ite
 
 
 /** One storefront owns active lots, pending sales and a compact new-batch composer. */
-export function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: Navigate }) {
+export function Market({ economy, navigate, onOpenNeighbor }: { economy: ReadyEconomy; navigate: Navigate; onOpenNeighbor?: () => void }) {
   const [section, setSection] = useState<"browse" | "mine">("mine");
   const [composing, setComposing] = useState(false);
   const composer = useRef<HTMLHeadingElement>(null), composeTrigger = useRef<HTMLButtonElement>(null), wasComposing = useRef(false);
@@ -178,7 +198,8 @@ export function Market({ economy, navigate }: { economy: ReadyEconomy; navigate:
   const missingBuilding = Object.entries(limits.requiredBuildings).find(([id, level]) => (state.buildings[id] ?? 0) < level);
   const refreshIn = showcase ? Math.max(0, Math.ceil((Date.parse(showcase.refreshAt) - economy.now) / 1000)) : null;
   const refreshLabel = refreshIn === 0 ? "Обновить витрину" : "Проверить наличие";
-  const refreshMarket = economy.refreshMarket, requestedShowcase = useRef<string | null>(null);
+  const refreshMarket = economy.refreshMarket, refreshNeighbor = economy.refreshNeighbor, requestedShowcase = useRef<string | null>(null);
+  useEffect(() => { if (unlocked) void refreshNeighbor?.(); }, [unlocked, state.ownerPublicId, refreshNeighbor]);
   useEffect(() => {
     // A reset or a closed bridge cannot hide earned sales that still need collecting.
     if (marketRefreshAvailable()) void refreshMarket();
@@ -194,10 +215,10 @@ export function Market({ economy, navigate }: { economy: ReadyEconomy; navigate:
   useEffect(() => {
     if (typeof window === "undefined") return;
     const interval = window.setInterval(() => {
-      if (!busy && !uncertain && marketRefreshAvailable()) void refreshMarket();
+      if (!busy && !uncertain && marketRefreshAvailable()) { void refreshMarket(); if (unlocked) void refreshNeighbor?.(); }
     }, 15_000);
     return () => window.clearInterval(interval);
-  }, [busy, uncertain, refreshMarket]);
+  }, [busy, uncertain, refreshMarket, refreshNeighbor, unlocked]);
   const offers = <div className={styles.shopGrid} role="list" aria-label="Ваши предложения">
     {[...pending, ...active].map(offer => offer.status === "sold" ? <MarketSaleCard key={offer.id} economy={economy} offer={offer} /> : <OfferCard key={offer.id} economy={economy} offer={offer} navigate={navigate} owned />)}
   </div>;
@@ -220,6 +241,7 @@ export function Market({ economy, navigate }: { economy: ReadyEconomy; navigate:
     </div>;
   }
   return <div className={`${styles.stack} ${styles.market}`} aria-label="Рынок игроков">
+    {onOpenNeighbor && <button type="button" className={styles.neighborEntry} data-neighbor-market-entry aria-haspopup="dialog" onClick={onOpenNeighbor}><Store size={20} aria-hidden="true" /><span><strong>В гости к соседу</strong><small>Персонаж мира · полянка и дневная лавка</small></span><ArrowRight size={18} aria-hidden="true" /></button>}
     <header className={styles.marketSign}><span className={styles.signIcon}><Store size={25} aria-hidden /></span><div><span className={styles.eyebrow}>Соседская торговля</span><strong>Лавки соседей</strong></div><span className={styles.wallet}><ItemIcon itemId="coins" size={20} /><b>{number(state.wallet.coins)}</b><span className={styles.sr}> монет</span></span></header>
     <nav className={styles.subnav} aria-label="Раздел рынка">
       <button type="button" data-guide-market-tab="buy" aria-pressed={section === "browse"} onClick={() => setSection("browse")}><ShoppingBasket size={18} aria-hidden /><span>Купить</span></button>

@@ -105,3 +105,38 @@ test("a progression player drilldown opens existing operations with the chosen p
   app.requests[1].resolve(); await tick(); view = app.render();
   assert.ok(view.elements.find(node => node.type.name === "AdminAnalyticsEventList"));
 });
+
+test("full export context remounts on draft edits, page changes, refresh and view changes", async () => {
+  const app = setup(); let view = app.render(); view.tree.props.onValueChange("events"); app.render(); await tick();
+  app.requests[0].resolve(); await tick();
+  const control = () => app.render().elements.find(node => node.type.name === "AdminAnalyticsEventList")?.props.exportControls;
+  let current = control(); assert.equal(current.type.name, "AdminAnalyticsExportControls");
+  assert.equal(current.props.disabled, false); const firstKey = current.key;
+  view = app.render(); view.elements.find(node => node.type === "input" && node.props.type === "search").props.onChange({ target: { value: "Новый поиск" } });
+  current = control(); assert.notEqual(current.key, firstKey); assert.equal(current.props.disabled, true,
+    "editing an unapplied draft unmounts the old download owner and blocks the replacement");
+  view = app.render(); view.elements.find(node => node.type === "button" && node.props.children === "Сбросить").props.onClick();
+  app.render(); await tick(); app.requests.at(-1).resolve(); await tick();
+  current = control(); const beforePage = current.key;
+  app.render().elements.find(node => node.type.name === "AdminAnalyticsEventList").props.onPage(25); app.render(); await tick();
+  assert.equal(control(), undefined, "a page transition removes the previous export owner before its reply can download");
+  app.requests.at(-1).resolve(); await tick(); current = control(); assert.notEqual(current.key, beforePage);
+  view = app.render(); view.elements.find(node => node.type === "button" && node.props.children?.includes?.("Обновить")).props.onClick();
+  assert.equal(control(), undefined, "refresh from a later page removes the previous export before the next reply");
+  app.render(); await tick(); app.requests.at(-1).resolve(); await tick();
+  const beforeRefresh = control().key;
+  view = app.render(); view.elements.find(node => node.type === "button" && node.props.children?.includes?.("Обновить")).props.onClick();
+  current = control(); assert.notEqual(current.key, beforeRefresh, "a same-page refresh cancels the old export before loading state updates");
+  app.render().tree.props.onValueChange("analytics"); assert.equal(control(), undefined);
+});
+
+test("an exact player with an empty current period can still export their entire saved history", async () => {
+  const app = setup(); app.props.historyRequest = { target: { publicId, displayName: "Игрок" }, version: 1 };
+  app.render(); await tick(); app.requests[0].resolve(response(app.requests[0].url, { total: 0, events: [] })); await tick();
+  const view = app.render(), controls = view.elements.find(node => node.type.name === "AdminAnalyticsEventList").props.exportControls;
+  assert.equal(controls.props.filters.q, publicId); assert.equal(controls.props.disabled, false);
+  assert.equal(controls.props.filters.allTime, false);
+  app.props.actorPublicId = publicId;
+  const changed = app.render(); assert.equal(changed.elements.find(node => node.type.name === "AdminAnalyticsEventList"), undefined,
+    "a changed administrator cannot retain the previous player's export controls");
+});

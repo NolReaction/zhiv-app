@@ -1,11 +1,11 @@
-import { Check, Fish, Hammer, Mountain, Trees } from "lucide-react";
+import { Check, Fish, Hammer, Mountain, Pickaxe, Shovel, Trees } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { activityStatus, activityTime, type WorldActivity } from "./world-activity";
 import styles from "./world-activity-badge.module.css";
 
 /** Decorative overlay: the surrounding check-in button retains its original action. */
 export function WorldActivityBadge({ activity }: { activity: WorldActivity }) {
-  const Icon = activity.kind === "fishing" ? Fish : activity.kind === "cave" ? Mountain : activity.kind === "production" ? Hammer : Trees;
+  const Icon = activity.kind === "digging" ? Shovel : activity.kind === "mining" ? Pickaxe : activity.kind === "fishing" ? Fish : activity.kind === "cave" ? Mountain : activity.kind === "production" ? Hammer : Trees;
   const compactStatus = activity.collectionPhase === "harvesting" ? "Сбор ягод" : activity.ready ? "Готово" : activityTime(activity.remainingSeconds);
   return <span className={styles.badge} data-world-activity={activity.kind} data-collection-phase={activity.collectionPhase} data-ready={activity.ready || undefined}
     title={`${activity.label}. ${activityStatus(activity)}`}>
@@ -18,11 +18,14 @@ export function WorldActivityBadge({ activity }: { activity: WorldActivity }) {
       {activity.ready && <span className={styles.check}><Check size={11} aria-hidden="true" /></span>}
     </span>
     <strong className={styles.text}>{compactStatus}</strong>
+    {!!activity.readyCount && <span className={styles.available} data-mining-ready-count={activity.readyCount}>
+      {!activity.ready && <Check size={11} aria-hidden="true" />}{activity.readyCount}
+    </span>}
   </span>;
 }
 
 export function WorldActivityDescription({ activity, id }: { activity: WorldActivity; id: string }) {
   return <span id={id} className={styles.sr} role="progressbar" aria-label={activity.label}
     aria-valuemin={0} aria-valuemax={100} aria-valuenow={activity.collectionPhase === "harvesting" ? undefined : Math.round(activity.progress * 100)}
-    aria-valuetext={activityStatus(activity)}>{activity.label}. {activityStatus(activity)}. {activity.ready ? "Откройте мир, чтобы забрать." : ""}</span>;
+    aria-valuetext={activityStatus(activity)}>{activity.label}. {activityStatus(activity)}. {activity.ready || activity.readyCount ? "Откройте мир, чтобы забрать." : ""}</span>;
 }

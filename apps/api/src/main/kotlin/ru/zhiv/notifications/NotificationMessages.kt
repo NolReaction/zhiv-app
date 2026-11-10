@@ -42,6 +42,18 @@ private val resourceWords = mapOf(
     "tools" to CountedResource("набор инструментов", "набора инструментов", "наборов инструментов"),
     "reinforced_parts" to CountedResource("усиленный узел", "усиленных узла", "усиленных узлов"),
     "cut_stone" to CountedResource("тёсаный камень", "тёсаных камня", "тёсаных камней"),
+    "quartz" to CountedResource("ед. кварца", "ед. кварца", "ед. кварца"),
+    "limestone" to CountedResource("ед. известняка", "ед. известняка", "ед. известняка"),
+    "ceramic_jar" to CountedResource("керамическая банка", "керамические банки", "керамических банок"),
+    "mortar" to CountedResource("ед. строительной смеси", "ед. строительной смеси", "ед. строительной смеси"),
+    "glass_bottle" to CountedResource("стеклянная бутылка", "стеклянные бутылки", "стеклянных бутылок"),
+    "lens" to CountedResource("линза", "линзы", "линз"),
+    "packed_berries" to CountedResource("ягодный запас", "ягодных запаса", "ягодных запасов"),
+    "trade_crate" to CountedResource("торговый ящик", "торговых ящика", "торговых ящиков"),
+    "field_kit" to CountedResource("полевой комплект", "полевых комплекта", "полевых комплектов"),
+    "stone_tile" to CountedResource("облицовочная плитка", "облицовочные плитки", "облицовочных плиток"),
+    "bottled_compote" to CountedResource("бутылка компота", "бутылки компота", "бутылок компота"),
+    "berry_gift" to CountedResource("ягодный подарок", "ягодных подарка", "ягодных подарков"),
 ) + mapOf(
     "dried_berries" to "сушёных ягод", "smoked_fish" to "копчёной рыбы",
     "berry_compote" to "малинового компота", "strawberry_compote" to "клубничного компота",
@@ -49,6 +61,13 @@ private val resourceWords = mapOf(
     "blackberry_preserve" to "ежевичного варенья", "cranberry_glaze" to "клюквенного десерта",
     "grilled_fish" to "жареной рыбы", "fish_soup" to "ухи", "berry_fish" to "рыбы с ягодным соусом",
     "hearty_fish" to "сытного рыбного ужина", "epic_fish" to "праздничной рыбы", "legendary_fish" to "акульего жаркого",
+    "grilled_silverfin" to "серебропёрки на углях", "smoked_bream" to "копчёного леща",
+    "mooncarp_blueberries" to "лунного карася с черникой", "pike_berry_sauce" to "щуки в ягодном соусе",
+    "eel_in_jar" to "угря в горшочке", "festive_sturgeon" to "праздничного осетра",
+    "berry_tea" to "ягодного чая", "forest_pan" to "лесного жаркого",
+    "currant_glazed_fish" to "рыбы в смородиновой глазури", "berry_pastila" to "ягодной пастилы",
+    "trail_feast" to "таёжного пайка", "river_aspic" to "лесного рыбного студня",
+    "ember_berries" to "томлёной малины", "strawberry_kissel" to "клубничного киселя", "cranberry_bream" to "леща с клюквенной корочкой",
 ).mapValues { (_, food) -> CountedResource("порция $food", "порции $food", "порций $food") }
 
 private fun quantityForm(quantity: Long): Int = when {
@@ -151,8 +170,15 @@ private fun productionSection(events: List<NotificationMessageEvent>): Notificat
             add(if (resources.isEmpty()) "Урожай собран. $takeResult" else "Урожай собран: $resources. $takeResult")
         }
         if (ready.isNotEmpty()) {
-            val resources = joinedResources(totalRewards(ready.filter { it.job?.kind == "production" }))
-            add(if (resources.isEmpty()) "Производство завершено. $takeResult" else "Готово: $resources. $takeResult")
+            val (experiments, ordinary) = ready.partition { event -> event.job?.let { job ->
+                job.cooking != null || EconomyRules.catalog.recipes.any { it.id == job.recipeId && it.experiment != null }
+            } == true }
+            // Push is delivered before collection: neither saved outcome nor fallback may leak.
+            if (experiments.isNotEmpty()) add("Кулинарный опыт готов. Получите результат у костра.")
+            if (ordinary.isNotEmpty()) {
+                val resources = joinedResources(totalRewards(ordinary.filter { it.job?.kind == "production" }))
+                add(if (resources.isEmpty()) "Производство завершено. $takeResult" else "Готово: $resources. $takeResult")
+            }
         }
     }
     val short = when {

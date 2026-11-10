@@ -12,19 +12,27 @@
   "sources": [
     {
       "path": "scripts/audio_originals/ambience.py",
-      "sha256": "01538c41b9c33a071393511901128c2180f6c43b4cc0a1ec7b17d139919d4efa"
+      "sha256": "4eb1bd029e3e2275ad2b815cf6aa4cd17b27f8b75bed16b0efc2515f73a8928e"
     },
     {
       "path": "scripts/audio_originals/effects.py",
-      "sha256": "33cc0627d5da76804dc160a730e10ffca7cb8418d00f7475baf70d842ada2986"
+      "sha256": "47bdd2b8d0d6345860c800a6d2e60effc4a76d92d5b56967a4b403640a246372"
+    },
+    {
+      "path": "scripts/audio_originals/fishing_music.py",
+      "sha256": "bbfd7deb86be7fae1e67f79ee35f5089148c2c8847b14fef425f974b5b54ad5f"
     },
     {
       "path": "scripts/audio_originals/music.py",
-      "sha256": "df840710c18df8ce91492742599e40b3364600bf410328b5b7b01e2281b6dfc3"
+      "sha256": "4b1cdd1de682267f084a34c92d36673bc1e9fe51f97e8da8d4ec4cafd1e59496"
     },
     {
       "path": "scripts/audio_originals/render.py",
-      "sha256": "4f65b0e44e6928a958a1b6222ac4a512bafeaef43649f06f7dee457ad6776d92"
+      "sha256": "fac41df336c6b28bf87bb07b92acb269fb0ebb37bf0853e0c519a6a2417b21d5"
+    },
+    {
+      "path": "scripts/audio_originals/steamship.py",
+      "sha256": "2401e34a9ccc382ca38c56f4c617cfe50c4384b54aac8764b4f23787062f45ad"
     }
   ],
   "assets": [
@@ -3165,7 +3173,325 @@
         "syllables": 2,
         "phrasePace": 0.96
       }
+    },
+    {
+      "id": "ship.arrival.01",
+      "kind": "effect",
+      "title": "Warm steamship arrival whistle, presence revision",
+      "description": "A single two-chamber steam whistle with warm low fundamentals and rounded mid harmonics audible through small speakers, gently opening under pressure and fading into breath; no repeated foghorn or recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 124800,
+      "durationSeconds": 2.6,
+      "decodedBytes": 499200,
+      "masterSha256": "f59d6aba03980976e6a403b873734b4d33d5b6bee56332ebfc7f3d62bc276c37",
+      "measurements": {
+        "peakDb": -5.0,
+        "rmsDb": -18.1787,
+        "dc": 2e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.029086173
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ship.arrival.01.presence-v2.wav",
+          "bytes": 249644,
+          "sha256": "f59d6aba03980976e6a403b873734b4d33d5b6bee56332ebfc7f3d62bc276c37"
+        }
+      ],
+      "composition": {
+        "fundamentalsHz": [
+          174.6,
+          220.0
+        ],
+        "durationSeconds": 2.6,
+        "harmonicAmplitudes": [
+          1,
+          0.65,
+          0.32,
+          0.13,
+          0.045
+        ],
+        "attackSeconds": 0.24,
+        "releaseSeconds": 0.58,
+        "method": "Deterministic additive resonators, seeded filtered steam noise, pressure envelope and two quiet early reflections"
+      }
+    },
+    {
+      "id": "ui.production-start.01",
+      "kind": "effect",
+      "title": "A little mechanism starts 1",
+      "description": "Two padded wooden tines accept a new production intent, without implying completed work.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 11520,
+      "durationSeconds": 0.24,
+      "decodedBytes": 46080,
+      "masterSha256": "702d637b981811453130369dcbf3cc9fd0616aa7b5453bdd586b724e5e123aa7",
+      "measurements": {
+        "peakDb": -13.8448,
+        "rmsDb": -25.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.009483755
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.production-start.01.wav",
+          "bytes": 23084,
+          "sha256": "702d637b981811453130369dcbf3cc9fd0616aa7b5453bdd586b724e5e123aa7"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.collect.01",
+      "kind": "effect",
+      "title": "Into the basket 1",
+      "description": "A compact descending felt pair settles softly into the basket for confirmed resources.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 18240,
+      "durationSeconds": 0.38,
+      "decodedBytes": 72960,
+      "masterSha256": "10f1607ec0e4504f61b44d260c5b15123a81866350e47c6e469a92f91f2db8c5",
+      "measurements": {
+        "peakDb": -12.0105,
+        "rmsDb": -24.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.02362065
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.collect.01.wav",
+          "bytes": 36524,
+          "sha256": "10f1607ec0e4504f61b44d260c5b15123a81866350e47c6e469a92f91f2db8c5"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.boost-rise.01",
+      "kind": "effect",
+      "title": "A brighter ember 1",
+      "description": "A soft original rising fifth and octave mark a new confirmed boost threshold.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 18720,
+      "durationSeconds": 0.39,
+      "decodedBytes": 74880,
+      "masterSha256": "2968f2531703bfe334e49b236134bdbe722cdf36a5e2d33b4dc1cb6ccf7a9433",
+      "measurements": {
+        "peakDb": -12.9213,
+        "rmsDb": -25.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.016929526
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.boost-rise.01.wav",
+          "bytes": 37484,
+          "sha256": "2968f2531703bfe334e49b236134bdbe722cdf36a5e2d33b4dc1cb6ccf7a9433"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.boost-full.01",
+      "kind": "effect",
+      "title": "The hearth is glowing 1",
+      "description": "A short warm felt major arpeggio resolves at full production power, with a padded low octave.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 31200,
+      "durationSeconds": 0.65,
+      "decodedBytes": 124800,
+      "masterSha256": "54dbe636f1317cb8f1729b6e0b8a50c1a20a5b832af001d9c877d89922c6b1f3",
+      "measurements": {
+        "peakDb": -11.1289,
+        "rmsDb": -23.5,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.021526273
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.boost-full.01.wav",
+          "bytes": 62444,
+          "sha256": "54dbe636f1317cb8f1729b6e0b8a50c1a20a5b832af001d9c877d89922c6b1f3"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ship.departure.01",
+      "kind": "effect",
+      "title": "Short steamship departure double call",
+      "description": "Two brief warm steam-whistle calls for casting off, with rounded mid harmonics and a quiet tail; original synthesis without recordings or samples.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 52800,
+      "durationSeconds": 1.1,
+      "decodedBytes": 211200,
+      "masterSha256": "0af98367955342db572d37862a57177a33249fa62ba42261f5d5c84d13635233",
+      "measurements": {
+        "peakDb": -5.0,
+        "rmsDb": -18.2834,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.035336979
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ship.departure.01.wav",
+          "bytes": 105644,
+          "sha256": "0af98367955342db572d37862a57177a33249fa62ba42261f5d5c84d13635233"
+        }
+      ],
+      "composition": {
+        "fundamentalsHz": [
+          196.0,
+          246.94
+        ],
+        "durationSeconds": 1.1,
+        "callOnsetsSeconds": [
+          0,
+          0.39
+        ],
+        "attackSeconds": 0.055,
+        "method": "Deterministic additive steam chambers, seeded filtered air, two short pressure envelopes and a quiet early reflection"
+      }
+    },
+    {
+      "id": "music.fishing.01",
+      "kind": "music",
+      "title": "Лёгкий клёв",
+      "description": "Новая оригинальная речная тема: нейлоновые струны, маримба, округлый бас, тихие щётки и шейкер; 24 такта A–B–A′ с синкопированными ответами.",
+      "sampleRate": 48000,
+      "channels": 2,
+      "frames": 3637895,
+      "durationSeconds": 75.789479,
+      "decodedBytes": 29103160,
+      "masterSha256": "5bcaab58e2bea6596f4dcb3e1ce3cb28367fcc5e8d683a89a6e60690625a50a1",
+      "measurements": {
+        "peakDb": -4.0658,
+        "rmsDb": -21.0,
+        "dc": 0.0,
+        "seamDelta": 2.5211e-05,
+        "maxAdjacentDelta": 0.05921907
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/music/music.fishing.01.riverside-v2.opus",
+          "bytes": 1328938,
+          "sha256": "359d081afecde48b7f4bfea60e274bd9c97ab301b0dba72853de0ffda634168a"
+        },
+        {
+          "src": "/audio/originals-v1/music/music.fishing.01.riverside-v2.m4a",
+          "bytes": 1418775,
+          "sha256": "f83aa6f305d637c4b7b79a1bae5f2fae94b2a750a83d4bba6ae5660fd78dfabf"
+        }
+      ],
+      "composition": {
+        "musicalKey": "G major",
+        "bpm": 76,
+        "bars": 24,
+        "meter": "4/4",
+        "loop": true,
+        "revision": "riverside-v2",
+        "instruments": [
+          "nylon-string plucks",
+          "marimba",
+          "rounded bass",
+          "brushes",
+          "shaker"
+        ],
+        "provenance": "Original coded score and deterministic mathematical synthesis; no external recordings or samples."
+      }
+    },
+    {
+      "id": "fishing.hull.01",
+      "kind": "effect",
+      "title": "A quiet timber flex",
+      "description": "One soft rounded hull creak with a slow pressure envelope, made from oscillators and filtered noise; no recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 41280,
+      "durationSeconds": 0.86,
+      "decodedBytes": 165120,
+      "masterSha256": "4c50b335337a84365b77f16caf6c1801df002f1fc1c79c929622cf6cfb6802bb",
+      "measurements": {
+        "peakDb": -22.0,
+        "rmsDb": -34.4886,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.002730949
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/fishing.hull.01.wav",
+          "bytes": 82604,
+          "sha256": "4c50b335337a84365b77f16caf6c1801df002f1fc1c79c929622cf6cfb6802bb"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "fishing.reel.wind.01",
+      "kind": "loop",
+      "title": "The line winds in",
+      "description": "A soft rising reel texture from overlapping octave glides and rounded periodic gear friction; no recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 48000,
+      "durationSeconds": 1.0,
+      "decodedBytes": 192000,
+      "masterSha256": "7f45e180752cde8b0962ed758380c7ee0cb702c7ab5c28948810320b6803a1cd",
+      "measurements": {
+        "peakDb": -18.0,
+        "rmsDb": -28.1371,
+        "dc": 0.0,
+        "seamDelta": 0.002298791,
+        "maxAdjacentDelta": 0.008888181
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/fishing.reel.wind.01.wav",
+          "bytes": 96044,
+          "sha256": "7f45e180752cde8b0962ed758380c7ee0cb702c7ab5c28948810320b6803a1cd"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "fishing.reel.slack.01",
+      "kind": "loop",
+      "title": "The line eases out",
+      "description": "A lower falling line texture from overlapping downward glides and soft periodic friction; no recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 48000,
+      "durationSeconds": 1.0,
+      "decodedBytes": 192000,
+      "masterSha256": "e0acafacf3933f01608f034ec9a46d860206340718ff4ad03e2ea80095febcc9",
+      "measurements": {
+        "peakDb": -20.2325,
+        "rmsDb": -30.0,
+        "dc": 0.0,
+        "seamDelta": 8.3979e-05,
+        "maxAdjacentDelta": 0.003793802
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/fishing.reel.slack.01.wav",
+          "bytes": 96044,
+          "sha256": "e0acafacf3933f01608f034ec9a46d860206340718ff4ad03e2ea80095febcc9"
+        }
+      ],
+      "composition": {}
     }
   ],
-  "updatedAt": "2026-10-16"
+  "updatedAt": "2026-11-03"
 }

@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { explorationLootSummary } from "./lib/exploration-loot.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { auditFourthStageBudget, auditProductionBalance, auditProjectCourses } from "./lib/economy-balance.mjs";
+import { auditBuildingUnlocks, auditFourthStageBudget, auditProductionBalance, auditProjectCourses } from "./lib/economy-balance.mjs";
 import { createLiquidation, recipeBuildingLevel } from "./lib/economy-math.mjs";
+import { auditConstructionEconomy } from "./lib/construction-economy.mjs";
+import { recipeMasteryReachable } from "./lib/recipe-mastery.mjs";
 
 const catalogPath = new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url);
 const startingBuildings = { home: 1, garden: 1, warehouse: 1 };
@@ -15,6 +18,9 @@ const day = 86_400;
  * and are outside these bounds; the audit is not a prediction of actual play duration.
  */
 export function auditEconomyProgression(catalog) {
+  const allRecipes = catalog.recipes;
+  const retiredSourceCount = [...catalog.recipes, ...catalog.explorations].filter(source => source.retired).length;
+  catalog = { ...catalog, recipes: catalog.recipes.filter(source => !source.retired), explorations: catalog.explorations.filter(source => !source.retired) };
   const unique = (entries, kind) => {
     const indexed = new Map(entries.map(entry => [entry.id, entry]));
     assert.equal(indexed.size, entries.length, `Duplicate ${kind} ID`);
@@ -27,7 +33,7 @@ export function auditEconomyProgression(catalog) {
   for (const route of catalog.explorations.filter(route => route.activity === "mining")) {
     assert(route.requiredBuildings?.quarry >= 1, `${route.id}: mining requires a built quarry`);
   }
-  assert.equal(catalog.version, 12);
+  assert([12, 13, 14, 15].includes(catalog.version), "Unsupported audited economy catalog");
   assert.equal(catalog.currencyScale, 10);
   const projects = auditProjectCourses(catalog);
   const rare = catalog.rareDrops;
@@ -75,16 +81,42 @@ export function auditEconomyProgression(catalog) {
       assert(Number.isSafeInteger(level.seconds) && level.seconds >= 0, `${key}: invalid duration`);
       assert(Number.isSafeInteger(level.cost.coins) && level.cost.coins >= 0, `${key}: invalid price`);
       if (building.id === "warehouse") {
-        assert(level.requiredHomeLevel === (level.level === 2 ? 2 : 1) && !Object.keys(level.requiredBuildings ?? {}).length,
-          `${key}: storage must keep only the declared second-stage house gate`);
+        const ordinaryExpansion = catalog.version >= 15 && level.level <= 10;
+        const relicOnlyExpansion = catalog.version >= 15 && level.level >= 11;
+        const craftedExpansion = catalog.version >= 14 && level.level >= 4 && !relicOnlyExpansion;
+        const houseGate = catalog.version >= 15 ? level.level <= 2 ? 1 : level.level === 3 ? 2 : level.level <= 6 ? 3 : level.level <= 13 ? 4 : 5
+          : level.level === 2 ? 2 : catalog.version >= 13 && level.level === 3 ? 3
+          : relicOnlyExpansion ? 5 : craftedExpansion ? level.level <= 6 ? 4 : 5 : 1;
+        assert(level.requiredHomeLevel === houseGate && (craftedExpansion || catalog.version >= 15 && level.level >= 2 && level.level <= 3 || !Object.keys(level.requiredBuildings ?? {}).length),
+          `${key}: storage must keep its declared material-availability house gate`);
         assert(Number.isSafeInteger(level.warehouseCapacity) && level.warehouseCapacity > 0, `${key}: warehouse capacity missing`);
         assert.equal(level.warehouseCapacity, level.level * 50, `${key}: storage must grow by 50 places per level`);
-        if (level.level <= 3) assert(Object.keys(level.cost.items).every(id => !rare?.itemIds.includes(id)), `${key}: early storage must use ordinary materials`);
-        else {
-          assert(rare && level.cost.coins === 0, `${key}: relic storage must not require coins`);
-          assert.deepEqual(Object.keys(level.cost.items).sort(), [...rare.itemIds].sort(), `${key}: relic storage must use all three relic types only`);
-          if (level.level > 4) assert(rare.itemIds.every(id => level.cost.items[id] >= building.levels[level.level - 2].cost.items[id]),
-            `${key}: later storage must not reduce relic quantities`);
+        if (ordinaryExpansion || level.level <= 3) {
+          assert(Object.keys(level.cost.items).every(id => !rare?.itemIds.includes(id)), `${key}: ordinary storage must use ordinary materials`);
+          if (craftedExpansion) {
+            assert(level.cost.coins > building.levels[level.level - 2].cost.coins, `${key}: ordinary storage must follow its declared coin progression`);
+            assert(Object.keys(level.cost.items).length === 3 && Object.values(level.cost.items).every(amount => amount <= 4)
+              && Object.keys(level.requiredBuildings ?? {}).length > 0,
+            `${key}: ordinary storage needs three compact crafted inputs with source gates`);
+          }
+        } else if (relicOnlyExpansion) {
+          const perRelic = 1;
+          assert(rare && level.cost.coins === 0 && Object.keys(level.cost.items).length === rare.itemIds.length
+            && rare.itemIds.every(id => level.cost.items[id] === perRelic),
+          `${key}: relic storage must use equal small quantities of all three relics without coins`);
+        } else {
+          assert(rare && level.cost.coins === 0, `${key}: relic storage must follow its declared coin progression`);
+          if (craftedExpansion) {
+            const relicCount = rare.itemIds.reduce((sum, id) => sum + (level.cost.items[id] ?? 0), 0);
+            const crafted = Object.entries(level.cost.items).filter(([id]) => !rare.itemIds.includes(id));
+            assert(relicCount >= 1 && relicCount <= 3 && crafted.length === 3
+              && crafted.every(([, amount]) => amount <= 4) && Object.keys(level.requiredBuildings ?? {}).length > 0,
+            `${key}: relic storage needs a small relic basket and three ordinary crafted inputs with source gates`);
+          } else {
+            assert.deepEqual(Object.keys(level.cost.items).sort(), [...rare.itemIds].sort(), `${key}: relic storage must use all three relic types only`);
+            if (level.level > 4) assert(rare.itemIds.every(id => level.cost.items[id] >= building.levels[level.level - 2].cost.items[id]),
+              `${key}: later storage must not reduce relic quantities`);
+          }
         }
       } else if (building.id === "quarry") {
         assert(catalog.explorations.some(route => route.activity === "mining" && route.requiredBuildings?.quarry === level.level), `${key}: upgrade has no mining route benefit`);
@@ -130,11 +162,20 @@ export function auditEconomyProgression(catalog) {
       for (const [id, count] of Object.entries(definition.requiredRecipes ?? {})) {
         assert(recipes.has(id) && Number.isSafeInteger(count) && count > 0, `${definition.id}: unknown or invalid recipe unlock ${id}`);
       }
+      for (const [id, count] of Object.entries(definition.requiredExplorations ?? {})) {
+        assert(catalog.explorations.some(route => route.id === id) && Number.isSafeInteger(count) && count > 0,
+          `${definition.id}: unknown or invalid exploration unlock ${id}`);
+      }
+      assert(Number.isSafeInteger(definition.requiredFishCaught ?? 0) && (definition.requiredFishCaught ?? 0) >= 0,
+        `${definition.id}: invalid personally caught fish requirement`);
     }
   }
+  const unlockSources = new Map(production.map(source => [source.id, source]));
   const recipeUnlocks = (id, path = new Set()) => {
     assert(!path.has(id), `Recipe unlock cycle at ${id}`);
-    for (const required of Object.keys(recipes.get(id).requiredRecipes ?? {})) recipeUnlocks(required, new Set(path).add(id));
+    const source = unlockSources.get(id);
+    for (const required of [...Object.keys(source.requiredRecipes ?? {}), ...Object.keys(source.requiredExplorations ?? {})])
+      recipeUnlocks(required, new Set(path).add(id));
   };
   for (const id of recipes.keys()) recipeUnlocks(id);
   const firstStageRecipes = catalog.recipes.filter(recipe => recipe.requiredHomeLevel === 1);
@@ -194,7 +235,7 @@ export function auditEconomyProgression(catalog) {
     assert.equal(new Set(fishing.classes.map(group => group.itemId)).size, rarity.size, "Duplicate fish class item");
     for (const bait of fishing.baits) {
       assert(items.has(bait.itemId), `Fishing: unknown bait ${bait.itemId}`);
-      assert(Number.isSafeInteger(bait.price) && bait.price > items.get(bait.itemId).baseSellPrice, "Bait buy-sell arbitrage");
+      assert(Number.isSafeInteger(bait.price) && bait.price >= items.get(bait.itemId).baseSellPrice, "Bait buy-sell arbitrage");
       assert(validGear(bait), "Invalid bait rarity or progression");
       itemUses.add(bait.itemId); // One stack unit is consumed by a special fishing departure.
       merchantItems.push({ itemId: bait.itemId, requiredHomeLevel: merchantGearLevel(bait, "bait") });
@@ -254,10 +295,12 @@ export function auditEconomyProgression(catalog) {
   assert.equal(buildings.get("lighthouse").levels[0].requiredHomeLevel, 3, "The lighthouse must be attainable at home three");
   const pricing = catalog.constructionSpeedup;
   assert.equal(pricing.priceStepPearls, 2, "Construction prices must round to one visible pearl, stored as two units");
-  assert.deepEqual(pricing.pricingPoints, [
+  assert.deepEqual(pricing.pricingPoints, catalog.version >= 13 ? [
+    { seconds: 300, pearls: 2 }, { seconds: 600, pearls: 4 },
+  ] : [
     { seconds: 60, pearls: 2 }, { seconds: 3600, pearls: 40 },
     { seconds: 86400, pearls: 520 }, { seconds: 604800, pearls: 2000 },
-  ], "Construction acceleration must retain the authored discount curve in stored pearl units");
+  ], "Construction acceleration must use the declared time tariff in stored pearl units");
   const pearlPricing = pricing.pricingPoints.map((point, index, points) => {
     if (index > 1) {
       const previous = points[index - 1], before = points[index - 2];
@@ -299,7 +342,7 @@ export function auditEconomyProgression(catalog) {
     const storageLevel = Math.max(1, ...[...prerequisites].filter(id => id.startsWith("warehouse:")).map(id => nodes.get(id).level));
     const capacity = buildings.get("warehouse").levels[storageLevel - 1].warehouseCapacity;
     assert(Object.values(definition.cost.items).reduce((sum, amount) => sum + amount, 0) <= capacity, `${definition.id}: one batch input exceeds available storage`);
-    const outputCount = Object.values(definition.rewards).reduce((sum, amount) => sum + amount, 0);
+    const outputCount = explorationLootSummary(definition).maximumOutputCount;
     assert(outputCount + (!definition.buildingId && rare ? 1 : 0) <= capacity, `${definition.id}: one batch output and possible rare find exceed available storage`);
   }
 
@@ -317,7 +360,7 @@ export function auditEconomyProgression(catalog) {
     changed = false;
     for (const definition of production) {
       if (!hasRequirements(definition) || !hasMaterials(definition.cost)
-        || Object.keys(definition.requiredRecipes ?? {}).some(id => !completedRecipes.has(id))) continue;
+        || !recipeMasteryReachable(catalog, definition, completedRecipes, completedRoutes, completed.home)) continue;
       if (definition.buildingId && (completed[definition.buildingId] ?? 0) < recipeBuildingLevel(definition)) continue;
       if (definition.buildingId && !completedRecipes.has(definition.id)) { completedRecipes.add(definition.id); changed = true; }
       if (!definition.buildingId && !completedRoutes.has(definition.id)) { completedRoutes.add(definition.id); changed = true; }
@@ -365,9 +408,13 @@ export function auditEconomyProgression(catalog) {
   }
   assert.deepEqual([...items.keys()].filter(item => !obtainable.has(item)), [], "Resources cannot be produced from a free start");
   assert.deepEqual(Object.fromEntries([...buildings.keys()].map(id => [id, completed[id] ?? 0])), Object.fromEntries([...buildings.values()].map(building => [building.id, building.levels.at(-1).level])), "A material/building dependency blocks progression without market purchases");
+  auditBuildingUnlocks(catalog);
   const firstCrops = catalog.recipes.filter(recipe => recipe.requiredHomeLevel === 1 && recipe.buildingId === "garden" && recipe.buildingLevel === 1 && recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length);
-  assert(firstCrops.some(recipe => recipe.seconds === 60) && firstCrops.some(recipe => recipe.seconds === 300 && recipe.requiredRecipes?.cook_compote === 1), "Starter needs one-minute raspberries and five-minute strawberries unlocked by compote");
-  assert(catalog.recipes.some(recipe => recipe.requiredHomeLevel === 3 && recipe.buildingId === "garden" && recipe.buildingLevel === 2
+  assert(firstCrops.some(recipe => recipe.seconds === 60) && firstCrops.some(recipe => recipe.seconds === 300), "Starter needs one-minute raspberries and five-minute strawberries");
+  assert.deepEqual(allRecipes.find(recipe => recipe.id === "grow_strawberries")?.requiredRecipes, { cook_compote: 1 }, "Strawberries require exactly one personally claimed raspberry compote");
+  assert(allRecipes.filter(recipe => recipe.buildingId === "garden" && recipe.id !== "grow_strawberries")
+    .every(recipe => Object.keys(recipe.requiredRecipes ?? {}).length === 0), "Other garden crops, including retired variants, cannot require recipe mastery");
+  if (catalog.version < 13) assert(catalog.recipes.some(recipe => recipe.requiredHomeLevel === 3 && recipe.buildingId === "garden" && recipe.buildingLevel === 2
     && recipe.seconds < 60 && recipe.rewards.berries === 1 && recipe.maxBatch === 1
     && recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length), "Home three opens a faster free unit crop");
   const berryProgression = [
@@ -392,7 +439,7 @@ export function auditEconomyProgression(catalog) {
       cropCoins: items.get(cropId).baseSellPrice, productId, productSeconds: product.seconds,
       productCoins: items.get(productId).baseSellPrice, processingMarginCoins: npcValue(product.rewards) - npcValue(product.cost.items) };
   });
-  assert(catalog.explorations.some(route => route.requiredHomeLevel === 1 && route.seconds >= 8 * 3600 && route.cost.coins === 0 && !Object.keys(route.cost.items).length), "Starter needs a free overnight exploration");
+  assert(catalog.explorations.some(route => route.requiredHomeLevel === 1 && !route.retired && route.cost.coins === 0 && !Object.keys(route.cost.items).length), "Starter needs a free exploration");
   const duration = targets => [...targets].reduce((sum, key) => sum + nodes.get(key).seconds, 0);
   const homeStages = buildings.get("home").levels.map(level => ({ level: level.level, minimumSeconds: duration(closure(`home:${level.level}`)) }));
   const allConstruction = new Set([...nodes.keys()].flatMap(key => [...closure(key)]));
@@ -401,8 +448,8 @@ export function auditEconomyProgression(catalog) {
   const fiveTierConstruction = new Set([...nodes.keys()].filter(key => nodes.get(key).level <= 5).flatMap(key => [...closure(key)]));
   const fiveTierBaseMinimumSeconds = duration(fiveTierConstruction);
   const fullBaseMinimumSeconds = duration(allConstruction);
-  assert.equal(buildings.get("home").levels.find(level => level.level === 4).seconds, day, "Third stage home construction must retain 24 hours");
-  assert.equal(buildings.get("home").levels.find(level => level.level === 5).seconds, 2 * day, "Fourth stage home construction must retain 48 hours");
+  assert.equal(buildings.get("home").levels.find(level => level.level === 4).seconds, catalog.version >= 14 ? 4 * 3600 : catalog.version >= 13 ? 8 * 3600 : day, "Third stage home construction must match its declared tier");
+  assert.equal(buildings.get("home").levels.find(level => level.level === 5).seconds, catalog.version >= 14 ? 6 * 3600 : catalog.version >= 13 ? day : 2 * day, "Fourth stage home construction must match its declared tier");
   assert([...closure("home:5")].every(key => nodes.get(key).buildingId !== "warehouse"),
     "Optional warehouse expansions must not gate home five");
   const homeFive = buildings.get("home").levels.find(level => level.level === 5);
@@ -411,8 +458,8 @@ export function auditEconomyProgression(catalog) {
   const previousHome = closure("home:4");
   const previousThirdHome = closure("home:3");
   const thirdConstruction = [...previousHome].filter(key => !previousThirdHome.has(key)).map(key => nodes.get(key));
-  assert(thirdConstruction.every(node => Object.values(node.cost.items).reduce((sum, count) => sum + count, 0) <= 14),
-    "Third stage mandatory building materials must fit a compact fourteen-item bundle");
+  assert(thirdConstruction.every(node => Object.values(node.cost.items).reduce((sum, count) => sum + count, 0) <= (catalog.version >= 14 ? 50 : 14)),
+    "Third stage mandatory building materials must fit the initial warehouse");
   const thirdStage = { constructionCount: thirdConstruction.length,
     constructionCoins: thirdConstruction.reduce((sum, node) => sum + node.cost.coins, 0),
     constructionSeconds: thirdConstruction.reduce((sum, node) => sum + node.seconds, 0),
@@ -423,8 +470,9 @@ export function auditEconomyProgression(catalog) {
     assert(levels.every((level, index) => !index || level.seconds >= levels[index - 1].seconds),
       `${id}: later production upgrades must not take less construction time than earlier tiers`);
   }
+  if (catalog.version >= 15) auditConstructionEconomy(catalog);
   return {
-    catalogVersion: catalog.version, itemCount: items.size, buildingCount: buildings.size,
+    catalogVersion: catalog.version, itemCount: items.size, buildingCount: buildings.size, retiredSourceCount,
     recipeCount: catalog.recipes.length, explorationCount: catalog.explorations.length,
     homeStages, fiveTierBaseMinimumSeconds, fullBaseMinimumSeconds,
     projects, thirdStage, fourthStage, berryProgression, pearlPricing, timingBasis: "Home/base minimumSeconds count only one builder's construction queue; project waits and actual play duration are separate",

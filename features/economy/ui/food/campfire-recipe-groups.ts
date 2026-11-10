@@ -10,11 +10,16 @@ export type CampfireDurationFilter = typeof campfireDurationFilters[number]["id"
 export type CampfireRecipeSection = { id: string; label: string; recipes: WorldRecipeGroup[] };
 
 const sections = [
-  { id: "fish", label: "Рыбные блюда", items: ["grilled_fish", "fish_soup", "berry_fish", "hearty_fish", "epic_fish", "legendary_fish"] },
-  { id: "drinks", label: "Напитки", items: ["berry_compote", "strawberry_compote", "blueberry_compote"] },
-  { id: "desserts", label: "Ягодные десерты", items: ["currant_jelly", "blackberry_preserve", "cranberry_glaze"] },
-  { id: "provisions", label: "Походные припасы", items: ["dried_berries", "smoked_fish", "trail_ration"] },
+  { id: "fish", label: "Рыбные блюда", items: ["grilled_fish", "fish_soup", "berry_fish", "hearty_fish", "epic_fish", "legendary_fish", "grilled_silverfin", "smoked_bream", "mooncarp_blueberries", "pike_berry_sauce", "eel_in_jar", "festive_sturgeon", "forest_pan", "currant_glazed_fish", "river_aspic", "cranberry_bream"] },
+  { id: "drinks", label: "Напитки", items: ["berry_compote", "strawberry_compote", "blueberry_compote", "bottled_compote", "berry_tea", "strawberry_kissel"] },
+  { id: "desserts", label: "Ягодные десерты", items: ["currant_jelly", "blackberry_preserve", "cranberry_glaze", "berry_gift", "berry_pastila", "ember_berries"] },
+  { id: "provisions", label: "Походные припасы", items: ["dried_berries", "smoked_fish", "trail_ration", "packed_berries", "trail_feast"] },
 ] as const;
+
+export function campfireRecipeSection(recipe: WorldRecipeGroup["recipe"]) {
+  const outputs = Object.keys(recipe.rewards).filter(id => recipe.rewards[id] > 0);
+  return outputs.length === 1 ? sections.find(entry => entry.items.some(id => id === outputs[0])) : undefined;
+}
 
 export function campfireDurationMatches(seconds: number, filter: CampfireDurationFilter) {
   return filter === "all" || (filter === "short" && seconds <= 900)
@@ -27,8 +32,7 @@ export function campfireRecipeGroups(products: readonly WorldRecipeGroup[], filt
   const grouped = new Map<string, CampfireRecipeSection>();
   for (const product of products) {
     if (!campfireDurationMatches(product.recipe.seconds, filter)) continue;
-    const outputs = Object.keys(product.recipe.rewards).filter(id => product.recipe.rewards[id] > 0);
-    const section = outputs.length === 1 ? sections.find(entry => entry.items.some(id => id === outputs[0])) : undefined;
+    const section = campfireRecipeSection(product.recipe);
     const id = section?.id ?? "other";
     const group = grouped.get(id) ?? { id, label: section?.label ?? "Другие заготовки", recipes: [] };
     group.recipes.push(product);

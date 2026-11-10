@@ -345,6 +345,7 @@ private fun DirectRequestSnapshot.toDto() = DirectRequestDto(
 )
 
 private fun PersonSnapshot.toDto() = PersonDto(
+    gameSummary = gameSummary,
     nickname = nickname,
     isFavorite = isFavorite,
     status = statusText?.let { text -> statusUpdatedAt?.let { ru.zhiv.http.UserStatusDto(text,it.toInstant().toString(),statusExpiresAt?.toInstant()?.toString()) } },

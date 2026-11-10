@@ -30,7 +30,7 @@ export function MailLetter({ message, reading, readError, available, onRetry, cl
     {contents.length > 0 && <aside className={styles.attachments}><strong><Gift size={17} aria-hidden="true" />Изменения уже применены</strong>
       <ul>{contents.map((text, index) => <li key={index}>{text}</li>)}</ul></aside>}
     {message.gift && <aside className={styles.welcomeGift} aria-label="Подарок от автора">
-      <div><Gift size={25} aria-hidden="true" /><span><strong>100 жемчужин</strong><small>Для первых приключений</small></span></div>
+      <div><Gift size={25} aria-hidden="true" /><span><strong>{message.gift.pearls} жемчужин</strong><small>Для первых приключений</small></span></div>
       {message.gift.claimedAt ? <p role="status"><Check size={16} aria-hidden="true" />Подарок получен</p>
         : <button type="button" disabled={!available || claiming || !onClaim} onClick={onClaim}>{claiming ? "Получаем…" : "Забрать подарок"}</button>}
       {claimError && <p className={styles.error} role="status">{claimError}</p>}

@@ -5,12 +5,15 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import io.ktor.server.routing.routing
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import kotlinx.serialization.encodeToString
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.checkins.CheckInRepository
 import ru.zhiv.checkins.CheckInResult
@@ -36,6 +39,49 @@ import kotlin.test.assertTrue
 /** Exercise the real application composition and Ktor buckets, not a test-only
  * limiter. Repository stubs isolate transport throttling from game balances. */
 class EconomyRateLimitTest {
+    @Test fun `open boat routes accept play commands and the full bounded trace`() = checkBoatCommands(true)
+    @Test fun `paused boat routes reject new play and permit existing trips to finish`() = checkBoatCommands(false)
+
+    private fun checkBoatCommands(boatFishingEnabled: Boolean) = testApplication {
+        val fixture = Fixture()
+        application {
+            installZhivApi(fixture, fixture, fixture.config, rateLimitClock = fixture.clock::get)
+            routing { economyRoutes(fixture, TokenCodec(), fixture.config, boatFishingEnabled = boatFishingEnabled) }
+        }
+        val command = EconomyCommand(UUID.randomUUID().toString(), fixture.owner(fixture.first), 0, "submit_boat_cast", UUID.randomUUID().toString(),
+            reel = EconomyBoatReelSubmission(UUID.randomUUID().toString(), (0 until 600).map { EconomyBoatReelInput(it, it % 2 == 0) }, 600))
+        val body = economyJson.encodeToString(command)
+        assertTrue(body.encodeToByteArray().size > 4096 && body.encodeToByteArray().size < 32768)
+        val boundaryBody = body + " ".repeat(32_768 - body.encodeToByteArray().size)
+        assertEquals(32_768, boundaryBody.encodeToByteArray().size)
+        suspend fun send(payload: String) = client.post("/api/v1/economy/commands") {
+            header(HttpHeaders.Cookie, fixture.first); header(HttpHeaders.Origin, "http://localhost")
+            contentType(ContentType.Application.Json); setBody(payload)
+        }
+        suspend fun checkPlay(payload: String) {
+            val before = fixture.commands
+            val response = send(payload)
+            if (boatFishingEnabled) {
+                assertEquals(HttpStatusCode.OK, response.status)
+                assertEquals(before + 1, fixture.commands)
+            } else {
+                assertEquals(HttpStatusCode.Conflict, response.status)
+                assertTrue(response.bodyAsText().contains("ECONOMY_BOAT_PAUSED"))
+                assertEquals(before, fixture.commands)
+            }
+        }
+        assertEquals(HttpStatusCode.PayloadTooLarge, send(boundaryBody + " ").status)
+        assertEquals(0, fixture.commands, "One byte over the limit cannot reach the repository")
+        checkPlay(boundaryBody)
+        for (action in listOf("start_boat_upgrade", "depart_boat", "begin_boat_cast", "buy_boat_fuel")) {
+            checkPlay(economyJson.encodeToString(command.copy(action = action, reel = null, expectedRevision = fixture.commands.toLong())))
+        }
+        val beforeRecovery = fixture.commands
+        for (action in listOf("return_boat", "claim_boat", "claim_boat_upgrade", "start_fishing")) {
+            assertEquals(HttpStatusCode.OK, send(economyJson.encodeToString(command.copy(action = action, reel = null, expectedRevision = fixture.commands.toLong()))).status)
+        }
+        assertEquals(beforeRecovery + 4, fixture.commands)
+    }
     @Test fun `ordinary active play continues for ninety minutes and permits the next construction on either device`() = testApplication {
         val fixture = Fixture(); installApi(fixture)
         val devices = listOf(fixture.first, fixture.otherDevice)

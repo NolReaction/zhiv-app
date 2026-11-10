@@ -298,16 +298,19 @@ test("without nearby water the coastal hero stays visibly at rest instead of cas
 });
 
 test("unsupported off-map jobs remain away and a replacement job cannot inherit the old fishing owner", () => {
-  const session = create(), state = session.state, shore = journey(), forest = journey("coastal_deposits");
+  // Coastal deposits now have a real local shovel controller. Keep this
+  // compatibility case on an unknown legacy route without a local presentation.
+  const session = create(), state = session.state, shore = journey(), unknown = journey("legacy_unknown_trip");
   syncForestJourneyTravel(state, scene, shore, start + 60_000, false);
   assert.ok(forestJourneyFishingFrame(state, scene));
   const position = { ...state.clearing.position };
-  syncForestJourneyTravel(state, scene, forest, start + 61_000, false);
+  syncForestJourneyTravel(state, scene, unknown, start + 61_000, false);
   assert.equal(forestJourneyEnding(state), true);
-  assert.equal(forestJourneyActorAway(state, forest, start + 61_000), false, "old tackle is put away before the next job hides its actor");
-  finishVisual(state, forest, start + 61_000);
-  assert.equal(state.journeyTravel, undefined); assert.equal(forestJourneyFishingFrame(state, scene), null);
-  assert.equal(forestJourneyActorAway(state, forest, start + 61_000), true);
+  assert.equal(forestJourneyActorAway(state, unknown, start + 61_000), false, "old tackle is put away before the next job hides its actor");
+  finishVisual(state, unknown, start + 61_000);
+  assert.ok(state.journeyTravel === undefined, "the unsupported route must release the old local controller");
+  assert.equal(forestJourneyFishingFrame(state, scene), null);
+  assert.equal(forestJourneyActorAway(state, unknown, start + 61_000), true);
   assert.deepEqual(state.clearing.position, position);
   session.release();
 });

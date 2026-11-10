@@ -51,14 +51,14 @@ class EconomyRareDropsTest {
             assertNull(apply(start, "claim_job", job.id, Instant.parse(job.finishesAt)).rareDropState)
         }
         val initial = ready().copy(rareDropState = clock(9 * 3600))
-        val preview = apply(initial, "start_exploration", "forest_camp")
+        val preview = apply(initial, "start_exploration", "forest")
         assertNull(preview.jobs.single().rareDrop?.itemId)
         val cancelled = apply(preview, "cancel_exploration", preview.jobs.single().id)
         assertEquals(initial.rareDropState, cancelled.rareDropState)
         val short = apply(cancelled, "start_exploration", "forest")
         val claimed = apply(short, "claim_job", short.jobs.single().id, Instant.parse(short.jobs.single().finishesAt))
-        assertEquals(clock(9 * 3600 - 1800), claimed.rareDropState)
-        assertNull(apply(claimed, "start_exploration", "forest_camp").jobs.single().rareDrop?.itemId)
+        assertEquals(clock(9 * 3600 - EconomyRules.catalog.explorations.single { it.id == "forest" }.seconds), claimed.rareDropState)
+        assertNull(apply(claimed, "start_exploration", "forest").jobs.single().rareDrop?.itemId)
         val production = apply(initial.copy(buildings = initial.buildings + ("woodlot" to 1)), "start_production", "gather_wood")
         assertNull(production.jobs.single().rareDrop)
         assertEquals(initial.rareDropState, apply(production, "claim_job", production.jobs.single().id,

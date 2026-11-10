@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Check, CloudUpload, LockKeyhole, Plus } from "lucide-react";
-import { ItemIcon } from "@/features/items/item-icon";
+import { CookingExperimentIcon, ItemIcon } from "@/features/items/item-icon";
 import { productionSlotCount, productionSlotOffer, productionStationSupported } from "@/features/economy/domain/production-slots";
 import { productionCollectionRewards, readyProductionJobs } from "@/features/economy/domain/production-collection";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
@@ -27,6 +27,9 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
   const state = economy.productionSnapshot ?? economy.snapshot;
   const capacity = productionSlotCount(state, stationId), offer = productionSlotOffer(state, stationId);
   const jobs = state.jobs.filter(job => job.kind === "production" && job.targetId === stationId);
+  const visibleSlotCount = Math.max(capacity, Math.min(3, jobs.length), ...state.catalog.productionSlots.upgrades
+    .filter(tier => tier.requiredHomeLevel <= (state.buildings.home ?? 1)).map(tier => tier.slots));
+  const futureTier = state.catalog.productionSlots.upgrades.find(tier => tier.slots > visibleSlotCount);
   const readyJobs = readyProductionJobs(economy.snapshot.jobs, stationId, economy.now);
   const claimQuantity = Object.values(productionCollectionRewards(readyJobs)).reduce((sum, quantity) => sum + quantity, 0);
   const claimShortfall = Math.max(0, claimQuantity - economy.snapshot.storage.available);
@@ -80,14 +83,15 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
       {claimShortfall > 0 && <p role="status">Освободите {claimShortfall.toLocaleString("ru-RU")} мест в кладовой.{openPantry && <button type="button" onClick={openPantry}>Открыть кладовую</button>}</p>}
       {claimFeedback && <p role="status">{claimFeedback}</p>}
     </div>}
-    <div className={styles.track} data-slot-columns={basicCampfire ? capacity : 3}>{Array.from({ length: basicCampfire ? capacity : 3 }, (_, index) => {
+    <div className={styles.track} data-slot-columns={basicCampfire ? capacity : visibleSlotCount}>{Array.from({ length: basicCampfire ? capacity : visibleSlotCount }, (_, index) => {
       const job = jobs[index], opened = index < capacity;
       const queued = Boolean(job && economy.pendingProductionIds?.includes(job.id));
+      const experimental = Boolean(job?.cooking || state.catalog.recipes.find(recipe => recipe.id === job?.recipeId)?.experiment);
       const tier = state.catalog.productionSlots.upgrades.find(entry => entry.slots === index + 1);
       const nextLocked = !opened && index === capacity;
       const slotState = queued ? "pending" : job ? worldJobProgress(state, job, economy.now).ready ? "ready" : "working" : !opened ? "locked" : "free";
       return job ? <div key={index} className={`${styles.slot} ${styles.job}`} data-production-slot={index + 1} data-state={slotState}>
-        <span className={styles.slotNumber}>Место {index + 1}</span>{queued ? <div className={styles.pending} role="status" data-production-pending={job.id}><ProductIcon state={state} itemId={Object.keys(job.rewards)[0]} size={28} /><strong title={itemName(state, Object.keys(job.rewards)[0])}>{itemName(state, Object.keys(job.rewards)[0])}</strong><span><CloudUpload size={12} aria-hidden="true" /> Сохранено</span></div> : <Work economy={economy} job={job} openPantry={openPantry} compact />}
+        <span className={styles.slotNumber}>Место {index + 1}</span>{queued ? <div className={styles.pending} role="status" data-production-pending={job.id}>{experimental ? <CookingExperimentIcon recipeId={job.recipeId ?? ""} size={28} /> : <ProductIcon state={state} itemId={Object.keys(job.rewards)[0]} size={28} />}<strong>{experimental ? "Кулинарный опыт" : itemName(state, Object.keys(job.rewards)[0])}</strong><span><CloudUpload size={12} aria-hidden="true" /> Сохранено</span></div> : <Work economy={economy} job={job} openPantry={openPantry} compact />}
       </div> : opened ? <div key={index} className={styles.slot} data-production-slot={index + 1} data-state={slotState}>
         <span className={styles.slotNumber}>Место {index + 1}</span><Plus size={25} aria-hidden="true" /><strong>{unavailable ? "Недоступно" : "Свободно"}</strong><span>{unavailable ? construction ? "Идёт улучшение" : "Нужно обустроить" : "Выберите рецепт"}</span>
       </div> : <button key={index} type="button" className={`${styles.slot} ${styles.closed}`} data-production-slot={index + 1} data-state="locked"
@@ -97,6 +101,7 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
         <span className={styles.slotNumber}>Место {index + 1}</span><span className={styles.lock}><LockKeyhole size={24} aria-hidden="true" /></span><strong>{nextLocked ? "Открыть" : "Закрыто"}</strong>{nextLocked && <span className={styles.price}>{formatPearls(tier?.pricePearls ?? 0)}<ItemIcon itemId="pearls" size={16} /></span>}
       </button>;
     })}</div>
+    {!basicCampfire && futureTier && <p className={styles.hint}>Место {futureTier.slots} появится с домом {futureTier.requiredHomeLevel} уровня.</p>}
     {confirming && currentConfirmation && selectedOffer && <div className={styles.confirmation} role="dialog" id={dialogId} aria-labelledby={`${dialogId}-title`} aria-describedby={`${dialogId}-description`}
       onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelPurchase(); } }}>
       <h4 id={`${dialogId}-title`}>Открыть место {currentConfirmation.slot}?</h4>
@@ -107,7 +112,7 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
           if (reason || locked(economy) || economy.error || selectedOffer.slots !== offer?.slots || selectedOffer.pricePearls !== currentConfirmation.pricePearls || offer?.pricePearls !== currentConfirmation.pricePearls || purchasePending.current) return;
           purchasePending.current = { owner: state.ownerPublicId, revision: state.revision };
           setConfirmation(null);
-          void economy.act("buy_production_slot", stationId);
+          void economy.act("buy_production_slot", stationId, 1, currentConfirmation.pricePearls);
         }}>Купить за {formatPearls(currentConfirmation.pricePearls)}<ItemIcon itemId="pearls" size={16} /></button>
       </div>
     </div>}

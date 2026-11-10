@@ -63,9 +63,10 @@ class EconomyFirstHarvestTest {
         }
         val oldJob = apply(fresh.copy(tutorialOrder = fresh.tutorialOrder.copy(firstHarvestPrepared = true)), "start_production", "grow_berries").jobs.single()
         assertFalse(EconomyTutorialOrders.canPrepareFirstHarvest(fresh.copy(jobs = listOf(oldJob)), "grow_berries", 1))
-        val high = fresh.copy(buildings = fresh.buildings + mapOf("home" to 3, "garden" to 2))
-        val ordinary = apply(high, "start_production", "grow_berries_large")
-        assertEquals(now.plusSeconds(45), Instant.parse(ordinary.jobs.single().finishesAt))
+        val high = fresh.copy(buildings = fresh.buildings + mapOf("home" to 3, "garden" to 2),
+            progression = fresh.progression.copy(recipes = mapOf("grow_berries" to 1L, "cook_compote" to 1L)))
+        val ordinary = apply(high, "start_production", "grow_strawberries")
+        assertEquals(now.plusSeconds(300), Instant.parse(ordinary.jobs.single().finishesAt))
         assertFalse(ordinary.tutorialOrder.firstHarvestPrepared)
     }
 

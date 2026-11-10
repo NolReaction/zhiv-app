@@ -14,6 +14,7 @@ const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/mo
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { mealDuration } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const { worldDuration } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
+const { expeditionRewardRanges, ExpeditionFindChances, ExpeditionLootPreview, ExpeditionReturnReport } = await vite.ssrLoadModule("/features/economy/ui/expeditions/expedition-loot.tsx");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");
@@ -55,6 +56,66 @@ function button(html, label) {
 }
 const disabled = value => /\bdisabled=/.test(value.attributes);
 
+test("supply preview shows honest quantity ranges and optional-resource odds without drawing an outcome", () => {
+  const state = snapshot(), selected = { ...state.catalog.explorations.find(item => item.id === "forest"),
+    rewards: { wood: 2 }, loot: [{ itemId: "wood", min: 0, max: 4 }, { itemId: "ore", min: 0, max: 2 }] };
+  const before = structuredClone(selected);
+  assert.deepEqual(expeditionRewardRanges(selected), [{ itemId: "wood", min: 2, max: 6, chance: 100 },
+    { itemId: "ore", min: 0, max: 2, chance: 100 * 2 / 3 }]);
+  const html = renderToStaticMarkup(createElement(ExpeditionLootPreview, { state, route: selected }));
+  assert.match(html, /2–6/); assert.match(html, /0–2/); assert.match(html, /66,7%/); assert.match(html, /В каждом походе/);
+  assert.deepEqual(selected, before);
+});
+
+test("compact route cards preserve every bonus outcome and quantity instead of selecting one rare item", () => {
+  const state = snapshot({ buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, 5])) });
+  const before = structuredClone(state), html = renderSector("forest", controller({ snapshot: state }));
+  for (const entry of state.catalog.explorations.filter(entry => !entry.retired && entry.finds)) {
+    const card = route(html, entry.id), total = entry.finds.emptyWeight + entry.finds.entries.reduce((sum, find) => sum + find.weight, 0);
+    assert.match(card, /Бонус: не более одного/);
+    assert.doesNotMatch(card, /<details\b|<summary\b/, "disclosures must never be nested in a navigation button");
+    for (const find of entry.finds.entries) {
+      const name = state.catalog.items.find(item => item.id === find.itemId).name;
+      const chance = `${(100 * find.weight / total).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`;
+      assert.ok(card.includes(`data-expedition-bonus="${find.itemId}"`), `${entry.id}: missing ${find.itemId}`);
+      assert.ok(card.includes(`${name}${find.quantity === 1 ? "" : ` ×${find.quantity}`}: ${chance}`));
+    }
+  }
+  const ruins = route(html, "ancient_ruins");
+  assert.match(ruins, /Стеклянная бутылка: 7%/); assert.match(ruins, /Кварц: 15%/); assert.match(ruins, /Линза: 8%/); assert.match(ruins, /Без бонуса 70%/);
+  assert.deepEqual(state, before);
+});
+
+test("bonus disclosure uses the whole weighted draw and keeps base resources separate", () => {
+  const state = snapshot(), selected = { ...state.catalog.explorations.find(entry => entry.id === "forest"),
+    rewards: { wood: 2 }, finds: { emptyWeight: 2, entries: [{ itemId: "wood", quantity: 2, weight: 1 }, { itemId: "lens", quantity: 1, weight: 5 }] } };
+  const html = renderToStaticMarkup(createElement(ExpeditionFindChances, { state, route: selected }));
+  assert.match(html, /<details\b/); assert.doesNotMatch(html, /<details[^>]*\bopen=/);
+  assert.match(html, /Бревно ×2: 12,5%/); assert.match(html, /Линза: 62,5%/);
+  assert.match(html, /Без дополнительной находки: 25%/); assert.match(html, /Один выбор на вылазку, сверх основной добычи/);
+});
+
+test("route selection and preparation omit the global relic tutorial while preserving local finds", () => {
+  const state = snapshot({ buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, 5])) });
+  const economy = controller({ snapshot: state });
+  for (const html of [renderSector("forest", economy), renderSector("caves", economy), renderPreparation("ancient_ruins", economy)]) {
+    assert.doesNotMatch(html, /Редкие реликвии|data-expedition-relics|48–144|33,3%/);
+  }
+  const ruins = renderPreparation("ancient_ruins", economy);
+  for (const item of ["glass_bottle", "quartz", "lens"]) assert.ok(ruins.includes(`data-expedition-bonus="${item}"`));
+});
+
+test("return report contains accepted items and XP, highlights actual rare goods, and rejects another owner", () => {
+  const state = snapshot(), gain = { id: "accepted-trip", ownerPublicId: state.ownerPublicId, revision: 3, source: "claim",
+    items: [{ itemId: "wood", quantity: 6 }, { itemId: "lens", quantity: 1 }],
+    expedition: { routeId: "ancient_ruins", title: "Древние руины", xp: 100, rareItemIds: ["lens"] } };
+  const html = renderToStaticMarkup(createElement(ExpeditionReturnReport, { state, gain, onDismiss() {} }));
+  assert.match(html, /Мохлик принёс/); assert.match(html, /Древние руины/); assert.match(html, /\+6/); assert.match(html, /\+100 XP/);
+  assert.equal((html.match(/data-rare="true"/g) ?? []).length, 1);
+  assert.match(html, /Закрыть итоги вылазки/); assert.match(html, /Всё уже в кладовой/);
+  assert.equal(renderToStaticMarkup(createElement(ExpeditionReturnReport, { state, gain: { ...gain, ownerPublicId: "OTHER" }, onDismiss() {} })), "");
+});
+
 test("pending hero food quotes the same speed-adjusted time in route list, preparation and departure", () => {
   for (const id of ["forest", "shore"]) {
     const state = snapshot({ inventory: { wood: 20, dried_berries: 20 }, food: { heroMeal: null, builderMeal: "grilled_fish" } });
@@ -72,8 +133,10 @@ test("pending hero food quotes the same speed-adjusted time in route list, prepa
     assert.ok(button(preparation, `Отправиться: ${selected.name}`).text.includes(expected));
     const heading = preparation.match(/<header\b[^>]*>([\s\S]*?)<\/header>/)?.[1];
     assert.ok(heading?.includes(expected), "preparation heading and departure action agree");
-    assert.match(preparation, new RegExp(`\\+${speedBps / 100}% скорости`, "i"));
-    assert.match(preparation, /время ≈ −37,5%/);
+    assert.match(preparation, /Порция подготовлена/);
+    const mealTime = preparation.match(/<span\b[^>]*data-meal-duration="true"[^>]*>([\s\S]*?)<\/span>/)?.[1]?.replace(/<[^>]*>/g, "");
+    assert.ok(mealTime?.includes(worldDuration(selected.seconds)), "the prepared portion shows the original route time");
+    assert.ok(mealTime?.includes(expected), "the portion and departure show the same shortened time");
     assert.ok(preparation.indexOf('data-meal-boost="hero"') > preparation.indexOf("</header>"), "food is an explicit choice below the route timer");
     assert.doesNotMatch(heading, /data-meal-boost=/);
     assert.ok(button(renderPreparation(id, economy), `Отправиться: ${selected.name}`).text.includes(expected));
@@ -92,9 +155,54 @@ test("travel starts with two decorated hero activities and no mine or premature 
   assert.doesNotMatch(html, /data-sector-select="caves"|data-activity-art="caves"|Открыть шахту|шахт[аеуы]/i);
   assert.doesNotMatch(html, /data-route=|<select\b|aria-label="Отправиться:/);
   const supplies = renderSector("forest");
-  assert.equal([...supplies.matchAll(/<button\b[^>]*data-route=/g)].length, 2);
+  assert.equal([...supplies.matchAll(/<button\b[^>]*data-route=/g)].length, 1);
   assert.match(supplies, /Доступные маршруты/); assert.doesNotMatch(supplies, /Нужно подготовиться|data-locked/);
   assert.equal(disabled(button(route(supplies, "forest"), "Подготовиться: Лесная разведка")), false);
+});
+
+test("boat fishing replaces ordinary shore launches, opens directly, and leaves old catch collection available", () => {
+  let tree, opened = 0;
+  const saved = job({ targetId: "shore", finishesAt: new Date(now).toISOString(), rewards: { fish: 1 } });
+  const economy = controller({ snapshot: snapshot({ jobs: [saved] }), act() { assert.fail("Opening an activity must not spend or claim"); } });
+  function Probe() {
+    tree = WorldExpeditionsMenu({ economy, initialSector: "shore", onOpenBoat: () => opened++, onOpenPantry() {} });
+    return tree;
+  }
+  const html = renderToStaticMarkup(createElement(Probe));
+  assert.match(html, /data-boat-entry="play"/);
+  assert.match(html, /data-sector-select="forest"/);
+  assert.doesNotMatch(html, /data-sector-select="shore"|data-route="shore(?:_camp)?"|>На рыбалку</);
+  assert.match(html, /Текущая вылазка: Рыбалка на берегу/);
+  assert.match(html, /Забрать находки/);
+  function visit(element) {
+    if (!isValidElement(element)) return;
+    if (element.props["data-boat-entry"]) element.props.onClick();
+    Children.forEach(element.props.children, visit);
+  }
+  visit(tree);
+  assert.equal(opened, 1);
+  const advanced = snapshot({ buildings: { home: 3, warehouse: 5, dryer: 2, kiln: 2 } });
+  assert.match(renderSector("forest", controller({ snapshot: advanced })), /data-route="coastal_deposits"/);
+});
+
+test("boat card shows installed artwork, earned levels, regenerated fuel and the current onboard catch", () => {
+  const boat = { level: 1, upgrades: ["crate"], artifacts: [], modules: { hull: 3, tank: 2, engine: 1, storage: 0 },
+    fuel: { cells: 0, nextAt: new Date(now).toISOString() } };
+  const card = () => render(controller({ snapshot: snapshot({ boat }) }), { onOpenBoat() {} });
+  const dock = card();
+  for (const part of ["hull_l3", "tank_l2", "engine_l1"]) assert.ok(dock.includes(`${part}.svg`));
+  assert.doesNotMatch(dock, /hull_l4|tank_l3|engine_l2/);
+  assert.match(dock, /Улучшения 7\/20/); assert.match(dock, /Бензин 1\/4/);
+  assert.match(dock, /До следующей ячейки[\s\S]*?<time>30:00<\/time>/);
+  const partial = boat.fuel;
+  boat.fuel = { cells: 4 };
+  assert.doesNotMatch(card(), /До следующей ячейки/);
+  boat.fuel = partial;
+  boat.voyage = { arrivesAt: new Date(now - 1000).toISOString(), fishingUntil: new Date(now + 100000).toISOString(),
+    inboundSeconds: 0, maxCatches: 5, catches: [{ fishId: "fish_silverfin", weightGrams: 65 }] };
+  assert.match(card(), /Продолжить рыбалку/); assert.match(card(), /На борту 1\/5/);
+  boat.voyage.returnsAt = new Date(now).toISOString();
+  assert.match(card(), /Забрать улов/);
 });
 
 test("activity and route spotlights belong to actual cards instead of headings or list wrappers", () => {
@@ -123,20 +231,22 @@ test("activity and route spotlights belong to actual cards instead of headings o
 });
 
 test("every catalog route belongs to exactly one sector and keeps its actual findings", () => {
-  const expected = { forest: ["forest", "forest_camp", "old_woodland", "coastal_deposits", "uplands", "far_bank_path", "far_bank_grove", "ancient_ruins"], shore: ["shore", "shore_camp"], caves: ["cave", "deep_cave", "abandoned_quarry", "quarry_stone", "quarry_stone_overnight", "quarry_ore", "quarry_clay", "quarry_sand", "quarry_shift", "quarry_deep_face", "quarry_supply", "quarry_stone_hour", "quarry_clay_hour", "quarry_clay_overnight", "quarry_sand_hour", "quarry_sand_overnight", "quarry_ore_hour", "quarry_ore_overnight"] };
+  const expected = { forest: ["forest", "old_woodland", "coastal_deposits", "uplands", "far_bank_path", "far_bank_grove", "ancient_ruins"],
+    shore: ["shore", "shore_camp"], caves: ["quarry_stone", "quarry_ore", "quarry_clay", "quarry_sand", "quarry_quartz", "quarry_limestone"] };
   const seen = [];
   for (const sector of expeditionSectors) {
     const state = snapshot({ buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, 5])) });
-    // Each route is inspected at its minimum progression, including older mining
-    // shifts that disappear when a better shift opens.
+    // Each active route is inspected at its minimum site progression.
+    // Retired definitions remain readable only through saved jobs.
     const ids = [];
-    for (const entry of economyCatalog.explorations.filter(route => expeditionSector(route.id) === sector.id)) {
+    for (const entry of economyCatalog.explorations.filter(route => !route.retired && expeditionSector(route.id) === sector.id)) {
       const routeState = snapshot({ ...state, buildings: { ...state.buildings, quarry: entry.requiredBuildings.quarry ?? 5 } });
       const content = renderSector(sector.id, controller({ snapshot: routeState }));
       assert.match(content, new RegExp(`data-route="${entry.id}"`));
       ids.push(entry.id);
     }
     const html = renderSector(sector.id, controller({ snapshot: state }));
+    for (const retired of economyCatalog.explorations.filter(route => route.retired)) assert.ok(!html.includes(`data-route="${retired.id}"`));
     const visibleIds = [...html.matchAll(/data-route="([^"]+)"/g)].map(match => match[1]);
     assert.deepEqual(ids.sort(), expected[sector.id].sort());
     seen.push(...ids);
@@ -151,13 +261,17 @@ test("every catalog route belongs to exactly one sector and keeps its actual fin
         const name = itemId === "fish" && economyCatalog.fishing.routeIds.includes(id)
           ? "Рыбный улов" : economyCatalog.items.find(item => item.id === itemId).name;
         assert.ok(content.includes(name));
-        if (count !== 1) assert.ok(content.includes(`×${count}`));
+        if (entry.loot) {
+          const extra = entry.loot.find(item => item.itemId === itemId);
+          const min = count + (extra?.min ?? 0), max = count + (extra?.max ?? 0);
+          assert.ok(content.includes(min === max ? String(min) : `${min}–${max}`));
+        } else if (count !== 1) assert.ok(content.includes(`×${count}`));
         else assert.doesNotMatch(content, /×1(?!\d)/, "one unit is named without redundant ×1");
       }
       assert.ok(!content.includes(entry.description), "descriptive prose should not obscure route choices");
     }
   }
-  assert.deepEqual(seen.sort(), economyCatalog.explorations.map(route => route.id).sort());
+  assert.deepEqual(seen.sort(), economyCatalog.explorations.filter(route => !route.retired).map(route => route.id).sort());
 });
 
 test("the fisherman's shortcut opens the shore sector without changing route conditions", () => {
@@ -198,7 +312,7 @@ test("progression-locked routes and stale selections stay hidden until all build
 });
 
 test("unbuilt and upgrading mines show construction while a completed mine allows preparation", () => {
-  for (const id of ["cave", "deep_cave"]) {
+  for (const id of ["quarry_stone", "quarry_clay"]) {
     const state = snapshot({ buildings: { home: 3, warehouse: 5, quarry: 0 },
       inventory: { dried_berries: 1, smoked_fish: 1 } });
     const locked = sectorView("caves", state, {}, { selectedRoute: id, onNavigateStation() {} });
@@ -207,7 +321,7 @@ test("unbuilt and upgrading mines show construction while a completed mine allow
     assert.equal(locked.depart(id), undefined);
     assert.doesNotMatch(locked.html, /data-route=|data-mining-duration=/);
     assert.deepEqual(locked.calls, []);
-    state.buildings.quarry = 1;
+    state.buildings.quarry = state.catalog.explorations.find(route => route.id === id).requiredBuildings.quarry;
     const open = sectorView("caves", state, {}, { selectedRoute: id });
     assert.equal(open.depart(id).props.disabled, false);
     open.depart(id).props.onClick();
@@ -221,21 +335,21 @@ test("unbuilt and upgrading mines show construction while a completed mine allow
   }
 });
 
-test("deep routes use actual consumable amounts, and missing provisions block departure", () => {
-  const state = snapshot({ buildings: { home: 3, warehouse: 1, quarry: 1 }, inventory: { dried_berries: 1 } });
-  let html = route(renderPreparation("deep_cave", controller({ snapshot: state })), "deep_cave");
+test("supplied forest routes use actual consumable amounts, and missing provisions block departure", () => {
+  const state = snapshot({ buildings: { home: 3, warehouse: 1, dryer: 1, workshop: 2 }, inventory: { dried_berries: 1 } });
+  let html = route(renderPreparation("old_woodland", controller({ snapshot: state })), "old_woodland");
   assert.match(html, /Припасы для вылазки|Для добычи/);
   assert.match(html, /Не хватает припасов/);
-  assert.equal(disabled(button(html, "Начать добычу")), true);
-  html = route(renderPreparation("deep_cave", controller({ snapshot: snapshot({ ...state, inventory: { dried_berries: 1, smoked_fish: 1 } }) })), "deep_cave");
-  assert.equal(disabled(button(html, "Начать добычу")), false);
+  assert.equal(disabled(button(html, "Отправиться")), true);
+  html = route(renderPreparation("old_woodland", controller({ snapshot: snapshot({ ...state, inventory: { dried_berries: 1, rope: 1 } }) })), "old_woodland");
+  assert.equal(disabled(button(html, "Отправиться")), false);
 });
 
 test("departure compares reward size with total capacity; a full pantry can be cleared before return", () => {
   let state = snapshot({ storage: { capacity: 10, available: 10, used: 0, reserved: 0, overflow: 0 } });
   let html = route(renderPreparation("forest", controller({ snapshot: state })), "forest");
   assert.equal(disabled(button(html, "Отправиться")), true);
-  assert.match(html, /Находки займут 12 мест, вместимость - 10/);
+  assert.match(html, /Для находок нужно до 20 мест, вместимость - 10/);
   assert.equal(disabled(button(html, "Расширить кладовую")), false);
   state = snapshot({ storage: { capacity: 200, available: 0, used: 170, reserved: 30, overflow: 0 } });
   html = route(renderPreparation("forest", controller({ snapshot: state })), "forest");
@@ -632,12 +746,14 @@ test("route cards describe their duration, rewards and preparation reason beyond
     assert.ok(target, `Missing description target: ${id}`);
     return renderToStaticMarkup(target).replace(/<[^>]*>/g, " ");
   }).join(" ");
-  assert.match(description, /8 ч/);
+  assert.match(description, /32 мин/);
   assert.match(description, /Нужны припасы/);
   const catalogRoute = economyCatalog.explorations.find(entry => entry.id === "old_woodland");
   for (const [id, count] of Object.entries(catalogRoute.rewards)) {
     assert.ok(description.includes(economyCatalog.items.find(item => item.id === id).name));
-    assert.match(description, new RegExp(`×\\s*${count}`));
+    const extra = catalogRoute.loot.find(item => item.itemId === id);
+    const min = count + (extra?.min ?? 0), max = count + (extra?.max ?? 0);
+    assert.ok(description.includes(min === max ? String(min) : `${min}–${max}`));
   }
 });
 
@@ -665,7 +781,7 @@ test("stale selections cannot prepare another sector or a route superseded by mi
   for (const selectedRoute of ["quarry_shift", "quarry_deep_face"]) {
     const view = sectorView("caves", state, {}, { selectedRoute });
     assert.doesNotMatch(view.html, /data-route-preparation="true"|aria-label="Отправиться:/);
-    assert.match(view.html, /data-route="quarry_supply"/);
+    assert.match(view.html, /data-route="quarry_stone"/);
   }
 });
 
@@ -747,7 +863,7 @@ test("shore gear shortcuts open Pleska without spending and fishing keeps each r
     const quantity = Object.values(entry.rewards).reduce((sum, count) => sum + count, 0);
     const full = sectorView("shore", snapshot({ storage: { capacity: quantity - 1, available: quantity - 1, used: 0, reserved: 0, overflow: 0 } }), {}, { selectedRoute: routeId });
     assert.equal(full.depart(routeId).props.disabled, true);
-    assert.match(route(full.html, routeId), new RegExp(`Находки займут ${quantity} мест`));
+    assert.match(route(full.html, routeId), new RegExp(`Для находок нужно до ${quantity} мест`));
     assert.match(route(full.html, routeId), /Всего рыб/);
     assert.match(route(full.html, routeId), new RegExp(`<dd>${economyCatalog.fishing.collectionDrawsByRoute[entry.id]}</dd>`));
   }
@@ -936,14 +1052,16 @@ test("route review omits fulfilled progression and free or zero-valued provision
 
 test("route review retains only unmet building requirements and exact positive supplies", () => {
   const state = snapshot({ buildings: { home: 3, warehouse: 1, quarry: 1 }, inventory: { dried_berries: 1 } });
-  state.catalog.explorations.find(route => route.id === "deep_cave").requiredBuildings.quarry = 2;
-  const view = sectorView("caves", state, {}, { selectedRoute: "deep_cave", onUpgradeQuarry() {} });
+  const source = state.catalog.explorations.find(route => route.id === "quarry_ore");
+  source.requiredBuildings.quarry = 2;
+  source.cost.items = { dried_berries: 1, smoked_fish: 1 };
+  const view = sectorView("caves", state, {}, { selectedRoute: "quarry_ore", onUpgradeQuarry() {} });
   assert.match(view.html, /Условия открытия/); assert.match(view.html, /Каменоломня · нужен ур. 2/);
   assert.doesNotMatch(view.html, /Дом Мохлика|Без затрат|Условия маршрута/);
   assert.match(view.html, /Сушёные ягоды/); assert.match(view.html, /Копчёная рыба/);
   assert.match(view.html, /×1/); assert.match(view.html, /0 \/ 1/);
-  assert.equal(view.depart("deep_cave").props.disabled, true);
-  view.depart("deep_cave").props.onClick(); assert.deepEqual(view.calls, []);
+  assert.equal(view.depart("quarry_ore").props.disabled, true);
+  view.depart("quarry_ore").props.onClick(); assert.deepEqual(view.calls, []);
 });
 
 test("running and ready route help targets show all saved work and the resource chooser without another launch form", () => {
@@ -953,7 +1071,7 @@ test("running and ready route help targets show all saved work and the resource 
     const state = snapshot({ buildings: { home: 3, quarry: 2, warehouse: 1 }, jobs: [miner, legacy] });
     const calls = [], html = render(controller({ snapshot: state, act: (...args) => calls.push(args) }), { embeddedCaves: true, initialRouteId: miner.targetId });
     assert.match(html, /Текущая добыча: Добыть камень/); assert.match(html, /Текущая вылазка: Вход в пещеру/);
-    assert.match(html, /aria-label="Время добычи"/); assert.match(html, /data-mining-resource="stone"/);
+    assert.doesNotMatch(html, /aria-label="Время добычи"/); assert.match(html, /data-mining-resource="stone"/);
     assert.doesNotMatch(html, /data-route-preparation="true"|Условия открытия|Припасы для вылазки|Начать добычу:/);
     assert.deepEqual(calls, []);
     const current = activeView(miner, { state });
@@ -967,7 +1085,7 @@ test("matching legacy quarry production suppresses only its duplicated route pre
   const state = snapshot({ buildings: { home: 3, quarry: 2, warehouse: 1 }, jobs: [saved] });
   const same = sectorView("caves", state, {}, { selectedRoute: "quarry_stone" });
   assert.doesNotMatch(same.html, /data-route-preparation="true"|Начать добычу:/);
-  assert.match(same.html, /aria-label="Время добычи"/); assert.deepEqual(same.calls, []);
+  assert.match(same.html, /data-mining-resource="stone"/); assert.doesNotMatch(same.html, /aria-label="Время добычи"/); assert.deepEqual(same.calls, []);
   const next = sectorView("caves", state, {}, { selectedRoute: "quarry_clay" });
   assert.match(next.html, /data-route-preparation="true"/);
   assert.equal(next.depart("quarry_clay").props.disabled, false);

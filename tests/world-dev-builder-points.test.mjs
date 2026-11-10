@@ -88,9 +88,10 @@ test("exported marker coordinates and physical rejection reasons stay visible be
 
 test("an authored marker beside transparent PNG padding is reported as accepted with its exported precision", () => {
   const source = structuredClone(TILED_WORLD);
-  source.destinations.find(item => item.id === "builder-work-home").position = { x: 589.5761, y: 648 };
+  // Keep subpixel precision at the current house's left facade, below the bush.
+  source.destinations.find(item => item.id === "builder-work-home").position = { x: 594.5761, y: 642 };
   const markup = render(context(economy({ home: 1 }), WORLD_DEV_DEFAULTS, source));
-  assert.match(markup, /X 589\.5761 · Y 648/); assert.match(markup, /Физические проверки пройдены/);
+  assert.match(markup, /X 594\.5761 · Y 642/); assert.match(markup, /Физические проверки пройдены/);
   assert.doesNotMatch(markup, /data-marker-issue/);
 });
 

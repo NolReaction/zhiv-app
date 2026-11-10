@@ -82,10 +82,13 @@ test("order lesson names the real journal chapters, shared customer filters and 
   const economy = controller();
   economy.snapshot.tutorialOrder = { ...newTutorialOrder(economy.snapshot.catalog), step: 4, completed: true };
   const html = render(WorldOrderJournal, { economy });
-  for (const name of ["Путь хозяйства", "Просьбы жителей", "Плёска", "Шишколап"]) {
+  for (const name of ["К дому", "Просьбы", "Поручения", "Плёска", "Шишколап"]) {
     assert.ok(html.includes(name), name); assert.ok(lesson("orders", "requirements").text.includes(name), name);
   }
-  assert.match(html, /data-order-chapter="progression"/); assert.match(html, /data-order-chapter="repeatable"/);
+  assert.match(html, /data-order-chapter="progression"/);
+  assert.doesNotMatch(html, /data-order-chapter="repeatable"/);
+  for (const section of ["progression", "requests", "weekly"]) assert.ok(html.includes(`data-order-section="${section}"`));
+  assert.match(lesson("orders", "requirements").text, /в текущей вкладке/);
   assert.match(lesson("orders", "reward").text, /учебные и этапные заменить нельзя/);
   assert.match(lesson("orders", "reward").text, /постройки, завершённые вылазки и ожидание срока/);
   const unavailable = controller(); delete unavailable.snapshot.catalog.food;

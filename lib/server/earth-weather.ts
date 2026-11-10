@@ -3,7 +3,7 @@
 // https://docs.api.met.no/doc/locationforecast/datamodel.html
 import type { EarthWeatherCondition, EarthWeatherErrorResponse, EarthWeatherResponse } from "@/lib/earth-weather-contract";
 
-const USER_AGENT = "YaZhivoy/0.7.1 (https://github.com/NolReaction/zhiv-app)";
+const USER_AGENT = "YaZhivoy/0.7.2 (https://github.com/NolReaction/zhiv-app)";
 const ENDPOINT = "https://api.met.no/weatherapi/locationforecast/2.0/compact";
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;

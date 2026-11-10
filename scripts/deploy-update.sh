@@ -5,8 +5,8 @@ umask 022
 reset_game_progress=false
 case "${1:-}" in
   '') ;;
-  --reset-game-progress-0.7.1) reset_game_progress=true ;;
-  *) echo 'Usage: bash scripts/deploy-update.sh [--reset-game-progress-0.7.1]' >&2; exit 2 ;;
+  --reset-game-progress-0.7.2) reset_game_progress=true ;;
+  *) echo 'Usage: bash scripts/deploy-update.sh [--reset-game-progress-0.7.2]' >&2; exit 2 ;;
 esac
 if (( $# > 1 )); then echo 'Expected at most one option.' >&2; exit 2; fi
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
-export const recipeBuildingLevel = recipe => recipe.baseCampfire === true && recipe.id === "cook_grilled_fish"
-  && recipe.buildingId === "dryer" && recipe.buildingLevel === 1 ? 0 : recipe.buildingLevel;
+export const recipeBuildingLevel = recipe => recipe.buildingId === "dryer" && recipe.buildingLevel === 1
+  && (recipe.baseCampfire === true && recipe.id === "cook_grilled_fish" || recipe.experiment?.initialFire === true) ? 0 : recipe.buildingLevel;
 
 const add = (into, values, scale = 1) => {
   for (const [key, value] of Object.entries(values)) into[key] = (into[key] ?? 0) + value * scale;
@@ -19,6 +19,16 @@ const recipeSlots = recipe => {
   if (actorSeconds) slots[recipe.activity === "mining" ? "miner" : "mochlik"] = actorSeconds / 60;
   return slots;
 };
+/** Expected output for one optional attempt, including its guaranteed fallback branch. */
+export function expectedRecipeRewards(recipe, successBps = recipe.experiment?.successBps ?? 10000) {
+  if (!recipe.experiment) return { ...recipe.rewards };
+  assert(Number.isSafeInteger(successBps) && successBps > 0 && successBps <= 10000, `${recipe.id}: invalid success probability`);
+  const rewards = {};
+  add(rewards, recipe.rewards, successBps / 10000);
+  add(rewards, recipe.experiment.failureRewards, 1 - successBps / 10000);
+  return rewards;
+}
+
 /** Fish use their specialist buyer; configured first-stage goods have exact NPC prices. */
 export function createLiquidation(catalog) {
   const items = new Map(catalog.items.map(item => [item.id, item]));
@@ -38,12 +48,27 @@ export function createLiquidation(catalog) {
  * reported separately; their sale is not silently deducted from an input cost.
  */
 export function economicMath(catalog) {
+  // Retained definitions only exist to settle historical jobs, never to plan new work.
+  catalog = { ...catalog, recipes: catalog.recipes.filter(source => !source.retired), explorations: catalog.explorations.filter(source => !source.retired) };
   const items = new Map(catalog.items.map(i => [i.id, i]));
   const buildings = new Map(catalog.buildings.map(b => [b.id, b]));
   const fish = new Set([...(catalog.fishing?.fish ?? []), ...(catalog.fishing?.classes ?? [])].map(f => f.itemId));
   const rare = new Set(catalog.rareDrops?.itemIds ?? []);
   const liquidation = createLiquidation(catalog);
   const recipes = new Map(catalog.recipes.map(recipe => [recipe.id, recipe]));
+  const routes = new Map(catalog.explorations.map(route => [route.id, route]));
+  const requirementSource = itemId => {
+    if (fish.has(itemId) || rare.has(itemId)) return null;
+    const baseline = catalog.timeEconomy?.baselineRecipes?.[itemId] ?? catalog.timeEconomy?.baselineExplorations?.[itemId];
+    return baseline ? recipes.get(baseline) ?? routes.get(baseline)
+      : [...recipes.values(), ...routes.values()].filter(source => source.rewards[itemId] > 0)
+        .sort((a, b) => a.requiredHomeLevel - b.requiredHomeLevel || a.seconds - b.seconds)[0];
+  };
+  const masteryDefinitions = d => [
+    ...Object.keys(d.requiredRecipes ?? {}).map(id => { const source = recipes.get(id); assert(source, `Unknown recipe unlock ${id}`); return source; }),
+    ...Object.keys(d.requiredExplorations ?? {}).map(id => { const source = routes.get(id); assert(source, `Unknown exploration unlock ${id}`); return source; }),
+    ...(d.requiredFishCaught > 0 ? [routes.get(catalog.fishing.routeIds[0])] : []),
+  ];
   const homeCache = new Map();
   function buildingHome(id, level, path = []) {
     if (id === "dryer" && level === 0) return 1;
@@ -61,24 +86,41 @@ export function economicMath(catalog) {
     return Math.max(d.requiredHomeLevel,
       ...(d.buildingId ? [buildingHome(d.buildingId, recipeBuildingLevel(d))] : []),
       ...Object.entries(d.requiredBuildings ?? {}).map(([id, level]) => buildingHome(id, level)),
-      ...Object.keys(d.requiredRecipes ?? {}).map(id => {
-        const prior = recipes.get(id); assert(prior, `Unknown recipe unlock ${id}`);
-        return definitionHome(prior, [...path, d.id]);
-      }));
+      ...(d.requiredFishCaught > 0 ? [fishingMasteryHome()] : []),
+      ...masteryDefinitions(d).map(prior => masteryHome(prior, [...path, d.id])));
   };
-  const unlockPrerequisites = (d, path = []) => {
+  const masteryHome = (d, path) => Math.max(definitionHome(d, path), ...Object.keys(d.cost.items).map(id => {
+    const source = requirementSource(id);
+    return source ? masteryHome(source, [...path, d.id]) : fish.has(id) ? fishingHome(id) : rare.has(id) ? catalog.rareDrops.requiredHomeLevel : 1;
+  }));
+  const unlockPrerequisites = (d, path = [], includeInputs = false) => {
     assert(!path.includes(d.id), `Recipe unlock cycle: ${[...path, d.id].join(" -> ")}`);
     const levels = { ...d.requiredBuildings, ...(d.buildingId ? { [d.buildingId]: recipeBuildingLevel(d) } : {}), home: d.requiredHomeLevel };
     const completedRecipes = { ...d.requiredRecipes };
-    for (const id of Object.keys(d.requiredRecipes ?? {})) {
-      const recipe = recipes.get(id); assert(recipe, `Unknown recipe unlock ${id}`);
-      const prior = unlockPrerequisites(recipe, [...path, d.id]);
-      requireLevels(levels, prior.levels); requireLevels(completedRecipes, prior.completedRecipes);
+    const completedRoutes = { ...d.requiredExplorations };
+    let caughtFish = d.requiredFishCaught ?? 0;
+    if (caughtFish > 0) levels.home = Math.max(levels.home, fishingMasteryHome());
+    for (const dependency of masteryDefinitions(d)) {
+      const prior = unlockPrerequisites(dependency, [...path, d.id], true);
+      requireLevels(levels, prior.levels); requireLevels(completedRecipes, prior.completedRecipes); requireLevels(completedRoutes, prior.completedRoutes);
+      caughtFish = Math.max(caughtFish, prior.caughtFish);
     }
-    return { levels, completedRecipes };
+    // Explicit mastery routes bring their provision-producing stations with them.
+    for (const input of includeInputs ? Object.keys(d.cost.items) : []) {
+      const source = requirementSource(input);
+      if (source) {
+        const prior = unlockPrerequisites(source, [...path, d.id], true);
+        requireLevels(levels, prior.levels); requireLevels(completedRecipes, prior.completedRecipes); requireLevels(completedRoutes, prior.completedRoutes);
+        caughtFish = Math.max(caughtFish, prior.caughtFish);
+      } else if (fish.has(input)) levels.home = Math.max(levels.home, fishingHome(input));
+    }
+    return { levels, completedRecipes, completedRoutes, caughtFish };
   };
   const rodCanCatch = (rod, rarity) => (rarity !== "legendary" || rod.rarity === "legendary")
     && (!rod.classOddsBps || rod.classOddsBps[rarity] > 0);
+  const fishingMasteryHome = () => Math.max(
+    Math.min(...catalog.fishing.rods.filter(rod => catalog.fishing.classes.some(group => rodCanCatch(rod, group.rarity))).map(rod => rod.requiredHomeLevel ?? 1)),
+    Math.min(...catalog.fishing.hooks.map(hook => hook.requiredHomeLevel ?? 1)));
   const fishingHome = itemId => {
     const spec = [...catalog.fishing.fish, ...(catalog.fishing.classes ?? [])].find(f => f.itemId === itemId);
     return Math.max(1, Math.min(...catalog.fishing.rods.filter(rod => rodCanCatch(rod, spec.rarity)).map(rod => rod.requiredHomeLevel ?? 1)));
@@ -129,11 +171,20 @@ export function economicMath(catalog) {
     if (profiles.has(id)) return profiles.get(id);
     assert(!path.includes(id), `Production cycle: ${[...path, id].join(" -> ")}`);
     const r = primitive.get(id);
-    const result = { itemId: id, slotMinutes: {}, rawInputs: {}, coins: 0, depth: 0, sourceHome: sourceHome(id), referenceHome: 1, byproducts: {}, producerLevels: {}, unlockRecipes: {} };
+    const result = { itemId: id, slotMinutes: {}, rawInputs: {}, coins: 0, depth: 0, sourceHome: sourceHome(id), referenceHome: 1, byproducts: {}, producerLevels: {}, unlockRecipes: {}, unlockExplorations: {}, requiredFishCaught: 0 };
     if (r) {
-      const output = r.rewards[id]; result[r.buildingId ? "recipeId" : "routeId"] = r.id; result.referenceHome = definitionHome(r);
+      const chance = r.experiment ? r.experiment.successBps / 10000 : 1;
+      const output = r.rewards[id] * chance;
+      if (r.experiment) {
+        result.reference = "optional cooking experiment, expected attempts at baseline skill; no finite success guarantee";
+        result.acquisition = { kind: "cooking_experiment", successBps: r.experiment.successBps,
+          expectedAttempts: 1 / chance, finiteGuarantee: false, requiredCookingLevel: r.experiment.requiredCookingLevel };
+        add(result.byproducts, r.experiment.failureRewards, (1 - chance) / output);
+      }
+      result[r.buildingId ? "recipeId" : "routeId"] = r.id; result.referenceHome = definitionHome(r);
       const prerequisites = unlockPrerequisites(r);
       requireLevels(result.producerLevels, prerequisites.levels); requireLevels(result.unlockRecipes, prerequisites.completedRecipes);
+      requireLevels(result.unlockExplorations, prerequisites.completedRoutes); result.requiredFishCaught = prerequisites.caughtFish;
       add(result.slotMinutes, recipeSlots(r), 1 / output); result.coins += r.cost.coins / output;
       if (!Object.keys(r.cost.items).length) result.rawInputs[id] = 1;
       for (const [input, quantity] of Object.entries(r.cost.items)) {
@@ -141,11 +192,12 @@ export function economicMath(catalog) {
         add(result.slotMinutes, p.slotMinutes, scale); add(result.rawInputs, p.rawInputs, scale); add(result.byproducts, p.byproducts, scale);
         requireLevels(result.producerLevels, p.producerLevels);
         requireLevels(result.unlockRecipes, p.unlockRecipes);
+        requireLevels(result.unlockExplorations, p.unlockExplorations); result.requiredFishCaught = Math.max(result.requiredFishCaught, p.requiredFishCaught);
         result.coins += p.coins * scale; result.depth = Math.max(result.depth, p.depth + 1); result.referenceHome = Math.max(result.referenceHome, p.referenceHome);
       }
     } else if (rare.has(id)) {
       const spec = catalog.rareDrops, meanSeconds = (spec.minSeconds + spec.maxSeconds) / 2;
-      result.reference = "independent completed-exploration clock per actor; no NPC or coin-market purchase";
+      result.reference = "independent completed-exploration clock per actor; optional personal pearl-shop purchases excluded from this acquisition reference";
       result.referenceHome = spec.requiredHomeLevel;
       result.producerLevels.home = spec.requiredHomeLevel;
       // These are expectations, not a deterministic recipe or a zero-cost NPC item.
@@ -163,13 +215,15 @@ export function economicMath(catalog) {
       const rod = catalog.fishing.rods.filter(rod => rodCanCatch(rod, spec.rarity)).sort((a, b) => a.price - b.price)[0];
       const hook = catalog.fishing.hooks.toSorted((a, b) => a.price - b.price)[0];
       assert(rod && hook, `${id}: no eligible reference tackle`);
-      const portfolio = catchPortfolio(rod.id, null, "shore", hook.id), probability = portfolio.classProbabilities[group.itemId];
-      const output = portfolio.output[group.itemId];
+      const exactSpecies = id !== group.itemId;
+      const portfolio = catchPortfolio(rod.id, null, "shore", hook.id);
+      const probability = exactSpecies ? portfolio.probabilities[id] : portfolio.classProbabilities[group.itemId];
+      const output = exactSpecies ? probability * portfolio.speciesDrawsPerJob : portfolio.output[group.itemId];
       assert(output > 0, `${id}: reference tackle cannot catch the fish class`);
-      result.reference = "steady-state class stock with least expensive eligible tackle; merchant waiting excluded";
+      result.reference = `steady-state ${exactSpecies ? "exact species" : "class"} stock with least expensive eligible tackle; merchant waiting excluded`;
       result.referenceHome = result.sourceHome;
       result.producerLevels.home = result.referenceHome;
-      result.rawInputs[group.itemId] = 1;
+      result.rawInputs[id] = 1;
       result.catchReference = { rodId: rod.id, hookId: hook.id, probability, expectedTrips: 1 / output,
         expectedFishPerTrip: output, rodPurchaseCoins: rod.price, hookPurchaseCoins: hook.price, finiteGuarantee: false };
       add(result.slotMinutes, portfolio.slotMinutes, 1 / output);
@@ -180,7 +234,10 @@ export function economicMath(catalog) {
         requireLevels(result.producerLevels, p.producerLevels); result.coins += p.coins * scale;
         result.depth = Math.max(result.depth, p.depth + 1); result.referenceHome = Math.max(result.referenceHome, p.referenceHome);
       }
-      for (const [other, quantity] of Object.entries(portfolio.output)) if (other !== group.itemId && quantity > 0) result.byproducts[other] = quantity / output;
+      for (const [other, quantity] of Object.entries(portfolio.output)) {
+        const remaining = other === group.itemId ? quantity - output : quantity;
+        if (remaining > 1e-10) result.byproducts[other] = remaining / output;
+      }
     } else {
       const purchase = catalog.fishing?.baits.find(b => b.itemId === id);
       assert(purchase, `No elementary reference or NPC stock for ${id}`);
@@ -197,20 +254,21 @@ export function economicMath(catalog) {
       const p = profile(id); add(slotMinutes, p.slotMinutes, quantity); add(rawInputs, p.rawInputs, quantity); add(byproducts, p.byproducts, quantity); coins += p.coins * quantity;
       referenceHome = Math.max(referenceHome, p.referenceHome);
     }
+    const expectedOutput = expectedRecipeRewards(recipe);
     const elementaryOutputMinutes = {};
-    for (const [id, quantity] of Object.entries(recipe.rewards)) add(elementaryOutputMinutes, profile(id).slotMinutes, quantity);
+    for (const [id, quantity] of Object.entries(expectedOutput)) add(elementaryOutputMinutes, profile(id).slotMinutes, quantity);
     const baseValue = quantities => Object.entries(quantities).reduce((sum, [id, quantity]) => sum + items.get(id).baseSellPrice * quantity, 0);
-    const baseMarketMargin = baseValue(recipe.rewards) - baseValue(recipe.cost.items) - recipe.cost.coins;
-    return { id: recipe.id, directHome: definitionHome(recipe), referenceHome, output: { ...recipe.rewards }, directInputs: { ...recipe.cost.items },
+    const baseMarketMargin = baseValue(expectedOutput) - baseValue(recipe.cost.items) - recipe.cost.coins;
+    return { id: recipe.id, directHome: definitionHome(recipe), referenceHome, output: expectedOutput, optionalExperiment: Boolean(recipe.experiment), directInputs: { ...recipe.cost.items },
       slotMinutes, rawInputs, byproducts, coins, elementaryOutputMinutes,
-      directRevenue: liquidation(recipe.rewards), directInputOpportunity: liquidation(recipe.cost.items) + recipe.cost.coins,
-      incrementalMargin: liquidation(recipe.rewards) - liquidation(recipe.cost.items) - recipe.cost.coins,
+      directRevenue: liquidation(expectedOutput), directInputOpportunity: liquidation(recipe.cost.items) + recipe.cost.coins,
+      incrementalMargin: liquidation(expectedOutput) - liquidation(recipe.cost.items) - recipe.cost.coins,
       baseMarketMargin, baseMarketMarginPerStationHour: baseMarketMargin / (stationMinutes / 60),
       maxBatch: recipe.maxBatch, processMinutes: recipe.seconds / 60, stationMinutes };
   }
   const stationBenchmarks = {};
   for (const r of [...catalog.recipes, ...catalog.explorations.filter(r => productionStation(r))]) {
-    const margin = liquidation(r.rewards) - liquidation(r.cost.items) - r.cost.coins;
+    const margin = liquidation(expectedRecipeRewards(r)) - liquidation(r.cost.items) - r.cost.coins;
     const stationMinutes = (r.seconds + (r.collection?.seconds ?? 0)) / 60;
     const rate = margin / stationMinutes, prior = stationBenchmarks[productionStation(r)];
     if (!prior || rate > prior.coinsPerMinute) stationBenchmarks[productionStation(r)] = { recipeId: r.id, coinsPerMinute: rate, marginPerBatch: margin, stationMinutes };
@@ -241,8 +299,8 @@ export function auditEconomicMath(catalog) {
     startup: math.startup(math.profile(i.id).producerLevels),
     oneUnitNpcRevenue: math.liquidation({ [i.id]: 1 }),
     slotOpportunityCoins: i.category === "special" ? null : Object.entries(math.profile(i.id).slotMinutes).reduce((sum, [slot, minutes]) => sum + minutes * math.stationBenchmarks[slot].coinsPerMinute, 0) }));
-  const batches = catalog.recipes.map(math.batch);
-  const mining = catalog.explorations.filter(route => route.activity === "mining").map(math.batch);
+  const batches = catalog.recipes.filter(recipe => !recipe.retired).map(math.batch);
+  const mining = catalog.explorations.filter(route => !route.retired && route.activity === "mining").map(math.batch);
   for (const p of profiles) assert(Object.values(p.slotMinutes).every(x => Number.isFinite(x) && x >= 0), `${p.itemId}: invalid minutes`);
   for (const r of batches) assert(r.incrementalMargin > 0, `${r.id}: nonpositive actual sale margin`);
   return { units: "minimum intrinsic occupied named slot-minutes, excluding waits to claim; coins; item units", profiles, batches, mining, stationBenchmarks: math.stationBenchmarks,

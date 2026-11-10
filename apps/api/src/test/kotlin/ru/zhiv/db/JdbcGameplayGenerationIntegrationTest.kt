@@ -124,7 +124,7 @@ class JdbcGameplayGenerationIntegrationTest {
         execute("DELETE FROM game_daily_rewards WHERE user_id=?", p.id)
         execute("UPDATE gameplay_generations SET generation=1,reset_at=clock_timestamp()")
         val before = source.connection.use { readEconomyProfile(it, p.id) }
-        val stale = client.post("/api/v1/game/rewards/claims") {
+        val stale = client.post("/api/v1/game/rewards/claims?catalog=8") {
             owner(p, "0"); header(PRESENCE_HEADER, opened.presenceId); setBody(Json.encodeToString(old))
         }
         assertEquals(HttpStatusCode.Conflict, stale.status)
@@ -133,7 +133,7 @@ class JdbcGameplayGenerationIntegrationTest {
         assertEquals(0L, scalar("SELECT count(*) FROM game_reward_claims WHERE user_id=?", p.id))
         val request = old.copy(requestId = UUID.randomUUID().toString())
         repeat(2) { attempt ->
-            val response = client.post("/api/v1/game/rewards/claims") {
+            val response = client.post("/api/v1/game/rewards/claims?catalog=8") {
                 owner(p, "1"); header(PRESENCE_HEADER, opened.presenceId); setBody(Json.encodeToString(request))
             }
             assertEquals(HttpStatusCode.OK, response.status)

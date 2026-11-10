@@ -1,0 +1,4 @@
+.badge { display: inline-flex; justify-content: center; align-items: center; justify-self: center; gap: 4px; max-width: 100%; min-width: 0; padding: 3px 7px; border: 1px solid #c5a659; border-radius: 999px; background: #fff0bd; color: #765316; font-size: 10px; font-weight: 650; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.badge > svg { flex: 0 0 auto; }
+.badge > span { min-width: 0; overflow-wrap: anywhere; }
+.badge[data-compact] { gap: 2px; padding: 0; border: 0; background: transparent; font-size: 9px; white-space: nowrap; }

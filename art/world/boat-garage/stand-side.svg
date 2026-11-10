@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320" role="img" aria-labelledby="stand-title stand-description">
+  <title id="stand-title">Килевая стойка лодочной мастерской</title>
+  <desc id="stand-description">Широкая стальная рама, винтовой упор и деревянная подушка. Центр подушки 160,24. Подошва 160,304.</desc>
+  <defs>
+    <linearGradient id="olive" x2=".85" y2="1">
+      <stop stop-color="#adb07a"/><stop offset=".46" stop-color="#7e895c"/><stop offset="1" stop-color="#586846"/>
+    </linearGradient>
+    <linearGradient id="olive-dark" x2=".9" y2=".6">
+      <stop stop-color="#71805a"/><stop offset="1" stop-color="#46563e"/>
+    </linearGradient>
+    <linearGradient id="brass" x2="1" y2="0">
+      <stop stop-color="#806840"/><stop offset=".32" stop-color="#ddc38a"/><stop offset=".65" stop-color="#b29461"/><stop offset="1" stop-color="#736344"/>
+    </linearGradient>
+    <linearGradient id="wood" x2=".1" y2="1">
+      <stop stop-color="#dcb17a"/><stop offset="1" stop-color="#a27845"/>
+    </linearGradient>
+  </defs>
+  <g stroke="#373b30" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <g id="rear-outrigger">
+      <path d="m166 103 22-8 79 155 30 5 5 12-8 8-39-5-94-150Z" fill="#576249"/>
+      <path d="m185 108 77 145 29 6" stroke="#86906e" fill="none" stroke-width="3"/>
+    </g>
+    <g id="adjustment-screw">
+      <path d="M144 53h32v69h-32z" fill="url(#brass)"/>
+      <path d="m146 70 27-6m-27 16 27-6m-27 16 27-6m-27 16 27-6" fill="none" stroke="#746042" stroke-width="3"/>
+      <path d="m125 99 14-7h40l16 6-3 15-12 5h-43l-13-7z" fill="url(#brass)"/>
+      <path d="M131 101h52m-45 3v5" fill="none" stroke="#e0c68e" stroke-width="3"/>
+      <path d="m109 99 97-4" fill="none" stroke-width="8"/>
+      <path d="m109 98 97-4" fill="none" stroke="#caaa76" stroke-width="4"/>
+      <path d="m105 95 6-1 2 10-8 1zm99-4 7-1 1 10-7 1z" fill="url(#brass)" stroke-width="2"/>
+    </g>
+    <g id="channel-legs">
+      <path d="m124 114 27 7-85 168-38-2z" fill="url(#olive)"/>
+      <path d="m137 128-82 151 10-1 81-153z" fill="#505f44" stroke-width="2"/>
+      <path d="m127 127-82 145" stroke="#bec296" stroke-width="3" fill="none"/>
+      <path d="m168 121 27-7 99 175-40 1z" fill="url(#olive-dark)"/>
+      <path d="m181 126 84 152h13l-87-155z" fill="#87916b" stroke-width="2"/>
+      <path d="m187 128 78 141" stroke="#b1b28a" stroke-width="2.5" fill="none"/>
+    </g>
+    <g id="cross-brace">
+      <path d="m67 237 184 1 13 23H54z" fill="url(#olive)" />
+      <path d="m61 254 197 1 6 6H54Z" fill="#515e44" stroke-width="2"/>
+      <path d="M79 242h162m-129 4h12" stroke="#b7bb90" stroke-width="2.5" fill="none"/>
+      <path d="m65 232 21-1-13 33H53zm170 0 21 1 13 31h-20z" fill="url(#olive-dark)" stroke-width="3"/>
+    </g>
+    <g id="cast-iron-head">
+      <path d="m120 113 14-5h49l16 5-3 25-17 34h-40l-17-34z" fill="url(#olive)"/>
+      <path d="m127 116 62-1m-57 11 4 15" fill="none" stroke="#c1c095" stroke-width="3"/>
+      <path d="m187 125-3 14-10 22h-31" fill="none" stroke="#536448" stroke-width="3"/>
+    </g>
+    <g id="base-shoes">
+      <path d="m20 276 48 1 12 10-3 16H10l-4-7 6-14z" fill="url(#olive)"/>
+      <path d="m250 277 46-1 13 7 5 12-5 8h-67l-3-15z" fill="url(#olive-dark)"/>
+      <path d="m16 286 49-1m184 1 44-1" stroke="#b4b58a" stroke-width="3" fill="none"/>
+      <path d="M10 297h67m165 0h68" fill="none" stroke-width="6"/>
+    </g>
+    <g id="saddle-socket">
+      <path d="m124 50 71-1-5 15-16 8h-29l-18-9z" fill="url(#brass)"/>
+      <path d="m135 55 48-1" stroke="#e0c695" stroke-width="2.5"/>
+    </g>
+    <g id="padded-saddle">
+      <path d="m48 31 219-1 11 7-4 15-11 6-201 1-14-8-4-12z" fill="url(#wood)"/>
+      <path d="m56 29 14-4 181-1 16 4 1 8-210 2-6-4z" fill="#535e4b"/>
+      <path d="m66 28 179-1" fill="none" stroke="#98a083" stroke-width="2.5"/>
+      <path d="m59 42 43-1m9-1 23-1m40 5 53-2m-145 8 52-1m63 1 37-2" stroke="#886237" stroke-width="2" fill="none"/>
+      <path d="m74 37 14-1 2 20-14 1zm161-1h14l-2 19-14 1z" fill="url(#brass)" stroke-width="2"/>
+      <path d="m78 41 1 6m159-7-1 6" stroke="#ecd49f" stroke-width="2.5" fill="none"/>
+    </g>
+    <g id="fasteners" fill="url(#brass)" stroke-width="2.8">
+      <path d="m151 131 6-5 9 1 4 7-4 7-9 1-6-5z"/>
+      <circle cx="68" cy="246" r="5"/><circle cx="253" cy="246" r="5"/>
+      <path d="m157 135 7-2m-98 114 4-2m181 2 4-2" fill="none" stroke="#6d5f42" stroke-width="2"/>
+    </g>
+  </g>
+</svg>

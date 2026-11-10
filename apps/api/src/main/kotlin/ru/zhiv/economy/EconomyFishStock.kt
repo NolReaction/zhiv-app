@@ -51,10 +51,19 @@ object EconomyFishStock {
     }
 
     fun debit(state: EconomyState, required: Map<String, Long>, selection: Map<String, Long>? = null,
-        catalog: EconomyCatalog = EconomyRules.catalog): Debit {
+        catalog: EconomyCatalog = EconomyRules.catalog, exactSpecies: Boolean = false): Debit {
         val classes = catalog.fishing?.classes.orEmpty().map { it.itemId }.toSet()
         val costs = EconomyFishInventory.items(required, catalog).filter { it.key in classes && it.value > 0L }
-        val chosen = selection ?: autoFill(state, costs, catalog)
+        val speciesIds = catalog.fishing?.fish.orEmpty().map { it.itemId }.toSet()
+        val exact = if (exactSpecies) required.filter { it.key in speciesIds && it.value > 0L } else emptyMap()
+        val exactClasses = EconomyFishInventory.items(exact, catalog)
+        val chosen = selection ?: if (exact.isEmpty()) autoFill(state, costs, catalog) else {
+            val remainingState = state.copy(inventory = state.inventory.mapValues { (id, count) -> count - (exactClasses[id] ?: 0L) },
+                fishing = state.fishing.copy(stock = normalized(state, catalog).orEmpty().mapValues { (id, count) -> count - (exact[id] ?: 0L) }))
+            val rest = autoFill(remainingState, costs.mapValues { (id, count) -> count - (exactClasses[id] ?: 0L) }, catalog)
+            (exact.keys + rest.keys).associateWith { (exact[it] ?: 0L) + (rest[it] ?: 0L) }
+        }
+        if (exact.any { (id, count) -> (chosen[id] ?: 0L) < count }) changed()
         val totals = linkedMapOf<String, Long>()
         val available = costs.keys.flatMap { entries(state, it, catalog) }.associate { it.itemId to it.quantity }
         chosen.forEach { (id, quantity) ->

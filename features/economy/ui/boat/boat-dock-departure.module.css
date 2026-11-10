@@ -1,0 +1,39 @@
+.dock { display: grid; gap: 3px; padding: 9px 14px; border-top: 1px solid #5f6b50; background: linear-gradient(125deg,#2d4031,#1f3227); }
+.route { display: grid; grid-template-columns: minmax(0,1fr) minmax(110px,.68fr) auto; align-items: center; gap: 16px; }
+.route > div:first-child { min-width: 0; display: grid; gap: 4px; }
+.route > div:first-child strong { color: #f4e3bf; font-size: 16px; }
+.route > div:first-child > span,.fuel > span { display: inline-flex; align-items: center; gap: 5px; color: #c9d1ba; font-size: 11px; }
+.route > button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; line-height: 1.2; min-height: 43px; }
+.route button small { display: block; margin-top: 2px; font-size: 10px; font-weight: 450; }
+.fuel { display: grid; gap: 3px; align-content: center; justify-content: start; }
+.fuel > span { color: #e4d8b8; }
+.fuel b { font-variant-numeric: tabular-nums; }
+.fuel small,.refill small { font-size: 10px; color: #bbcab3; }
+.fuel time { font-variant-numeric: tabular-nums; }
+.cells { display: flex; align-items: stretch; gap: 2px; }
+.cells i { width: 11px; height: 5px; border: 1px solid #8a9073; background: #17271e; }
+.cells i[data-filled] { background: #e5c178; border-color: #f0d79b; }
+.workNote { color: #d8c5a0; font-size: 11px; line-height: 1.3; }
+.refill { display: grid; align-content: center; justify-items: end; gap: 2px; }
+.refill > div { display: flex; align-items: center; justify-content: end; gap: 4px; }
+.refill button { display: inline-flex; align-items: center; flex-wrap: nowrap; gap: 4px; min-height: 42px; padding: 5px 9px; }
+.refill button[aria-label="Отмена"] { width: 42px; padding: 4px; }
+@media (max-width: 680px), (max-height: 540px) {
+  .dock { padding: 5px 8px; }
+  .route { gap: 5px 8px; grid-template-columns: minmax(0,1fr) auto minmax(120px, .9fr); }
+  .route > div:first-child { gap: 2px; }
+  .route > div:first-child strong { font-size: 13px; }
+  .route > div:first-child > span { display: block; font-size: 10px; }
+  .route > div:first-child > span > svg { display: none; }
+  .route > div:first-child > span > span { margin-inline: 3px; }
+  .route > button { padding: 4px 7px; gap: 3px; flex-wrap: nowrap; }
+  .route > button svg { display: none; }
+  .fuel { gap: 2px; }
+}
+@media (max-width: 460px) {
+  .route { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 7px; }
+  .route > button, .workNote { grid-column: 1 / -1; }
+  .route > button > span { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 2px 8px; }
+  .route > button small { margin: 0; }
+  .refill { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+}

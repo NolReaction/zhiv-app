@@ -55,6 +55,13 @@ class GuestProfileRoutesTest {
             assertEquals("no-store", response.headers[HttpHeaders.CacheControl])
             return Json.parseToJsonElement(response.bodyAsText()).jsonObject
         }
+        suspend fun fishingHeader(version: String): JsonObject {
+            val response = client.get(path) { cookie(config.cookieName, "test-session"); header("X-Zhiv-Fishing-Profile", version) }
+            return Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        }
+        assertEquals(JsonNull, fishingHeader("v1")["fishingSummary"])
+        assertFalse("tapStats" in fishingHeader("v1"))
+        assertFalse("fishingSummary" in fishingHeader("v2"))
         val legacyKeys = setOf("ownerPublicId", "circleId", "user", "homeLevel", "completedExplorations", "achievements", "collections", "serverTime")
         assertEquals(legacyKeys, read(null).keys)
         assertEquals(JsonNull, read("tap-stats-v1")["tapStats"])

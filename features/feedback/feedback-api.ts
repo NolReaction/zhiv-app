@@ -10,7 +10,7 @@ export const feedbackCategorySchema = z.enum(["bug", "suggestion", "other"]);
 export const feedbackStatusSchema = z.enum(["new", "reviewed", "resolved"]);
 export const feedbackMessageLength = (message: string) => Array.from(message.trim()).length;
 export const feedbackRequestSchema = z.object({
-  clientRequestId: z.string().uuid().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),
+  clientRequestId: z.guid().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),
   expectedOwnerPublicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/),
   category: feedbackCategorySchema,
   message: z.string().transform(value => value.replace(/\r\n?/g, "\n").trim())
@@ -19,8 +19,8 @@ export const feedbackRequestSchema = z.object({
 }).strict();
 const instant = z.string().datetime();
 export const feedbackAvailabilitySchema = z.object({ serverTime: instant, canSubmit: z.boolean(), nextAllowedAt: instant.nullable() });
-const receiptSchema = z.object({ id: z.string().uuid(), clientRequestId: z.string().uuid(), createdAt: instant, nextAllowedAt: instant, replayed: z.boolean() });
-const itemSchema = z.object({ id: z.string().uuid(), category: feedbackCategorySchema, message: z.string().refine(value => feedbackMessageLength(value) <= FEEDBACK_MAX_LENGTH),
+const receiptSchema = z.object({ id: z.guid(), clientRequestId: z.guid(), createdAt: instant, nextAllowedAt: instant, replayed: z.boolean() });
+const itemSchema = z.object({ id: z.guid(), category: feedbackCategorySchema, message: z.string().refine(value => feedbackMessageLength(value) <= FEEDBACK_MAX_LENGTH),
   status: feedbackStatusSchema, createdAt: instant, updatedAt: instant, authorPublicId: z.string(), authorDisplayName: z.string() });
 const pageSchema = z.object({ serverTime: instant, total: z.number().int().nonnegative(), offset: z.number().int().nonnegative(),
   limit: z.number().int().min(1).max(100), items: z.array(itemSchema).max(100) });
@@ -39,7 +39,7 @@ export class FeedbackError extends ApiError {
   }
 }
 
-async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, signal?: AbortSignal, body?: unknown): Promise<T> {
+async function request<T>(path: string, schema: z.ZodType<T, unknown>, signal?: AbortSignal, body?: unknown): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
   if (signal?.aborted) abort();

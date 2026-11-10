@@ -32,15 +32,16 @@ function customState(cost, recipes, inventory) {
 
 test("home target reads current catalog, deficits and craft ingredients without mutating the snapshot", () => {
   const view = state(), before = structuredClone(view);
+  const homeCost = view.catalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 2).cost.coins;
   const details = constructionGoalDetails(view, goal);
   assert.equal(details.name, "Дом Мохлика");
-  assert.deepEqual(details.missing, { coins: 150, items: { stone: 1, planks: 1 } });
+  assert.deepEqual(details.missing, { coins: homeCost - view.wallet.coins, items: { stone: 1, planks: 1 } });
   assert.deepEqual(details.keepItems, { wood: 4, stone: 2, planks: 2 });
   assert.deepEqual(details.excessItems, { wood: 0, stone: 0, planks: 0, fiber: 10 });
   assert.equal(details.reservesComplete, true);
   assert.deepEqual(view, before);
   view.inventory.planks = 2; view.inventory.stone = 2;
-  view.wallet.coins = 250;
+  view.wallet.coins = homeCost;
   assert.deepEqual(constructionGoalDetails(view, goal).missing, { coins: 0, items: {} });
   assert.equal(constructionGoalDetails(view, goal).keepItems.wood, 3);
   assert.equal(constructionGoalDetails(view, goal).keepItems.fiber, undefined);
@@ -78,8 +79,9 @@ test("shared inputs are aggregated once and output batches round up across a mul
 });
 
 test("advanced goals protect current unit recipe inputs even with the base warehouse", () => {
+  const homeCost = economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 4).cost.items;
   const view = state({ buildings: { home: 3, warehouse: 1, workshop: 3, woodlot: 3, kiln: 2, quarry: 3 },
-    inventory: { beams: 1, hardwood: 30, rope: 20, cut_stone: 8, bricks: 10, cloth: 4, metal_parts: 4, fish_soup: 4, living_resin: 1 } });
+    inventory: { ...homeCost, beams: homeCost.beams - 1, hardwood: 30, rope: 20 } });
   const before = structuredClone(view);
   const recipe = view.catalog.recipes.find(entry => entry.id === "make_beams");
   assert.equal(recipe.maxBatch, 1); assert.deepEqual(recipe.rewards, { beams: 1 });

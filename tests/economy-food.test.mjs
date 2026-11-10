@@ -80,7 +80,7 @@ test("invalid fish substitutions and decorated non-fish recipes are rejected bef
   assert.throws(() => food.recipeWithFish(catalog.recipes.find(recipe => recipe.id === "cook_grilled_fish"), "fish_shark"), RangeError);
 });
 
-test("feeding the hero reserves one meal indefinitely and applies it to exactly one successful trip", () => {
+test("feeding the hero reserves active work indefinitely and spends only successful departures", () => {
   const state = fresh(); state.inventory = { grilled_fish: 2 };
   apply(state, "eat_food", "grilled_fish");
   assert.equal(state.inventory.grilled_fish, 1); assert.equal(state.food.heroMeal, "grilled_fish");
@@ -89,12 +89,15 @@ test("feeding the hero reserves one meal indefinitely and applies it to exactly 
   const later = now + 30 * 86400000, route = catalog.explorations.find(item => item.id === "forest");
   apply(state, "start_exploration", route.id, later);
   assert.equal(Date.parse(state.jobs[0].finishesAt) - later, food.mealDuration(route.seconds, 1000) * 1000);
-  assert.deepEqual(state.jobs[0].meal, { itemId: "grilled_fish", consumer: "hero", speedBps: 1000 });
-  assert.equal(state.food.heroMeal, null);
+  assert.deepEqual(state.jobs[0].meal, { itemId: "grilled_fish", consumer: "hero", speedBps: 1000, workSeconds: route.seconds });
+  assert.equal(state.food.heroMealEffect.remainingWorkSeconds, catalog.food.meals.find(meal => meal.itemId === "grilled_fish").heroWorkSeconds - route.seconds);
+  const remaining = state.food.heroMealEffect.remainingWorkSeconds;
   apply(state, "cancel_exploration", state.jobs[0].id, later);
+  assert.equal(state.food.heroMealEffect.remainingWorkSeconds, remaining, "cancelled work is never restored");
+  const duration = food.heroMealWorkDuration(state, route.seconds);
   apply(state, "start_exploration", route.id, later);
-  assert.equal(Date.parse(state.jobs[0].finishesAt) - later, route.seconds * 1000);
-  assert.equal(state.jobs[0].meal, undefined, "cancelled meals are not refundable or repeatable");
+  assert.equal(Date.parse(state.jobs[0].finishesAt) - later, duration * 1000);
+  assert.equal(state.food.heroMealEffect.remainingWorkSeconds, remaining - route.seconds);
 });
 
 test("unused hero and builder portions return exactly once without touching the other meal or jobs", () => {
@@ -103,7 +106,7 @@ test("unused hero and builder portions return exactly once without touching the 
   const jobs = structuredClone(state.jobs), wallet = structuredClone(state.wallet);
   apply(state, "cancel_meal", "hero");
   assert.deepEqual(state.inventory, { grilled_fish: 2 });
-  assert.deepEqual(state.food, { heroMeal: null, builderMeal: "fish_soup" });
+  assert.deepEqual(state.food, { heroMeal: null, builderMeal: "fish_soup", builderMealSpeedBps: catalog.food.meals.find(meal => meal.itemId === "fish_soup").builderSpeedBps, builderMealWorkSeconds: 7200 });
   failWithoutChanges(state, "cancel_meal", "hero", "ECONOMY_MEAL_UNAVAILABLE");
   apply(state, "cancel_meal", "builder");
   assert.deepEqual(state.inventory, { grilled_fish: 2, fish_soup: 1 });
@@ -158,21 +161,21 @@ test("missing food and an occupied hero cannot debit a dish or overwrite active 
   assert.equal(economyCommandUsesActor(command("eat_food", "grilled_fish")), true, "legacy trips block eating at the adapter boundary too");
 });
 
-test("failed paid departure preserves the hero meal; fishing receives the same one-trip speed rule", () => {
+test("failed paid departure preserves the hero meal; fishing spends the same active-work budget", () => {
   const state = fresh(); state.buildings.home = 3;
   state.inventory = { hearty_fish: 1 };
   apply(state, "eat_food", "hearty_fish");
   const route = catalog.explorations.find(route => catalog.fishing.routeIds.includes(route.id));
   Object.assign(state.buildings, route.requiredBuildings);
   state.wallet.coins = 0;
-  const failed = catalog.explorations.find(item => item.cost.coins > 0 || Object.keys(item.cost.items).length > 0);
+  const failed = catalog.explorations.find(item => !item.retired && (item.cost.coins > 0 || Object.keys(item.cost.items).length > 0));
   Object.assign(state.buildings, failed.requiredBuildings);
   failWithoutChanges(state, "start_exploration", failed.id, "ECONOMY_RESOURCES");
   state.wallet.coins = route.cost.coins; state.inventory = { ...route.cost.items };
   apply(state, "start_fishing", route.id);
   const job = state.jobs[0];
   assert.equal(Date.parse(job.finishesAt) - now, food.mealDuration(route.seconds, 6000) * 1000);
-  assert.equal(job.meal.itemId, "hearty_fish"); assert.equal(state.food.heroMeal, null);
+  assert.equal(job.meal.itemId, "hearty_fish"); assert.equal(state.food.heroMealEffect.remainingWorkSeconds, catalog.food.meals.find(meal => meal.itemId === "hearty_fish").heroWorkSeconds - route.seconds);
   if (job.rareDrop) assert.equal(job.rareDrop.seconds, food.mealDuration(route.seconds, 6000));
 });
 
@@ -190,9 +193,9 @@ test("pending builder food survives rejected construction and shortens one paid 
   assert.equal(state.jobs[0].meal.consumer, "builder");
 });
 
-test("a six-hour workshop upgrade with 25 percent extra speed takes 4h48m and saves 1h12m", () => {
+test("a one-hour workshop upgrade with 25 percent extra speed takes 48m and saves 12m", () => {
   const state = fresh(), level = catalog.buildings.find(item => item.id === "workshop").levels.find(item => item.level === 2);
-  assert.equal(level.seconds, 6 * 3600);
+  assert.equal(level.seconds, 3600);
   state.buildings.workshop = 1;
   state.buildings.home = level.requiredHomeLevel;
   Object.assign(state.buildings, level.requiredBuildings);
@@ -200,11 +203,42 @@ test("a six-hour workshop upgrade with 25 percent extra speed takes 4h48m and sa
   apply(state, "feed_builder", "fish_soup");
   apply(state, "start_construction", "workshop");
   const boostedSeconds = (Date.parse(state.jobs[0].finishesAt) - now) / 1000;
-  assert.equal(boostedSeconds, 4 * 3600 + 48 * 60);
-  assert.equal(level.seconds - boostedSeconds, 72 * 60, "25% more work per second saves 20% of the time");
-  assert.deepEqual(state.jobs[0].meal, { itemId: "fish_soup", consumer: "builder", speedBps: 2500 });
+  assert.equal(boostedSeconds, 48 * 60);
+  assert.equal(level.seconds - boostedSeconds, 12 * 60, "25% more work per second saves 20% of the time");
+  assert.equal(food.mealDuration(6 * 3600, 2500), 4 * 3600 + 48 * 60, "historic six-hour jobs follow the same speed rule");
+  assert.deepEqual(state.jobs[0].meal, { itemId: "fish_soup", consumer: "builder", speedBps: 2500, workSeconds: 3600 });
   assert.equal(state.inventory.fish_soup, undefined);
   assert.deepEqual(state.jobs[0].cost, level.cost);
+});
+
+test("a new serving caps a four-hour build while an old pending serving keeps its promise", () => {
+  const level = catalog.buildings.find(item => item.id === "workshop").levels.find(item => item.level === 4);
+  assert.equal(level.seconds, 14400);
+  const stocked = () => {
+    const state = fresh();
+    state.buildings = { ...state.buildings, ...level.requiredBuildings, workshop: 3, home: level.requiredHomeLevel };
+    state.wallet.coins = level.cost.coins;
+    state.inventory = { ...level.cost.items, grilled_fish: 1 };
+    return state;
+  };
+  const before = stocked();
+  apply(before, "feed_builder", "grilled_fish");
+  assert.equal(before.food.builderMealWorkSeconds, 1800);
+  apply(before, "start_construction", "workshop");
+  assert.equal((Date.parse(before.jobs[0].finishesAt) - now) / 1000, 14237);
+  assert.equal(before.jobs[0].meal.workSeconds, 1800);
+  assert.equal(before.food.builderMealWorkSeconds, undefined);
+  const active = stocked();
+  apply(active, "start_construction", "workshop");
+  apply(active, "feed_builder", "grilled_fish");
+  assert.equal(Math.ceil((Date.parse(active.jobs[0].finishesAt) - now) / 1000), 14237);
+  assert.equal(active.inventory.grilled_fish, undefined);
+  const legacy = stocked();
+  legacy.food = { heroMeal: null, builderMeal: "grilled_fish" };
+  assert.equal(food.pendingMeal(legacy, "builder").builderWorkSeconds, undefined);
+  apply(legacy, "start_construction", "workshop");
+  assert.equal((Date.parse(legacy.jobs[0].finishesAt) - now) / 1000, 13091);
+  assert.equal(legacy.jobs[0].meal.workSeconds, undefined);
 });
 
 test("feeding an active builder speeds up only remaining milliseconds once and preserves paid job fields", () => {
@@ -242,7 +276,7 @@ test("a finished construction cannot eat a meal, and builder food does not affec
 
 test("order board is deterministic, replacement changes template, and locked kitchens cannot generate unreachable food orders", () => {
   const state = fresh(), frozen = structuredClone(state), first = food.residentOrderBoard(state, now);
-  assert.equal(first.offers.length, 3); assert.deepEqual(food.residentOrderBoard(state, now + 1000), first);
+  assert.equal(first.offers.length, 2, "only the two introduced starting residents have cards"); assert.deepEqual(food.residentOrderBoard(state, now + 1000), first);
   assert.ok(first.offers.every(offer => /^order2_[0-9]+_[0-2]_0_[0-9]+$/.test(offer.id)));
   assert.equal(first.offers[0].residentId, "plesk"); assert.equal(first.offers[1].residentId, "builder");
   assert.deepEqual(state, frozen, "deriving the board cannot mutate a save");
@@ -356,7 +390,8 @@ test("local API meal refunds keep receipts ownership and stale-revision protecti
   assert.equal(read(p).food.heroMeal, "grilled_fish", "old refund receipt cannot cancel a newly selected portion");
   assert.equal(read(p).inventory.grilled_fish ?? 0, 0);
   send(p, "start_exploration", "forest");
-  assert.throws(() => send(p, "cancel_meal", "hero"), { code: "ECONOMY_MEAL_UNAVAILABLE" });
+  send(p, "cancel_meal", "hero");
+  assert.equal(read(p).inventory.grilled_fish ?? 0, 0, "discarding a spent serving cannot refund it");
   const trip = read(p).jobs.find(job => job.kind === "exploration");
   send(p, "cancel_exploration", trip.id);
   assert.throws(() => send(p, "cancel_meal", "hero"), { code: "ECONOMY_MEAL_UNAVAILABLE" });
@@ -402,7 +437,10 @@ test("Ktor's explicit null recipe extensions remain readable alongside old catal
   for (const recipe of wire.recipes) recipe.fishInput ??= null;
   assert.equal(model.economyCatalogSchema.safeParse(wire).success, true);
   wire.food = null;
-  for (const recipe of wire.recipes) recipe.fishInput = null;
+  assert.equal(model.economyCatalogSchema.safeParse(wire).success, false, "current experiments require their edible result catalog");
+  // A pre-food snapshot also predates experiments and skills; nullable fish extensions remain valid.
+  delete wire.skills;
+  for (const recipe of wire.recipes) { recipe.fishInput = null; delete recipe.experiment; }
   assert.equal(model.economyCatalogSchema.safeParse(wire).success, true);
   const duration = Number.MAX_SAFE_INTEGER, bps = 2500;
   const expected = Number((BigInt(duration) * 10000n + BigInt(10000 + bps) - 1n) / BigInt(10000 + bps));
@@ -410,7 +448,7 @@ test("Ktor's explicit null recipe extensions remain readable alongside old catal
 });
 
 
-test("saved ordinary orders for locked products are replaced freely while reachable accepted terms stay exact", () => {
+test("saved ordinary orders retain their promise when the current product source is locked", () => {
   const state = fresh();
   state.residentOrders = food.normalizedResidentOrders(state, now);
   state.residentOrders.completed = 7;
@@ -421,13 +459,21 @@ test("saved ordinary orders for locked products are replaced freely while reacha
   state.residentOrders.slots[0] = { ...state.residentOrders.slots[0], templateId: locked.id, terms: locked };
   const before = structuredClone(state), wallet = structuredClone(state.wallet);
   const normalized = food.normalizedResidentOrders(state, now);
-  assert.notEqual(normalized.slots[0].templateId, locked.id);
+  assert.equal(normalized.slots[0].templateId, locked.id);
+  assert.deepEqual(normalized.slots[0].terms, locked);
   assert.deepEqual(normalized.slots.slice(1), original.slots.slice(1));
   assert.equal(normalized.freeReplacementsUsed, 2);
   assert.equal(normalized.completed, 7); assert.equal(normalized.earnedCoins, 1234);
   assert.deepEqual(state, before); assert.deepEqual(state.wallet, wallet);
-  assert.ok(normalized.recentTemplateIds.includes(locked.id));
-  assert.ok(normalized.slots.every(slot => Object.keys(slot.terms.items).every(id => food.obtainableResidentOrderItems(state).has(id))));
+  assert.ok(!normalized.recentTemplateIds.includes(locked.id));
+  assert.equal(food.obtainableResidentOrderItems(state).has("berry_compote"), false);
+  assert.ok(food.eligibleResidentOrderTemplates(state).every(template => Object.keys(template.items).every(id => food.obtainableResidentOrderItems(state).has(id))));
+  const supplied = structuredClone(state); supplied.inventory = { ...locked.items };
+  const offer = food.residentOrderBoard(supplied, now).offers.find(offer => offer.templateId === locked.id);
+  apply(supplied, "complete_resident_order", offer.id);
+  assert.equal(supplied.wallet.coins, state.wallet.coins + 900);
+  assert.deepEqual(supplied.inventory, {});
+  failWithoutChanges(supplied, "complete_resident_order", offer.id, "ECONOMY_ORDER_CHANGED");
   state.buildings.dryer = 1; state.buildings.garden = 1;
   const unlocked = food.normalizedResidentOrders(state, now);
   assert.deepEqual(unlocked.slots[0].terms, locked, "reachable accepted quantities and payout stay frozen even for retired templates");

@@ -22,6 +22,9 @@ const cycle = Math.floor(now / 86400000), message = "Покупка у Лист�
 function legacyCatalog() {
   const catalog = structuredClone(economyCatalog);
   catalog.version = 11;
+  // This saved receipt paid the old 800-coin bundle, not the current v14
+  // 600-coin quote. Its before-state must retain that accepted contract.
+  Object.assign(catalog.leaftailShop.offers.find(offer => offer.id === "stone_bundle"), { quantity: 10, priceCoins: 800 });
   delete catalog.leaftailShop.supplyOffers; delete catalog.leaftailShop.pearlOffers;
   for (const offer of catalog.leaftailShop.travelOffers) if (offer.kind === "bait" && offer.quantity === 1) {
     offer.quantity = 5; offer.priceCoins *= 5;

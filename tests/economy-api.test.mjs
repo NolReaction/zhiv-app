@@ -225,7 +225,7 @@ test("HTTP fish commerce listings keep the chosen species in escrow and reject c
   row.state.unlockedItems = ["fish_epic"];
   row.state.inventory = { fish_sturgeon: 1, fish_mirror_koi: 2 };
   const before = await (await GET(read())).json();
-  const price = model.economyCatalog.items.find(item => item.id === "fish_epic").baseSellPrice * 2;
+  const price = Math.ceil(model.economyCatalog.items.find(item => item.id === "fish_epic").baseSellPrice * 2 / 10) * 10;
   const marketCommand = extra => ({ ...command(p), action: "create_listing", targetId: "fish_epic", quantity: 2, totalPrice: price, ...extra });
   for (const fishSelection of [{}, { fish_sturgeon: 2 }, { fish_mirror_koi: 1 }, { fish_shark: 2 }]) {
     const invalid = await marketPOST(post(marketCommand({ fishSelection }), {}, "/market/commands"));
@@ -326,7 +326,7 @@ test("HTTP rejects every mining route at an unbuilt quarry without spending or i
     for (let attempt = 0; attempt < 2; attempt++) {
       const response = await POST(post(cmd));
       assert.equal(response.status, 409, route.id);
-      assert.equal((await response.json()).code, "ECONOMY_BUILDING_REQUIRED", route.id);
+      assert.equal((await response.json()).code, route.retired ? "ECONOMY_SOURCE_RETIRED" : "ECONOMY_BUILDING_REQUIRED", route.id);
     }
     const after = await (await GET(read())).json();
     assert.equal(after.revision, before.revision);
@@ -337,22 +337,23 @@ test("HTTP rejects every mining route at an unbuilt quarry without spending or i
   }
 });
 
-test("HTTP gates warehouse two at home two and keeps warehouse three independent while preserving paid costs and one builder", async () => {
+test("HTTP gates warehouse tiers two and three at their home levels and preserves paid costs and one builder", async () => {
   const p = player();
   economy.getDevEconomy(p.token);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
   row.state.buildings = { ...row.state.buildings, home: 1, warehouse: 1, workshop: 0 };
   const targets = model.economyCatalog.buildings.find(building => building.id === "warehouse").levels.slice(1, 3);
   for (const target of targets) {
-    row.state.inventory = { ...target.cost.items, wood: 2 };
+    row.state.inventory = { ...target.cost.items, wood: (target.cost.items.wood ?? 0) + 2 };
     row.state.wallet = { coins: target.cost.coins, pearls: 0 };
-    if (target.level === 2) {
+    row.state.buildings.home = target.requiredHomeLevel - 1;
+    {
       const before = structuredClone(row.state), revision = row.revision, receipts = row.receipts.size;
       const blocked = await POST(post({ ...command(p), action: "start_construction", targetId: "warehouse" }));
       assert.equal(blocked.status, 409); assert.equal((await blocked.json()).code, "ECONOMY_HOME_REQUIRED");
       assert.deepEqual(row.state, before); assert.equal(row.revision, revision); assert.equal(row.receipts.size, receipts);
     }
-    row.state.buildings.home = target.level === 2 ? 2 : 1;
+    Object.assign(row.state.buildings, target.requiredBuildings, { home: target.requiredHomeLevel });
     const buildings = structuredClone(row.state.buildings);
     const order = { ...command(p), action: "start_construction", targetId: "warehouse" };
     const response = await POST(post(order));
@@ -385,24 +386,43 @@ test("HTTP gates warehouse two at home two and keeps warehouse three independent
   }
 });
 
-test("HTTP builds and claims warehouse ten from earned low-home progress using only relics", async () => {
+test("HTTP requires the final house and ingredient sources before paying for warehouse ten", async () => {
   const p = player();
   economy.getDevEconomy(p.token);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
   row.state.buildings = { home: 1, warehouse: 9 };
-  const target = model.economyCatalog.buildings.find(building => building.id === "warehouse").levels.at(-1);
+  const warehouse = model.economyCatalog.buildings.find(building => building.id === "warehouse");
+  const target = warehouse.levels.find(level => level.level === 10);
   row.state.inventory = { ...target.cost.items };
-  row.state.wallet = { coins: 0, pearls: 0 };
+  const retainedCoins = 321;
+  row.state.wallet = { coins: target.cost.coins + retainedCoins, pearls: 0 };
+  const blockedCommand = { ...command(p), action: "start_construction", targetId: "warehouse" };
+  const beforeGate = structuredClone(row.state);
+  const blocked = await POST(post(blockedCommand));
+  assert.equal(blocked.status, 409); assert.equal((await blocked.json()).code, "ECONOMY_HOME_REQUIRED");
+  assert.deepEqual(row.state, beforeGate);
+  row.state.buildings = { ...row.state.buildings, home: target.requiredHomeLevel, ...target.requiredBuildings };
+  for (const [buildingId, requiredLevel] of Object.entries(target.requiredBuildings)) {
+    row.state.buildings[buildingId] = requiredLevel - 1;
+    const before = structuredClone(row.state), revision = row.revision, receipts = row.receipts.size;
+    const missingSource = await POST(post({ ...command(p), action: "start_construction", targetId: "warehouse" }));
+    assert.equal(missingSource.status, 409);
+    assert.equal((await missingSource.json()).code, "ECONOMY_BUILDING_REQUIRED");
+    assert.deepEqual(row.state, before); assert.equal(row.revision, revision); assert.equal(row.receipts.size, receipts);
+    row.state.buildings[buildingId] = requiredLevel;
+  }
   const order = { ...command(p), action: "start_construction", targetId: "warehouse" };
   const response = await POST(post(order));
   assert.equal(response.status, 200);
   const started = await response.json();
   assert.equal(model.economyResultSchema.safeParse(started).success, true);
   assert.equal(started.state.jobs[0].targetLevel, 10);
+  assert.deepEqual(started.state.jobs[0].cost, target.cost);
   assert.equal(started.state.storage.capacity, 450);
-  assert.deepEqual(started.state.wallet, { coins: 0, pearls: 0 });
+  assert.deepEqual(started.state.wallet, { coins: retainedCoins, pearls: 0 });
   assert.deepEqual(started.state.inventory, {});
-  assert.equal((await (await POST(post(order))).json()).replayed, true);
+  const replayedStart = await (await POST(post(order))).json();
+  assert.equal(replayedStart.replayed, true); assert.deepEqual(replayedStart.state.wallet, started.state.wallet);
   // Advance only this fixture's valid saved interval; the client sends no time or capacity.
   const finishedAt = Date.now() - 1000;
   row.state.jobs[0].startedAt = new Date(finishedAt - target.seconds * 1000).toISOString();
@@ -412,16 +432,49 @@ test("HTTP builds and claims warehouse ten from earned low-home progress using o
   assert.equal(claimedResponse.status, 200);
   const claimed = await claimedResponse.json();
   assert.equal(model.economyResultSchema.safeParse(claimed).success, true);
-  assert.equal(claimed.state.buildings.home, 1);
+  assert.equal(claimed.state.buildings.home, 4);
   assert.equal(claimed.state.buildings.warehouse, 10);
   assert.equal(claimed.state.storage.capacity, 500);
   assert.deepEqual(claimed.state.jobs, []);
+  assert.deepEqual(claimed.state.wallet, { coins: retainedCoins, pearls: 4 });
+  assert.equal(claimed.state.progression.player.xp, 1000);
+  assert.deepEqual(claimed.state.progression.player.awardedLevels, [5]);
   const repeated = await (await POST(post(claim))).json();
   assert.equal(repeated.replayed, true);
   assert.equal(repeated.state.revision, claimed.state.revision);
+  assert.deepEqual(repeated.state.wallet, claimed.state.wallet);
+  const missingRelic = await POST(post({ ...command(p), action: "start_construction", targetId: "warehouse" }));
+  assert.equal(missingRelic.status, 409); assert.equal((await missingRelic.json()).code, "ECONOMY_RESOURCES");
+  assert.equal(row.state.buildings.warehouse, 10, 'tier ten still has optional relic expansions');
+  row.state.buildings.warehouse = warehouse.levels.at(-1).level;
+  const beforeMaximum = structuredClone(row.state);
   const maximum = await POST(post({ ...command(p), action: "start_construction", targetId: "warehouse" }));
   assert.equal(maximum.status, 409);
   assert.equal((await maximum.json()).code, "ECONOMY_MAX_LEVEL");
+  assert.deepEqual(row.state, beforeMaximum);
+});
+
+test("HTTP can claim an already paid legacy warehouse ten on a low house without new materials or refunds", async () => {
+  const p = player(); economy.getDevEconomy(p.token);
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  row.state.buildings = { home: 1, warehouse: 9 };
+  row.state.inventory = { wood: 2 }; row.state.wallet = { coins: 123, pearls: 50 };
+  const finish = Date.now() - 1000;
+  const job = model.economyJobSchema.parse({ id: crypto.randomUUID(), kind: "construction", targetId: "warehouse",
+    targetLevel: 10, recipeId: null, startedAt: new Date(finish - 86400000).toISOString(), finishesAt: new Date(finish).toISOString(),
+    rewards: {}, cost: { coins: 0, items: { ancient_core: 10, moon_crystal: 3, living_resin: 3 } }, catalogVersion: 14 });
+  row.state.jobs = [job];
+  const claim = { ...command(p), action: "claim_job", targetId: job.id };
+  const response = await POST(post(claim)); assert.equal(response.status, 200);
+  const claimed = await response.json();
+  assert.equal(claimed.state.buildings.home, 1); assert.equal(claimed.state.buildings.warehouse, 10);
+  assert.equal(claimed.state.storage.capacity, 500); assert.deepEqual(claimed.state.jobs, []);
+  assert.deepEqual(claimed.state.inventory, { wood: 2 }); assert.deepEqual(claimed.state.wallet, { coins: 123, pearls: 54 });
+  assert.equal(claimed.state.progression.player.xp, 1000);
+  assert.deepEqual(claimed.state.progression.player.awardedLevels, [5]);
+  const replayed = await (await POST(post(claim))).json();
+  assert.equal(replayed.replayed, true);
+  assert.deepEqual(replayed.state.wallet, claimed.state.wallet, 'claim replay cannot award the level pearls again');
 });
 
 test("cross-site writes and wrong content types cannot change economy", async () => {
@@ -462,8 +515,108 @@ test("commands reject hostile JSON shape, extra fields, fractions and body overf
   const p = player(), cmd = command(p);
   for (const bad of ["{broken", [], null, { ...cmd, quantity: "2" }, { ...cmd, quantity: 1.5 }, { ...cmd, pearls: 100 }, { ...cmd, action: "buy_pearls" }, { ...cmd, requestId: "not-a-receipt" }])
     assert.equal((await POST(post(bad))).status, 400);
-  assert.equal((await POST(post(" ".repeat(4097)))).status, 413);
+  assert.equal((await POST(post(" ".repeat(32769)))).status, 413);
   assert.equal((await marketPOST(post(" ".repeat(2049), {}, "/market/commands"))).status, 413);
+  assert.equal(economy.getDevEconomy(p.token).revision, 0);
+});
+
+test("a repaired boat can depart through the economy API", async () => {
+  const p = player();
+  const departure = { ...command(p), action: "depart_boat", targetId: "river_reach" };
+  const profile = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  profile.state.boat.level = 1;
+  const response = await POST(post(departure));
+  assert.equal(response.status, 200);
+  assert.ok((await response.json()).state.boat.voyage.id);
+});
+
+test("concurrent emergency fuel requests charge one quoted cell and a lost response replays without a second debit", async () => {
+  const p = player(), request = { ...command(p), action: "buy_boat_fuel", targetId: "fuel_cell", totalPrice: model.economyCatalog.boat.fuel.refillPricePearls };
+  const profile = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  const nextAt = new Date(Date.now() + 900000).toISOString();
+  profile.state.boat.level = 1; profile.state.boat.fuel = { cells: 0, nextAt }; profile.state.wallet.pearls = 100;
+  const calls = [request, { ...request, requestId: crypto.randomUUID() }];
+  const results = await Promise.all(calls.map(input => POST(post(input))));
+  assert.deepEqual(results.map(response => response.status).sort(), [200, 409]);
+  const accepted = calls[results.findIndex(response => response.status === 200)];
+  const replay = await (await POST(post(accepted))).json();
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.state.wallet.pearls, 100 - request.totalPrice);
+  assert.deepEqual(replay.state.boat.fuel, { cells: 1, nextAt });
+  assert.equal(profile.revision, request.expectedRevision + 1);
+});
+
+test("paused boat commands leave saved state untouched; pending repairs and returning cargo remain claimable", async t => {
+  const { default: features } = await vite.ssrLoadModule("/apps/api/src/main/resources/world/release-features.json");
+  const configured = features.boatFishingEnabled;
+  features.boatFishingEnabled = false;
+  t.after(() => { features.boatFishingEnabled = configured; });
+  const p = player();
+  economy.getDevEconomy(p.token);
+  const profile = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  const store = await vite.ssrLoadModule("/features/economy/domain/boat-fishing.ts");
+  profile.state.boat = { ...store.newBoatState(), level: 1 };
+  // Seed an outing made by the previous version, already at the fishing spot with one fish on board.
+  const previous = Date.now() - 15 * 60_000;
+  const oldVoyage = economy.commandDevEconomy(p.token, { ...command(p), action: "depart_boat", targetId: "river_reach" }, previous).state.boat.voyage;
+  const slot = profile.state.boat.voyage.slots[0];
+  profile.state.boat.voyage.castsUsed = 1;
+  profile.state.boat.voyage.catches = [{ castIndex: 0, fishId: slot.fishId, weightGrams: slot.weightGrams, caughtAt: oldVoyage.arrivesAt }];
+  const saved = structuredClone(profile.state.boat);
+  for (const [action, targetId] of [["depart_boat", "river_reach"], ["start_boat_upgrade", "oars"], ["buy_boat_fuel", "fuel_cell"], ["begin_boat_cast", oldVoyage.id]]) {
+    const cmd = { ...command(p), action, targetId }, before = profile.revision;
+    const response = await POST(post(cmd));
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).code, "ECONOMY_BOAT_PAUSED");
+    assert.equal(profile.revision, before);
+    assert.deepEqual(profile.state.boat, saved);
+  }
+  const arrived = Date.now() - 1000;
+  const returning = await POST(post({ ...command(p), action: "return_boat", targetId: oldVoyage.id }));
+  assert.equal(returning.status, 200);
+  profile.state.boat.voyage.returnStartedAt = new Date(arrived - oldVoyage.inboundSeconds * 1000).toISOString();
+  profile.state.boat.voyage.returnsAt = new Date(arrived).toISOString();
+  const claim = { ...command(p), action: "claim_boat", targetId: oldVoyage.id };
+  assert.equal((await POST(post(claim))).status, 200);
+  assert.equal((await (await POST(post(claim))).json()).replayed, true);
+  assert.equal(profile.state.boat.voyage, undefined);
+  assert.equal(profile.state.fishing.stock[slot.fishId], 1);
+  profile.state.boat.work = { id: crypto.randomUUID(), upgradeId: "oars", startedAt: new Date(arrived - 1000).toISOString(),
+    finishesAt: new Date(arrived).toISOString(), cost: { coins: 0, items: {} } };
+  const work = { ...command(p), action: "claim_boat_upgrade", targetId: profile.state.boat.work.id };
+  assert.equal((await POST(post(work))).status, 200);
+  assert.deepEqual(profile.state.boat.upgrades, ["oars"]);
+});
+
+test("HTTP accepts a bounded 600-event reel through parsing without enlarging the market limit", async () => {
+  const p = player(), before = economy.getDevEconomy(p.token);
+  const cmd = { ...command(p), action: "submit_boat_cast", targetId: crypto.randomUUID(),
+    reel: { challengeId: crypto.randomUUID(), endTick: 600,
+      inputs: Array.from({ length: 600 }, (_, tick) => ({ tick, held: tick % 2 === 0 })) } };
+  const body = JSON.stringify(cmd), bytes = new TextEncoder().encode(body).length;
+  assert.ok(bytes > 4096 && bytes < 32768, "a complete legal control envelope exceeds the former command limit");
+  const response = await POST(post(body));
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).code, "ECONOMY_BOAT_VOYAGE_GONE", "the valid envelope reaches the voyage check");
+  const invalid = await POST(post({ ...cmd, reel: { ...cmd.reel, inputs: [...cmd.reel.inputs, { tick: 600, held: true }] } }));
+  assert.equal(invalid.status, 400); assert.equal((await invalid.json()).code, "INVALID_ECONOMY_COMMAND");
+  assert.equal((await marketPOST(post(body, {}, "/market/commands"))).status, 413, "market retains its smaller 2048-byte limit");
+  const after = economy.getDevEconomy(p.token);
+  assert.equal(after.revision, before.revision); assert.deepEqual(after.inventory, before.inventory);
+  assert.equal(globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).receipts.size, 0);
+});
+
+test("command body boundary is 32 KiB including streamed bytes with a dishonest length header", async () => {
+  const p = player(), cmd = { ...command(p), action: "claim_boat", targetId: crypto.randomUUID() };
+  const exactlyAtLimit = JSON.stringify(cmd).padEnd(32768, " ");
+  assert.equal(new TextEncoder().encode(exactlyAtLimit).length, 32768);
+  const accepted = await POST(post(exactlyAtLimit));
+  assert.equal(accepted.status, 409); assert.equal((await accepted.json()).code, "ECONOMY_BOAT_VOYAGE_GONE");
+  for (const headers of [{}, { "Content-Length": "1" }]) {
+    const rejected = await POST(post(exactlyAtLimit + " ", headers));
+    assert.equal(rejected.status, 413); assert.equal(rejected.headers.get("Cache-Control"), "no-store");
+    assert.equal((await rejected.json()).code, "BODY_TOO_LARGE");
+  }
   assert.equal(economy.getDevEconomy(p.token).revision, 0);
 });
 

@@ -5,7 +5,7 @@ export const worldCatalog = catalog;
 const count = z.number().int().nonnegative().safe();
 export const resourcesSchema = z.object({ sparks: count, wood: count, stone: count });
 export const journeySchema = z.object({
-  id: z.string().uuid(), routeId: z.string(), startedAt: z.string().datetime(), finishesAt: z.string().datetime(),
+  id: z.guid(), routeId: z.string(), startedAt: z.string().datetime(), finishesAt: z.string().datetime(),
   rewards: resourcesSchema, finds: z.array(z.string()).max(20), introductory: z.boolean(), catalogVersion: count,
 });
 export const worldStateSchema = z.object({
@@ -23,7 +23,7 @@ export const worldSnapshotSchema = z.object({
 export const worldCommandSchema = z.object({
   requestId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/), ownerPublicId: z.string().min(1).max(40), expectedRevision: count,
   action: z.enum(["upgrade_house", "build_workshop", "upgrade_workshop", "craft", "equip", "set_decoration", "start_journey", "recall_journey", "claim_journey", "dev_grant_resources"]),
-  target: z.string().max(80).default(""),
+  target: z.string().max(80).prefault(""),
 }).strict();
 export const worldResultSchema = z.object({ snapshot: worldSnapshotSchema, message: z.string(), replayed: z.boolean() });
 export type WorldState = z.infer<typeof worldStateSchema>;

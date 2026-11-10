@@ -10,19 +10,24 @@ import { economyCatalog, type EconomyCost, type EconomyView } from "@/features/e
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import type { ConstructionGoalController } from "./use-construction-goal";
 import { ConstructionSpeedup } from "./construction-speedup";
+import { HomeUpgradeBenefits } from "./home-upgrade-benefits";
+import { familiarEconomyItems } from "@/features/economy/domain/familiar-items";
+import { cookbookRecipeVisible } from "@/features/economy/ui/food/cookbook-visibility";
 import { ConstructionBuildingArt } from "./construction-building-art";
 import { ConstructionRequirements } from "./construction-requirements";
 import { UpgradeBenefitCarousel, type UpgradeBenefitCard } from "./upgrade-benefit-carousel";
 import { WorldHomeFinale } from "./world-home-finale";
 import { WorldMealBoost } from "@/features/economy/ui/food/world-meal-boost";
-import { mealSpeedDescription } from "@/features/economy/ui/food/meal-speed-description";
-import { mealDuration, pendingMeal } from "@/features/economy/domain/food";
+import { mealTimeExample } from "@/features/economy/ui/food/meal-speed-description";
+import { experimentDiscovered, skillForExploration, skillForProduction, skillProgress, skillWorkDuration } from "@/features/economy/domain/craft-skill";
+import { builderWorkDuration, heroMealWorkDuration, pendingMeal } from "@/features/economy/domain/food";
+import { tradeRelationBonusBps, tradeWorkDuration } from "@/features/economy/domain/trade-relations";
 import { economyBuilderStatus } from "@/features/economy/domain/builder-status";
 import { explorationActorId } from "@/features/economy/domain/actor-availability";
 import { stageOrderProgress } from "@/features/economy/domain/stage-orders";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { Work, ProductIcon, itemName, stationName, number, type StationNavigation } from "@/features/economy/ui/shared/world-economy-parts";
-import { worldConstructionReason, worldCountdown, worldDuration, worldMaterialSource, worldMissingRequirements, worldRequirements, type WorldBuildingLevel } from "@/features/economy/ui/shared/world-stations";
+import { worldConstructionReason, worldCountdown, worldDuration, worldMaterialSource, worldRecipeAccessReason, worldMissingRequirements, worldRequirements, type WorldBuildingLevel } from "@/features/economy/ui/shared/world-stations";
 import menuStyles from "@/features/economy/ui/stations/world-object-menu.module.css";
 import styles from "./world-upgrade-dialog.module.css";
 
@@ -43,8 +48,8 @@ export type WorldUpgradeDialogProps = {
 export function worldUpgradeUnlocks(state: EconomyView, stationId: string, target: WorldBuildingLevel) {
   const usesLevel = (value: Parameters<typeof worldRequirements>[0], recipe?: Parameters<typeof worldRequirements>[1]) => worldRequirements(value, recipe)[stationId] === target.level;
   return {
-    recipes: state.catalog.recipes.filter(recipe => usesLevel(recipe, recipe)),
-    routes: state.catalog.explorations.filter(route => usesLevel(route)),
+    recipes: state.catalog.recipes.filter(recipe => !recipe.retired && usesLevel(recipe, recipe)),
+    routes: state.catalog.explorations.filter(route => !route.retired && usesLevel(route)),
     upgrades: state.catalog.buildings.flatMap(building => building.id === stationId ? [] : building.levels.filter(level => usesLevel(level)).map(level => ({ stationId: building.id, name: building.name, level: level.level }))),
     market: stationId === "home" && target.level === state.catalog.market.requiredHomeLevel
       || state.catalog.market.requiredBuildings[stationId] === target.level,
@@ -77,7 +82,7 @@ function UpgradeCost({ state, cost, navigation }: { state: EconomyView; cost: Ec
   })}</ul>{guaranteed.length > 0 && <p className={styles.muted}>Гарантированный источник: завершите проект к дому {(state.buildings.home ?? 1) + 1} на доске жителей. Награда: {guaranteed.map(({ id }) => `${itemName(state, id)} × ${projectRewards[id]}`).join(", ")}. Жемчуг не требуется.</p>}{lockedFinds && <p className={styles.muted}>Находки реликвий в вылазках доступны с домом ур. {state.catalog.rareDrops!.requiredHomeLevel}.</p>}</>;
 }
 
-function UpgradeUnlocks({ state, stationId, target, navigation }: { state: EconomyView; stationId: string; target: WorldBuildingLevel; navigation?: StationNavigation }) {
+function UpgradeUnlocks({ state, stationId, target, navigation, now }: { now: number; state: EconomyView; stationId: string; target: WorldBuildingLevel; navigation?: StationNavigation }) {
   const unlocks = worldUpgradeUnlocks(state, stationId, target);
   // The home opens a new tier of crops and dishes. Other station previews show
   // only their own products so their dependency cascade stays in /branch.
@@ -86,6 +91,9 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
   const firstBuildings = stationId === "home" ? unlocks.upgrades.filter(upgrade => upgrade.level === 1) : [];
   const nextBuildingLevel = stationId === "home" ? Math.max(0, ...unlocks.upgrades.map(upgrade => upgrade.level)) : 0;
   const cards: UpgradeBenefitCard[] = [];
+  const warehouse = state.catalog.buildings.find(building => building.id === "warehouse");
+  const relicIds = new Set(state.catalog.items.filter(item => item.category === "special").map(item => item.id));
+  const firstRelicLevel = warehouse?.levels.find(level => Object.keys(level.cost.items).some(id => relicIds.has(id)))?.level;
   const requirements = (required: Record<string, number>) => worldMissingRequirements(futureState, required).length > 0
     ? <span className={styles.benefitLocked}><LockKeyhole size={12} aria-hidden="true" />Ещё условия</span>
     : <span className={styles.benefitReady}><Check size={13} aria-hidden="true" />После этого улучшения</span>;
@@ -98,7 +106,7 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
     <span className={styles.benefitKind}>Больше запасов</span><strong className={styles.benefitTitle}>Вместимость кладовой</strong>
     <span className={styles.capacityNumbers}><strong>{number(state.storage.capacity)}</strong><ArrowRight size={18} aria-label="увеличится до" /><strong>{number(target.warehouseCapacity)}</strong></span>
     <span className={styles.benefitGain}>+{number(target.warehouseCapacity - state.storage.capacity)} мест</span>
-    <span className={styles.benefitDescription}>Для материалов, урожая и готовых заказов.</span>
+    <span className={styles.benefitDescription}>{firstRelicLevel ? target.level < firstRelicLevel ? `Материалы и монеты до ур. ${firstRelicLevel - 1}. С ур. ${firstRelicLevel} только реликвии.` : "Расширение только за реликвии. Монеты и обычные материалы не нужны." : "Для материалов, урожая и готовых заказов."}</span>
   </> });
 
   if (stationId === "home") {
@@ -110,7 +118,7 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
     </> });
     for (const upgrade of firstBuildings) {
       const level = state.catalog.buildings.find(building => building.id === upgrade.stationId)?.levels.find(level => level.level === 1);
-      cards.push({ id: `building:${upgrade.stationId}`, label: upgrade.name, details: level && requirementDetails(worldRequirements(level), "Для этой постройки"), content: <>
+      cards.push({ id: `building:${upgrade.stationId}`, group: "buildings", label: upgrade.name, details: level && requirementDetails(worldRequirements(level), "Для этой постройки"), content: <>
         <span className={styles.benefitArt} data-kind="building"><ConstructionBuildingArt stationId={upgrade.stationId} level={upgrade.level} /></span>
         <span className={styles.benefitKind}>{upgrade.stationId === "dryer" ? "Развитие костра" : "Новая постройка"}</span><strong className={styles.benefitTitle}>{upgrade.name}</strong><span className={styles.benefitDescription}>{upgrade.stationId === "dryer" ? "Можно улучшить · ур. 1" : "Можно обустроить · ур. 1"}</span>
         {level && requirements(worldRequirements(level))}
@@ -123,32 +131,45 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
     const rewards = Object.entries(route.rewards);
     const mining = explorationActorId(route) === "miner";
     const ActivityIcon = mining ? Pickaxe : Compass;
-    cards.push({ id: `route:${route.id}`, label: route.name, details: requirementDetails(worldRequirements(route), mining ? "Для этой добычи" : "Для этого маршрута"), content: <>
+    cards.push({ id: `route:${route.id}`, group: "routes", label: route.name, details: requirementDetails(worldRequirements(route), mining ? "Для этой добычи" : "Для этого маршрута"), content: <>
       <span className={styles.benefitArt} data-kind="route">{rewards.slice(0, 3).map(([id]) => <ProductIcon state={state} key={id} itemId={id} size={42} />)}<ActivityIcon size={20} className={styles.benefitArtBadge} aria-hidden="true" /></span>
-      <span className={styles.benefitKind}>{mining ? "Новая добыча" : "Новый маршрут"} · {worldDuration(route.seconds)}</span><strong className={styles.benefitTitle}>{route.name.replace(/ · \d+ ч$/, "")}</strong>
+      <span className={styles.benefitKind}>{mining ? "Новая добыча" : "Новый маршрут"} · {worldDuration(mining ? skillWorkDuration(state, "mining", tradeWorkDuration(state, route.seconds, "kamneshmyg", 0, state.catalog, now), state.catalog) : heroMealWorkDuration(state, route.seconds, skillForExploration(route, state.catalog)))}</span><strong className={styles.benefitTitle}>{route.name.replace(/ · \d+ ч$/, "")}</strong>
       <span className={styles.benefitRewards} role="list" aria-label="Находки маршрута">{rewards.map(([id, amount]) => <span role="listitem" key={id}>{itemName(state, id)} <b>×{number(amount)}</b></span>)}</span>
       {requirements(worldRequirements(route))}
       {mining && <span className={styles.benefitDescription}>Шахта работает независимо от Мохлика.</span>}
     </> });
   }
 
+  const familiar = new Set(familiarEconomyItems(state));
+  let hiddenRecipes = 0;
   for (const entry of recipes) {
+    if (entry.buildingId === "dryer" && (!cookbookRecipeVisible(state, entry, familiar) || !experimentDiscovered(state, entry))) {
+      hiddenRecipes++;
+      continue;
+    }
     const rewards = Object.entries(entry.rewards);
     const missing = worldMissingRequirements(futureState, worldRequirements(entry, entry));
     const title = rewards.length === 1 ? itemName(state, rewards[0][0]) : `Набор · ${rewards.length} вида`;
+    const access = worldRecipeAccessReason(futureState, entry);
     const meal = state.catalog.food?.meals.find(meal => (entry.rewards[meal.itemId] ?? 0) > 0);
-    cards.push({ id: `recipe:${entry.id}`, label: entry.name, recipeId: entry.id, detailLabel: "Состав и условия",
-      details: <div className={styles.recipeDetail}><strong>{entry.name}</strong><ul aria-label="Результат рецепта">{Object.entries(entry.rewards).map(([id, amount]) => <li key={id}><ProductIcon state={state} itemId={id} size={18} /><span>{itemName(state, id)}</span><b>×{number(amount)}</b></li>)}</ul><p className={styles.recipeInputs}><span>Нужно:</span>{entry.cost.coins > 0 && <span><ItemIcon itemId="coins" size={16} />{number(entry.cost.coins)}</span>}{Object.entries(entry.cost.items).map(([id, amount]) => <span key={id}><ProductIcon state={state} itemId={id} size={16} />{itemName(state, id)} ×{number(amount)}</span>)}{!entry.cost.coins && !Object.keys(entry.cost.items).length && <span>без затрат</span>}</p><ConstructionRequirements state={futureState} required={worldRequirements(entry, entry)} navigation={navigation} /></div>,
+    cards.push({ id: `recipe:${entry.id}`, group: entry.buildingId === "dryer" ? "cooking" : "production", label: entry.name, recipeId: entry.id, detailLabel: "Состав и условия",
+      details: <div className={styles.recipeDetail}><strong>{entry.name}</strong><ul aria-label="Результат рецепта">{Object.entries(entry.rewards).map(([id, amount]) => <li key={id}><ProductIcon state={state} itemId={id} size={18} /><span>{itemName(state, id)}</span><b>×{number(amount)}</b></li>)}</ul><p className={styles.recipeInputs}><span>Нужно:</span>{entry.cost.coins > 0 && <span><ItemIcon itemId="coins" size={16} />{number(entry.cost.coins)}</span>}{Object.entries(entry.cost.items).map(([id, amount]) => <span key={id}><ProductIcon state={state} itemId={id} size={16} />{itemName(state, id)} ×{number(amount)}</span>)}{!entry.cost.coins && !Object.keys(entry.cost.items).length && <span>без затрат</span>}</p><ConstructionRequirements state={futureState} required={worldRequirements(entry, entry)} navigation={navigation} />{!missing.length && access && <p className={styles.muted}>{access}</p>}</div>,
       content: <>
       <span className={styles.benefitArt} data-kind="recipe">{rewards.slice(0, 3).map(([id]) => <ProductIcon state={state} key={id} itemId={id} size={44} />)}</span>
-      <span className={styles.benefitKind}>Новый рецепт{stationId === "home" ? ` · ${stationName(state, entry.buildingId)}` : ""}</span><strong className={styles.benefitTitle}>{title}</strong>
-      <span className={styles.benefitDescription}>{rewards.length === 1 ? `×${number(rewards[0][1])} · ` : ""}{worldDuration(entry.seconds)}</span>
-      {meal && <span className={styles.benefitDescription}>Вылазка +{meal.heroSpeedBps / 100}% · стройка +{meal.builderSpeedBps / 100}% скорости</span>}
-      {missing.length > 0 && <span className={styles.benefitLocked}><LockKeyhole size={12} aria-hidden="true" />Ещё условия</span>}
+      <span className={styles.benefitKind}>{entry.experiment ? "Кулинарный опыт" : "Новый рецепт"}{stationId === "home" ? ` · ${stationName(state, entry.buildingId)}` : ""}</span><strong className={styles.benefitTitle}>{title}</strong>
+      <span className={styles.benefitDescription}>{rewards.length === 1 ? `×${number(rewards[0][1])} · ` : ""}{worldDuration(skillWorkDuration(state, skillForProduction(entry.buildingId), entry.buildingId === "woodlot" ? tradeWorkDuration(state, entry.seconds, "lopukh", 0, state.catalog, now) : entry.seconds, state.catalog))}</span>
+      {meal && <span className={styles.benefitDescription}>Пример: вылазка {mealTimeExample(meal.heroSpeedBps, meal.heroWorkSeconds)} · стройка {mealTimeExample(meal.builderSpeedBps, meal.builderWorkSeconds, "builder")}</span>}
+      {access && <span className={styles.benefitLocked}><LockKeyhole size={12} aria-hidden="true" />Ещё условия</span>}
     </> });
   }
 
-  if (unlocks.market) cards.push({ id: "market", label: "Рынок между игроками", details: <div className={styles.recipeDetail}><strong>Для открытия рынка</strong><ConstructionRequirements state={futureState} required={worldRequirements(state.catalog.market)} navigation={navigation} />
+  if (hiddenRecipes) cards.push({ id: "undiscovered-dishes", group: "cooking", count: hiddenRecipes, label: "Неизвестные рецепты", content: <>
+    <span className={styles.benefitArt}><CircleHelp size={38} aria-hidden="true" /></span>
+    <strong className={styles.benefitTitle}>Рецептов предстоит открыть: {hiddenRecipes}</strong>
+    <span className={styles.benefitDescription}>Собирайте ингредиенты и пробуйте новые сочетания у костра.</span>
+  </> });
+
+  if (unlocks.market) cards.push({ id: "market", group: "buildings", label: "Рынок между игроками", details: <div className={styles.recipeDetail}><strong>Для открытия рынка</strong><ConstructionRequirements state={futureState} required={worldRequirements(state.catalog.market)} navigation={navigation} />
     {state.completedExplorations < state.catalog.market.requiredExplorations
       ? <p className={styles.muted}>Нужно завершить вылазок: {state.completedExplorations} / {state.catalog.market.requiredExplorations}</p>
       : <p className={styles.muted}>После восстановления моста можно торговать с другими игроками.</p>}
@@ -165,7 +186,7 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
       ...fishing.hooks.filter(item => item.requiredHomeLevel === target.level).map(item => ({ ...item, itemId: item.id, kind: "Крючок" })),
       ...fishing.baits.filter(item => item.requiredHomeLevel === target.level).map(item => ({ ...item, name: itemName(state, item.itemId), kind: "Наживка" })),
     ];
-    for (const item of gear) cards.push({ id: `fishing:${item.itemId}`, label: item.name, details: <div className={styles.recipeDetail}><strong>{item.name}</strong><p className={styles.muted}>{item.description}</p></div>, content: <>
+    for (const item of gear) cards.push({ id: `fishing:${item.itemId}`, group: "fishing", label: item.name, details: <div className={styles.recipeDetail}><strong>{item.name}</strong><p className={styles.muted}>{item.description}</p></div>, content: <>
       <span className={styles.benefitArt} data-kind="fishing">{item.kind === "Удочка" ? <FishingRodIcon rodId={item.itemId} size={60} /> : <ItemIcon itemId={item.itemId} size={52} />}</span>
       <span className={styles.benefitKind}>{item.kind} · у Плёски</span><strong className={styles.benefitTitle}>{item.name}</strong><span className={styles.benefitDescription}>{item.description.match(/^.*?[.!?](?:\s|$)/)?.[0].trim() ?? item.description}</span>
       <span className={styles.benefitShopHint}>Сможет появиться в новых поставках.</span>
@@ -179,7 +200,7 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
     </> });
   }
 
-  return <UpgradeBenefitCarousel cards={cards} />;
+  return stationId === "home" ? <HomeUpgradeBenefits cards={cards} /> : <UpgradeBenefitCarousel cards={cards} />;
 }
 
 /** Kept separate from the portal so loading, locks and paid jobs can be rendered in tests. */
@@ -197,6 +218,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
   const homeFinale = stationId === "home" && maximum > 0 && current >= maximum && !target && !construction;
   const builder = state ? economyBuilderStatus(state, economy.now) : null;
   const meal = state ? pendingMeal(state, "builder") : null;
+  const tradeSpeedBps = state ? tradeRelationBonusBps(state, "builder", state.catalog, economy.now) : 0;
   const builderElsewhere = !construction && target && builder;
   const readyEconomy: ReadyEconomy | null = state ? { ...economy, snapshot: state } : null;
   const reason = state && target ? worldConstructionReason(state, stationId, target) : null;
@@ -232,7 +254,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
         </section>}
         {readyEconomy && production.length > 0 && <section className={styles.section} aria-label="Текущие заказы"><h3><Clock3 size={16} aria-hidden="true" />Сначала заберите {production.length === 1 ? "заказ" : "заказы"}</h3>{production.map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={onOpenPantry} />)}</section>}
         {target ? <>
-          <UpgradeUnlocks key={target.level} state={state} stationId={stationId} target={target} navigation={navigation} />
+          <UpgradeUnlocks key={target.level} now={economy.now} state={state} stationId={stationId} target={target} navigation={navigation} />
           {!construction && <section className={`${styles.section} ${styles.costCard}`} aria-label="Подготовка к улучшению">
             <div className={styles.sectionHeading}><h3>Потребуется</h3><span>Есть / нужно</span></div>
             <UpgradeCost state={state} cost={target.cost} navigation={navigation} />
@@ -246,7 +268,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
     {!construction && <footer className={styles.footer}>
       {state && target ? <>
         {visibleReason && <p className={styles.reason} role="status"><LockKeyhole size={14} aria-hidden="true" />{visibleReason}</p>}
-        <div className={styles.confirmRow}><div className={styles.durationWithMeal}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{restoration ? "Время восстановления" : "Время улучшения"}<strong>{worldDuration(mealDuration(target.seconds, meal?.builderSpeedBps ?? 0))}</strong>{meal && <small>{`Сыт · ${mealSpeedDescription(meal.builderSpeedBps)}`}</small>}</span></span><WorldMealBoost economy={economy} consumer="builder" stationId={stationId} seconds={target.seconds} isOnline={isOnline} onNavigateStation={navigation?.open} /></div><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{restoration ? "Начать восстановление" : current || stationId === "dryer" ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
+        <div className={styles.confirmRow}><div className={styles.durationWithMeal}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{restoration ? "Время восстановления" : "Время улучшения"}<strong>{worldDuration(builderWorkDuration(target.seconds, meal?.builderSpeedBps ?? 0, tradeSpeedBps, meal?.builderWorkSeconds, skillProgress(state, "building", state.catalog).bonusBps))}</strong>{meal && <small>Обед учтён во времени</small>}{tradeSpeedBps > 0 && <small data-construction-trade-bonus>Шишколап: +{tradeSpeedBps / 100}% к скорости</small>}</span></span><WorldMealBoost economy={economy} consumer="builder" stationId={stationId} seconds={target.seconds} isOnline={isOnline} onNavigateStation={navigation?.open} /></div><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{restoration ? "Начать восстановление" : current || stationId === "dryer" ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
       </> : <button type="button" className={styles.done} onClick={onClose}>{homeFinale ? "В лес!" : state ? "Готово" : "Вернуться на карту"}</button>}
     </footer>}
   </>;

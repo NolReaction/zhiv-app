@@ -69,7 +69,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
       export function useGameRewards() { return { data: guideContext.rewards ?? null, refresh: refreshRewards }; }
     `; },
     transform(source, id) {
-      if (id.endsWith("/features/world/state/use-world-market-sales.ts") || id.endsWith("/features/world/audio/use-market-audio.ts") || id.endsWith("/features/world/ui/hud/world-selected-object-menu.tsx") || id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/world/world-portal.tsx") || id.endsWith("/features/economy/ui/construction/use-construction-goal.ts") || id.endsWith("/features/world/state/use-market-unlock-onboarding.ts") || id.endsWith("/features/world/state/use-miner-arrival.ts") || id.endsWith("/features/world/state/use-resident-arrival.ts") || id.endsWith("/features/world/state/use-leaftail-arrival.ts")) {
+      if (id.endsWith("/features/economy/sync/use-ship-orders-arrival.ts") || id.endsWith("/features/world/state/use-world-market-sales.ts") || id.endsWith("/features/world/audio/use-market-audio.ts") || id.endsWith("/features/world/ui/hud/world-selected-object-menu.tsx") || id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/world/world-portal.tsx") || id.endsWith("/features/economy/ui/construction/use-construction-goal.ts") || id.endsWith("/features/world/state/use-market-unlock-onboarding.ts") || id.endsWith("/features/world/state/use-miner-arrival.ts") || id.endsWith("/features/world/state/use-resident-arrival.ts") || id.endsWith("/features/world/state/use-leaftail-arrival.ts")) {
         return source.replace('from "react";', `from "${hookModule}";`)
           .replace('from "@/features/world/state/use-world-onboarding";', `from "${hookModule}";`)
           .replace('from "@/features/world/state/use-forest-observation";', `from "${hookModule}";`)
@@ -154,6 +154,27 @@ test("the modal reveals only available residents and gives the others anonymous 
     } }, preventDefault() {} });
     assert.equal(focused, true);
   }
+});
+
+test("resident cards show actual friendship progress and bonuses without exposing unknown residents", () => {
+  const economy = { catalog: economyCatalog, serverTime: "2026-11-01T12:00:00Z",
+    tradeRelations: { reputation: { builder: 175, plesk: 1600, leaftail: 9999 } } };
+  const render = snapshot => WorldCharacters({ open: true, economy: snapshot,
+    onClose() {}, onCloseAutoFocus() {}, onResident() {} });
+  const nodes = elements(render(economy));
+  const builder = nodes.find(element => element.props["data-world-character"] === "builder");
+  const builderHtml = renderToStaticMarkup(builder);
+  assert.match(builder.props["aria-label"], /Дружба: Приятель, 175 очков/);
+  assert.match(builderHtml, /Ещё 175 до «Друг»/);
+  assert.match(builderHtml, /width:30%/);
+  assert.match(builderHtml, /Скорость стройки \+2%/);
+  const pleskHtml = renderToStaticMarkup(nodes.find(element => element.props["data-world-character"] === "plesk"));
+  assert.match(pleskHtml, /Свой в лесу/); assert.match(pleskHtml, /Высший ранг дружбы/);
+  assert.match(pleskHtml, /width:100%/); assert.match(pleskHtml, /Скидка на снасти и наживку 10%/);
+  const hiddenHtml = renderToStaticMarkup(nodes.find(element => element.props["data-world-character"] === "leaftail"));
+  assert.doesNotMatch(hiddenHtml, /data-resident-reputation|Свой в лесу|9999|Листохвост/);
+  assert.doesNotMatch(renderToStaticMarkup(elements(render(null)).find(element => element.type === "ul")), /data-resident-reputation/,
+    "a missing confirmed economy must not invent zero friendship");
 });
 
 test("house level eligibility alone keeps the merchant anonymous while his physical arrival is pending", () => {
@@ -467,7 +488,7 @@ test("the orders lesson opens the real journal dock entry without blocking its o
       "the coach targets the live portal content instead of the hidden map behind it");
     assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, true);
     assert.equal(nav.component("WorldOnboardingSession").props.modalBlocked, false, "the journal is the orders lesson's own surface");
-    assert.equal(nav.component("SectionGuide").props.enabled, false, "the section introduction yields to the active initial course");
+    assert.equal(nav.component("SectionGuide"), undefined, "the journal does not mount a competing section introduction");
     assert.equal(nav.find(element => element.props.id === "world-quick-menu"), undefined);
     assert.equal(nav.refreshes, 0);
   } finally { nav.restore(); }
@@ -568,8 +589,8 @@ test("another device owning the forest suppresses quick and modal section introd
   } finally { nav.restore(); }
 });
 
-test("world exit immediately unmounts all seven manual guides even before the closing animation ends", () => {
-  for (const section of ["pantry", "expeditions", "orders", "market", "workshop", "plesk", "builder"]) {
+test("world exit immediately unmounts all six manual guides even before the closing animation ends", () => {
+  for (const section of ["pantry", "expeditions", "market", "workshop", "plesk", "builder"]) {
     const nav = guideNavigation();
     const guide = () => section === "plesk" ? nav.component("WorldResidentDialog").props.guide
       : section === "builder" ? nav.component("WorldBuilderDialog").props.guide
@@ -578,7 +599,6 @@ test("world exit immediately unmounts all seven manual guides even before the cl
       if (section === "plesk" || section === "builder") nav.component("WorldScene").props.onResident(section);
       else if (section === "workshop") nav.component("WorldScene").props.onPlace("workshop",
         { place: "workshop", objectId: "workshop", x: 100, y: 150, viewportWidth: 390, viewportHeight: 700 });
-      else if (section === "orders") nav.find(element => element.props["data-world-orders-entry"] !== undefined).props.onClick({ currentTarget: nav.ordersTrigger });
       else {
         nav.find(element => element.props["data-world-quick"] === (section === "market" ? "pantry" : section)).props.onClick();
         if (section === "market") nav.component("WorldScene").props.onPlace("market");
@@ -593,17 +613,17 @@ test("world exit immediately unmounts all seven manual guides even before the cl
   }
 });
 
-test("the standalone journal has its own lesson and preserves filters through ordinary snapshots", () => {
+test("the standalone journal has no manual guide and preserves filters through ordinary snapshots", () => {
   const nav = guideNavigation();
   try {
     nav.find(element => element.props["data-world-orders-entry"] !== undefined).props.onClick({ currentTarget: nav.ordersTrigger });
     const journal = nav.component("WorldOrderJournal"), key = journal.key;
-    assert.equal(nav.component("SectionGuide").props.section, "orders");
-    assert.equal(nav.component("SectionGuide").props.enabled, true);
+    assert.equal(nav.component("SectionGuide"), undefined, "the journal opens without an extra help button or coach");
     assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, true);
     assert.equal(nav.component("WorldOnboardingSession").props.modalBlocked, true);
     nav.props.economy.snapshot = { ...nav.props.economy.snapshot, revision: 2 };
     assert.equal(nav.component("WorldOrderJournal").key, key, "stock refreshes preserve the live journal's selection");
+    assert.equal(nav.component("SectionGuide"), undefined);
     nav.find(element => ["Закрыть панель", "Закрыть журнал заказов"].includes(element.props["aria-label"])).props.onClick();
     assert.equal(nav.component("WorldOrderJournal"), undefined);
     assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, false);
@@ -1877,6 +1897,42 @@ test("the real miner arrival hook keeps the physical run separate from coach dis
     assert.equal(nav.refreshes, 0);
   } finally { pointer.restore(); }
 });
+
+for (const [resident, building, threshold, presentation, coachName] of [
+  ["lopukh", "woodlot", 1, "lopukhArrival", "LopukhArrivalOnboarding"],
+  ["miner", "quarry", 1, "residentArrival", "MinerArrivalOnboarding"],
+  ["leaftail", "home", 3, "merchantArrival", "LeaftailArrivalOnboarding"],
+]) for (const interruption of ["closed", "suspended"]) {
+  test(`WorldView: ${resident} introduction cannot replay after the map is ${interruption} and reopened`, () => {
+    const pointer = pointerNavigation(), { nav } = pointer, values = new Map();
+    window.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+    const owner = `arrival-return-${resident}-${interruption}`;
+    nav.props.ownerPublicId = owner;
+    nav.props.economy.snapshot.ownerPublicId = owner;
+    nav.props.economy.snapshotConfirmed = true;
+    Object.assign(nav.props.economy.snapshot.buildings, { home: 3, quarry: 1, woodlot: 1, [building]: threshold - 1 });
+    try {
+      pointer.render(); pointer.render(); pointer.render();
+      nav.props.economy.snapshot.buildings[building] = threshold;
+      pointer.render(); pointer.render();
+      const arrival = nav.component("WorldScene").props[presentation];
+      assert.equal(arrival.enabled, true); assert.equal(arrival.seen, false);
+      assert.equal(nav.component(coachName).props.open, true);
+      if (interruption === "closed") nav.props.open = false; else nav.props.suspended = true;
+      pointer.render(); pointer.render();
+      nav.props.open = true; nav.props.suspended = false;
+      pointer.render(); pointer.render();
+      const returned = nav.component("WorldScene").props[presentation];
+      assert.equal(returned.seen, true); assert.equal(returned.enabled, false);
+      assert.equal(nav.component(coachName).props.open, false);
+      assert.equal(nav.component("ResidentArrivalNotice"), undefined, "an interrupted introduction does not queue a new greeting");
+      arrival.onComplete(); pointer.render();
+      assert.equal(nav.component("ResidentArrivalNotice"), undefined, "a stale canvas completion cannot announce another arrival");
+      assert.deepEqual(JSON.parse(values.get(`zhiv.${resident}-arrival.v1:${owner}`)), { version: 1, arrived: true, dismissed: true });
+      assert.equal(nav.refreshes, 0);
+    } finally { pointer.restore(); }
+  });
+}
 
 test("route completion leaves the new miner greeting until Meet opens his own conversation", () => {
   const pointer = pointerNavigation(), { nav } = pointer;

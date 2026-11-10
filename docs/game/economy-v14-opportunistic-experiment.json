@@ -1,0 +1,1818 @@
+{
+  "schemaVersion": 1,
+  "economyVersion": 14,
+  "economySha256": "58b7ebb5c359c5d971c5b931ef7a62d46b9bed8afac0cd9e3e2723b7a3f6d34e",
+  "rewardsSha256": "a0a881b5a121f30f75dbc16f1756c537c486bb4076f745ace01cb185877eb8b6",
+  "policy": {
+    "visitsPerDay": 3,
+    "visitIntervalHours": 8,
+    "firstVisitMinutes": 60,
+    "defaultManualSeconds": 2,
+    "completion": "Home at catalog maximum, claimed: same condition as WorldHomeFinale",
+    "rewards": "Actual one-time welcome, eligible tutorial, seven home-tier gifts on canonical cooldown, earned economy achievements. No external social/tap/market achievements.",
+    "slots": "Buy all second slots before third slots; workshop, woodlot, garden, kiln, dryer priority. Each purchase uses actual domain command and pearl debit.",
+    "externalSlots": "Alternative stress case adds 3500 stored = 1750 visible pearls explicitly from outside. This is not free progression or an enabled payment claim.",
+    "production": "Manually start one item per slot; prepare at most owned-slot capacity of current visible requirements. No automatic restart or future-order knowledge.",
+    "income": "Current visible ordinary orders, spare single-item mining, and basic fishing sold via actual NPC commands. No invented market buyers or tap income.",
+    "food": "Use owned optional meals after reserving visible order/build/recipe needs. Does not optimize a dedicated cooking strategy.",
+    "limits": "Deterministic strategy, not population forecast. Two seconds per command is an explicit attention assumption tested at one and four seconds. Earliest source definitions are chosen locally; this is not an optimal speedrun."
+  },
+  "scenarios": [
+    {
+      "label": "free-30m",
+      "completed": true,
+      "seed": 1,
+      "regularMinutes": 30,
+      "firstMinutes": 60,
+      "slotPolicy": "earned",
+      "opportunisticRoutes": true,
+      "materialRouteStarts": [
+        {
+          "route": "forest",
+          "day": 2.008634259259259,
+          "usefulValue": 90,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 2.3438078703703704,
+          "usefulValue": 280,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 2.666898148148148,
+          "usefulValue": 170,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 3.343726851851852,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 4.342083333333333,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 5.017731481481482,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 6.013969907407407,
+          "usefulValue": 60,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 6.6755555555555555,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "coastal_deposits",
+          "day": 7.010625,
+          "usefulValue": 390,
+          "costValue": 210
+        },
+        {
+          "route": "forest",
+          "day": 7.3442592592592595,
+          "usefulValue": 10,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 8.000185185185185,
+          "usefulValue": 20,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 8.020833333333334,
+          "usefulValue": 10,
+          "costValue": 0
+        },
+        {
+          "route": "old_woodland",
+          "day": 9.002268518518518,
+          "usefulValue": 400,
+          "costValue": 230
+        },
+        {
+          "route": "forest",
+          "day": 9.670219907407407,
+          "usefulValue": 70,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 14.00375,
+          "usefulValue": 60,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 15.000185185185185,
+          "usefulValue": 100,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 15.019768518518518,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 15.346273148148148,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 17.33361111111111,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 18.666875,
+          "usefulValue": 120,
+          "costValue": 0
+        },
+        {
+          "route": "coastal_deposits",
+          "day": 19.010601851851852,
+          "usefulValue": 300,
+          "costValue": 210
+        },
+        {
+          "route": "coastal_deposits",
+          "day": 21.679583333333333,
+          "usefulValue": 300,
+          "costValue": 210
+        },
+        {
+          "route": "forest",
+          "day": 23.019166666666667,
+          "usefulValue": 160,
+          "costValue": 0
+        },
+        {
+          "route": "old_woodland",
+          "day": 23.33571759259259,
+          "usefulValue": 400,
+          "costValue": 230
+        },
+        {
+          "route": "forest",
+          "day": 23.671712962962964,
+          "usefulValue": 20,
+          "costValue": 0
+        },
+        {
+          "route": "old_woodland",
+          "day": 24.000162037037036,
+          "usefulValue": 400,
+          "costValue": 230
+        },
+        {
+          "route": "coastal_deposits",
+          "day": 24.333472222222223,
+          "usefulValue": 300,
+          "costValue": 210
+        }
+      ],
+      "concurrencyPeaks": {
+        "garden": 2,
+        "woodlot": 3,
+        "workshop": 3,
+        "dryer": 2,
+        "kiln": 2
+      },
+      "claimedWorkSeconds": {
+        "garden": 22140,
+        "construction": 204462.334,
+        "woodlot": 100665,
+        "mochlik": 73996,
+        "workshop": 135240,
+        "dryer": 36000,
+        "miner": 110760,
+        "kiln": 90240
+      },
+      "readyIdleSeconds": {
+        "garden": 300285,
+        "construction": 525415.666,
+        "woodlot": 1183277,
+        "mochlik": 868719,
+        "workshop": 1695237,
+        "dryer": 319034,
+        "miner": 1423590,
+        "kiln": 857892
+      },
+      "manualSeconds": 2,
+      "externalSlotBudget": 0,
+      "home5Days": 25.333333333333332,
+      "elapsedDays": 25.33335648148148,
+      "activeHours": 33.77583333333333,
+      "manualHours": 2.315,
+      "productionWaitWithinVisitsHours": 31.460833333333333,
+      "commandCount": 4167,
+      "storagePeak": 92,
+      "storagePressureCount": 0,
+      "coinLedger": {
+        "initial": 100,
+        "credits": {
+          "daily": 790,
+          "complete_resident_order": 41878,
+          "onboarding": 100,
+          "sell_fish": 2385,
+          "sell": 330
+        },
+        "debits": {
+          "start_construction": 34750
+        }
+      },
+      "pearlLedger": {
+        "initial": 0,
+        "credits": {
+          "welcome": 60,
+          "daily": 300,
+          "onboarding": 40,
+          "achievement": 1760
+        },
+        "debits": {
+          "buy_production_slot": 2000
+        }
+      },
+      "slotPurchases": [
+        {
+          "day": 0.014791666666666667,
+          "station": "workshop",
+          "slots": 2,
+          "paid": 200,
+          "home": 1
+        },
+        {
+          "day": 1.3354861111111112,
+          "station": "woodlot",
+          "slots": 2,
+          "paid": 200,
+          "home": 2
+        },
+        {
+          "day": 1.6753125,
+          "station": "kiln",
+          "slots": 2,
+          "paid": 200,
+          "home": 2
+        },
+        {
+          "day": 2.000208333333333,
+          "station": "garden",
+          "slots": 2,
+          "paid": 200,
+          "home": 2
+        },
+        {
+          "day": 3.3333796296296296,
+          "station": "dryer",
+          "slots": 2,
+          "paid": 200,
+          "home": 3
+        },
+        {
+          "day": 6.0001851851851855,
+          "station": "workshop",
+          "slots": 3,
+          "paid": 500,
+          "home": 3
+        },
+        {
+          "day": 15.000046296296297,
+          "station": "woodlot",
+          "slots": 3,
+          "paid": 500,
+          "home": 4
+        }
+      ],
+      "rewardClaims": [
+        {
+          "id": "welcome",
+          "kind": "welcome",
+          "at": "2026-10-14T09:00:00.000Z",
+          "day": 0,
+          "home": 1,
+          "coins": 0,
+          "pearls": 60,
+          "items": {}
+        },
+        {
+          "id": "daily:1",
+          "kind": "daily",
+          "at": "2026-10-14T09:00:02.000Z",
+          "day": 2.3148148148148147e-05,
+          "home": 1,
+          "coins": 30,
+          "pearls": 20,
+          "items": {
+            "wood": 2,
+            "stone": 1
+          }
+        },
+        {
+          "id": "onboarding",
+          "kind": "onboarding",
+          "at": "2026-10-14T09:01:18.000Z",
+          "day": 0.0009027777777777777,
+          "home": 1,
+          "coins": 100,
+          "pearls": 40,
+          "items": {}
+        },
+        {
+          "id": "achievement:first_path:1",
+          "kind": "achievement",
+          "at": "2026-10-14T09:08:20.000Z",
+          "day": 0.005787037037037037,
+          "home": 1,
+          "coins": 0,
+          "pearls": 40,
+          "items": {}
+        },
+        {
+          "id": "achievement:master_recipes:1",
+          "kind": "achievement",
+          "at": "2026-10-14T09:21:16.000Z",
+          "day": 0.01476851851851852,
+          "home": 1,
+          "coins": 0,
+          "pearls": 100,
+          "items": {}
+        },
+        {
+          "id": "achievement:home_builder:1",
+          "kind": "achievement",
+          "at": "2026-10-14T17:00:02.000Z",
+          "day": 0.3333564814814815,
+          "home": 2,
+          "coins": 0,
+          "pearls": 60,
+          "items": {}
+        },
+        {
+          "id": "achievement:helpful_neighbor:1",
+          "kind": "achievement",
+          "at": "2026-10-14T17:29:10.000Z",
+          "day": 0.35358796296296297,
+          "home": 2,
+          "coins": 0,
+          "pearls": 40,
+          "items": {}
+        },
+        {
+          "id": "daily:2",
+          "kind": "daily",
+          "at": "2026-10-15T09:00:02.000Z",
+          "day": 1.000023148148148,
+          "home": 2,
+          "coins": 60,
+          "pearls": 30,
+          "items": {
+            "fiber": 2,
+            "berries": 2
+          }
+        },
+        {
+          "id": "achievement:familiar_trails:1",
+          "kind": "achievement",
+          "at": "2026-10-15T17:03:04.000Z",
+          "day": 1.335462962962963,
+          "home": 2,
+          "coins": 0,
+          "pearls": 100,
+          "items": {}
+        },
+        {
+          "id": "achievement:patient_angler:1",
+          "kind": "achievement",
+          "at": "2026-10-16T01:09:14.000Z",
+          "day": 1.6730787037037036,
+          "home": 2,
+          "coins": 0,
+          "pearls": 40,
+          "items": {}
+        },
+        {
+          "id": "achievement:explorer:1",
+          "kind": "achievement",
+          "at": "2026-10-16T01:12:15.000Z",
+          "day": 1.675173611111111,
+          "home": 2,
+          "coins": 0,
+          "pearls": 60,
+          "items": {}
+        },
+        {
+          "id": "achievement:master_recipes:2",
+          "kind": "achievement",
+          "at": "2026-10-16T01:12:25.000Z",
+          "day": 1.675289351851852,
+          "home": 2,
+          "coins": 0,
+          "pearls": 200,
+          "items": {}
+        },
+        {
+          "id": "daily:3",
+          "kind": "daily",
+          "at": "2026-10-16T09:00:16.000Z",
+          "day": 2.000185185185185,
+          "home": 2,
+          "coins": 80,
+          "pearls": 40,
+          "items": {
+            "planks": 1,
+            "wood": 1
+          }
+        },
+        {
+          "id": "achievement:campfire_cook:1",
+          "kind": "achievement",
+          "at": "2026-10-16T09:09:16.000Z",
+          "day": 2.006435185185185,
+          "home": 2,
+          "coins": 0,
+          "pearls": 40,
+          "items": {}
+        },
+        {
+          "id": "achievement:lucky_find:1",
+          "kind": "achievement",
+          "at": "2026-10-16T17:00:02.000Z",
+          "day": 2.3333564814814816,
+          "home": 2,
+          "coins": 0,
+          "pearls": 40,
+          "items": {}
+        },
+        {
+          "id": "achievement:generous_garden:1",
+          "kind": "achievement",
+          "at": "2026-10-16T17:03:17.000Z",
+          "day": 2.335613425925926,
+          "home": 2,
+          "coins": 0,
+          "pearls": 40,
+          "items": {}
+        },
+        {
+          "id": "daily:4",
+          "kind": "daily",
+          "at": "2026-10-17T09:00:06.000Z",
+          "day": 3.0000694444444442,
+          "home": 2,
+          "coins": 80,
+          "pearls": 40,
+          "items": {
+            "fish": 1,
+            "berries": 1
+          }
+        },
+        {
+          "id": "achievement:home_builder:2",
+          "kind": "achievement",
+          "at": "2026-10-17T17:00:02.000Z",
+          "day": 3.3333564814814816,
+          "home": 3,
+          "coins": 0,
+          "pearls": 120,
+          "items": {}
+        },
+        {
+          "id": "achievement:patient_angler:2",
+          "kind": "achievement",
+          "at": "2026-10-18T01:09:34.000Z",
+          "day": 3.6733101851851853,
+          "home": 3,
+          "coins": 0,
+          "pearls": 80,
+          "items": {}
+        },
+        {
+          "id": "daily:5",
+          "kind": "daily",
+          "at": "2026-10-18T09:00:08.000Z",
+          "day": 4.000092592592592,
+          "home": 3,
+          "coins": 150,
+          "pearls": 50,
+          "items": {
+            "wood": 2,
+            "fiber": 2
+          }
+        },
+        {
+          "id": "daily:6",
+          "kind": "daily",
+          "at": "2026-10-19T09:00:14.000Z",
+          "day": 5.000162037037037,
+          "home": 3,
+          "coins": 150,
+          "pearls": 50,
+          "items": {
+            "planks": 1,
+            "stone": 1
+          }
+        },
+        {
+          "id": "achievement:explorer:2",
+          "kind": "achievement",
+          "at": "2026-10-19T09:09:44.000Z",
+          "day": 5.006759259259259,
+          "home": 3,
+          "coins": 0,
+          "pearls": 160,
+          "items": {}
+        },
+        {
+          "id": "daily:7",
+          "kind": "daily",
+          "at": "2026-10-20T09:00:14.000Z",
+          "day": 6.000162037037037,
+          "home": 3,
+          "coins": 240,
+          "pearls": 70,
+          "items": {
+            "ancient_core": 1,
+            "planks": 1,
+            "wood": 1
+          }
+        },
+        {
+          "id": "achievement:generous_garden:2",
+          "kind": "achievement",
+          "at": "2026-10-21T01:09:35.000Z",
+          "day": 6.6733217592592595,
+          "home": 3,
+          "coins": 0,
+          "pearls": 80,
+          "items": {}
+        },
+        {
+          "id": "achievement:helpful_neighbor:2",
+          "kind": "achievement",
+          "at": "2026-10-21T01:10:23.000Z",
+          "day": 6.673877314814815,
+          "home": 3,
+          "coins": 0,
+          "pearls": 80,
+          "items": {}
+        },
+        {
+          "id": "achievement:campfire_cook:2",
+          "kind": "achievement",
+          "at": "2026-10-25T01:00:12.000Z",
+          "day": 10.666805555555555,
+          "home": 3,
+          "coins": 0,
+          "pearls": 80,
+          "items": {}
+        },
+        {
+          "id": "achievement:home_builder:3",
+          "kind": "achievement",
+          "at": "2026-10-29T09:00:02.000Z",
+          "day": 15.000023148148149,
+          "home": 4,
+          "coins": 0,
+          "pearls": 240,
+          "items": {}
+        },
+        {
+          "id": "achievement:patient_angler:3",
+          "kind": "achievement",
+          "at": "2026-11-03T09:14:42.000Z",
+          "day": 20.010208333333335,
+          "home": 4,
+          "coins": 0,
+          "pearls": 160,
+          "items": {}
+        }
+      ],
+      "mealUses": [
+        {
+          "day": 0.02259259259259259,
+          "action": "eat_food",
+          "item": "strawberry_compote"
+        },
+        {
+          "day": 2.3334027777777777,
+          "action": "feed_builder",
+          "item": "blueberry_compote"
+        },
+        {
+          "day": 5.333379629629629,
+          "action": "eat_food",
+          "item": "blueberry_compote"
+        },
+        {
+          "day": 6.349583333333333,
+          "action": "feed_builder",
+          "item": "currant_jelly"
+        }
+      ],
+      "checkpoints": [
+        {
+          "target": "home",
+          "level": 2,
+          "home": 2,
+          "at": 1791997200000,
+          "coins": 258,
+          "day": 0.3333333333333333
+        },
+        {
+          "target": "bridge",
+          "level": 1,
+          "home": 2,
+          "at": 1792198800000,
+          "coins": 1211,
+          "day": 2.6666666666666665
+        },
+        {
+          "target": "home",
+          "level": 3,
+          "home": 3,
+          "at": 1792256400000,
+          "coins": 91,
+          "day": 3.3333333333333335
+        },
+        {
+          "target": "lighthouse",
+          "level": 1,
+          "home": 3,
+          "at": 1793120400000,
+          "coins": 6418,
+          "day": 13.333333333333334
+        },
+        {
+          "target": "home",
+          "level": 4,
+          "home": 4,
+          "at": 1793264400000,
+          "coins": 5281,
+          "day": 15
+        },
+        {
+          "target": "home",
+          "level": 5,
+          "home": 5,
+          "at": 1794157200000,
+          "coins": 10833,
+          "day": 25.333333333333332
+        }
+      ],
+      "actions": {
+        "claim_reward": 28,
+        "start_construction": 30,
+        "start_production": 1479,
+        "start_collection": 123,
+        "claim_job": 1933,
+        "complete_resident_order": 43,
+        "start_fishing": 103,
+        "sell_fish": 92,
+        "buy_production_slot": 7,
+        "eat_food": 2,
+        "start_exploration": 321,
+        "feed_builder": 2,
+        "sell": 4
+      },
+      "production": {
+        "grow_berries": 104,
+        "gather_wood": 200,
+        "shore": 103,
+        "make_planks": 102,
+        "cook_compote": 12,
+        "grow_strawberries": 3,
+        "cook_strawberry_compote": 1,
+        "gather_fiber": 23,
+        "forest": 24,
+        "make_rope": 126,
+        "quarry_clay": 109,
+        "quarry_stone": 33,
+        "make_charcoal": 173,
+        "fire_bricks": 75,
+        "grow_blueberries": 6,
+        "cook_grilled_fish": 5,
+        "cook_blueberry_compote": 2,
+        "quarry_ore": 113,
+        "garden_fiber": 4,
+        "make_ceramic_jar": 15,
+        "smelt_iron": 42,
+        "dry_berries": 12,
+        "woodlot_shift": 289,
+        "weave_cloth": 29,
+        "grow_currants": 4,
+        "pack_berries": 5,
+        "cook_currant_jelly": 2,
+        "smoke_fish": 7,
+        "coastal_deposits": 4,
+        "make_trade_crate": 4,
+        "make_metal_parts": 15,
+        "gather_hardwood": 10,
+        "cut_stone": 16,
+        "old_woodland": 3,
+        "make_beams": 27,
+        "hardwood_shift": 84,
+        "cook_fish_soup": 7,
+        "quarry_sand": 22,
+        "make_glass": 15,
+        "make_glass_bottle": 6,
+        "bottle_compote": 3,
+        "make_tools": 5,
+        "prepare_trail_ration": 3,
+        "grow_blackberries": 6,
+        "cook_blackberry_preserve": 3,
+        "quarry_quartz": 12,
+        "grind_lens": 3,
+        "gather_resin": 11,
+        "make_clear_glass": 12,
+        "pack_berry_gift": 1,
+        "assemble_field_kit": 2,
+        "ancient_ruins": 1,
+        "make_reinforced_parts": 5
+      },
+      "builderHours": 57.916666666666664,
+      "buildings": {
+        "home": 5,
+        "garden": 4,
+        "woodlot": 4,
+        "quarry": 4,
+        "workshop": 4,
+        "dryer": 3,
+        "kiln": 4,
+        "warehouse": 3,
+        "bridge": 1,
+        "lighthouse": 1
+      },
+      "coins": 10833,
+      "pearls": 160,
+      "lastWaits": [
+        {
+          "day": 23.682106481481483,
+          "reason": "jobs-outside-visit",
+          "home": 4,
+          "course": null
+        },
+        {
+          "day": 24.014050925925925,
+          "reason": "jobs-outside-visit",
+          "home": 4,
+          "course": null
+        },
+        {
+          "day": 24.347337962962964,
+          "reason": "jobs-outside-visit",
+          "home": 4,
+          "course": null
+        },
+        {
+          "day": 24.68287037037037,
+          "reason": "jobs-outside-visit",
+          "home": 4,
+          "course": null
+        },
+        {
+          "day": 25.000069444444446,
+          "reason": "jobs-outside-visit",
+          "home": 4,
+          "course": null
+        }
+      ],
+      "nextCourse": {
+        "version": 1,
+        "stages": {
+          "1": {
+            "step": 3,
+            "completed": true,
+            "terms": {
+              "id": "stage1_planks_order",
+              "residentId": "builder",
+              "name": "Первые доски",
+              "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
+              "items": {
+                "planks": 2
+              },
+              "coins": 125
+            },
+            "availableAt": null,
+            "intervalSeconds": 0,
+            "completionRewards": {}
+          },
+          "2": {
+            "step": 7,
+            "completed": true,
+            "terms": {
+              "id": "stage2_fish_meal_order",
+              "residentId": "builder",
+              "name": "Обеды для новоселья",
+              "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
+              "items": {
+                "grilled_fish": 3
+              },
+              "coins": 169
+            },
+            "availableAt": null,
+            "intervalSeconds": 0,
+            "completionRewards": {}
+          },
+          "3": {
+            "step": 8,
+            "completed": true,
+            "terms": {
+              "id": "stage3_table_order",
+              "residentId": "plesk",
+              "name": "Стол для новоселья",
+              "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
+              "items": {
+                "fish_common": 6,
+                "fish_soup": 3,
+                "bottled_compote": 2,
+                "currant_jelly": 1
+              },
+              "coins": 2463
+            },
+            "availableAt": null,
+            "intervalSeconds": 0,
+            "completionRewards": {
+              "living_resin": 1
+            }
+          },
+          "4": {
+            "step": 12,
+            "completed": true,
+            "terms": {
+              "id": "stage4_completion_order",
+              "residentId": "builder",
+              "name": "Возвращение из древних руин",
+              "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
+              "items": {
+                "cloth": 1,
+                "glass": 1,
+                "field_kit": 1
+              },
+              "coins": 3088,
+              "requiredBuildings": {
+                "bridge": 1,
+                "lighthouse": 1
+              },
+              "requiredExplorations": {
+                "ancient_ruins": 1
+              }
+            },
+            "availableAt": null,
+            "intervalSeconds": 0,
+            "completionRewards": {
+              "ancient_core": 1,
+              "moon_crystal": 1
+            }
+          }
+        }
+      },
+      "inventory": {
+        "ancient_core": 1,
+        "strawberries": 1,
+        "fish_rare": 1,
+        "fish_uncommon": 5,
+        "resin": 4,
+        "clay": 4,
+        "sand": 14,
+        "fiber": 2,
+        "wood": 9,
+        "stone": 6,
+        "planks": 1
+      }
+    },
+    {
+      "label": "external-slots-30m",
+      "completed": true,
+      "seed": 1,
+      "regularMinutes": 30,
+      "firstMinutes": 60,
+      "slotPolicy": "earned",
+      "opportunisticRoutes": true,
+      "materialRouteStarts": [
+        {
+          "route": "forest",
+          "day": 1.6828587962962962,
+          "usefulValue": 90,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 2.000138888888889,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 2.33806712962963,
+          "usefulValue": 240,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 2.6668287037037035,
+          "usefulValue": 120,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 3.341597222222222,
+          "usefulValue": 120,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 4.019629629629629,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 6.001597222222222,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 6.334930555555555,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "coastal_deposits",
+          "day": 6.683842592592592,
+          "usefulValue": 390,
+          "costValue": 210
+        },
+        {
+          "route": "coastal_deposits",
+          "day": 8.348796296296296,
+          "usefulValue": 390,
+          "costValue": 210
+        },
+        {
+          "route": "forest",
+          "day": 11.019976851851851,
+          "usefulValue": 190,
+          "costValue": 0
+        },
+        {
+          "route": "coastal_deposits",
+          "day": 11.33375,
+          "usefulValue": 290,
+          "costValue": 210
+        },
+        {
+          "route": "forest",
+          "day": 12.670439814814815,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 13.666828703703704,
+          "usefulValue": 100,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 13.682523148148148,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 14.006018518518518,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 16.00027777777778,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 17.333541666666665,
+          "usefulValue": 120,
+          "costValue": 0
+        },
+        {
+          "route": "coastal_deposits",
+          "day": 17.677268518518517,
+          "usefulValue": 300,
+          "costValue": 210
+        },
+        {
+          "route": "forest",
+          "day": 18.019166666666667,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "coastal_deposits",
+          "day": 20.667083333333334,
+          "usefulValue": 300,
+          "costValue": 210
+        },
+        {
+          "route": "forest",
+          "day": 21.669675925925926,
+          "usefulValue": 30,
+          "costValue": 0
+        },
+        {
+          "route": "forest",
+          "day": 22.352546296296296,
+          "usefulValue": 100,
+          "costValue": 0
+        },
+        {
+          "route": "far_bank_grove",
+          "day": 22.674050925925926,
+          "usefulValue": 700,
+          "costValue": 420
+        },
+        {
+          "route": "old_woodland",
+          "day": 23.002314814814813,
+          "usefulValue": 300,
+          "costValue": 230
+        },
+        {
+          "route": "forest",
+          "day": 23.333495370370372,
+          "usefulValue": 20,
+          "costValue": 0
+        }
+      ],
+      "concurrencyPeaks": {
+        "garden": 3,
+        "woodlot": 3,
+        "workshop": 3,
+        "dryer": 3,
+        "kiln": 3
+      },
+      "claimedWorkSeconds": {
+        "garden": 23040,
+        "construction": 207900.334,
+        "woodlot": 109215,
+        "mochlik": 82059,
+        "dryer": 38940,
+        "workshop": 139380,
+        "miner": 106680,
+        "kiln": 91560
+      },
+      "readyIdleSeconds": {
+        "garden": 195502,
+        "construction": 412641.66599999997,
+        "woodlot": 1048358,
+        "mochlik": 894824,
+        "dryer": 372391,
+        "workshop": 1670517,
+        "miner": 1531530,
+        "kiln": 669938
+      },
+      "manualSeconds": 2,
+      "externalSlotBudget": 3500,
+      "home5Days": 24.333333333333332,
+      "elapsedDays": 24.33335648148148,
+      "activeHours": 32.88583333333333,
+      "manualHours": 2.5733333333333333,
+      "productionWaitWithinVisitsHours": 30.3125,
+      "commandCount": 4632,
+      "storagePeak": 97,
+      "storagePressureCount": 0,
+      "coinLedger": {
+        "initial": 100,
+        "credits": {
+          "daily": 790,
+          "complete_resident_order": 44431,
+          "onboarding": 100,
+          "sell_fish": 4560,
+          "sell": 320
+        },
+        "debits": {
+          "start_construction": 34750
+        }
+      },
+      "pearlLedger": {
+        "initial": 0,
+        "credits": {
+          "externalSlotBudget": 3500,
+          "welcome": 60,
+          "daily": 300,
+          "onboarding": 40,
+          "achievement": 2160
+        },
+        "debits": {
+          "buy_production_slot": 3500
+        }
+      },
+      "slotPurchases": [
+        {
+          "day": 4.6296296296296294e-05,
+          "station": "garden",
+          "slots": 2,
+          "paid": 200,
+          "home": 1
+        },
+        {
+          "day": 6.944444444444444e-05,
+          "station": "garden",
+          "slots": 3,
+          "paid": 500,
+          "home": 1
+        },
+        {
+          "day": 0.0015046296296296296,
+          "station": "woodlot",
+          "slots": 2,
+          "paid": 200,
+          "home": 1
+        },
+        {
+          "day": 0.0015277777777777779,
+          "station": "woodlot",
+          "slots": 3,
+          "paid": 500,
+          "home": 1
+        },
+        {
+          "day": 0.0036805555555555554,
+          "station": "dryer",
+          "slots": 2,
+          "paid": 200,
+          "home": 1
+        },
+        {
+          "day": 0.003703703703703704,
+          "station": "dryer",
+          "slots": 3,
+          "paid": 500,
+          "home": 1
+        },
+        {
+          "day": 0.007222222222222222,
+          "station": "workshop",
+          "slots": 2,
+          "paid": 200,
+          "home": 1
+        },
+        {
+          "day": 0.007245370370370371,
+          "station": "workshop",
+          "slots": 3,
+          "paid": 500,
+          "home": 1
+        },
+        {
+          "day": 1.3466435185185186,
+          "station": "kiln",
+          "slots": 2,
+          "paid": 200,
+          "home": 2
+        },
+        {
+          "day": 1.3466666666666667,
+          "station": "kiln",
+          "slots": 3,
+          "paid": 500,
+          "home": 2
+        }
+      ],
+      "rewardClaims": [
+        {
+          "id": "welcome",
+          "kind": "welcome",
+          "at": "2026-10-14T09:00:00.000Z",
+          "day": 0,
+          "home": 1,
+          "coins": 0,
+          "pearls": 60,
+          "items": {}
+        },
+        {
+          "id": "daily:1",
+          "kind": "daily",
+          "at": "2026-10-14T09:00:02.000Z",
+          "day": 2.3148148148148147e-05,
+          "home": 1,
+          "coins": 30,
+          "pearls": 20,
+          "items": {
+            "wood": 2,
+            "stone": 1
+          }
+        },
+        {
+          "id": "onboarding",
+          "kind": "onboarding",
+          "at": "2026-10-14T09:01:22.000Z",
+          "day": 0.0009490740740740741,
+          "home": 1,
+          "coins": 100,
+          "pearls": 40,
+          "items": {}
+        },
+        {
+          "id": "achievement:first_path:1",
+          "kind": "achievement",
+          "at": "2026-10-14T09:08:40.000Z",
+          "day": 0.0060185185185185185,
+          "home": 1,
+          "coins": 0,
+          "pearls": 40,
+          "items": {}
+        },
+        {
+          "id": "achievement:master_recipes:1",
+          "kind": "achievement",
+          "at": "2026-10-14T09:17:12.000Z",
+          "day": 0.011944444444444445,
+          "home": 1,
+          "coins": 0,
+          "pearls": 100,
+          "items": {}
+        },
+        {
+          "id": "achievement:home_builder:1",
+          "kind": "achievement",
+          "at": "2026-10-14T09:53:40.000Z",
+          "day": 0.03726851851851852,
+          "home": 2,
+          "coins": 0,
+          "pearls": 60,
+          "items": {}
+        },
+        {
+          "id": "achievement:helpful_neighbor:1",
+          "kind": "achievement",
+          "at": "2026-10-14T17:03:06.000Z",
+          "day": 0.3354861111111111,
+          "home": 2,
+          "coins": 0,
+          "pearls": 40,
+          "items": {}
+        },
+        {
+          "id": "daily:2",
+          "kind": "daily",
+          "at": "2026-10-15T09:00:02.000Z",
+          "day": 1.000023148148148,
+          "home": 2,
+          "coins": 60,
+          "pearls": 30,
+          "items": {
+            "fiber": 2,
+            "berries": 2
+          }
+        },
+        {
+          "id": "achievement:familiar_trails:1",
+          "kind": "achievement",
+          "at": "2026-10-15T09:23:08.000Z",
+          "day": 1.0160648148148148,
+          "home": 2,
+          "coins": 0,
+          "pearls": 100,
+          "items": {}
+        },
+        {
+          "id": "achievement:master_recipes:2",
+          "kind": "achievement",
+          "at": "2026-10-15T17:27:32.000Z",
+          "day": 1.3524537037037037,
+          "home": 2,
+          "coins": 0,
+          "pearls": 200,
+          "items": {}
+        },
+        {
+          "id": "achievement:patient_angler:1",
+          "kind": "achievement",
+          "at": "2026-10-15T17:27:34.000Z",
+          "day": 1.352476851851852,
+          "home": 2,
+          "coins": 0,
+          "pearls": 40,
+          "items": {}
+        },
+        {
+          "id": "achievement:explorer:1",
+          "kind": "achievement",
+          "at": "2026-10-16T01:00:18.000Z",
+          "day": 1.666875,
+          "home": 2,
+          "coins": 0,
+          "pearls": 60,
+          "items": {}
+        },
+        {
+          "id": "achievement:generous_garden:1",
+          "kind": "achievement",
+          "at": "2026-10-16T01:03:41.000Z",
+          "day": 1.669224537037037,
+          "home": 2,
+          "coins": 0,
+          "pearls": 40,
+          "items": {}
+        },
+        {
+          "id": "achievement:campfire_cook:1",
+          "kind": "achievement",
+          "at": "2026-10-16T01:20:36.000Z",
+          "day": 1.6809722222222223,
+          "home": 2,
+          "coins": 0,
+          "pearls": 40,
+          "items": {}
+        },
+        {
+          "id": "daily:3",
+          "kind": "daily",
+          "at": "2026-10-16T09:00:04.000Z",
+          "day": 2.000046296296296,
+          "home": 2,
+          "coins": 80,
+          "pearls": 40,
+          "items": {
+            "planks": 1,
+            "wood": 1
+          }
+        },
+        {
+          "id": "achievement:lucky_find:1",
+          "kind": "achievement",
+          "at": "2026-10-16T09:00:06.000Z",
+          "day": 2.0000694444444442,
+          "home": 2,
+          "coins": 0,
+          "pearls": 40,
+          "items": {}
+        },
+        {
+          "id": "daily:4",
+          "kind": "daily",
+          "at": "2026-10-17T09:00:08.000Z",
+          "day": 3.0000925925925928,
+          "home": 2,
+          "coins": 80,
+          "pearls": 40,
+          "items": {
+            "fish": 1,
+            "berries": 1
+          }
+        },
+        {
+          "id": "achievement:home_builder:2",
+          "kind": "achievement",
+          "at": "2026-10-17T17:00:02.000Z",
+          "day": 3.3333564814814816,
+          "home": 3,
+          "coins": 0,
+          "pearls": 120,
+          "items": {}
+        },
+        {
+          "id": "achievement:patient_angler:2",
+          "kind": "achievement",
+          "at": "2026-10-18T01:27:58.000Z",
+          "day": 3.686087962962963,
+          "home": 3,
+          "coins": 0,
+          "pearls": 80,
+          "items": {}
+        },
+        {
+          "id": "daily:5",
+          "kind": "daily",
+          "at": "2026-10-18T09:00:08.000Z",
+          "day": 4.000092592592592,
+          "home": 3,
+          "coins": 150,
+          "pearls": 50,
+          "items": {
+            "wood": 2,
+            "fiber": 2
+          }
+        },
+        {
+          "id": "daily:6",
+          "kind": "daily",
+          "at": "2026-10-19T09:00:08.000Z",
+          "day": 5.000092592592592,
+          "home": 3,
+          "coins": 150,
+          "pearls": 50,
+          "items": {
+            "planks": 1,
+            "stone": 1
+          }
+        },
+        {
+          "id": "achievement:explorer:2",
+          "kind": "achievement",
+          "at": "2026-10-19T09:27:22.000Z",
+          "day": 5.01900462962963,
+          "home": 3,
+          "coins": 0,
+          "pearls": 160,
+          "items": {}
+        },
+        {
+          "id": "achievement:helpful_neighbor:2",
+          "kind": "achievement",
+          "at": "2026-10-20T01:17:24.000Z",
+          "day": 5.67875,
+          "home": 3,
+          "coins": 0,
+          "pearls": 80,
+          "items": {}
+        },
+        {
+          "id": "daily:7",
+          "kind": "daily",
+          "at": "2026-10-20T09:00:08.000Z",
+          "day": 6.000092592592592,
+          "home": 3,
+          "coins": 240,
+          "pearls": 70,
+          "items": {
+            "ancient_core": 1,
+            "planks": 1,
+            "wood": 1
+          }
+        },
+        {
+          "id": "achievement:patient_angler:3",
+          "kind": "achievement",
+          "at": "2026-10-23T17:29:58.000Z",
+          "day": 9.35414351851852,
+          "home": 3,
+          "coins": 0,
+          "pearls": 160,
+          "items": {}
+        },
+        {
+          "id": "achievement:generous_garden:2",
+          "kind": "achievement",
+          "at": "2026-10-24T01:03:06.000Z",
+          "day": 9.668819444444445,
+          "home": 3,
+          "coins": 0,
+          "pearls": 80,
+          "items": {}
+        },
+        {
+          "id": "achievement:campfire_cook:2",
+          "kind": "achievement",
+          "at": "2026-10-25T09:21:12.000Z",
+          "day": 11.014722222222222,
+          "home": 3,
+          "coins": 0,
+          "pearls": 80,
+          "items": {}
+        },
+        {
+          "id": "achievement:home_builder:3",
+          "kind": "achievement",
+          "at": "2026-10-28T01:00:02.000Z",
+          "day": 13.666689814814815,
+          "home": 4,
+          "coins": 0,
+          "pearls": 240,
+          "items": {}
+        },
+        {
+          "id": "achievement:explorer:3",
+          "kind": "achievement",
+          "at": "2026-11-04T09:00:10.000Z",
+          "day": 21.00011574074074,
+          "home": 4,
+          "coins": 0,
+          "pearls": 400,
+          "items": {}
+        }
+      ],
+      "mealUses": [
+        {
+          "day": 0.01638888888888889,
+          "action": "eat_food",
+          "item": "strawberry_compote"
+        },
+        {
+          "day": 2.018171296296296,
+          "action": "feed_builder",
+          "item": "blueberry_compote"
+        },
+        {
+          "day": 6.000115740740741,
+          "action": "eat_food",
+          "item": "currant_jelly"
+        },
+        {
+          "day": 12.000069444444444,
+          "action": "eat_food",
+          "item": "fish_soup"
+        }
+      ],
+      "checkpoints": [
+        {
+          "target": "home",
+          "level": 2,
+          "home": 2,
+          "at": 1791971618000,
+          "coins": 233,
+          "day": 0.03724537037037037
+        },
+        {
+          "target": "bridge",
+          "level": 1,
+          "home": 2,
+          "at": 1792170000000,
+          "coins": 976,
+          "day": 2.3333333333333335
+        },
+        {
+          "target": "home",
+          "level": 3,
+          "home": 3,
+          "at": 1792256400000,
+          "coins": 164,
+          "day": 3.3333333333333335
+        },
+        {
+          "target": "lighthouse",
+          "level": 1,
+          "home": 3,
+          "at": 1792890002000,
+          "coins": 1692,
+          "day": 10.666689814814815
+        },
+        {
+          "target": "home",
+          "level": 4,
+          "home": 4,
+          "at": 1793149200000,
+          "coins": 9999,
+          "day": 13.666666666666666
+        },
+        {
+          "target": "home",
+          "level": 5,
+          "home": 5,
+          "at": 1794070800000,
+          "coins": 15551,
+          "day": 24.333333333333332
+        }
+      ],
+      "actions": {
+        "claim_reward": 29,
+        "buy_production_slot": 10,
+        "start_construction": 30,
+        "start_production": 1592,
+        "start_collection": 134,
+        "claim_job": 2111,
+        "complete_resident_order": 53,
+        "start_fishing": 176,
+        "sell_fish": 174,
+        "eat_food": 3,
+        "start_exploration": 313,
+        "feed_builder": 1,
+        "sell": 6
+      },
+      "production": {
+        "grow_berries": 110,
+        "gather_wood": 223,
+        "shore": 176,
+        "cook_compote": 13,
+        "make_planks": 108,
+        "grow_strawberries": 2,
+        "cook_strawberry_compote": 1,
+        "gather_fiber": 18,
+        "forest": 23,
+        "make_rope": 137,
+        "quarry_clay": 104,
+        "quarry_stone": 42,
+        "make_charcoal": 182,
+        "fire_bricks": 75,
+        "grow_blueberries": 12,
+        "cook_blueberry_compote": 4,
+        "cook_grilled_fish": 5,
+        "quarry_ore": 106,
+        "make_ceramic_jar": 17,
+        "smelt_iron": 42,
+        "dry_berries": 11,
+        "woodlot_shift": 335,
+        "weave_cloth": 31,
+        "grow_currants": 4,
+        "pack_berries": 6,
+        "cook_currant_jelly": 2,
+        "smoke_fish": 9,
+        "coastal_deposits": 5,
+        "gather_hardwood": 10,
+        "make_glass": 14,
+        "make_metal_parts": 15,
+        "make_glass_bottle": 6,
+        "make_beams": 27,
+        "cut_stone": 16,
+        "make_trade_crate": 4,
+        "hardwood_shift": 88,
+        "cook_fish_soup": 8,
+        "quarry_sand": 17,
+        "bottle_compote": 3,
+        "prepare_trail_ration": 3,
+        "make_tools": 5,
+        "grow_blackberries": 6,
+        "cook_blackberry_preserve": 3,
+        "quarry_quartz": 13,
+        "grind_lens": 3,
+        "gather_resin": 13,
+        "make_clear_glass": 13,
+        "pack_berry_gift": 1,
+        "assemble_field_kit": 2,
+        "ancient_ruins": 1,
+        "make_reinforced_parts": 5,
+        "far_bank_grove": 1,
+        "old_woodland": 1
+      },
+      "builderHours": 57.916666666666664,
+      "buildings": {
+        "home": 5,
+        "garden": 4,
+        "woodlot": 4,
+        "quarry": 4,
+        "workshop": 4,
+        "dryer": 3,
+        "kiln": 4,
+        "warehouse": 3,
+        "bridge": 1,
+        "lighthouse": 1
+      },
+      "coins": 15551,
+      "pearls": 2560,
+      "lastWaits": [
+        {
+          "day": 22.686458333333334,
+          "reason": "jobs-outside-visit",
+          "home": 4,
+          "course": null
+        },
+        {
+          "day": 23.014027777777777,
+          "reason": "jobs-outside-visit",
+          "home": 4,
+          "course": null
+        },
+        {
+          "day": 23.352939814814814,
+          "reason": "jobs-outside-visit",
+          "home": 4,
+          "course": null
+        },
+        {
+          "day": 23.679282407407406,
+          "reason": "jobs-outside-visit",
+          "home": 4,
+          "course": null
+        },
+        {
+          "day": 24.000069444444446,
+          "reason": "jobs-outside-visit",
+          "home": 4,
+          "course": null
+        }
+      ],
+      "nextCourse": {
+        "version": 1,
+        "stages": {
+          "1": {
+            "step": 3,
+            "completed": true,
+            "terms": {
+              "id": "stage1_planks_order",
+              "residentId": "builder",
+              "name": "Первые доски",
+              "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
+              "items": {
+                "planks": 2
+              },
+              "coins": 125
+            },
+            "availableAt": null,
+            "intervalSeconds": 0,
+            "completionRewards": {}
+          },
+          "2": {
+            "step": 7,
+            "completed": true,
+            "terms": {
+              "id": "stage2_fish_meal_order",
+              "residentId": "builder",
+              "name": "Обеды для новоселья",
+              "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
+              "items": {
+                "grilled_fish": 3
+              },
+              "coins": 169
+            },
+            "availableAt": null,
+            "intervalSeconds": 0,
+            "completionRewards": {}
+          },
+          "3": {
+            "step": 8,
+            "completed": true,
+            "terms": {
+              "id": "stage3_table_order",
+              "residentId": "plesk",
+              "name": "Стол для новоселья",
+              "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
+              "items": {
+                "fish_common": 6,
+                "fish_soup": 3,
+                "bottled_compote": 2,
+                "currant_jelly": 1
+              },
+              "coins": 2463
+            },
+            "availableAt": null,
+            "intervalSeconds": 0,
+            "completionRewards": {
+              "living_resin": 1
+            }
+          },
+          "4": {
+            "step": 12,
+            "completed": true,
+            "terms": {
+              "id": "stage4_completion_order",
+              "residentId": "builder",
+              "name": "Возвращение из древних руин",
+              "description": "Поставка для следующего этапа хозяйства. Оплата складывается из стоимости товаров и надбавки за заказ; принятые условия сохраняются.",
+              "items": {
+                "cloth": 1,
+                "glass": 1,
+                "field_kit": 1
+              },
+              "coins": 3088,
+              "requiredBuildings": {
+                "bridge": 1,
+                "lighthouse": 1
+              },
+              "requiredExplorations": {
+                "ancient_ruins": 1
+              }
+            },
+            "availableAt": null,
+            "intervalSeconds": 0,
+            "completionRewards": {
+              "ancient_core": 1,
+              "moon_crystal": 1
+            }
+          }
+        }
+      },
+      "inventory": {
+        "ancient_core": 1,
+        "fish_uncommon": 6,
+        "fish_rare": 3,
+        "fish_common": 1,
+        "sand": 17,
+        "resin": 2,
+        "stone": 9,
+        "charcoal": 2,
+        "wood": 7,
+        "planks": 1,
+        "hardwood": 1,
+        "clay": 2,
+        "ceramic_jar": 1,
+        "smoked_fish": 1,
+        "fiber": 2
+      }
+    }
+  ],
+  "status": "UNVALIDATED EXPERIMENT — archived, not connected to stable simulator",
+  "reviewWarning": "Only two completed cases. No matching v13 baseline, no 20-minute run, no multiple seeds and no independent planning-policy review. Do not claim month target achieved."
+}

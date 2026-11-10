@@ -1,0 +1,35 @@
+.panel { color: #f0e5c9; background: #242d29; border: 1px solid #8c7950; border-radius: 10px; min-width: 0; }
+.panel summary { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 11px 13px; font-size: 12px; list-style: none; }
+.panel summary::-webkit-details-marker { display: none; }
+.panel summary::after { content: "+"; margin-left: auto; font-size: 20px; line-height: 1; color: #d4b77c; }
+.panel[open] summary::after { content: "−"; }
+.badge { background: #d4b77c; color: #212820; border-radius: 3px; font-size: 9px; font-weight: 900; letter-spacing: 1px; padding: 3px 5px; }
+.summaryState { color: #c1c6b4; font-size: 11px; }
+.content { padding: 0 13px 13px; display: grid; gap: 10px; }
+.content p { margin: 0; font-size: 11px; line-height: 1.5; color: #b9c2b4; }
+.actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.content button, .content select { min-width: 0; min-height: 38px; color: #f1e5c8; background: #36453b; border: 1px solid #63745b; border-radius: 6px; padding: 8px 10px; font: inherit; font-size: 12px; }
+.content button { cursor: pointer; }
+.content button:hover:not(:disabled) { background: #425741; border-color: #c1aa72; }
+.content :disabled { opacity: .45; cursor: default; }
+.content :focus-visible, .panel summary:focus-visible { outline: 2px solid #edc77d; outline-offset: 3px; }
+.blueprints { border: 1px solid #52604b; border-radius: 7px; padding: 9px; margin: 0; display: grid; gap: 7px; min-width: 0; }
+.blueprints legend { font-size: 11px; padding: 0 5px; color: #c8cbb8; }
+.blueprints label { display: grid; grid-template-columns: minmax(0, 1fr) 70px; gap: 8px; align-items: center; font-size: 12px; }
+.content p.notice { color: #c0e4ab; }
+.content p.error { color: #ffc2ac; }
+.compact summary { padding: 9px 12px; }
+@media (max-width: 480px) { .summaryState { display: none; } .actions { grid-template-columns: minmax(0, 1fr); } }
+
+.trigger { flex: none; align-self: center; min-height: 34px; padding: 4px 8px; border: 1px solid #9b895d; border-radius: 6px; color: #dec188; background: #26352c; font-size: 11px; font-weight: 700; cursor: pointer; }
+.overlay { position: fixed; inset: 0; background: #081810a8; z-index: 1000; }
+.dialog { position: fixed; inset: 50% auto auto 50%; transform: translate(-50%, -50%); z-index: 1001; width: min(420px, calc(100% - 20px)); max-height: 90dvh; overflow-y: auto; overscroll-behavior: contain; background: #1d3028; border: 1px solid #9b895d; color: #efe6ce; border-radius: 12px; padding: 14px; }
+.dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dialog h2 { font-size: 18px; margin: 0; }
+.dialog header button { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 7px; border: 1px solid #697b64; background: #304637; color: inherit; cursor: pointer; }
+.dialog > p { color: #c8cbb8; margin: 7px 0 12px; font-size: 12px; }
+.dialog .content { padding: 0; }
+.moduleEditor { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; border: 1px solid #697b64; padding: 9px; border-radius: 7px; margin: 0; min-width: 0; }
+.moduleEditor legend, .moduleEditor label { font-size: 11px; color: #d0cfba; }
+.moduleEditor label { display: grid; gap: 4px; }
+.moduleEditor button { grid-column: 1 / -1; }

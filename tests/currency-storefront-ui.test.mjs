@@ -53,7 +53,8 @@ test("general store entry shows the current starter, its exact contents and disa
   assert.ok(html.includes(pack.name));
   assert.ok(html.includes(`${pack.priceRub} ₽`));
   assert.match(html, /350<\/strong>/);
-  assert.match(html, /Скорость: вылазка \+10% · стройка \+10%/);
+  assert.match(html, /Пример вылазки: 1 ч → 54 мин 33 с/);
+  assert.match(html, /Одна стройка: 1 ч → 57 мин 17 с/);
   for (const [itemId, quantity] of Object.entries(pack.rewards.items)) {
     assert.ok(html.includes(economyCatalog.items.find(item => item.id === itemId).name));
     assert.ok(html.includes(`×${quantity}`));
@@ -109,7 +110,7 @@ test("wallet currency entries keep their page and show visible pearls with ruble
   assert.doesNotMatch(pearl.html, /6500|6 500|starter_home_/);
   const gold = harness(state(1), "gold").render();
   assert.match(gold.html, /Золото за жемчуг/);
-  assert.equal(gold.nodes.filter(node => node.props["data-shop-offer"]).length, 3);
+  assert.equal((gold.html.match(/data-shop-offer=/g) ?? []).length, 3);
   assert.doesNotMatch(gold.html, /starter_home_|₽/);
 });
 
@@ -130,7 +131,8 @@ test("browsing every store department never reads or modifies balances and retai
   const before = structuredClone({ buildings: snapshot.buildings, jobs: snapshot.jobs });
   for (const page of ["starters", "costumes", "pearls", "gold"]) {
     const { html, nodes } = harness(snapshot, page).render();
-    assert.match(html, /Покупки и обмен пока недоступны/);
+    if (page !== "gold") assert.match(html, /Покупки за реальные деньги пока недоступны/);
+    else assert.doesNotMatch(html, /Обмен скоро|обмен пока недоступны/);
     assert.match(html, /У меня есть промокод/);
     for (const action of nodes.filter(node => node.type === "button" && node.props.role !== "tab")) {
       assert.equal(action.props.disabled, true);

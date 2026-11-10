@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createServer } from "vite";
 import { recipeBuildingLevel } from "./lib/economy-math.mjs";
+import { personallyCaughtFish, recipeMasteryMet } from "./lib/recipe-mastery.mjs";
 
 // Read-only player policy: every state change uses the shipped TS domain rules.
 // No market, achievement reward claims, legacy grant, admin command,
-// backdating or tap income. The default has no pearls; an explicit research
+// backdating or tap income. The default spends no pearls; an explicit research
 // scenario may start with a declared budget, project only the pearl component,
 // or claim full daily bundles using the real calendar, home tier and inventory
 // transition rules. The full reward projection is not an HTTP/receipt integration test.
@@ -21,13 +22,10 @@ export function journeyConstructionOrder(catalog, completionGoal = "base-tier-5"
   assert(["home-5", "base-tier-5", "all-current-buildings"].includes(completionGoal), "Invalid research completion goal");
   const expansions = catalog.buildings.flatMap(building => building.levels
     .filter(level => level.level > 5).map(level => `${building.id}:${level.level}`));
-  // The full-storage goal pays for optional capacity before accumulating the
-  // final workshop chains. Every purchase still checks authored prerequisites
-  // through the ordinary command and pays with earned relic inventory.
-  const storageIndex = journeyOrder.indexOf("warehouse:5") + 1;
+  // Advanced storage uses final-tier ingredients (including quarry-five mortar).
+  // Finish the base production chain first so authored dependencies are available.
   const order = completionGoal === "home-5" ? journeyOrder.slice(0, journeyOrder.indexOf("home:5") + 1)
-    : completionGoal === "all-current-buildings" ? [...journeyOrder.slice(0, storageIndex), ...expansions,
-      ...journeyOrder.slice(storageIndex)] : [...journeyOrder];
+    : completionGoal === "all-current-buildings" ? [...journeyOrder, ...expansions] : [...journeyOrder];
   for (const key of order) {
     const [id, level] = key.split(":");
     assert(catalog.buildings.find(building => building.id === id)?.levels.some(entry => entry.level === Number(level)), `Unknown research goal ${key}`);
@@ -86,7 +84,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
   state.wallet.pearls = pearlBudget; // Hypothetical confirmed initial balance; not an earning or payment API.
   const initialCoins = state.wallet.coins, coinSpending = {};
-  let tutorialRevenue = 0;
+  let tutorialRevenue = 0, progressionPearls = 0;
   let clock = firstVisit, sequence = 0, castSequence = 0, targetIndex = 0, commands = 0, revenue = 0, storageRecovery = 0, lastFailure = null, pearlsSpent = 0;
   const milestones = {}, events = [], failures = {}, actions = {}, productionRecipes = {}, explorationRoutes = {}, items = new Map(catalog.items.map(item => [item.id, item]));
   const itemFlow = Object.fromEntries(Object.entries(state.inventory).map(([id, quantity]) => [id,
@@ -108,9 +106,9 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
   const isActive = mode === "active16h", visits = mode === "visits2" ? [7, 19] : [7, 15, 23];
   const gap = isActive ? 1 : mode === "visits2" ? 12 * hour : 8 * hour;
   const uuid = () => `00000000-0000-4000-8000-${(++sequence).toString(16).padStart(12, "0")}`;
-  const eligible = d => (state.buildings.home ?? 1) >= d.requiredHomeLevel && Object.entries(d.requiredBuildings ?? {}).every(([id, level]) => (state.buildings[id] ?? 0) >= level)
+  const eligible = (d, mastery = true) => !d.retired && (state.buildings.home ?? 1) >= d.requiredHomeLevel && Object.entries(d.requiredBuildings ?? {}).every(([id, level]) => (state.buildings[id] ?? 0) >= level)
     && (!d.buildingId || state.buildings[d.buildingId] >= recipeBuildingLevel(d))
-    && Object.entries(d.requiredRecipes ?? {}).every(([id, count]) => (state.progression.recipes[id] ?? 0) >= count);
+    && (!mastery || recipeMasteryMet(catalog, state, d));
   const courseTerms = () => state.tutorialOrder?.ingredientsClaimed && !state.tutorialOrder.completed
     ? state.tutorialOrder.terms : stageOrders.stageResidentOrder(state, catalog);
   const command = (action, targetId, quantity = 1, totalPrice = 0) => {
@@ -126,6 +124,11 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
         ? `00000000-0000-4000-9000-${(castSequence + 1).toString(16).padStart(12, "0")}` : uuid();
       rules.applyEconomyCommand(next, { requestId: uuid(), ownerPublicId: "0000-0000-0001", expectedRevision: commands,
         action, targetId, quantity, totalPrice }, epoch + clock * 1000, jobId, {}, rareRandom.integer);
+      const paidPearls = ["speedup_construction", "buy_production_slot"].includes(action) ? totalPrice : 0;
+      const earnedPearls = next.wallet.pearls - state.wallet.pearls + paidPearls;
+      assert(earnedPearls >= 0, `${action}: undeclared pearl spending`);
+      progressionPearls += earnedPearls;
+      pearlsSpent += paidPearls;
       if (action === "start_fishing" && generated >= 2) castSequence++;
       if (action === "sell" || action === "sell_fish") revenue += next.wallet.coins - state.wallet.coins;
       if (action === "complete_resident_order") {
@@ -135,15 +138,12 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       if (next.wallet.coins < state.wallet.coins) coinSpending[action] = (coinSpending[action] ?? 0) + state.wallet.coins - next.wallet.coins;
       if (action === "speedup_construction") {
         const job = state.jobs.find(j => j.id === targetId);
-        pearlsSpent += state.wallet.pearls - next.wallet.pearls;
         milestones[`${job.targetId}:${job.targetLevel}`] = (clock - firstVisit) / day;
         events.push({ day: Number(((clock - firstVisit) / day).toFixed(4)), building: `${job.targetId}:${job.targetLevel}`, coins: next.wallet.coins });
       }
       if (action === "buy_production_slot") {
-        const paid = state.wallet.pearls - next.wallet.pearls;
-        pearlsSpent += paid;
         slotPurchases.push({ day: Number(((clock - firstVisit) / day).toFixed(4)), building: targetId,
-          houseLevel: state.buildings.home, slots: next.productionSlots[targetId], pricePearls: paid });
+          houseLevel: state.buildings.home, slots: next.productionSlots[targetId], pricePearls: paidPearls });
       }
       if (action === "claim_job" && previousJob?.rareDrop) {
         assert.equal(previousJob.kind, "exploration", "Only completed exploration jobs accrue relic time");
@@ -198,14 +198,15 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
   };
   const cash = rewards => Object.entries(rewards).reduce((sum, [id, amount]) => sum + (fishing.fishClassForItem(id, catalog.fishing)
     ? items.get(id).baseSellPrice * amount : rules.economyLocalSellPrice(items.get(id).baseSellPrice, amount, catalog.localBuyer, id)), 0);
-  const projectedEligible = d => {
-    if (!prepareNextConstruction) return eligible(d);
+  const projectedEligible = (d, mastery = true) => {
+    if (d.retired) return false;
+    if (!prepareNextConstruction) return eligible(d, mastery);
     // Forecast only for ingredient planning. Commands still use current levels.
     const predicted = { ...state.buildings };
     for (const j of state.jobs.filter(j => j.kind === "construction")) predicted[j.targetId] = j.targetLevel;
     return (predicted.home ?? 1) >= d.requiredHomeLevel && Object.entries(d.requiredBuildings ?? {}).every(([id, level]) => (predicted[id] ?? 0) >= level)
       && (!d.buildingId || predicted[d.buildingId] >= recipeBuildingLevel(d))
-      && Object.entries(d.requiredRecipes ?? {}).every(([id, count]) => (state.progression.recipes[id] ?? 0) >= count);
+      && (!mastery || recipeMasteryMet(catalog, state, d));
   };
   const sources = itemId => [...catalog.recipes, ...catalog.explorations.filter(route => !Object.keys(route.cost.items).length && !route.cost.coins)
     .map(route => catalog.fishing.routeIds.includes(route.id) && fishing.fishClassForItem(itemId, catalog.fishing)
@@ -213,7 +214,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       // A desired class is only a possible catch. No pending draw is credited:
       // the demand is recomputed from actually claimed inventory after each trip.
       ? { ...route, rewards: { [itemId]: route.rewards.fish } } : route)]
-    .filter(d => projectedEligible(d) && d.rewards[itemId] > 0)
+    .filter(d => projectedEligible(d, false) && d.rewards[itemId] > 0)
     .sort((a, b) => {
       const rate = d => {
         const batch = d.buildingId ? d.maxBatch : 1;
@@ -262,6 +263,31 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
         if (covered.length >= 2 && separateClaims > 1) for (const [id] of covered) jointSources.set(id, r);
       }
     }
+    const scheduleMastery = (source, path = []) => {
+      const key = `source:${source.id}`;
+      assert(!path.includes(key), `Policy mastery cycle: ${[...path, key].join(" -> ")}`);
+      const nextPath = [...path, key];
+      const requirements = [
+        ...Object.entries(source.requiredRecipes ?? {}).map(([id, count]) => ({ id, count, progress: state.progression.recipes, definitions: catalog.recipes })),
+        ...Object.entries(source.requiredExplorations ?? {}).map(([id, count]) => ({ id, count, progress: state.progression.routes, definitions: catalog.explorations })),
+      ];
+      if (personallyCaughtFish(catalog, state) < (source.requiredFishCaught ?? 0)) {
+        const route = catalog.explorations.find(route => catalog.fishing.routeIds.includes(route.id) && projectedEligible(route, false));
+        assert(route, `${source.id}: no available fishing mastery route`);
+        requirements.push({ id: route.id, count: 1, progress: {}, definitions: catalog.explorations });
+      }
+      for (const { id, count, progress, definitions } of requirements) {
+        const pendingCount = state.jobs.reduce((sum, job) => sum + (job.recipeId === id || job.kind === "exploration" && job.targetId === id ? job.quantity ?? 1 : 0), 0);
+        const missing = Math.max(0, count - (progress[id] ?? 0) - pendingCount);
+        if (!missing) continue;
+        const prerequisite = definitions.find(entry => entry.id === id);
+        assert(prerequisite && projectedEligible(prerequisite, false), `${source.id}: unavailable mastery prerequisite ${id}`);
+        scheduleMastery(prerequisite, nextPath);
+        const additional = Math.max(0, missing - (recipeWants.get(id) ?? 0));
+        recipeWants.set(id, Math.max(missing, recipeWants.get(id) ?? 0));
+        for (const [input, quantity] of Object.entries(prerequisite.cost.items)) expand(input, quantity * additional, nextPath);
+      }
+    };
     const expand = (id, amount, path = []) => {
       needed[id] = (needed[id] ?? 0) + amount;
       const owned = Math.min(planned[id] ?? 0, amount); planned[id] = (planned[id] ?? 0) - owned;
@@ -274,6 +300,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       if (!source && prepareNextConstruction) return;
       assert(source, `No source for ${id} at ${target.key}`);
       const batches = Math.ceil((amount - owned) / source.rewards[id]);
+      scheduleMastery(source, [...path, id]);
       recipeWants.set(source.id, (recipeWants.get(source.id) ?? 0) + batches);
       if (jointBatchPlanning) for (const [output, quantity] of Object.entries(source.rewards))
         planned[output] = (planned[output] ?? 0) + quantity * batches - (output === id ? amount - owned : 0);
@@ -416,8 +443,11 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     if (buyProductionSlots) for (const id of productionStations) {
       if (!(state.buildings[id] > 0) || state.jobs.some(job => job.kind === "construction" && job.targetId === id)) continue;
       for (const upgrade of catalog.productionSlots.upgrades) {
-        if (upgrade.slots !== slotCapacity(id) + 1 || state.buildings.home < upgrade.requiredHomeLevel || state.wallet.pearls < upgrade.pricePearls) continue;
-        assert(command("buy_production_slot", id), `Eligible slot purchase failed: ${lastFailure}`);
+        // These historical comparisons allocate only their declared budget and
+        // gifts. Automatically earned progression rewards remain in the wallet.
+        if (upgrade.slots !== slotCapacity(id) + 1 || state.buildings.home < upgrade.requiredHomeLevel
+          || pearlBudget + dailyPearls - pearlsSpent < upgrade.pricePearls) continue;
+        assert(command("buy_production_slot", id, 1, upgrade.pricePearls), `Eligible slot purchase failed: ${lastFailure}`);
       }
     }
     plan = demand(target); sellExcess(plan.needed);
@@ -427,7 +457,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     const construction = state.jobs.find(j => j.kind === "construction");
     if (constructionSpeedups && pearlBudget > 0 && construction) {
       const price = rules.constructionSpeedupPrice(construction, epoch + clock * 1000);
-      if (price > 0 && price <= state.wallet.pearls) command("speedup_construction", construction.id, 1, price);
+      if (price > 0 && price <= pearlBudget + dailyPearls - pearlsSpent) command("speedup_construction", construction.id, 1, price);
     }
     target = goal(); if (!target) return;
     plan = demand(target);
@@ -536,6 +566,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     commands, saleRevenue: revenue, coinFlow: { initial: initialCoins, sales: revenue, gifts: dailyCoins, orders: tutorialRevenue,
       spendingByAction: coinSpending, remaining: state.wallet.coins }, storageRecovery, failures, actions, stoppedAt: goal()?.key ?? null, milestones: events,
     ...(pearlBudget > 0 || dailyPearlsOnly || dailyRewards ? { pearlBudget, pearlsSpent, pearlsRemaining: state.wallet.pearls } : {}),
+    pearlFlow: { initial: pearlBudget, gifts: dailyPearls, progression: progressionPearls, spent: pearlsSpent, remaining: state.wallet.pearls },
     ...(dailyPearlsOnly ? { dailyPearlProjection: { claims: dailyClaims, completed: Boolean(dailyState.completed), pearlsReceived: dailyPearls,
       omitted: ["daily_reward_coins", "daily_reward_items", "daily_reward_relics", "achievement_rewards"] } } : {}),
     ...(dailyRewards ? { dailyRewards: { claims: dailyClaims, completed: Boolean(dailyState.completed), coinsReceived: dailyCoins, pearlsReceived: dailyPearls,
@@ -550,7 +581,10 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       eligibleExplorationHours: Number((eligibleExplorationSeconds / hour).toFixed(4)), received: relicReceived,
       stageRewards: stageRelics,
       spentOnConstruction: relicSpent, inventory: Object.fromEntries(relicIds.map(id => [id, state.inventory[id] ?? 0])), finds: relicFinds } };
-  assert.equal(state.wallet.pearls, pearlBudget + dailyPearls - pearlsSpent); assert(state.wallet.coins >= 0);
+  assert.equal(state.wallet.pearls, pearlBudget + dailyPearls + progressionPearls - pearlsSpent,
+    "Pearls must reconcile across the declared budget, gifts, earned progression rewards and actual fees");
+  assert(pearlsSpent <= pearlBudget + dailyPearls, "The research policy cannot spend undeclared progression rewards");
+  assert(state.wallet.coins >= 0);
   assert.equal(state.wallet.coins, initialCoins + revenue + dailyCoins + tutorialRevenue - Object.values(coinSpending).reduce((sum, value) => sum + value, 0), "Coins must reconcile across gifts, orders, sales and actual paid commands");
   assert(Object.values(state.inventory).every(q => Number.isSafeInteger(q) && q >= 0));
   for (const [id, flow] of Object.entries(itemFlow))

@@ -155,6 +155,7 @@ private val operationTemplates = listOf(
     "/api/v1/admin/audit", "/api/v1/admin/monitoring", "/api/v1/admin/users/{publicId}/revoke-sessions",
     "/healthz", "/readyz", "/api/v1/bootstrap", "/api/v1/me", "/api/v1/me/status", "/api/v1/me/calendar", "/api/v1/me/time-zone",
     "/api/v1/game/progress", "/api/v1/game/sessions", "/api/v1/game/batches",
+    "/api/v1/game/fishing-records", "/api/v1/game/fishing-records/visibility",
     "/api/v1/game/visibility", "/api/v1/game/leaderboard", "/api/v1/game/achievements",
     "/api/v1/check-ins", "/api/v1/game-events", "/api/v1/recovery-code", "/api/v1/recovery-code/redeem",
     "/api/v1/auth/options", "/api/v1/auth/vk/start", "/api/v1/auth/vk/callback",

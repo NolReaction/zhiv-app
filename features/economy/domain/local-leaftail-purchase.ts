@@ -1,6 +1,7 @@
 import { wardrobeItems } from "@/features/world/domain/wardrobe";
 import type { EconomyCommand, EconomyResult, EconomyView } from "./model";
 import { leaftailOfferTarget, leaftailShopOffers, leaftailShopUsesUnits } from "./leaftail-shop";
+import { tradePurchaseUnitPrice } from "./trade-pricing";
 
 export type LocalLeaftailPurchase = Readonly<{
   id: string; ownerPublicId: string; revision: number; coins: number; pearls: number;
@@ -31,7 +32,7 @@ export function localLeaftailPurchaseFromReceipt(before: EconomyView | null, res
   const previousPurchased = before.leaftailShop?.cycle === stock.cycle ? before.leaftailShop.purchased[offer.id] ?? 0 : 0;
   if (!Number.isSafeInteger(previousPurchased) || previousPurchased < 0
     || stock.purchased[offer.id] !== previousPurchased + command.quantity || stock.purchased[offer.id] > offer.stock) return null;
-  const price = offer.unitPrice * command.quantity;
+  const price = tradePurchaseUnitPrice(before, "leaftail", offer.kind, offer.unitPrice, offer.currency, before.catalog) * command.quantity;
   if (price !== command.totalPrice || (offer.currency === "coins" ? coins !== price || pearls !== 0 : pearls !== price || coins !== 0)) return null;
   const { itemId } = offer, kind = offer.kind, quantity = offer.quantity * command.quantity;
   if (!Number.isSafeInteger(quantity) || quantity < 1) return null;

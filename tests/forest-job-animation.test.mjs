@@ -90,8 +90,9 @@ test("reload and repeated cameras sample a scheduled catch without starting anot
   }finally{session.release()}
 });
 
+// Cave expeditions now leave the map; focused quarry jobs still own this local portal.
 test("the actual authored mine uses safe outdoor feet, enters its own portal and hides only inside",()=>{
-  const session=create(),s=session.state,j=job("cave"),original=structuredClone(TILED_WORLD);
+  const session=create(),s=session.state,j=job("quarry_work"),original=structuredClone(TILED_WORLD);
   try {
     syncForestJourneyTravel(s,world,null,start,false);syncForestJourneyTravel(s,world,j,start,false);
     assert.equal(s.journeyTravel.phase,"leaving");assert.equal(forestJourneyActorAway(s,j,start),false);
@@ -127,7 +128,7 @@ test("the actual authored mine uses safe outdoor feet, enters its own portal and
 
 test("old paid mining trips retain their deadlines without entering or working inside an unbuilt quarry",()=>{
   const ruins=previewWorldScene(TILED_WORLD,{...initialPreviewLevels(TILED_WORLD),quarry:0});
-  for(const route of ["cave","deep_cave","quarry_stone","quarry_work"]) for(const still of [false,true]) {
+  for(const route of ["quarry_stone","quarry_ore","quarry_sand","quarry_work"]) for(const still of [false,true]) {
     const session=connectForestSession(undefined,ruins,"world",start,0,()=>{},{persistence:false,sync:false});
     const s=session.state,j=job(route),original=structuredClone(j),feet={...s.clearing.position};
     try {
@@ -150,7 +151,7 @@ test("old paid mining trips retain their deadlines without entering or working i
 
 test("switching quarry preview to ruins removes only local mining, then resumes from actual feet when built art returns",()=>{
   const ruins=previewWorldScene(TILED_WORLD,{...initialPreviewLevels(TILED_WORLD),quarry:0});
-  const session=create(),s=session.state,j=job("cave"),original=structuredClone(j);
+  const session=create(),s=session.state,j=job("quarry_work"),original=structuredClone(j);
   try {
     syncForestJourneyTravel(s,world,j,start+60_000,false,[],true);
     assert.equal(s.journeyTravel.phase,"working");
@@ -172,7 +173,7 @@ test("switching quarry preview to ruins removes only local mining, then resumes 
 });
 
 test("mine cancellation reverses the visible portal continuously and does not restart on retry",()=>{
-  const session=create(),s=session.state,j=job("deep_cave");
+  const session=create(),s=session.state,j=job("quarry_ore");
   try {
     syncForestJourneyTravel(s,world,j,start+60_000,false);
     assert.equal(s.journeyTravel.phase,"working","reloading an ongoing mine job restores its interior");
@@ -217,7 +218,7 @@ test("the mine work sign remains opaque between tool strikes and rejects invalid
 
 test("finished and cancelled hidden mine jobs reveal safe static feet in reduced motion",()=>{
   for(const cancelled of [false,true]) {
-    const session=create(),s=session.state,j=job("cave");
+    const session=create(),s=session.state,j=job("quarry_work");
     try {
       syncForestJourneyTravel(s,world,j,start+60_000,true);
       const feet={...s.clearing.position};assert.equal(s.journeyTravel.phase,"working");
@@ -233,7 +234,7 @@ test("finished and cancelled hidden mine jobs reveal safe static feet in reduced
 });
 
 test("a cancelled mine receipt cannot send a returned hero back inside before the next server snapshot",()=>{
-  const session=create(),s=session.state,j=job("cave");
+  const session=create(),s=session.state,j=job("quarry_work");
   try {
     syncForestJourneyTravel(s,world,j,start+60_000,false);
     syncForestJourneyTravel(s,world,j,start+61_000,false,[j.id]);
@@ -253,7 +254,7 @@ test("a cancelled mine receipt cannot send a returned hero back inside before th
 });
 
 test("a fresh mine job on the first camera visibly leaves base instead of being mistaken for a restored interior",()=>{
-  const session=create(),s=session.state,j=job("cave");
+  const session=create(),s=session.state,j=job("quarry_work");
   try {
     const feet={...s.clearing.position};
     syncForestJourneyTravel(s,world,j,start+1000,false);
@@ -268,7 +269,7 @@ test("a fresh mine job on the first camera visibly leaves base instead of being 
 });
 
 test("a miner elsewhere on the map takes the safe quarry road directly from the current feet",()=>{
-  const session=create(),s=session.state,j=job("cave");
+  const session=create(),s=session.state,j=job("quarry_work");
   try {
     const elsewhere=world.destinations.find(point=>point.id==="fishing").position;
     s.clearing.position={...elsewhere};
@@ -337,7 +338,7 @@ test("quarry work waits for the visible fishing catch and then leaves directly f
 
 
 test("reduced motion replaces a finished mine worker with the new static assignment without waiting for a frozen return",()=>{
-  for(const route of ["shore","cave"]) {
+  for(const route of ["shore","quarry_ore"]) {
     const session=create(),s=session.state,mine=job("quarry_work"),next=job(route);
     mine.id="production:old";next.id="new-assignment";
     try {

@@ -442,8 +442,8 @@ test("a disconnected home reports a path problem separately from an invalid entr
   const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
   const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
   const map = structuredClone(previewWorldScene(TILED_WORLD, { home: 5 }));
-  const entry = map.sites.find(site => site.id === "home").entry;
-  const barrierY = (map.actor.spawn.y + entry.y) / 2;
+  const dock = create(map).clearing.interactions.home.dock;
+  const barrierY = (map.actor.spawn.y + dock.y) / 2;
   map.navigation.obstacles.push({ id: "closed-clearing", points: rectangle(0, barrierY - 4, map.width, 8) });
   const state = create(map), options = { ...calm, homeAvailable: true };
   assert.ok(state.clearing.interactions.home, "the entrance itself is valid");

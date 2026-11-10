@@ -1,0 +1,61 @@
+{
+  "generatedAt": "2026-11-02",
+  "generator": "OpenAI imagegen built-in tool",
+  "purpose": "Modular raster boat art for the fishing garage and world boat",
+  "format": "RGBA PNG originals and WebP quality 90 runtime copies; original transparency and canvas retained.",
+  "composition": {
+    "hull": {
+      "canvas": [
+        1536,
+        1024
+      ],
+      "solidBounds": [
+        15,
+        296,
+        1522,
+        755
+      ],
+      "orientation": "flat stern left, pointed bow right",
+      "camera": "elevated three-quarter side"
+    }
+  },
+  "assets": [
+    {
+      "name": "hull",
+      "png": "art/world/boat/hull.png",
+      "webp": "public/world/boat/hull.webp",
+      "prompt": "Use case: background-extraction. Edit this boat sprite. Preserve the exact wooden hull geometry, camera, wood colours, dark teal paint, perspective, silhouette and canvas. Remove ALL soft orange/brown/black glow, floor shadow and haze surrounding the hull. Only the hard physical boat hull should remain; every outside pixel is fully transparent alpha=0. Remove environmental lighting spill and drop shadow. Do not add any details, do not move the hull. Genuine clean cutout with crisp antialiased object edges. No background."
+    },
+    {
+      "name": "hull-broken",
+      "png": "art/world/boat/hull-broken.png",
+      "webp": "public/world/boat/hull-broken.webp",
+      "prompt": "Use case: precise-object-edit. Create the BROKEN pre-repair version of this exact boat sprite. Keep identical canvas dimensions, exact camera angle, hull position, silhouette orientation (flat stern LEFT, pointed bow RIGHT), lighting and overall size. Damage only the existing boat: a large irregular hole in the middle near-side wooden hull exposing the ribs, several missing or splintered planks, one broken seat, faded worn desaturated teal paint, a loose inner board. Still recognizable and structurally the same skiff, not scattered wreckage. No extra objects outside the hull. Maintain clean transparent background exactly, no ground, water, shadows, halo, haze, scene, text, UI. Do not add tools, sails, oars, people, ropes, crate, net, telescope or motor."
+    },
+    {
+      "name": "module-oars",
+      "png": "art/world/boat/module-oars.png",
+      "webp": "public/world/boat/module-oars.webp",
+      "prompt": "Use case: stylized-concept. Asset type: separate attachable 2D game upgrade sprite for a rugged rustic fishing boat, not a UI icon. Mature original hand-painted game asset, warmly weathered timber, aged iron and restrained dark teal details, crisp material shading and strong silhouette. Camera elevated side/three-quarter view about 30 degrees; light from upper left, compatible with a wooden river skiff seen with stern LEFT and bow RIGHT. Single isolated object centered in square canvas, generous transparent margin. GENUINE TRANSPARENCY: all area outside object must have alpha zero. NO backdrop, NO floor, NO cast shadow, NO halo, NO atmospheric glow, NO checkerboard, NO labels, NO frame, NO text, NO watermark. Not a flat vector doodle, not cute toy, not photoreal. Subject: a matched PAIR of long wooden rowing oars, positioned almost horizontally with a slight rising slope from left to right, together as a neat bundle, tied at their middle with narrow weathered leather. Broad blades on LEFT, slim handles to RIGHT. Medium honey-brown timber, subtle dark teal paint on the blade tips, iron reinforcement. No boat or hand. Both full oars in frame."
+    },
+    {
+      "name": "module-crate",
+      "png": "art/world/boat/module-crate.png",
+      "webp": "public/world/boat/module-crate.webp",
+      "prompt": "Use case: stylized-concept. Asset type: separate attachable 2D game upgrade sprite for a rugged rustic fishing boat, not a UI icon. Mature original hand-painted game asset, warmly weathered timber, aged iron and restrained dark teal details, crisp material shading and strong silhouette. Camera elevated side/three-quarter view about 30 degrees; light from upper left, compatible with a wooden river skiff seen with stern LEFT and bow RIGHT. Single isolated object centered in square canvas, generous transparent margin. GENUINE TRANSPARENCY: all area outside object must have alpha zero. NO backdrop, NO floor, NO cast shadow, NO halo, NO atmospheric glow, NO checkerboard, NO labels, NO frame, NO text, NO watermark. Not a flat vector doodle, not cute toy, not photoreal. Subject: one stout closed fishing storage crate, rectangular compact box, aged honey-brown wooden slats, black iron corner braces and hinges, muted teal hinged lid, a small heavy latch on front. Lid closed. Viewed from a slightly elevated front-left three-quarter angle so top, front and right side visible. No fish protruding, no pile of objects, no boat."
+    },
+    {
+      "name": "module-landing-net",
+      "png": "art/world/boat/module-landing-net.png",
+      "webp": "public/world/boat/module-landing-net.webp",
+      "prompt": "Use case: stylized-concept. Asset type: separate attachable 2D game upgrade sprite for a rugged rustic fishing boat, not a UI icon. Mature original hand-painted game asset, warmly weathered timber, aged iron and restrained dark teal details, crisp material shading and strong silhouette. Camera elevated side/three-quarter view about 30 degrees; light from upper left, compatible with a wooden river skiff seen with stern LEFT and bow RIGHT. Single isolated object centered in square canvas, generous transparent margin. GENUINE TRANSPARENCY: all area outside object must have alpha zero. NO backdrop, NO floor, NO cast shadow, NO halo, NO atmospheric glow, NO checkerboard, NO labels, NO frame, NO text, NO watermark. Not a flat vector doodle, not cute toy, not photoreal. Subject: one professional rustic fishing landing net, long varnished wooden handle, oval aged-brass hoop with fine ivory rope mesh forming a deep scoop. Handle points toward lower LEFT, oval net toward upper RIGHT, clear diagonal silhouette. Small dark teal binding around handle grip, believable robust crafted equipment. No fish, no boat, no fishing line, no extra objects."
+    },
+    {
+      "name": "module-telescope",
+      "png": "art/world/boat/module-telescope.png",
+      "webp": "public/world/boat/module-telescope.webp",
+      "prompt": "Use case: stylized-concept. Asset type: separate attachable 2D game upgrade sprite for a rugged rustic fishing boat, not a UI icon. Mature original hand-painted game asset, warmly weathered timber, aged iron and restrained dark teal details, crisp material shading and strong silhouette. Camera elevated side/three-quarter view about 30 degrees; light from upper left, compatible with a wooden river skiff seen with stern LEFT and bow RIGHT. Single isolated object centered in square canvas, generous transparent margin. GENUINE TRANSPARENCY: all area outside object must have alpha zero. NO backdrop, NO floor, NO cast shadow, NO halo, NO atmospheric glow, NO checkerboard, NO labels, NO frame, NO text, NO watermark. Not a flat vector doodle, not cute toy, not photoreal. Subject: one small brass maritime telescope mounted on a compact dark iron swivel clamp pedestal for attaching to a boat gunwale. Telescope tube points to upper RIGHT at a shallow angle, large front objective on RIGHT, eyepiece LEFT, dark brown leather grip and muted teal protective collar, richly detailed tarnished brass rings. Clamp is compact and directly beneath center. No tripod, no scene, no boat, no lens flare."
+    }
+  ],
+  "runtimeCanonicalFormat": "WebP"
+}
