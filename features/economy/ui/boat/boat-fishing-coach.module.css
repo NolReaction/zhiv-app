@@ -1,11 +1,2 @@
-.prompt { color: #f0dfaa !important; animation: coachArrive 180ms ease-out both; }
 .trigger { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 38px; }
-.resistance { color: #b9cfbd; font-size: 10px; white-space: nowrap; }
-@keyframes coachArrive { from { opacity: .3; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .prompt { animation: none; } }
 @media (max-width: 640px) { .trigger > span { display: none; } }
-
-.promptHost { position: relative; display: block; }
-.mastered { position: absolute; inset: -2px 0; display: flex; align-items: center; background: #193a39; color: #d9e8b5; font-style: normal; animation: coachMastered 1.6s ease-out both; pointer-events: none; }
-@keyframes coachMastered { 0%, 55% { opacity: 1; } 100% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .mastered { display: none; } }

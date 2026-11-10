@@ -67,6 +67,33 @@ test("a replayed reel command is idempotent and changed controls cannot reuse it
     reel: { ...reel, inputs: [{ tick: 0, held: true }] } }, finishedAt + 1000), { code: "ECONOMY_REQUEST_CONFLICT" });
 });
 
+test("release accuracy commits one private weight and changes the actual catch and dock payout", () => {
+  const voyageId = "00000000-0000-4000-8000-000000000001";
+  for (const [heldMs, grams, price] of [[undefined, 500, 16], [0, 395, 15], [570, 575, 16]]) {
+    const p = player(), voyage = send(p, "depart_boat", "river_reach").state.boat.voyage;
+    const saved = row(p).state.boat.voyage;
+    saved.id = voyageId;
+    Object.assign(saved.slots[0], { fishId: "fish_silverfin", weightGrams: 500, difficulty: 1, challengeSeed: 37 });
+    const at = Date.parse(voyage.arrivesAt);
+    const cast = request(p, "begin_boat_cast", voyageId, at, heldMs === undefined ? {} : { castHeldMs: heldMs });
+    for (const extra of [{ castHeldMs: -1 }, { castHeldMs: 60001 }, { castHeldMs: 1.5 }, { castQuality: 100 }])
+      assert.throws(() => api.commandDevEconomy(p.token, { ...cast, ...extra }, at), { code: "INVALID_ECONOMY_COMMAND" });
+    const result = api.commandDevEconomy(p.token, cast, at);
+    assert.equal(result.state.boat.voyage.slots, undefined);
+    assert.deepEqual(result.state.boat.voyage.catches, []);
+    assert.equal(api.commandDevEconomy(p.token, cast, at).replayed, true);
+    assert.throws(() => api.commandDevEconomy(p.token, { ...cast, castHeldMs: 1000 }, at), { code: "ECONOMY_REQUEST_CONFLICT" });
+    const challenge = result.state.boat.voyage.challenge, reel = trace(challenge, true);
+    const done = Date.parse(challenge.biteAt) + reel.endTick * 50;
+    const caught = send(p, "submit_boat_cast", voyageId, done, { reel }).state.boat.voyage.catches;
+    assert.deepEqual(caught.map(fish => [fish.fishId, fish.weightGrams]), [["fish_silverfin", grams]]);
+    const docked = send(p, "return_boat", voyageId, done + 1).state;
+    const sold = send(p, "sell_boat_catch", voyageId, done + 2, { totalPrice: price }).state;
+    assert.equal(sold.wallet.coins - docked.wallet.coins, price);
+    assert.equal(sold.boat.records.fish_silverfin.weightGrams, grams);
+  }
+});
+
 test("two clients cannot start different casts from one revision", () => {
   const p = player(), voyage = send(p, "depart_boat", "river_reach").state.boat.voyage;
   const at = Date.parse(voyage.arrivesAt), first = request(p, "begin_boat_cast", voyage.id, at);

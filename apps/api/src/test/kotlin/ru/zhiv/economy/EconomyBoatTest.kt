@@ -51,6 +51,40 @@ class EconomyBoatTest {
     }
     private fun failure(code: String, block: () -> Unit) = assertEquals(code, assertFailsWith<AuthFailure>(block = block).code)
 
+    @Test fun `release timing adjusts the saved slot once and pays for the resulting recorded fish`() {
+        val voyageId = "00000000-0000-4000-8000-000000000001"
+        for ((heldMs, grams, price) in listOf(Triple(null, 500, 16L), Triple(0, 395, 15L), Triple(570, 575, 16L))) {
+            val initial = depart()
+            val boat = checkNotNull(initial.boat)
+            val voyage = checkNotNull(boat.voyage)
+            val state = initial.copy(boat = boat.copy(voyage = voyage.copy(id = voyageId)))
+            val cast = command("begin_boat_cast", voyageId).copy(castHeldMs = heldMs)
+            val issued = EconomyRules.apply(state, decodeEconomyCommand(economyJson.encodeToJsonElement(cast)), now).first
+            val pending = checkNotNull(issued.boat?.voyage)
+            assertEquals(voyage.slots.drop(1), pending.slots.drop(1))
+            val challenge = checkNotNull(pending.challenge)
+            val reel = caughtTrace(challenge)
+            val done = Instant.parse(challenge.biteAt).plusMillis(reel.endTick.toLong() * challenge.tickMs)
+            val caught = call(issued, "submit_boat_cast", voyageId, done, reel)
+            val fish = caught.boat!!.voyage!!.catches.single()
+            assertEquals("fish_silverfin", fish.fishId)
+            assertEquals(grams, fish.weightGrams)
+            val docked = call(caught, "return_boat", voyageId, done)
+            val sold = EconomyRules.apply(docked, command("sell_boat_catch", voyageId).copy(totalPrice = price), done).first
+            assertEquals(price, sold.wallet.coins - docked.wallet.coins)
+            assertEquals(grams, sold.boat!!.records.getValue(fish.fishId).weightGrams)
+        }
+    }
+
+    @Test fun `cast timing on the wire must be an integer duration on a cast and cannot set a reward`() {
+        val cast = command("begin_boat_cast", UUID.randomUUID().toString())
+        val encoded = economyJson.encodeToJsonElement(cast).jsonObject
+        for (bad in listOf(JsonPrimitive(-1), JsonPrimitive(60_001), JsonPrimitive("1"), JsonPrimitive(1.5), JsonNull))
+            failure("INVALID_ECONOMY_COMMAND") { decodeEconomyCommand(JsonObject(encoded + ("castHeldMs" to bad))) }
+        failure("INVALID_ECONOMY_COMMAND") { decodeEconomyCommand(JsonObject(encoded + ("castQuality" to JsonPrimitive(100)))) }
+        failure("INVALID_ECONOMY_COMMAND") { decodeEconomyCommand(economyJson.encodeToJsonElement(cast.copy(action = "return_boat", castHeldMs = 50))) }
+    }
+
     @Test fun `a missed hook clears only that cast after the bite window`() {
         val original = depart()
         val id = original.boat!!.voyage!!.id
@@ -58,6 +92,8 @@ class EconomyBoatTest {
         val voyage = issued.boat!!.voyage!!
         val challenge = voyage.challenge!!
         val missed = EconomyBoatReelSubmission(challenge.id, emptyList(), 0, missedBite = true)
+        val wire = command("submit_boat_cast", id, missed)
+        assertEquals(wire, decodeEconomyCommand(economyJson.encodeToJsonElement(wire)))
         val deadline = Instant.parse(challenge.biteAt).plusMillis(3200)
         failure("ECONOMY_BOAT_TRACE") { call(issued, "submit_boat_cast", id, deadline.minusMillis(1), missed) }
         val settled = call(issued, "submit_boat_cast", id, deadline, missed)

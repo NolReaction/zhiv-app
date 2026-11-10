@@ -326,6 +326,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val orderId: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val itemId: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val reel: EconomyBoatReelSubmission? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val castHeldMs: Int? = null,
 )
 @Serializable data class EconomyResult(val state: EconomyView, val message: String, val acceptedRevision: Long, val replayed: Boolean = false)
 interface EconomyRepository {

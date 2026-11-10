@@ -156,6 +156,7 @@ function commandSignature(command: ReceiptCommand) {
   if (command.action === "load_ship_cargo" && "voyageId" in command)
     parts.push(command.voyageId, command.orderId, command.itemId);
   if ("reel" in command && command.reel != null) parts.push(command.reel);
+  if ("castHeldMs" in command && command.castHeldMs !== undefined) parts.push(command.castHeldMs);
   return JSON.stringify(parts);
 }
 function removeFishEscrow(state: EconomyState, listingId: string) {

@@ -45,10 +45,9 @@ export function createBoatFishingCoach(owner: string) {
 
 export function boatCoachInstruction(view: BoatCoachView, stage: string) {
   if (view.completed) return null;
-  if (stage === "casting" || stage === "soaking") return "2 · Дождитесь, когда поплавок нырнёт.";
-  if (stage === "bite") return "Нажмите «Подсечь!», как только нырнёт поплавок.";
+  if (stage === "casting" || stage === "soaking" || stage === "bite") return "Когда поплавок нырнёт, коснитесь воды или нажмите пробел, чтобы подсечь.";
   if (stage === "reeling" || stage === "paused") return view.learnedLift
-    ? "4 · Отпустите кнопку — дайте зелёной зоне опуститься."
-    : "3 · Зажмите кнопку или пробел — зелёная зона поднимется.";
-  return "1 · Зажмите кнопку или пробел, чтобы выбрать силу заброса. Отпустите, чтобы бросить.";
+    ? "Отпустите, чтобы опустить зелёную зону вслед за рыбой."
+    : "Зажмите воду или пробел, чтобы поднять зелёную зону к рыбе.";
+  return "Удерживайте воду или пробел для замаха. Отпустите, когда метка попадёт в зелёную зону.";
 }

@@ -5,6 +5,7 @@ export type FishingSceneFrame = {
   stage: "waiting" | "casting" | "soaking" | "landed" | "bite" | "reeling" | "paused" | "caught" | "escaped" | "expired" | "pending";
   castKey?: string;
   castPower?: number;
+  aiming?: boolean;
   /** Cosmetic composition stays stable for one saved voyage. */
   sceneKey?: string;
   resistance?: "steady" | "sprightly" | "surging" | "stubborn";

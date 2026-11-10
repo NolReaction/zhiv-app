@@ -18,7 +18,7 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
   let raf = 0, lastClock: number | null = null, lastPaint: number | null = null;
   let elapsed = 0, castElapsed = initial.castKey && initial.stage === "casting" ? 0 : 2, stageElapsed = initial.stage === "casting" ? 0 : 2, dirty = true;
   let pausedFlightKey: string | undefined;
-  let pose = fishingBoatActorPose(initial.stage, castElapsed, initial.held, elapsed, false, stageElapsed, initial.biteLeadSeconds);
+  let pose = fishingBoatActorPose(initial.aiming ? "aiming" : initial.stage, castElapsed, initial.held, elapsed, false, stageElapsed, initial.biteLeadSeconds);
   let inertia = createFishingBoatInertia();
   let water = { centerX: 500, supportSpan: 440, phase: 0 };
   let biteLead = initial.biteLeadSeconds, biteLeadClock = elapsed;
@@ -55,7 +55,7 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
     paintFishingScene(ctx, paintedFrame, images, viewport, { elapsed, castElapsed, stageElapsed,
       still: Boolean(media?.matches),
       boatMotion: fishingBoatInertiaMotion(inertia, Boolean(media?.matches)),
-      pose: media?.matches ? fishingBoatActorPose(frame.stage, castElapsed, frame.held, 0, true, stageElapsed, currentBiteLead()) : { ...pose } });
+      pose: media?.matches ? fishingBoatActorPose(frame.aiming ? "aiming" : frame.stage, castElapsed, frame.held, 0, true, stageElapsed, currentBiteLead()) : { ...pose } });
     dirty = false;
   }
   function tick(time: number) {
@@ -69,7 +69,7 @@ export function mountFishingScene(canvas: HTMLCanvasElement, initial: FishingSce
     if (interval > 40) lateFrames++; else if (interval > 0) lateFrames = Math.max(0, lateFrames - .25);
     lastClock = time; elapsed += dt; castElapsed += dt; stageElapsed += dt;
     advanceFishingBoatInertia(inertia, dt, buoyancyInput());
-    const target = fishingBoatActorPose(frame.stage, castElapsed, frame.held, elapsed, false, stageElapsed, currentBiteLead());
+    const target = fishingBoatActorPose(frame.aiming ? "aiming" : frame.stage, castElapsed, frame.held, elapsed, false, stageElapsed, currentBiteLead());
     const blend = 1 - Math.exp(-dt / .12);
     pose = { angle: pose.angle + (target.angle - pose.angle) * blend,
       effort: pose.effort + (target.effort - pose.effort) * blend, lean: pose.lean + (target.lean - pose.lean) * blend };

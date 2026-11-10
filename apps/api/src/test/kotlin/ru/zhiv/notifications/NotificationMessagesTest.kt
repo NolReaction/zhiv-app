@@ -115,6 +115,8 @@ class NotificationMessagesTest {
             "berry_tea" to "2 порции ягодного чая", "forest_pan" to "2 порции лесного жаркого",
             "currant_glazed_fish" to "2 порции рыбы в смородиновой глазури", "berry_pastila" to "2 порции ягодной пастилы",
             "trail_feast" to "2 порции таёжного пайка", "river_aspic" to "2 порции лесного рыбного студня",
+            "ember_berries" to "2 порции томлёной малины", "strawberry_kissel" to "2 порции клубничного киселя",
+            "cranberry_bream" to "2 порции леща с клюквенной корочкой",
         )
         expectations.forEach { (resource, expected) ->
             assertEquals("Готово: $expected. Можно забрать в кладовую.", message(job("production", "workshop", mapOf(resource to 2))).body)

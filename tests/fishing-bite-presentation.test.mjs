@@ -13,6 +13,8 @@ test("a quiet pre-bite nibble precedes one definite dip without changing the ser
   const waiting = fishingBiteMotion("soaking", 2, 1.5, false);
   const nibble = fishingBiteMotion("soaking", 2, .4, false);
   const bite = fishingBiteMotion("bite", .24, 0, false);
+  const tap = fishingBiteMotion("soaking", 2, 1.9, false);
+  assert.ok(tap.dip > 0 && tap.dip < nibble.dip, "the first tap barely shifts the antenna");
   assert.equal(waiting.dip, 0); assert.ok(nibble.dip > 1 && nibble.dip < 3);
   assert.ok(bite.dip > nibble.dip * 3 && bite.notice > .5);
   assert.equal(fishingBiteMotion("soaking", 2, undefined, false).dip, 0, "old challenges cannot invent a pre-bite time");
@@ -21,10 +23,10 @@ test("a quiet pre-bite nibble precedes one definite dip without changing the ser
 
 test("bite attention settles and reduced motion leaves a stable readable sunk float", () => {
   const settled = fishingBiteMotion("bite", 1.4, 0, false);
-  assert.equal(settled.notice, 0); assert.equal(settled.dip, 6);
+  assert.equal(settled.notice, 0); assert.equal(settled.dip, 13);
   assert.ok(fishingBiteMotion("bite", 1.81, 0, false).dip > 10, "the float tugs again while the player can still hook");
   const samples = Array.from({ length: 240 }, (_, index) => fishingBiteMotion("bite", index / 20, 0, false));
-  assert.ok(samples.every(sample => sample.dip >= 0 && sample.dip <= 12));
+  assert.ok(samples.every(sample => sample.dip >= 0 && sample.dip <= 17));
   assert.deepEqual(fishingBiteMotion("bite", .1, 0, true), fishingBiteMotion("bite", 300, 0, true));
 });
 

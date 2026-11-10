@@ -1,3 +1,4 @@
+import { BOAT_CAST_CYCLE_MS } from "./boat-cast-aim";
 import { applyBoatCommand } from "./boat-commands";
 import { newBoatState, boatClaimPracticeSeconds } from "./boat-fishing";
 import { familiarEconomyItems } from "./familiar-items";
@@ -188,6 +189,9 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
 }
 
 function applyEconomyTransition(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number>, rareRandom: RareRandomInteger): string {
+  if (command.castHeldMs !== undefined && (command.action !== "begin_boat_cast" || !Number.isInteger(command.castHeldMs)
+    || command.castHeldMs < 0 || command.castHeldMs > BOAT_CAST_CYCLE_MS))
+    throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Некорректное время замаха", 400);
   if ((command.reel != null) !== (command.action === "submit_boat_cast")) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Управление удочкой не используется в этом действии", 400);
   if (command.action !== "load_ship_cargo" && (command.voyageId != null || command.orderId != null || command.itemId != null))
     throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Груз не используется в этом действии", 400);

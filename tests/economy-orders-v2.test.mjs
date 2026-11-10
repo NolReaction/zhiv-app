@@ -219,13 +219,15 @@ test("paid replacement receipts replay once, reject altered quotes, and fence co
   const stateAfter = read(p); assert.equal(stateAfter.wallet.pearls, 40); assert.equal(stateAfter.residentOrders.freeReplacementsUsed, 3);
 });
 
-test("twenty-three meals keep distinct boosts, preserve the six fish tiers and retain old paid timing", () => {
-  assert.equal(catalog.food.meals.length, 23);
+test("twenty-six meals keep distinct boosts, preserve the six fish tiers and retain old paid timing", () => {
+  assert.equal(catalog.food.meals.length, 26);
   assert.deepEqual(catalog.food.meals.filter(meal => ["grilled_fish", "fish_soup", "berry_fish", "hearty_fish", "epic_fish", "legendary_fish"].includes(meal.itemId)).map(meal => [meal.heroSpeedBps, meal.builderSpeedBps]), [[1000,1000],[2500,2500],[4000,3500],[6000,5000],[8000,7000],[10000,9000]]);
-  assert.deepEqual(catalog.food.meals.filter(meal => ["strawberry_compote", "blueberry_compote", "currant_jelly", "blackberry_preserve", "cranberry_glaze"].includes(meal.itemId))
+  assert.deepEqual(catalog.food.meals.filter(meal => ["strawberry_compote", "blueberry_compote", "currant_jelly", "blackberry_preserve", "cranberry_glaze",
+    "ember_berries", "strawberry_kissel", "cranberry_bream"].includes(meal.itemId))
     .map(meal => [meal.itemId, meal.heroSpeedBps, meal.builderSpeedBps]), [
       ["strawberry_compote", 800, 2500], ["blueberry_compote", 1200, 2000], ["currant_jelly", 2000, 5000],
       ["blackberry_preserve", 4500, 8000], ["cranberry_glaze", 7500, 10000],
+      ["ember_berries", 1000, 1500], ["strawberry_kissel", 1500, 2000], ["cranberry_bream", 5500, 7500],
     ]);
   for (const meal of catalog.food.meals) {
     const state = fresh(); state.inventory = { [meal.itemId]: 1 };

@@ -10,6 +10,11 @@ object EconomyBoats {
     private const val HOOK_WINDOW_MS = 3200L
     private val entropy = SecureRandom()
     private val config get() = checkNotNull(EconomyRules.catalog.boat)
+    internal fun aimedFishWeight(baseGrams: Int, minGrams: Int, maxGrams: Int, quality: Int): Int {
+        val base = baseGrams.coerceIn(minGrams, maxGrams)
+        val headroom = if (quality >= 50) maxGrams - base else base - minGrams
+        return base + (quality - 50) * headroom / 200
+    }
     fun returnStartedAt(v: EconomyBoatVoyage): Instant = Instant.parse(v.returnStartedAt ?: v.fishingUntil)
     fun returnsAt(v: EconomyBoatVoyage): Instant = v.returnsAt?.let(Instant::parse) ?: returnStartedAt(v).plusSeconds(v.inboundSeconds)
     fun phase(boat: EconomyBoatState, now: Instant): String {
@@ -137,7 +142,15 @@ object EconomyBoats {
                     motorResponse = response.takeIf { modern }, hullDamping = damping.takeIf { modern },
                     resistance = EconomyBoatReel.resistanceForClass(rarity, slot.challengeSeed), seed = slot.challengeSeed, zoneWidth = width, difficulty = slot.difficulty,
                     startedAt = now.toString(), expiresAt = expiry.toString(), biteAt = biteAt.toString(), fishRarity = rarity)
-                return state.copy(boat = b.copy(voyage = v.copy(castsUsed = v.castsUsed + 1, challenge = challenge))) to "Удочка заброшена. Ждём поклёвку"
+                val castNumber = v.castsUsed + 1
+                val slots = command.castHeldMs?.let { held ->
+                    val quality = boatCastQuality(v.id, castNumber, held)
+                    val range = config.weights.getValue(slot.fishId)
+                    v.slots.toMutableList().apply {
+                        this[v.castsUsed] = slot.copy(weightGrams = aimedFishWeight(slot.weightGrams, range.minGrams, range.maxGrams, quality))
+                    }
+                } ?: v.slots
+                return state.copy(boat = b.copy(voyage = v.copy(castsUsed = castNumber, challenge = challenge, slots = slots))) to "Удочка заброшена. Ждём поклёвку"
             }
             "submit_boat_cast" -> {
                 val reel = command.reel

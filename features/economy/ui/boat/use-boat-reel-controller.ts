@@ -32,7 +32,6 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
   const blocked = disabled || queued || uncertain || suspended;
   const gates = useRef({ blocked, suspended });
   const submission = useRef(false);
-  const holdButton = useRef<HTMLButtonElement>(null);
   // A definitive response can arrive without a rendered busy frame. Keep its retry available
   // even when a later, unrelated server notice clears the error.
   if (delivery === "sent" && error && !disabled && !queued && !uncertain) setDelivery("retry");
@@ -49,9 +48,8 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
   useEffect(() => {
     gates.current = { blocked, suspended };
     if (blocked) runtime.current.sawBite = false;
-    if (suspended && runtime.current.playing) pause();
+    if (blocked && runtime.current.playing) pause();
   }, [blocked, suspended, pause]);
-  useEffect(() => { if (playing && !suspended) holdButton.current?.focus({ preventScroll: true }); }, [playing, suspended]);
 
   useEffect(() => {
     const data = runtime.current;
@@ -130,7 +128,7 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
   };
   const changeHeld = (next: boolean) => {
     const data = runtime.current;
-    if (!data.ready || !data.playing || gates.current.suspended || data.expired || expired || data.reel.status !== "active") return;
+    if (!data.ready || !data.playing || gates.current.blocked || data.expired || expired || data.reel.status !== "active") return;
     changeBoatReelInput(data.inputs, data.reel.tick, next); data.held = next; setHeld(next);
   };
   const togglePlay = () => {
@@ -168,7 +166,7 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
     return () => window.removeEventListener("online", submit);
   }, [delivery, blocked, expired, submit]);
   const missedElsewhere = manualHook && windowClosed && !started && !missedBite;
-  const status = waitingForConfirmation ? "Проверяем результат" : expired ? "Рыба ушла" : missedElsewhere ? "Время для подсечки прошло" : missedBite ? "Поклёвка пропущена" : reel.status === "caught" ? "Рыба у борта!" : reel.status === "escaped" ? "Рыба сорвалась" : playing ? "Рыба на крючке" : started ? "Вываживание на паузе" : castStage === "casting" ? "Забрасываем удочку…" : castStage === "soaking" ? "Ждём поклёвку…" : "Есть поклёвка!";
+  const status = waitingForConfirmation ? "Проверяем результат" : expired ? "Рыба ушла" : missedElsewhere ? "Время для подсечки прошло" : missedBite ? "Поклёвка пропущена" : reel.status === "caught" ? "Рыба у борта!" : reel.status === "escaped" ? "Рыба сорвалась" : playing ? "Рыба на крючке" : started ? "Вываживание на паузе" : castStage === "casting" ? "Забрасываем удочку…" : castStage === "soaking" ? "Ждём поклёвку…" : "Поплавок нырнул";
   return { challenge, reel, playing, held, ready, paused: started && !playing, expired, waitingForConfirmation, retryNeeded: delivery === "retry", status, castStage,
-    holdButton, changeHeld, togglePlay, submit, hookFish, missedBite, missedElsewhere, confirmMiss, awaitingHook: manualHook && !windowClosed && !started && !missedBite && castStage === "bite" };
+    changeHeld, togglePlay, submit, hookFish, missedBite, missedElsewhere, confirmMiss, awaitingHook: manualHook && !windowClosed && !started && !missedBite && castStage === "bite" };
 }

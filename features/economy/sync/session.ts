@@ -22,6 +22,8 @@ import { isBoatLanding, restoreBoatLanding, sameBoatAttempt } from "./boat-landi
 
 const landingStorageMessage = "Для сохранения заброса освободите место в браузере или восстановите соединение.";
 
+export type BoatCommandInput = NonNullable<EconomyCommand["reel"]> | { castHeldMs: number };
+
 type Transport = {
   get: (signal: AbortSignal) => Promise<EconomyView>;
   send: (command: EconomyCommand, signal: AbortSignal) => Promise<EconomyResult>;
@@ -49,6 +51,7 @@ type View = {
   error: string | null; notice: string; busy: boolean; uncertain: boolean; retryAt: number; rateLimited: boolean;
   completedConstructions: readonly ConstructionCompletion[];
   localBoatUpgrade?: BoatUpgradeReceipt;
+  localBoatDepartureId?: string;
   localBoatSettlement?: { requestId: string; voyageId: string; revision: number; saleCoins?: number };
   directActionsAvailable: boolean;
   snapshotConfirmed: boolean;
@@ -475,6 +478,11 @@ export function createEconomySession(owner: string | null, transport: Transport,
           ? playerXpGainFromReceipt(localEconomyIntent.before, result, value.command) : null;
         const upgrade = value.kind === "economy" && localEconomyIntent?.requestId === value.command.requestId
           && view.snapshot?.revision === result.state.revision ? boatUpgradeReceipt(localEconomyIntent.before, result, value.command) : null;
+        const voyage = result.state.boat?.voyage;
+        const departed = value.kind === "economy" && value.command.action === "depart_boat"
+          && localEconomyIntent?.requestId === value.command.requestId && !localEconomyIntent.before.boat?.voyage
+          && result.acceptedRevision === value.command.expectedRevision + 1 && result.state.revision === result.acceptedRevision
+          && voyage && voyage.id === view.snapshot?.boat?.voyage?.id ? voyage.id : undefined;
         const settlement = value.kind === "economy" && (value.command.action === "claim_boat" || value.command.action === "sell_boat_catch")
           && localEconomyIntent?.requestId === value.command.requestId && localEconomyIntent.before.boat?.voyage?.id === value.command.targetId
           && result.acceptedRevision === value.command.expectedRevision + 1 && !result.state.boat?.voyage
@@ -504,6 +512,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
           ...(sale ? { localSale: sale } : {}),
           ...(upgrade ? { localBoatUpgrade: upgrade } : {}),
           ...(settlement ? { localBoatSettlement: settlement } : {}),
+          ...(departed ? { localBoatDepartureId: departed } : {}),
           ...(purchase ? { localLeaftailPurchase: purchase } : {}),
           ...(exploration ? { localExploration: exploration } : {}),
           ...(completed.length ? { completedConstructions: [...view.completedConstructions, ...completed].slice(-8) } : {}),
@@ -610,7 +619,8 @@ export function createEconomySession(owner: string | null, transport: Transport,
       };
     },
     refresh, refreshTapBoost, refreshSoft: () => refresh(false), refreshMarket, refreshBarter, refreshNeighbor,
-    act(action: EconomyCommand["action"], targetId: string, quantity = 1, totalPrice = 0, fishSelection?: Record<string, number>, shipCargo?: { voyageId: string; orderId: string; itemId: string }, reel?: EconomyCommand["reel"]) {
+    act(action: EconomyCommand["action"], targetId: string, quantity = 1, totalPrice = 0, fishSelection?: Record<string, number>, shipCargo?: { voyageId: string; orderId: string; itemId: string }, boatInput?: BoatCommandInput) {
+      const reel = boatInput && "inputs" in boatInput ? boatInput : undefined;
       if (action === "submit_boat_cast" && reel?.deferred) {
         if (!owner || !view.snapshot || !active || !localActionsAvailable || pending || productionEntries.length || view.busy) return false;
         const command: EconomyCommand = { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision,
@@ -644,6 +654,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
       const command: EconomyCommand = { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice,
         ...(fishSelection === undefined ? {} : { fishSelection: { ...fishSelection } }),
         ...(action === "load_ship_cargo" && shipCargo ? { voyageId: shipCargo.voyageId, orderId: shipCargo.orderId, itemId: shipCargo.itemId } : {}),
+        ...(action === "begin_boat_cast" && boatInput && "castHeldMs" in boatInput ? { castHeldMs: boatInput.castHeldMs } : {}),
         ...(reel ? { reel: { ...reel, inputs: reel.inputs.map(input => ({ ...input })) } } : {}) };
       localEconomyIntent = { requestId: command.requestId, before: view.snapshot };
       if (action === "start_exploration" || action === "start_fishing")

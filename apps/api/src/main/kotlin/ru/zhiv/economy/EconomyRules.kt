@@ -24,6 +24,7 @@ fun validateEconomyCommand(command: EconomyCommand) {
         if (parseCanonicalUuidV4(command.voyageId ?: "") == null || command.orderId?.length !in 1..80 ||
             command.itemId?.length !in 1..80 || command.targetId != command.orderId) invalidEconomy()
     } else if (command.voyageId != null || command.orderId != null || command.itemId != null) invalidEconomy()
+    if (command.castHeldMs != null && (command.action != "begin_boat_cast" || command.castHeldMs !in 0..BOAT_CAST_CYCLE_MS)) invalidEconomy()
     if (command.action == "submit_boat_cast") {
         if (command.reel == null) invalidEconomy()
     } else if (command.reel != null) invalidEconomy()
@@ -38,11 +39,11 @@ fun validateEconomyCommand(command: EconomyCommand) {
 
 fun decodeEconomyCommand(element: JsonElement, validator: (EconomyCommand) -> Unit = ::validateEconomyCommand): EconomyCommand {
     val value = element as? JsonObject ?: invalidEconomy()
-    val fields = setOf("requestId", "ownerPublicId", "expectedRevision", "action", "targetId", "quantity", "totalPrice", "fishSelection", "voyageId", "orderId", "itemId", "reel")
+    val fields = setOf("requestId", "ownerPublicId", "expectedRevision", "action", "targetId", "quantity", "totalPrice", "fishSelection", "voyageId", "orderId", "itemId", "reel", "castHeldMs")
     if (value.keys.any { it !in fields }) invalidEconomy()
     for (field in listOf("requestId", "ownerPublicId", "action", "targetId"))
         if ((value[field] as? JsonPrimitive)?.isString != true) invalidEconomy()
-    for (field in listOf("expectedRevision", "quantity", "totalPrice")) {
+    for (field in listOf("expectedRevision", "quantity", "totalPrice", "castHeldMs")) {
         val number = value[field] ?: if (field == "expectedRevision") invalidEconomy() else continue
         val primitive = number as? JsonPrimitive ?: invalidEconomy()
         if (primitive.isString || primitive.longOrNull == null) invalidEconomy()
@@ -61,10 +62,10 @@ fun decodeEconomyCommand(element: JsonElement, validator: (EconomyCommand) -> Un
     }
     value["reel"]?.takeUnless { it == JsonNull }?.let { supplied ->
         val reel = supplied as? JsonObject ?: invalidEconomy()
-        if (reel.keys - "deferred" != setOf("challengeId", "inputs", "endTick") || (reel["challengeId"] as? JsonPrimitive)?.isString != true) invalidEconomy()
-        reel["deferred"]?.let {
-            val flag = it as? JsonPrimitive ?: invalidEconomy()
-            if (flag.isString || flag.booleanOrNull == null) invalidEconomy()
+        if (reel.keys - "deferred" - "missedBite" != setOf("challengeId", "inputs", "endTick") || (reel["challengeId"] as? JsonPrimitive)?.isString != true) invalidEconomy()
+        for (field in listOf("deferred", "missedBite")) {
+            val flag = reel[field] ?: continue
+            if (flag !is JsonPrimitive || flag.isString || flag.booleanOrNull == null) invalidEconomy()
         }
         val end = reel["endTick"] as? JsonPrimitive ?: invalidEconomy()
         if (end.isString || end.intOrNull == null) invalidEconomy()

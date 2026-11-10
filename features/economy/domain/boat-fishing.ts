@@ -105,9 +105,15 @@ export function boatDepartureReason(state: BoatSource, now: number): string | nu
   if (tackle.equippedBaitId && (!fishingBaitCompatible(tackle.equippedRodId, tackle.equippedBaitId, fishing) || !(state.inventory[tackle.equippedBaitId] > 0))) return "Проверьте запас и совместимость наживки";
   return null;
 }
-/** Independent uniforms create a bounded right tail; control performance never changes mass. */
+/** Independent uniforms create the hidden base weight before a cast. */
 export function boatFishWeight(minGrams: number, maxGrams: number, first: number, second: number): number {
   return minGrams + Math.floor((maxGrams - minGrams) * first * second / 100_000_000);
+}
+/** At either extreme, move at most a quarter of the remaining distance to that end of the species range. */
+export function aimedBoatFishWeight(baseGrams: number, minGrams: number, maxGrams: number, quality: number) {
+  const base = Math.min(maxGrams, Math.max(minGrams, baseGrams));
+  const headroom = quality >= 50 ? maxGrams - base : base - minGrams;
+  return base + Math.trunc((quality - 50) * headroom / 200);
 }
 export function boatClaimPracticeSeconds(before: BoatState | undefined, after: BoatState | undefined, action: string): number {
   const voyage = before?.voyage;

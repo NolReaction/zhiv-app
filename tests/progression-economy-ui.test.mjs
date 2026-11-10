@@ -159,7 +159,7 @@ test("search matches word beginnings and item IDs while ignoring case and ё wit
     assert.deepEqual(listItems(h.render()).map(node => node.props["data-item-id"]), expected);
   }
   field(h.render(), "Найти ингредиент").props.onChange({ target: { value: "малин" } });
-  assert.deepEqual(new Set(listItems(h.render()).map(node => node.props["data-item-id"])), new Set(["berries", "berry_compote"]));
+  assert.deepEqual(new Set(listItems(h.render()).map(node => node.props["data-item-id"])), new Set(["berries", "berry_compote", "ember_berries"]));
 });
 
 test("selecting an item on a narrow view scrolls to its detail after the frame; wide view keeps native scrolling", () => {

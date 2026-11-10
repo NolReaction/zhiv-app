@@ -293,7 +293,7 @@ test("the basic campfire exposes its existing capacity without selling extra slo
     assert.equal(nodes.some(node => node.type === WorldProductionSlots), entry === "hub", entry);
     if (entry === "map") assert.ok(nodes.some(node => node.type?.name === "WorldCookbook"), "campfire opens the dedicated book with its own queue tab");
     if (entry === "hub") {
-      assert.deepEqual(nodes.filter(node => node.props.recipe).map(node => node.props.recipe.id), ["cook_grilled_fish"]);
+      assert.deepEqual(nodes.filter(node => node.props.recipe).map(node => node.props.recipe.id), ["cook_grilled_fish", "experiment_ember_berries"]);
     }
   }
   assert.deepEqual(calls, []);

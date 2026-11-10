@@ -20,7 +20,7 @@ test('ordinary meals name exact classes while the six species dishes name their 
     assert.equal(economyCatalog.recipes.find(recipe => recipe.id === id).fishInput, undefined);
   const speciesRecipes = economyCatalog.recipes.filter(recipe => recipe.fishInput?.exactSpecies);
   assert.equal(speciesRecipes.length, 6);
-  assert.equal(economyCatalog.food.meals.length, 23);
+  assert.equal(economyCatalog.food.meals.length, 26);
   for (const recipe of speciesRecipes) {
     const names = recipe.fishInput.itemIds.map(id => economyCatalog.items.find(item => item.id === id).name);
     assert.equal(recipeFishGroupLabel(recipe, economyCatalog), names.join(' + '));

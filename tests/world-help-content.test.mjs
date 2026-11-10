@@ -79,7 +79,8 @@ test("boat help links busy-player advice to real repair, attempts, delivery and 
   assert.equal(topics.some(entry => entry.id === "boat-blueprints"), false);
   assert.doesNotMatch(answer("boat-fishing"), /Нажмите лодку у причала/);
   assert.doesNotMatch(answer("boat-upgrades"), /чертеж|подзорная труба/i);
-  assert.match(answer("boat-records"), /Вес не меняет цену/);
+  assert.match(answer("boat-records"), /продаже у причала вес даёт до 15%/i);
+  assert.match(answer("boat-controls"), /Зажмите воду или пробел.*подвижную зелёную зону.*поплавок нырнёт/);
   assert.match(answer("boat-records"), /профессиональный навык рыбалки/);
   assert.match(answer("boat-records"), /автоматически.*«Друзья» и «Мир»/);
   for (const [query, id] of [["лодочная рыбалка", "boat-fishing"], ["вес рыбы рекорд", "boat-records"]])

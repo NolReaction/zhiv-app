@@ -13,7 +13,7 @@ const baselineReport = auditFoodEconomy(baselineCatalog);
 
 test("exact fish classes and full cooking batches preserve their actual sale value", () => {
   const data = catalog();
-  assert.equal(report.meals.length, 23);
+  assert.equal(report.meals.length, 26);
   assert.equal(report.recipes.length, data.recipes.filter(recipe => !recipe.retired && Object.keys(recipe.cost.items).some(id => [...data.fishing.classes, ...data.fishing.fish].some(group => group.itemId === id))).length);
   for (const recipe of report.recipes) for (const variant of recipe.variants) {
     assert(variant.saleProfitCoins > 0);

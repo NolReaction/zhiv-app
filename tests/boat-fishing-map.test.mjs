@@ -87,6 +87,7 @@ const { economyShipSchema } = await vite.ssrLoadModule("/features/economy/domain
 const { newEconomyState, applyEconomyCommand, economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { publicBoatState } = await vite.ssrLoadModule("/features/economy/domain/boat-fishing.ts");
 const { replayBoatReel } = await vite.ssrLoadModule("/features/economy/domain/boat-reel.ts");
+const { boatCastAim } = await vite.ssrLoadModule("/features/economy/domain/boat-cast-aim.ts");
 const { boatReelCheckpointKey } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-reel-checkpoint.ts");
 
 const at = Date.parse("2026-11-03T10:00:00Z");
@@ -134,7 +135,9 @@ function featureTree(element, path, hosts, context = {}) {
   }
   if (typeof type !== "string") return [{ tag: "icon", props: {}, children: [] }];
   let host = hosts.get(childPath);
-  if (!host) { host = { tag: type, props, children: [], focus() { document.activeElement = this; }, scrollTo() {}, setPointerCapture(id) { this.captured = id; } }; hosts.set(childPath, host); }
+  if (!host) { host = { tag: type, props, children: [], focus() { document.activeElement = this; }, scrollTo() {}, closest(selector) {
+      return selector === "[data-boat-dialog]" ? [...hosts.values()].find(host => host.props["data-boat-dialog"]) : null;
+    }, setPointerCapture(id) { this.captured = id; } }; hosts.set(childPath, host); }
   host.props = props; host.children = featureTree(props.children, childPath, hosts, context);
   if (props.ref) { if (typeof props.ref === "function") props.ref(host); else props.ref.current = host; }
   return [host];
@@ -152,7 +155,7 @@ function fixture({ outbound = false, dev = false } = {}) {
   const pending = [], commands = [];
   let localBoatSettlement;
   const apply = command => { const next = structuredClone(state); applyEconomyCommand(next, command, time, () => crypto.randomUUID(), {}, maximum => 37 % maximum); state = next; revision++; commands.push(command); };
-  const command = (action, targetId, reel) => economyCommandSchema.parse({ requestId: crypto.randomUUID(), ownerPublicId: "0000-0000-0000", expectedRevision: revision, action, targetId, quantity: 1, totalPrice: 0, ...(reel ? { reel } : {}) });
+  const command = (action, targetId, input) => economyCommandSchema.parse({ requestId: crypto.randomUUID(), ownerPublicId: "0000-0000-0000", expectedRevision: revision, action, targetId, quantity: 1, totalPrice: 0, ...(input && "castHeldMs" in input ? { castHeldMs: input.castHeldMs } : input ? { reel: input } : {}) });
   apply(command("depart_boat", economyCatalog.boat.routeId));
   if (outbound) {
     // A voyage saved before the fuel update keeps its original schedule.
@@ -197,7 +200,9 @@ function fixture({ outbound = false, dev = false } = {}) {
       button.props.onPointerDown(event(button)); render(); frame(350);
       button.props.onPointerUp(event(button)); render(); flush(); frame(0);
     },
-    play() { const biteAt = Date.parse(state.boat.voyage.challenge.biteAt ?? state.boat.voyage.challenge.startedAt); if (time < biteAt) frame(biteAt - time); if (byAction("hook")) click(byAction("hook")); else if (byAction("play")) click(byAction("play")); frame(0); assert(byAction("hold")); },
+    play() { const biteAt = Date.parse(state.boat.voyage.challenge.biteAt ?? state.boat.voyage.challenge.startedAt); if (time < biteAt) frame(biteAt - time); if (byAction("play")) click(byAction("play")); else if (byAction("line")) {
+        const water = byAction("line"); water.props.onPointerDown(event(water)); water.props.onPointerUp(event(water)); render();
+      } frame(0); assert(byAction("hold")); },
     hold(value, input = "keyboard") { const button = byAction("hold"); assert(button); if (input === "pointer") button.props[value ? "onPointerDown" : "onPointerUp"](event(button));
       else button.props[value ? "onKeyDown" : "onKeyUp"](event(button)); render(); },
     playToResult() {
@@ -246,7 +251,7 @@ test("a short cast restores the same landing distance before and after receipt a
   f.close(); f.flush(); f.reopen(); f.frame(0);
   const scene = () => f.find(node => node.tag === "canvas").props.frame;
   const power = scene().castPower;
-  assert.equal(power, 25);
+  assert.equal(power, 24);
   const key = "zhiv.boat-cast.v1.0000-0000-0000";
   const first = f.state.boat.voyage.challenge;
   assert.equal(JSON.parse(window.sessionStorage.getItem(key)).challenge, first.id);
@@ -261,19 +266,58 @@ test("a short cast restores the same landing distance before and after receipt a
 test("cancelled charges keep the budget and a missed bite settles once with no catch", () => {
   const f = fixture();
   const button = f.byAction("cast"); button.props.onPointerDown(event(button)); f.render(); f.frame(700);
-  assert.equal(f.pending.length, 0); assert.match(text(f.byAction("cast")), /75%/);
+  assert.equal(f.pending.length, 0); assert.equal(f.find(node => node.props.role === "meter").props["data-marker"], 70);
   button.props.onPointerCancel(event(button)); f.render();
   button.props.onPointerUp(event(button)); f.render();
   assert.equal(f.pending.length, 0); assert.equal(f.state.boat.voyage.castsUsed, 0);
   button.props.onKeyDown(event(button, { key: " " })); f.render(); f.frame(1000);
-  assert.match(text(f.byAction("cast")), /100%/);
+  assert.equal(f.find(node => node.props.role === "meter").props["data-marker"], 100);
   button.props.onKeyUp(event(button, { key: " " })); f.render(); f.flush(); f.frame(0);
   const voyage = f.state.boat.voyage, biteAt = Date.parse(voyage.challenge.biteAt);
-  f.frame(biteAt - Date.parse(f.view().serverTime)); assert(f.byAction("hook")); assert.equal(f.byAction("hold"), undefined);
+  f.frame(biteAt - Date.parse(f.view().serverTime)); assert(f.byAction("line")); assert.equal(f.byAction("hold"), undefined);
   f.frame(3199); assert.equal(f.pending.length, 0); assert.equal(hooks.inspectReel().tick, 0);
   f.frame(1); assert.equal(f.pending.length, 1); assert.equal(f.pending[0].reel.missedBite, true);
   f.flush(); assert.equal(f.state.boat.voyage.challenge, undefined); assert.deepEqual(f.state.boat.voyage.catches, []);
   assert.equal(f.state.boat.voyage.castsUsed, 1); assert(f.byAction("cast"));
+});
+
+test("a keyboard cast passes focus through the dialog trap to the water for the strike", () => {
+  const f = fixture(), cast = f.byAction("cast");
+  cast.focus(); cast.props.onKeyDown(event(cast)); f.render(); f.frame(85);
+  cast.props.onKeyUp(event(cast)); f.render();
+  const expectedQuality = boatCastAim(f.state.boat.voyage.id, 1, 85).quality;
+  const release = () => f.find(node => node.props["data-cast-result"] !== undefined);
+  assert.equal(release().props["data-cast-result"], expectedQuality);
+  f.find(node => node.props["data-boat-dialog"]).focus();
+  f.flush(); f.frame(0);
+  assert.equal(release().props["data-cast-result"], expectedQuality);
+  assert.equal(document.activeElement, f.byAction("line"));
+  f.frame(Date.parse(f.state.boat.voyage.challenge.biteAt) - Date.parse(f.view().serverTime));
+  assert.equal(release(), undefined, "no accuracy toast covers the bite");
+  document.activeElement.props.onKeyDown(event(document.activeElement)); f.render();
+  assert.equal(document.activeElement, f.byAction("hold"));
+  f.byAction("pause").focus(); f.click(f.byAction("pause"));
+  f.byAction("play").focus(); f.click(f.byAction("play"));
+  assert.equal(document.activeElement, f.byAction("hold"), "resume returns keyboard ownership to the water");
+});
+
+test("a premature hold cannot hook across the bite, and only optional hints teach when to strike", () => {
+  const f = fixture();
+  assert.equal(f.find(node => node.props["data-fishing-coach"]), undefined);
+  f.click(f.byAction("coach")); assert.match(text(f.find(node => node.props["data-fishing-coach"] === "cast")), /зелёную зону/);
+  f.click(f.byAction("coach")); f.cast();
+  const water = f.byAction("line");
+  assert(water); assert.equal(text(water), "");
+  water.props.onPointerDown(event(water)); f.render();
+  f.frame(Date.parse(f.state.boat.voyage.challenge.biteAt) - Date.parse(f.view().serverTime));
+  assert.equal(f.byAction("line"), water); assert.equal(f.byAction("hold"), undefined);
+  assert.equal(f.find(node => node.props["data-fishing-coach"]), undefined);
+  assert.equal(f.find(node => node.tag === "canvas").props.frame.stage, "bite");
+  water.props.onPointerUp(event(water)); f.render();
+  assert.equal(f.byAction("hold"), undefined);
+  water.props.onKeyDown(event(water)); f.render();
+  assert.equal(f.byAction("hold"), water); assert.equal(water.props["aria-pressed"], true);
+  water.props.onKeyUp(event(water)); f.render(); assert.equal(water.props["aria-pressed"], false);
 });
 
 test("late viewers cannot settle another tab's hook implicitly, while a legacy attempt still reels automatically", () => {

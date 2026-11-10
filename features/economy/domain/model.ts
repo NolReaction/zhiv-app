@@ -1,3 +1,4 @@
+import { BOAT_CAST_CYCLE_MS } from "./boat-cast-aim";
 import { boatStateSchema, compatibleBoatCatalogSchema, boatReelCommandSchema, type BoatState } from "./boat-model";
 import { z } from "zod";
 import { craftSkillsSchema, craftSkillsCatalogSchema } from "./craft-skill-model";
@@ -475,6 +476,7 @@ export const economyCommandSchema = z.object({ ...commandBase,
   fishSelection: quantities.nullish(),
   voyageId: uuid.nullish(), orderId: id.nullish(), itemId: id.nullish(),
   reel: boatReelCommandSchema.optional(),
+  castHeldMs: count.max(BOAT_CAST_CYCLE_MS).optional(),
 }).strict();
 export const marketCommandSchema = z.object({ ...commandBase,
   action: z.enum(["create_listing", "buy_listing", "cancel_listing", "claim_sale"]),

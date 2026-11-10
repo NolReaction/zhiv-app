@@ -74,7 +74,7 @@ test("a paused release hides new outings and offers recovery for a paid voyage",
   const atRiver = render(saved, arrival, WorldBoatFishingDialog);
   assert.match(atRiver, /data-boat-recovery/);
   assert.match(atRiver, /Вернуться с уловом/);
-  assert.doesNotMatch(atRiver, /Забросить удочку|Отправиться на рыбалку|data-boat-module=/);
+  assert.doesNotMatch(atRiver, /data-fishing-action="cast"|Отправиться на рыбалку|data-boat-module=/);
   const atDock = render(saved, Date.parse(voyage.fishingUntil) + voyage.inboundSeconds * 1000, WorldBoatFishingDialog);
   assert.match(atDock, /Завершить выход/);
 });
@@ -86,13 +86,13 @@ test("saved trips with travel timers still show distinct journey phases without 
   const arrival = at + voyage.outboundSeconds * 1000; voyage.arrivesAt = new Date(arrival).toISOString();
   voyage.fishingUntil = new Date(arrival + 900000).toISOString();
   const outward = render(value);
-  assert.match(outward, /data-boat-phase="outbound"/); assert.doesNotMatch(outward, /Забросить удочку/);
+  assert.match(outward, /data-boat-phase="outbound"/); assert.doesNotMatch(outward, /data-fishing-action="cast"/);
   const arrived = render(value, arrival);
-  assert.match(arrived, /data-boat-phase="fishing"/); assert.match(arrived, /Забросить удочку/); assert.match(arrived, /До возвращения/);
+  assert.match(arrived, /data-boat-phase="fishing"/); assert.match(arrived, /data-fishing-action="cast"/); assert.match(arrived, /До возвращения/);
   assert.match(arrived, /data-boat-map-view="true"/); assert.match(arrived, /data-fishing-scene="waiting"/);
   assert.doesNotMatch(arrived, /role="tab"|data-boat-module=/);
   const returning = render(value, Date.parse(voyage.fishingUntil));
-  assert.match(returning, /data-boat-phase="returning"/); assert.doesNotMatch(returning, /Забросить удочку/);
+  assert.match(returning, /data-boat-phase="returning"/); assert.doesNotMatch(returning, /data-fishing-action="cast"/);
   const ready = render(value, Date.parse(voyage.fishingUntil) + voyage.inboundSeconds * 1000);
   assert.match(ready, /data-boat-phase="ready"/); assert.match(ready, /Завершить выход/);
 });
@@ -102,9 +102,9 @@ test("live and expired challenges preserve their identity and do not expose a pr
   const voyage = value.boat.voyage, arrival = Date.parse(voyage.arrivesAt); run(value, "begin_boat_cast", voyage.id, arrival);
   const before = structuredClone(value), live = render(value, arrival);
   assert.match(live, new RegExp(`data-boat-reel="${value.boat.voyage.challenge.id}"`));
-  assert.match(live, /Забрасываем удочку/); assert.doesNotMatch(live, /Подсечь|Начать вываживание/); assert.doesNotMatch(live, /Забросить удочку|weightGrams|challengeSeed|slots/);
+  assert.match(live, /Забрасываем удочку/); assert.doesNotMatch(live, /Подсечь|Начать вываживание/); assert.doesNotMatch(live, /data-fishing-action="cast"|weightGrams|challengeSeed|slots/);
   const expired = render(value, arrival + 120000);
-  assert.match(expired, /data-reel-status="expired"/); assert.match(expired, /Забросить удочку/);
+  assert.match(expired, /data-reel-status="expired"/); assert.match(expired, /data-fishing-action="cast"/);
   assert.deepEqual(value, before);
 });
 

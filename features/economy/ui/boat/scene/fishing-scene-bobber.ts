@@ -15,3 +15,34 @@ export function fishingBobberMotion(frame: FishingSceneFrame, elapsed: number, s
     dip: active ? (frame.held ? 1.6 : .3) + surge * (1 + Math.sin(time * 7.2)) * 1.4 : 0,
     tilt: Math.sin(time * 1.9) * .07 + strain * .12 + surge * Math.sin(time * 8.2) * .09, tension };
 }
+
+/** Draw in CSS-sized units about the float. Only the part above the surface breaks the water. */
+export function paintFishingBobber(ctx: CanvasRenderingContext2D, waterline: number | null, tilt: number,
+  biting: boolean, age: number, still: boolean) {
+  ctx.save();
+  if (waterline !== null) {
+    ctx.beginPath(); ctx.rect(-20, -32, 40, Math.max(0, 33 + waterline)); ctx.clip();
+  }
+  ctx.rotate(tilt);
+  // The outlined, striped antenna remains visible against both sky reflections and dark water.
+  ctx.fillStyle = "#283b39"; ctx.fillRect(-2.5, -21, 5, 16);
+  ctx.fillStyle = "#fff2c8"; ctx.fillRect(-1.5, -20, 3, 12);
+  ctx.fillStyle = "#de7147"; ctx.fillRect(-1.5, -15, 3, 4);
+  ctx.beginPath(); ctx.ellipse(0, -2, 5.6, 7.5, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "#d97450"; ctx.fill(); ctx.lineWidth = 1.3; ctx.strokeStyle = "#283b39"; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-4.2, -4); ctx.quadraticCurveTo(0, -2.7, 4.2, -4);
+  ctx.strokeStyle = "#fff2c8"; ctx.lineWidth = 2.3; ctx.stroke();
+  ctx.restore();
+  if (waterline === null) return;
+  ctx.strokeStyle = biting ? "#d1e4d6" : "rgba(202,228,213,.64)"; ctx.lineWidth = 1.3;
+  ctx.beginPath(); ctx.ellipse(0, waterline, biting ? 6 : 8, 2, -.08, 0, Math.PI); ctx.stroke();
+  if (!biting) return;
+  // Two pressure waves start at the instant of the dive; the static alternative shows one clear ring.
+  const phases = still ? [.48] : [age / .75, (age - .15) / .85];
+  for (const phase of phases) {
+    if (phase < 0 || phase >= 1) continue;
+    ctx.strokeStyle = `rgba(224,243,223,${(1 - phase) * .82})`;
+    ctx.lineWidth = 1.7 - phase * .6;
+    ctx.beginPath(); ctx.ellipse(0, waterline + .8, 7 + phase * 23, 2.5 + phase * 7, -.08, .14, Math.PI * 1.89); ctx.stroke();
+  }
+}

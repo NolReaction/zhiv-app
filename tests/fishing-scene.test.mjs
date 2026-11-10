@@ -105,6 +105,25 @@ test("the surface bobber reacts to tension and catch distance while tracking sta
   assert.ok(airborne.casting); assert.ok(airborne.float.y < airborne.surface); assert.equal(landed.casting, false);
 });
 
+test("aiming lifts the rod before release, and a real bite submerges the float even while hull artwork loads", () => {
+  const env = environment();
+  try {
+    const view = { width: 320, height: 568, dpr: 1 };
+    const idle = { ...frame(), stage: "waiting", held: false, castKey: undefined };
+    const resting = fishingSceneGeometry(view.width, view.height, idle, visual);
+    const aiming = fishingSceneGeometry(view.width, view.height, { ...idle, aiming: true }, visual);
+    assert.ok(aiming.tip.y < resting.tip.y && aiming.tip.y * aiming.scale >= 20);
+    const offsets = ["soaking", "bite"].map(stage => {
+      env.calls.length = 0;
+      paintFishingScene(env.context, { ...frame(), stage }, new Map(), view, visual);
+      const mask = env.calls.find(call => call.method === "rect" && call.args[0] === -20 && call.args[1] === -32);
+      assert.ok(mask, "the float has its waterline even before the hull image arrives");
+      return mask.args[1] + mask.args[3];
+    });
+    assert.ok(offsets[0] >= 0 && offsets[1] < -10, "the water hides the bulb on a bite and leaves the antenna visible");
+  } finally { env.restore(); }
+});
+
 test("cached base artwork preserves the actor then foreground-hull occlusion order", () => {
   const env = environment();
   const gradient = { addColorStop() {} };

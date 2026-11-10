@@ -7,7 +7,8 @@ import { FISHING_SCENE_RIG, type FishingSceneFrame, type FishingScenePoint, type
 const smooth = (value: number) => { const t = Math.max(0, Math.min(1, value)); return t * t * (3 - 2 * t); };
 
 /** Authored beats use bounded phase time. Runtime eases these targets without changing game coordinates. */
-export function fishingBoatActorPose(stage: FishingSceneFrame["stage"], castElapsed: number, held: boolean, time: number, still: boolean, stageElapsed = 0, biteLeadSeconds?: number): FishingActorPose {
+export function fishingBoatActorPose(stage: FishingSceneFrame["stage"] | "aiming", castElapsed: number, held: boolean, time: number, still: boolean, stageElapsed = 0, biteLeadSeconds?: number): FishingActorPose {
+  if (stage === "aiming") return { angle: -.96, effort: .32, lean: -.25 };
   if (still) return { angle: stage === "reeling" ? held ? -.64 : -.4 : stage === "caught" || stage === "landed" ? -.5 : .075,
     effort: stage === "reeling" ? held ? 1 : .15 : 0, lean: 0 };
   const age = Math.max(0, stageElapsed);
@@ -35,7 +36,7 @@ export function fishingBoatActorPose(stage: FishingSceneFrame["stage"], castElap
 }
 
 /** All anchors live in the hull assembly, below the face. Both hands are the rod's real pivots. */
-export function fishingBoatActorRig(stage: FishingSceneFrame["stage"], castElapsed: number, held: boolean, time: number, still: boolean, pose?: FishingActorPose, stageElapsed = 0, biteLeadSeconds?: number) {
+export function fishingBoatActorRig(stage: FishingSceneFrame["stage"] | "aiming", castElapsed: number, held: boolean, time: number, still: boolean, pose?: FishingActorPose, stageElapsed = 0, biteLeadSeconds?: number) {
   const base = FISHING_SCENE_RIG.actor, size = base.size;
   const motion = pose ?? fishingBoatActorPose(stage, castElapsed, held, time, still, stageElapsed, biteLeadSeconds);
   const breath = still ? 0 : Math.sin(time * 1.7) * 1.35;

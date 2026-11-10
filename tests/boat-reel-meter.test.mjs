@@ -23,7 +23,7 @@ function renderGame(overrides = {}, props = {}) {
   globalThis.__reelMeterController = {
     challenge, reel: { tick: 40, bar: 5000, fish: 5200, progress: 4600, velocity: 160, status: "active" },
     playing: true, held: true, ready: true, expired: false, waitingForConfirmation: false, status: "Рыба на крючке",
-    castStage: "bite", holdButton: { current: null },
+    castStage: "bite",
     togglePlay() { assert.fail("Rendering must not start input"); }, changeHeld() { assert.fail("Rendering must not hold input"); },
     submit() { assert.fail("Rendering must not submit a catch"); }, ...overrides,
   };
@@ -74,14 +74,15 @@ test("cast and soaking wait for the real bite before showing the meter or strike
   for (const castStage of ["casting", "soaking"]) {
     const html = renderGame({ playing: false, held: false, castStage, reel: { tick: 0, bar: 5000, fish: 5000, progress: 2500, velocity: 0, status: "active" } });
     assert.doesNotMatch(html, /data-boat-reel-meter|data-fishing-action="hold"|data-fishing-action="play"/);
-    assert.match(html, /Поплавок летит|Снасть в воде/);
+    assert.match(html, /data-fishing-action="line"/);
+    assert.doesNotMatch(html, /Подсечь!|Следите за поплавком/);
   }
 });
 
 test("paused and suspended reels preserve the exact meter while disabling input until resumed", () => {
   const paused = renderGame({ playing: false, paused: true, held: false });
   assert.match(paused, /data-paused="true"/); assert.match(paused, /data-fishing-action="play"/); assert.match(paused, /Продолжить/);
-  assert.match(paused, /Держите метку рыбы в зелёной зоне/);
+  assert.doesNotMatch(paused, /Держите метку|Зажмите/);
   const suspended = renderGame({}, { suspended: true });
   assert.match(suspended, /data-fishing-action="hold"[^>]+disabled=""/);
   assert.match(suspended, /data-fishing-action="pause"[^>]+disabled=""/);

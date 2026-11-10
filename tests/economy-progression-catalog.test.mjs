@@ -168,9 +168,9 @@ test("unit production, short mining and ingredient value cannot silently regress
   }
 });
 
-test("the authored v14 catalog keeps every current production unit-sized and every storage gate optional", () => {
+test("the authored v15 catalog keeps every current production unit-sized and every storage gate optional", () => {
   const catalog = readEconomyCatalog();
-  assert.equal(catalog.version, 15); assert.equal(catalog.recipes.filter(recipe => !recipe.retired).length, 67);
+  assert.equal(catalog.version, 15); assert.equal(catalog.recipes.filter(recipe => !recipe.retired).length, 70);
   for (const recipe of catalog.recipes.filter(recipe => !recipe.retired)) {
     assert.equal(recipe.maxBatch, 1, recipe.id);
     assert.equal(Object.values(recipe.rewards).reduce((sum, count) => sum + count, 0), 1, recipe.id);

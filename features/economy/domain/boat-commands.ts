@@ -1,5 +1,6 @@
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, economyCatalog, type EconomyCommand, type EconomyCost, type EconomyState } from "./model";
-import { boatConfig, newBoatState, boatDepartureReason, boatUpgradeReason, boatPhase, boatFishWeight, boatFuelStatus, boatModules, boatTripStats } from "./boat-fishing";
+import { boatCastAim } from "./boat-cast-aim";
+import { aimedBoatFishWeight, boatConfig, newBoatState, boatDepartureReason, boatUpgradeReason, boatPhase, boatFishWeight, boatFuelStatus, boatModules, boatTripStats } from "./boat-fishing";
 import { boatReelZoneWidth, boatResistanceForClass, replayBoatReel } from "./boat-reel";
 import { fishingState, selectFishingCatch } from "./fishing";
 import { boatDockSaleQuote } from "./boat-dock-sale";
@@ -111,6 +112,11 @@ function transition(state: EconomyState, command: EconomyCommand, now: number, i
     if (biteAt + 50 >= expiresAt) return fail("ECONOMY_BOAT_CAST_WAIT", "Для нового заброса не хватает времени. Пора возвращаться");
     const fishRarity = economyCatalog.fishing!.fish.find(fish => fish.itemId === slot.fishId)!.rarity;
     voyage.castsUsed++;
+    if (command.castHeldMs !== undefined) {
+      const quality = boatCastAim(voyage.id, voyage.castsUsed, command.castHeldMs).quality;
+      const range = config.weights[slot.fishId];
+      slot.weightGrams = aimedBoatFishWeight(slot.weightGrams, range.minGrams, range.maxGrams, quality);
+    }
     const levels = boatModules(boat), motorResponse = config.moduleEffects.engine[levels.engine], hullDamping = config.moduleEffects.hull[levels.hull];
     // Timed voyages predate the modular workshop and finish under their original rules.
     const modern = voyage.outboundSeconds === 0 && voyage.inboundSeconds === 0;

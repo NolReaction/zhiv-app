@@ -82,7 +82,7 @@ test("balance shows all items, filters by name and category, and sort keeps unde
   const rows = tree => elements(tree).filter(node => node.props["data-balance-item"]);
   assert.equal(rows(h.render()).length, 30);
   field(h.render(), "Поиск в таблице баланса").props.onChange({ target: { value: "МАЛИНА" } });
-  assert.deepEqual(rows(h.render()).map(row => row.props["data-balance-item"]), ["berries"]);
+  assert.deepEqual(new Set(rows(h.render()).map(row => row.props["data-balance-item"])), new Set(["berries", "ember_berries"]));
   field(h.render(), "Категория в таблице баланса").props.onChange({ target: { value: "crafted" } });
   assert.equal(rows(h.render()).length, 0); assert.match(asText(h.render()), /Нет товаров/);
   const values = sortEconomyRows(analysis.items, "fullWorkSeconds", true).map(item => item.fullWorkSeconds);
