@@ -73,7 +73,7 @@ test("boat help links busy-player advice to real repair, attempts, delivery and 
   assert.match(answer("boat-fishing"), /Мохлик занят до получения улова/);
   assert.ok(answer("boat-controls").includes(`${boat.moduleEffects.storage[0]} рыб за ${boat.moduleEffects.storage[0] + boat.spareCasts} забросов`));
   assert.match(answer("boat-controls"), /Попытка тратится при забросе/);
-  assert.match(answer("boat-controls"), /Пауза.*на устройстве/);
+  assert.match(answer("boat-controls"), /Рыба продолжает тянуть.*открыть альбом или свернуть игру.*снасть отпущена/);
   assert.ok(answer("boat-upgrades").includes(`за ${formatPearls(boat.fuel.refillPricePearls)} жемчужин`));
   assert.ok(answer("boat-upgrades").includes(`за ${boat.fuel.regenSeconds / 60} минут`));
   assert.equal(topics.some(entry => entry.id === "boat-blueprints"), false);

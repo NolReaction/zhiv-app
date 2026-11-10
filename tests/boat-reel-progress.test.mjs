@@ -89,7 +89,7 @@ test("reduced motion, hidden state and risk consume crossings silently instead o
   assert.equal(accents.length, 1);
 });
 
-test("paused progress updates cannot become a fresh milestone when play resumes", () => {
+test("progress reached behind an open panel cannot become a fresh milestone when the panel closes", () => {
   const tracker = createBoatProgressMilestones(2500);
   assert.equal(tracker.update(5000, false), null);
   assert.equal(tracker.update(5000, true), null);

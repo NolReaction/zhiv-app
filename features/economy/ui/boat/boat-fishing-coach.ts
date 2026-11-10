@@ -24,7 +24,7 @@ export function createBoatFishingCoach(owner: string) {
       const last = previous;
       previous = { ...sample };
       const active = sample.playing && sample.stage === "reeling";
-      // A pause/blur releases input automatically. A fresh hold in this active segment
+      // Blocking input releases the line automatically. A fresh hold in this active segment
       // is required before a later falling zone can teach an intentional release.
       if (!active || last?.challengeId !== sample.challengeId) { releaseArmed = false; releaseTicks = 0; }
       if (active && view.learnedLift && sample.held) releaseArmed = true;
@@ -46,7 +46,7 @@ export function createBoatFishingCoach(owner: string) {
 export function boatCoachInstruction(view: BoatCoachView, stage: string) {
   if (view.completed) return null;
   if (stage === "casting" || stage === "soaking" || stage === "bite") return "Когда поплавок нырнёт, коснитесь воды или нажмите пробел, чтобы подсечь.";
-  if (stage === "reeling" || stage === "paused") return view.learnedLift
+  if (stage === "reeling") return view.learnedLift
     ? "Отпустите, чтобы опустить зелёную зону вслед за рыбой."
     : "Зажмите воду или пробел, чтобы поднять зелёную зону к рыбе.";
   return "Удерживайте воду или пробел для замаха. Отпустите, когда метка попадёт в зелёную зону.";

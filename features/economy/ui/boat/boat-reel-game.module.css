@@ -7,9 +7,8 @@
 .distance { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; }
 .distance strong { color: #e4d09c; font-variant-numeric: tabular-nums; }
 .readout small { color: #d3ca9e; font-size: 10px; }
-.toggle { display: inline-flex; justify-content: center; align-items: center; gap: 4px; min-height: 40px; padding: 3px 6px; border: 1px solid #a8bc9770; border-radius: 5px; background: #294842; color: #e9e9cf; font-size: 11px !important; }
 .message { left: 50%; transform: translateX(-50%); display: grid; gap: 6px; width: max-content; max-width: min(360px, calc(100% - 28px)); padding: 8px 12px; font-size: 12px; line-height: 1.45; text-align: center; }
-.toggle, .message button { pointer-events: auto; }
+.message button { pointer-events: auto; }
 @media (max-width: 820px) {
   .message[data-with-meter] { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 207px); }
 }

@@ -12,13 +12,13 @@ export function boatReelMeterGeometry({ bar, fish, zoneWidth }: BoatReelMeterSta
 }
 
 /** The anonymous tug marker represents a hooked fish; identity belongs to the confirmed catch card. */
-export function BoatReelMeter({ reel, held, paused = false, danger = false, tickMs = 50 }: {
-  reel: BoatReelMeterState; held: boolean; paused?: boolean; danger?: boolean; tickMs?: number;
+export function BoatReelMeter({ reel, held, danger = false, tickMs = 50 }: {
+  reel: BoatReelMeterState; held: boolean; danger?: boolean; tickMs?: number;
 }) {
   const geometry = boatReelMeterGeometry(reel);
   const label = `Зона снасти: ${Math.round(geometry.bar / 100)}%. Рыба: ${Math.round(geometry.fish / 100)}%. ${geometry.inZone ? "Рыба в зоне" : "Рыба вне зоны"}.`;
   return <div className={styles.meter} style={{ "--step-time": `${tickMs}ms` } as CSSProperties} data-boat-reel-meter data-in-zone={geometry.inZone}
-    data-held={held || undefined} data-paused={paused || undefined} data-danger={danger || undefined} role="img" aria-label={label}>
+    data-held={held || undefined} data-danger={danger || undefined} role="img" aria-label={label}>
     <span className={styles.railLabel} aria-hidden="true">СНАСТЬ</span>
     <div className={styles.track}>
       <span className={styles.ticks} aria-hidden="true" />

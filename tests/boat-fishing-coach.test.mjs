@@ -11,7 +11,7 @@ const { initialBoatReel, stepBoatReel } = await vite.ssrLoadModule("/features/ec
 const storage = () => { const map = new Map(); return { map, getItem: key => map.get(key) ?? null, setItem: (key, value) => map.set(key, value), removeItem: key => map.delete(key) }; };
 const attempt = { id: "attempt", rulesVersion: 1, seed: 17, tickMs: 50, maxTicks: 600, zoneWidth: 3200, difficulty: 1,
   startedAt: "2026-11-03T00:00:00Z", expiresAt: "2026-11-03T00:02:00Z" };
-const sample = (reel, held, stage = "reeling") => ({ challengeId: attempt.id, stage, playing: stage === "reeling", held, tick: reel.tick, bar: reel.bar });
+const sample = (reel, held, playing = true) => ({ challengeId: attempt.id, stage: "reeling", playing, held, tick: reel.tick, bar: reel.bar });
 
 test("lesson completes only after simulated upward hold and downward release, without changing the reel", () => {
   const saved = storage(), coach = createBoatFishingCoach("owner"); let reel = initialBoatReel(attempt);
@@ -21,19 +21,19 @@ test("lesson completes only after simulated upward hold and downward release, wi
   const beforeRelease = structuredClone(reel); coach.observe(sample(reel, false), saved);
   for (let tick = 0; tick < 24; tick++) { reel = stepBoatReel(attempt, reel, false); coach.observe(sample(reel, false), saved); }
   assert.equal(coach.snapshot().completed, true); assert.equal(coach.snapshot().justCompleted, true);
-  coach.observe(sample(reel, false, "paused"), saved); assert.equal(coach.snapshot().justCompleted, false);
+  coach.observe(sample(reel, false, false), saved); assert.equal(coach.snapshot().justCompleted, false);
   assert.equal(saved.getItem(boatCoachStorageKey("owner")), "done");
   assert.equal(beforeRelease.tick, 8); assert.ok(reel.tick > beforeRelease.tick);
 });
 
-test("repeated snapshots, input toggles, paused releases and another attempt cannot fabricate learned movement", () => {
+test("repeated snapshots, input toggles, blocked input and another attempt cannot fabricate learned movement", () => {
   const coach = createBoatFishingCoach("owner"), saved = storage();
   const initial = initialBoatReel(attempt);
   for (let index = 0; index < 30; index++) coach.observe(sample(initial, index % 2 === 0), saved);
   assert.equal(coach.snapshot().learnedLift, false);
-  coach.observe(sample({ ...initial, tick: 10, bar: 6500 }, true, "paused"), saved);
+  coach.observe(sample({ ...initial, tick: 10, bar: 6500 }, true, false), saved);
   coach.observe(sample({ ...initial, tick: 11, bar: 7000 }, true), saved);
-  assert.equal(coach.snapshot().learnedLift, false, "resume establishes a baseline instead of teaching a paused jump");
+  assert.equal(coach.snapshot().learnedLift, false, "the first sample after a tray closes establishes the new baseline");
   coach.observe({ ...sample({ ...initial, tick: 12, bar: 8000 }, true), challengeId: "other" }, saved);
   assert.equal(coach.snapshot().completed, false); assert.equal(saved.map.size, 0);
 });
@@ -54,12 +54,12 @@ test("completion is scoped per owner/device, replay is cosmetic and denied stora
 });
 
 
-test("falling after a pause's forced release cannot finish the lesson until a new intentional hold and release", () => {
+test("falling behind an open tray cannot finish the lesson until a new intentional hold and release", () => {
   const coach = createBoatFishingCoach("owner"), saved = storage(), initial = initialBoatReel(attempt);
-  const observe = (tick, bar, held, stage = "reeling") => coach.observe(sample({ ...initial, tick, bar }, held, stage), saved);
+  const observe = (tick, bar, held, playing = true) => coach.observe(sample({ ...initial, tick, bar }, held, playing), saved);
   observe(0, 5000, true); observe(1, 5050, true); observe(2, 5110, true);
   assert.equal(coach.snapshot().learnedLift, true);
-  observe(2, 5110, false, "paused"); observe(2, 5110, false);
+  observe(2, 5110, false, false); observe(2, 5110, false);
   observe(3, 5090, false); observe(4, 5050, false); observe(5, 5000, false);
   assert.equal(coach.snapshot().completed, false); assert.equal(saved.map.size, 0);
   observe(5, 5000, true); observe(6, 5010, true); observe(6, 5010, false);

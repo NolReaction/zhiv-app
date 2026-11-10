@@ -21,8 +21,9 @@ export function useFishingAudio({ ownerPublicId, voyageId, stage, castKey, held,
   const visible = useSyncExternalStore(subscribeVisibility, visibleSnapshot, serverVisibleSnapshot);
   const lastBite = useRef<string | null>(null);
   useEffect(() => {
-    if (stage !== "bite" || !castKey || !visible || suspended || lastBite.current === castKey) return;
+    if (stage !== "bite" || !castKey || lastBite.current === castKey) return;
     lastBite.current = castKey;
+    if (!visible || suspended) return;
     try { navigator.vibrate?.([65, 45, 90]); } catch { /* The float and sound also signal the bite. */ }
   }, [stage, castKey, visible, suspended]);
   const sceneId = `zhiv:mochlik:presence:${ownerPublicId}:${TILED_WORLD.id}`;

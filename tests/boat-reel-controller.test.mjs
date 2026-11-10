@@ -96,16 +96,16 @@ test("manual hooking accepts only the live bite and survives an immediate remoun
   f.frame(4000); assert(f.value.awaitingHook); assert.equal(f.value.reel.tick, 0);
   f.frame(1200); f.value.hookFish(); f.render(); assert(f.value.playing); assert.equal(f.value.reel.tick, 0);
   hooks.unmount();
-  const restored = fixture({ challenge: attempt, now: at + 9000 }); restored.frame(0);
-  assert(restored.value.paused); assert.equal(restored.value.missedBite, false);
-  restored.value.togglePlay(); restored.frame(50); assert.equal(restored.value.reel.tick, 1);
+  const restored = fixture({ challenge: attempt, now: at + 5249 }); restored.frame(0);
+  assert(restored.value.playing); assert.equal(restored.value.missedBite, false);
+  restored.frame(1); assert.equal(restored.value.reel.tick, 1);
 });
 
 test("a saved pre-hook attempt starts on the server bite without a click and never changes its issued rules", () => {
   const attempt = { ...challenge(), biteAt: new Date(at + 4000).toISOString() };
   const f = fixture({ challenge: attempt }); f.frame(0);
   assert(Object.isFrozen(f.value.challenge)); assert.equal(f.value.castStage, "casting");
-  f.value.togglePlay(); f.frame(1200); assert.equal(f.value.castStage, "soaking");
+  f.frame(1200); assert.equal(f.value.castStage, "soaking");
   f.frame(2799); assert.equal(f.value.playing, false); assert.equal(f.value.reel.tick, 0);
   f.render({ challenge: { ...attempt, seed: 700 } });
   f.frame(1); assert.equal(f.value.playing, true); assert.equal(f.value.reel.tick, 0);
@@ -118,34 +118,57 @@ test("display frames share the exact tick clock, collapse same-tick input and re
   f.value.changeHeld(true); f.value.changeHeld(false); f.value.changeHeld(true);
   f.frame(16); f.frame(16); f.frame(17); assert.equal(f.value.reel.tick, 0);
   f.frame(1); assert.deepEqual(f.value.reel, stepBoatReel(f.value.challenge, initialBoatReel(f.value.challenge), true));
-  f.value.changeHeld(false); f.frame(100); f.value.togglePlay(); f.render();
+  f.value.changeHeld(false); f.frame(100); window.dispatchEvent(new Event("blur")); f.render();
   const key = checkpoint.boatReelCheckpointKey("owner", "voyage", f.value.challenge.id), saved = JSON.parse(values.get(key));
   assert.deepEqual(saved.inputs, [{ tick: 0, held: true }, { tick: 1, held: false }]);
   assert.equal(saved.endTick, 3); assert.deepEqual(replayBoatReel(f.value.challenge, saved.inputs, saved.endTick), f.value.reel);
 });
 
-test("blur, hidden pages, trays and long frames pause without inventing inputs or resuming by themselves", () => {
-  const f = fixture(); f.frame(0);
-  for (const kind of ["blur", "hidden", "tray", "long"]) {
-    f.value.changeHeld(true); f.frame(50); const tick = f.value.reel.tick;
+test("blur, hiding, pagehide and trays release the line and tick through every unattended step", () => {
+  for (const kind of ["blur", "hidden", "pagehide", "freeze", "tray"]) {
+    const f = fixture(); f.frame(0); f.value.changeHeld(true); f.frame(50);
     if (kind === "blur") window.dispatchEvent(new Event("blur"));
-    else if (kind === "hidden") { document.hidden = true; document.dispatchEvent(new Event("visibilitychange")); }
-    else if (kind === "tray") f.render({ suspended: true });
-    else f.frame(501);
-    f.render(); assert.equal(f.value.playing, false, kind); assert.equal(f.value.held, false, kind);
-    f.frame(500); assert.equal(f.value.reel.tick, tick, kind);
-    document.hidden = false; document.dispatchEvent(new Event("visibilitychange")); window.dispatchEvent(new Event("focus"));
-    f.render({ suspended: false }); f.frame(50); assert.equal(f.value.playing, false, kind);
-    f.value.togglePlay(); f.render(); assert.equal(f.value.playing, true, kind);
+    if (kind === "hidden") { document.hidden = true; document.dispatchEvent(new Event("visibilitychange")); }
+    if (kind === "pagehide") window.dispatchEvent(new Event("pagehide"));
+    if (kind === "freeze") document.dispatchEvent(new Event("freeze"));
+    if (kind === "tray") f.render({ suspended: true });
+    f.render(); assert(f.value.playing, kind); assert.equal(f.value.held, false, kind);
+    f.frame(5000);
+    let expected = stepBoatReel(f.value.challenge, initialBoatReel(f.value.challenge), true);
+    while (expected.tick < 101 && expected.status === "active") expected = stepBoatReel(f.value.challenge, expected, false);
+    assert.deepEqual(f.value.reel, expected, kind);
+    if (expected.status !== "active") {
+      assert.equal(f.submissions.length, 1, kind);
+      assert.deepEqual(replayBoatReel(f.value.challenge, f.submissions[0].inputs, f.submissions[0].endTick), expected);
+    }
+    document.hidden = false; hooks.unmount();
   }
-  assert.deepEqual(f.submissions, []);
 });
 
-test("a bite while a tray or background tab obscures gameplay waits for its first visible frame", () => {
-  const f = fixture({ suspended: true }); f.frame(0); f.frame(500);
-  assert.equal(f.value.playing, false);
-  document.hidden = true; f.render({ suspended: false }); f.frame(500); assert.equal(f.value.playing, false);
-  document.hidden = false; f.frame(16); assert.equal(f.value.playing, true); assert.equal(f.value.reel.tick, 0);
+test("a slow frame honors the previous input up to the next actual input time", () => {
+  const f = fixture(); f.frame(0);
+  clock += 510; f.value.changeHeld(true); f.frame(50);
+  const expected = replayBoatReel(f.value.challenge, [{ tick: 10, held: true }], 11);
+  assert.deepEqual(f.value.reel, expected); assert(f.value.playing);
+});
+
+test("an automatic legacy bite advances from its issued bite time behind a tray", () => {
+  const f = fixture({ suspended: true }); f.frame(0);
+  document.hidden = true; f.frame(500);
+  assert(f.value.playing); assert.equal(f.value.held, false); assert.equal(f.value.reel.tick, 10);
+  document.hidden = false; f.render({ suspended: false }); f.frame(50); assert.equal(f.value.reel.tick, 11);
+});
+
+test("an unhooked local cast expires behind an overlay or across a reload; a late foreign viewer never settles it implicitly", () => {
+  const attempt = { ...challenge(), rulesVersion: 6, fishRarity: "common", resistance: "steady", motorResponse: 0, hullDamping: 0, biteAt: new Date(at + 4000).toISOString() };
+  const obscured = fixture({ challenge: attempt, ownCast: true, suspended: true });
+  obscured.frame(7300);
+  assert.equal(obscured.submissions.length, 1); assert.equal(obscured.submissions[0].missedBite, true); hooks.unmount();
+  const same = fixture({ challenge: attempt, now: at + 8000, ownCast: true }); same.frame(0);
+  assert.equal(same.submissions.length, 1); assert.equal(same.submissions[0].missedBite, true); hooks.unmount();
+  const other = fixture({ challenge: attempt, now: at + 8000 }); other.frame(0);
+  assert.equal(other.submissions.length, 0); assert(other.value.missedElsewhere);
+  other.value.confirmMiss(); other.render(); assert.equal(other.submissions.length, 1);
 });
 
 test("a caught or escaped fish automatically dispatches its exact terminal trace once, even while waiting for a receipt", () => {
@@ -162,17 +185,43 @@ test("a caught or escaped fish automatically dispatches its exact terminal trace
   }
 });
 
-test("restored active drafts stay paused and never leak between owner, voyage and challenge", () => {
+test("reopening a hooked draft spends away time with the line released and submits the exact resulting trace", () => {
   const attempt = challenge(), f = fixture({ challenge: attempt }); f.frame(0); f.value.changeHeld(true); f.frame(150);
-  const previous = f.value.reel; hooks.unmount(); assert.equal(frames.size, 0);
-  const restored = fixture({ challenge: attempt }); restored.frame(0);
-  assert.deepEqual(restored.value.reel, previous); assert(restored.value.paused); assert.equal(restored.value.held, false);
-  restored.frame(500); assert.deepEqual(restored.value.reel, previous); hooks.unmount();
+  hooks.unmount(); assert.equal(frames.size, 0);
+  const restored = fixture({ challenge: attempt, now: at + 20000 }); restored.frame(0);
+  assert.equal(restored.value.held, false);
+  let expected = initialBoatReel(attempt);
+  while (expected.status === "active" && expected.tick < 400) expected = stepBoatReel(attempt, expected, expected.tick < 3);
+  assert.deepEqual(restored.value.reel, expected); assert.equal(expected.status, "escaped");
+  assert.equal(restored.submissions.length, 1);
+  assert.deepEqual(restored.submissions[0].inputs, [{ tick: 0, held: true }, { tick: 3, held: false }]);
+  hooks.unmount();
   const foreign = fixture({ challenge: attempt, owner: "someone-else" }); foreign.frame(0);
   assert.equal(foreign.value.reel.tick, 0); hooks.unmount();
   const other = fixture({ challenge: attempt, voyageId: "another-voyage" }); other.frame(0);
   assert.equal(other.value.reel.tick, 0);
   assert.equal(values.has(checkpoint.boatReelCheckpointKey("owner", "voyage", attempt.id)), false);
+});
+
+test("reopening a timed hook beyond its cast deadline replays the unattended loss once through deferred delivery", () => {
+  const attempt = challenge(), f = fixture({ challenge: attempt }); f.frame(0); f.value.changeHeld(true); f.frame(150);
+  hooks.unmount();
+  const restored = fixture({ challenge: attempt, now: at + 180000 }); restored.frame(0);
+  assert.equal(restored.value.expired, false); assert.equal(restored.value.reel.status, "escaped");
+  assert.equal(restored.submissions.length, 1);
+  assert.deepEqual(replayBoatReel(attempt, restored.submissions[0].inputs, restored.submissions[0].endTick), restored.value.reel);
+  hooks.unmount();
+  const tooLate = fixture({ challenge: attempt, now: at + 120000 + 86_400_001 }); tooLate.frame(0);
+  assert.equal(tooLate.value.expired, true); assert.equal(tooLate.submissions.length, 0);
+});
+
+test("a pre-update hooked draft without a reel clock preserves its trace and cannot restore a free pause", () => {
+  const attempt = { ...challenge(), rulesVersion: 6, fishRarity: "common", resistance: "steady", motorResponse: 0, hullDamping: 0, biteAt: new Date(at + 4000).toISOString() };
+  const old = replayBoatReel(attempt, [{ tick: 0, held: true }], 3);
+  checkpoint.writeBoatReelCheckpoint(memory(), checkpoint.boatReelCheckpointKey("owner", "voyage", attempt.id), attempt, old, [{ tick: 0, held: true }], true);
+  const restored = fixture({ challenge: attempt, now: at + 7700 }); restored.frame(0);
+  assert.deepEqual(restored.value.reel, replayBoatReel(attempt, [{ tick: 0, held: true }, { tick: 3, held: false }], 10));
+  assert(restored.value.playing);
 });
 
 test("a remounted terminal draft waits for permissions, and an already queued receipt never dispatches twice", () => {

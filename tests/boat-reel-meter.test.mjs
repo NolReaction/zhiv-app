@@ -24,7 +24,7 @@ function renderGame(overrides = {}, props = {}) {
     challenge, reel: { tick: 40, bar: 5000, fish: 5200, progress: 4600, velocity: 160, status: "active" },
     playing: true, held: true, ready: true, expired: false, waitingForConfirmation: false, status: "Рыба на крючке",
     castStage: "bite",
-    togglePlay() { assert.fail("Rendering must not start input"); }, changeHeld() { assert.fail("Rendering must not hold input"); },
+    changeHeld() { assert.fail("Rendering must not hold input"); },
     submit() { assert.fail("Rendering must not submit a catch"); }, ...overrides,
   };
   return renderToStaticMarkup(createElement(BoatReelGame, { owner: "owner", voyageId: "voyage", challenge, now: at,
@@ -66,7 +66,7 @@ test("active reel uses the dedicated anonymous meter and truthful progress witho
   const html = renderGame();
   assert.match(html, /Рыба на крючке/); assert.match(html, /data-boat-reel-meter/);
   assert.match(html, /<progress[^>]+value="4600"/); assert.match(html, /data-fishing-action="hold"[^>]+aria-pressed="true"/);
-  assert.match(html, /data-fishing-action="pause"/); assert.match(html, /Готовится к рывку|Рывок/);
+  assert.doesNotMatch(html, /data-fishing-action="(?:pause|play)"/); assert.match(html, /Готовится к рывку|Рывок/);
   assert.doesNotMatch(html, /Легендар|Рыба делает рывки|Ровная тяга|fishRarity|legendary|mooncarp/);
 });
 
@@ -79,13 +79,12 @@ test("cast and soaking wait for the real bite before showing the meter or strike
   }
 });
 
-test("paused and suspended reels preserve the exact meter while disabling input until resumed", () => {
-  const paused = renderGame({ playing: false, paused: true, held: false });
-  assert.match(paused, /data-paused="true"/); assert.match(paused, /data-fishing-action="play"/); assert.match(paused, /Продолжить/);
-  assert.doesNotMatch(paused, /Держите метку|Зажмите/);
-  const suspended = renderGame({}, { suspended: true });
-  assert.match(suspended, /data-fishing-action="hold"[^>]+disabled=""/);
-  assert.match(suspended, /data-fishing-action="pause"[^>]+disabled=""/);
+test("an open panel blocks direct input while the active reel retains its normal meter", () => {
+  const html = renderGame({ held: false }, { suspended: true });
+  assert.match(html, /data-reel-status="reeling"/);
+  assert.match(html, /data-boat-reel-meter/);
+  assert.match(html, /data-fishing-action="hold"[^>]+disabled=""/);
+  assert.doesNotMatch(html, /data-paused|data-fishing-action="(?:pause|play)"|Пауза|Продолжить/);
 });
 
 test("a local success remains anonymous until the server confirms it, and expiry removes the meter", () => {

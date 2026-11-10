@@ -86,9 +86,9 @@ const { economyCatalog, economyCommandSchema } = await vite.ssrLoadModule("/feat
 const { economyShipSchema } = await vite.ssrLoadModule("/features/economy/domain/ship-model.ts");
 const { newEconomyState, applyEconomyCommand, economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { publicBoatState } = await vite.ssrLoadModule("/features/economy/domain/boat-fishing.ts");
-const { replayBoatReel } = await vite.ssrLoadModule("/features/economy/domain/boat-reel.ts");
+const { initialBoatReel, replayBoatReel, stepBoatReel } = await vite.ssrLoadModule("/features/economy/domain/boat-reel.ts");
 const { boatCastAim } = await vite.ssrLoadModule("/features/economy/domain/boat-cast-aim.ts");
-const { boatReelCheckpointKey } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-reel-checkpoint.ts");
+const { boatReelCheckpointKey, changeBoatReelInput, writeBoatReelCheckpoint } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-reel-checkpoint.ts");
 
 const at = Date.parse("2026-11-03T10:00:00Z");
 const globalNames = ["window", "document", "requestAnimationFrame", "cancelAnimationFrame"];
@@ -200,7 +200,7 @@ function fixture({ outbound = false, dev = false } = {}) {
       button.props.onPointerDown(event(button)); render(); frame(350);
       button.props.onPointerUp(event(button)); render(); flush(); frame(0);
     },
-    play() { const biteAt = Date.parse(state.boat.voyage.challenge.biteAt ?? state.boat.voyage.challenge.startedAt); if (time < biteAt) frame(biteAt - time); if (byAction("play")) click(byAction("play")); else if (byAction("line")) {
+    play() { const biteAt = Date.parse(state.boat.voyage.challenge.biteAt ?? state.boat.voyage.challenge.startedAt); if (time < biteAt) frame(biteAt - time); if (byAction("line")) {
         const water = byAction("line"); water.props.onPointerDown(event(water)); water.props.onPointerUp(event(water)); render();
       } frame(0); assert(byAction("hold")); },
     hold(value, input = "keyboard") { const button = byAction("hold"); assert(button); if (input === "pointer") button.props[value ? "onPointerDown" : "onPointerUp"](event(button));
@@ -246,31 +246,55 @@ test("actual root changes from timed outbound to one separate river scene withou
 
 test("a short cast restores the same landing distance before and after receipt and stays bound to its attempt", () => {
   const f = fixture(), button = f.byAction("cast");
-  button.props.onPointerDown(event(button)); f.render(); f.frame(115);
+  button.props.onPointerDown(event(button)); f.render(); f.frame(285);
   button.props.onPointerUp(event(button)); f.render();
   f.close(); f.flush(); f.reopen(); f.frame(0);
   const scene = () => f.find(node => node.tag === "canvas").props.frame;
   const power = scene().castPower;
-  assert.equal(power, 24);
+  assert.equal(power, 39);
   const key = "zhiv.boat-cast.v1.0000-0000-0000";
   const first = f.state.boat.voyage.challenge;
   assert.equal(JSON.parse(window.sessionStorage.getItem(key)).challenge, first.id);
   f.close(); f.reopen(); f.frame(0); assert.equal(scene().castPower, power);
   f.state.boat.voyage.challenge.id = crypto.randomUUID(); f.render(); f.frame(0);
   assert.equal(scene().castPower, 100, "another challenge cannot reuse the saved aim");
-  f.advanceTo(Date.parse(first.expiresAt)); f.cast();
+  f.advanceTo(Date.parse(first.expiresAt)); f.frame(0);
+  const next = f.byAction("cast"); next.props.onPointerDown(event(next)); f.frame(350);
+  next.props.onPointerUp(event(next)); f.render();
+  assert.equal(f.find(node => node.props["data-cast-result"] !== undefined).props["data-cast-result"], boatCastAim(f.state.boat.voyage.id, 2, 350).quality);
+  f.flush(); f.frame(0);
   assert.equal(JSON.parse(window.sessionStorage.getItem(key)).challenge, f.state.boat.voyage.challenge.id);
   assert.equal(scene().castPower, 45);
 });
 
-test("cancelled charges keep the budget and a missed bite settles once with no catch", () => {
+test("short taps and keystrokes neither wind up nor spend a cast; a fresh deliberate hold casts once", t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture(), water = f.byAction("cast");
+  const advance = elapsed => { f.frame(elapsed); t.mock.timers.tick(elapsed); f.render(); };
+  const meter = () => f.find(node => node.props.role === "meter");
+  for (const [down, up] of [["onPointerDown", "onPointerUp"], ["onKeyDown", "onKeyUp"]]) {
+    water.props[down](event(water)); advance(279);
+    assert.equal(meter(), undefined); assert.equal(f.find(node => node.tag === "canvas").props.frame.aiming, false);
+    water.props[up](event(water)); advance(50);
+    assert.equal(meter(), undefined); assert.equal(f.pending.length, 0); assert.equal(f.state.boat.voyage.castsUsed, 0);
+  }
+  water.props.onPointerDown(event(water));
+  water.props.onPointerCancel(event(water, { pointerId: 8, isPrimary: false })); advance(280);
+  assert.equal(meter().props["data-marker"], 28); assert.equal(f.find(node => node.tag === "canvas").props.frame.aiming, true);
+  water.props.onPointerUp(event(water)); water.props.onPointerUp(event(water)); f.render();
+  assert.equal(f.pending.length, 1); assert.equal(f.pending[0].castHeldMs, 280);
+  f.flush(); assert.equal(f.state.boat.voyage.castsUsed, 1);
+});
+
+test("cancelled charges keep the budget and a missed bite settles once with no catch", t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const f = fixture();
-  const button = f.byAction("cast"); button.props.onPointerDown(event(button)); f.render(); f.frame(700);
+  const button = f.byAction("cast"); button.props.onPointerDown(event(button)); f.frame(700); t.mock.timers.tick(700); f.render();
   assert.equal(f.pending.length, 0); assert.equal(f.find(node => node.props.role === "meter").props["data-marker"], 70);
   button.props.onPointerCancel(event(button)); f.render();
   button.props.onPointerUp(event(button)); f.render();
   assert.equal(f.pending.length, 0); assert.equal(f.state.boat.voyage.castsUsed, 0);
-  button.props.onKeyDown(event(button, { key: " " })); f.render(); f.frame(1000);
+  button.props.onKeyDown(event(button, { key: " " })); f.frame(1000); t.mock.timers.tick(1000); f.render();
   assert.equal(f.find(node => node.props.role === "meter").props["data-marker"], 100);
   button.props.onKeyUp(event(button, { key: " " })); f.render(); f.flush(); f.frame(0);
   const voyage = f.state.boat.voyage, biteAt = Date.parse(voyage.challenge.biteAt);
@@ -281,24 +305,26 @@ test("cancelled charges keep the budget and a missed bite settles once with no c
   assert.equal(f.state.boat.voyage.castsUsed, 1); assert(f.byAction("cast"));
 });
 
-test("a keyboard cast passes focus through the dialog trap to the water for the strike", () => {
+test("a keyboard cast passes focus through the dialog trap to the water for the strike", t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const f = fixture(), cast = f.byAction("cast");
-  cast.focus(); cast.props.onKeyDown(event(cast)); f.render(); f.frame(85);
+  cast.focus(); cast.props.onKeyDown(event(cast)); f.frame(385); t.mock.timers.tick(385); f.render();
   cast.props.onKeyUp(event(cast)); f.render();
-  const expectedQuality = boatCastAim(f.state.boat.voyage.id, 1, 85).quality;
+  const expectedQuality = boatCastAim(f.state.boat.voyage.id, 1, 385).quality;
   const release = () => f.find(node => node.props["data-cast-result"] !== undefined);
   assert.equal(release().props["data-cast-result"], expectedQuality);
   f.find(node => node.props["data-boat-dialog"]).focus();
   f.flush(); f.frame(0);
   assert.equal(release().props["data-cast-result"], expectedQuality);
   assert.equal(document.activeElement, f.byAction("line"));
+  f.frame(3199); t.mock.timers.tick(3199); f.render();
+  assert.equal(release().props["data-cast-result"], expectedQuality, "the exact release stays readable after the cast lands");
+  f.frame(1); t.mock.timers.tick(1); f.render(); assert.equal(release(), undefined);
   f.frame(Date.parse(f.state.boat.voyage.challenge.biteAt) - Date.parse(f.view().serverTime));
   assert.equal(release(), undefined, "no accuracy toast covers the bite");
   document.activeElement.props.onKeyDown(event(document.activeElement)); f.render();
   assert.equal(document.activeElement, f.byAction("hold"));
-  f.byAction("pause").focus(); f.click(f.byAction("pause"));
-  f.byAction("play").focus(); f.click(f.byAction("play"));
-  assert.equal(document.activeElement, f.byAction("hold"), "resume returns keyboard ownership to the water");
+  assert.equal(f.byAction("pause"), undefined); assert.equal(f.byAction("play"), undefined);
 });
 
 test("a premature hold cannot hook across the bite, and only optional hints teach when to strike", () => {
@@ -323,7 +349,8 @@ test("a premature hold cannot hook across the bite, and only optional hints teac
 test("late viewers cannot settle another tab's hook implicitly, while a legacy attempt still reels automatically", () => {
   const f = fixture();
   f.cast(); const first = f.state.boat.voyage.challenge;
-  f.close(); f.advanceTo(Date.parse(first.biteAt) + 4000); f.reopen(); f.frame(0);
+  f.close(); storage.clear(); // A second tab has its own session storage.
+  f.advanceTo(Date.parse(first.biteAt) + 4000); f.reopen(); f.frame(0);
   assert.equal(f.byAction("hook"), undefined); assert.equal(f.byAction("hold"), undefined);
   assert(f.byAction("skip-bite")); f.frame(1500); assert.deepEqual(f.pending, []);
   f.click(f.byAction("skip-bite")); assert.equal(f.pending.length, 1); assert.equal(f.pending[0].reel.missedBite, true);
@@ -332,54 +359,118 @@ test("late viewers cannot settle another tab's hook implicitly, while a legacy a
   f.cast(); f.close();
   const legacy = f.state.boat.voyage.challenge;
   legacy.rulesVersion = 5;
-  f.advanceTo(Date.parse(legacy.biteAt) + 4000); f.reopen(); f.frame(0);
+  f.advanceTo(Date.parse(legacy.biteAt) + 200); f.reopen(); f.frame(0);
   assert.equal(f.byAction("skip-bite"), undefined); assert.equal(f.byAction("hook"), undefined);
-  assert(f.byAction("hold")); assert.deepEqual(f.pending, []);
+  assert(f.byAction("hold")); assert.equal(hooks.inspectReel().tick, 4); assert.deepEqual(f.pending, []);
 });
 
-test("real play and input handlers pause for catch album DEV and return overlays without spending a return or generating fish", () => {
+test("overlays release the water, keep the fight visible and allow the fish to escape", () => {
   const f = fixture({ dev: true }); f.cast(); f.play();
-  f.hold(true, "pointer"); assert.equal(f.byAction("hold").props["aria-pressed"], true);
-  f.frame(50); f.hold(false, "pointer"); assert.equal(f.byAction("hold").props["aria-pressed"], false);
-  f.hold(true); f.frame(50); f.hold(false); const initialInventory = structuredClone(f.state.inventory);
-  const overlays = [() => f.find(node => node.tag === "button" && text(node).startsWith("Улов ·")),
-    () => f.find(node => node.tag === "button" && text(node) === "DEV"), () => f.byAction("return"), () => f.byAction("album")];
-  for (let index = 0; index < overlays.length; index++) {
-    if (f.byAction("play")) f.play();
-    f.frame(50); const tick = hooks.inspectReel().tick;
-    f.click(overlays[index]()); assert.equal(f.find(node => node.props["data-reel-status"] === "paused") != null, true);
-    f.frame(200); assert.equal(hooks.inspectReel().tick, tick); assert.equal(f.state.boat.voyage.catches.length, 0);
-    assert.equal(f.commands.filter(request => request.action === "return_boat").length, 0);
-    if (index === 0) f.click(f.find(node => node.props["aria-label"] === "Закрыть улов"));
-    else if (index === 1) f.click(overlays[index]());
-    else if (index === 2) f.click(f.find(node => node.tag === "button" && text(node) === "Остаться"));
-    else f.click(f.find(node => node.props["aria-label"] === "Закрыть альбом рыбака"));
-    assert(f.byAction("play"), "Dismissing a tray keeps manual play paused");
+  const initialInventory = structuredClone(f.state.inventory);
+  const scene = () => f.find(node => node.tag === "canvas").props.frame;
+  const catchButton = () => f.find(node => node.tag === "button" && text(node).startsWith("Улов ·"));
+  const devButton = () => f.find(node => node.tag === "button" && text(node) === "DEV");
+  const overlays = [
+    [catchButton, () => f.find(node => node.props["aria-label"] === "Закрыть улов")],
+    [devButton, devButton],
+    [() => f.byAction("return"), () => f.find(node => node.tag === "button" && text(node) === "Остаться")],
+    [() => f.byAction("album"), () => f.find(node => node.props["aria-label"] === "Закрыть альбом рыбака")],
+  ];
+  for (const [open, close] of overlays) {
+    f.hold(true, "pointer"); f.frame(50); const tick = hooks.inspectReel().tick;
+    f.click(open());
+    assert(f.byAction("hold").props.disabled); assert.equal(f.byAction("hold").props["aria-pressed"], false);
+    f.frame(200);
+    assert.equal(hooks.inspectReel().tick, tick + 4);
+    assert.equal(scene().stage, "reeling"); assert.equal(scene().reel.bar, hooks.inspectReel().bar);
+    assert.equal(scene().reel.fish, hooks.inspectReel().fish);
+    f.click(close()); assert.equal(f.byAction("hold").props.disabled, false);
+    assert.equal(f.byAction("play"), undefined);
   }
+  f.click(f.byAction("album"));
+  for (let tick = 0; tick <= f.state.boat.voyage.challenge.maxTicks && hooks.inspectReel().status === "active"; tick += 10) f.frame(500);
+  assert.equal(hooks.inspectReel().status, "escaped"); assert.equal(scene().stage, "escaped");
+  assert.equal(f.pending.length, 1); assert.equal(f.pending[0].action, "submit_boat_cast");
+  f.flush(); assert.equal(f.state.boat.voyage.catches.length, 0); assert.equal(f.state.boat.voyage.castsUsed, 1);
+  assert.equal(f.commands.filter(request => request.action === "return_boat").length, 0);
   assert.deepEqual(f.state.inventory, initialInventory);
 });
 
-test("close reopen and hidden events preserve the same tab checkpoint paused without duplicate frames or commands", t => {
+test("closing the river and hiding the tab release input but the same fish keeps moving", t => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const f = fixture(); f.cast(); f.play(); f.hold(true); f.frame(100);
   const voyageId = f.state.boat.voyage.id, challenge = f.state.boat.voyage.challenge, tick = hooks.inspectReel().tick;
+  const listenerCount = window.count() + document.count();
   f.click(f.find(node => node.tag === "button" && text(node) === "К поляне"));
   assert(f.find(node => node.props["data-leaving"]));
-  assert.equal(hooks.inspectReel().tick, tick);
-  t.mock.timers.tick(260); f.render();
-  assert.equal(frames.size, 0); assert.equal(window.count(), 0); assert.equal(document.count(), 0);
+  f.frame(250); t.mock.timers.tick(260); f.render();
+  assert.equal(frames.size, 0); assert.equal(window.count() + document.count(), 0);
   const key = boatReelCheckpointKey("0000-0000-0000", voyageId, challenge.id);
-  assert.equal(JSON.parse(storage.get(key)).endTick, tick);
-  f.reopen(); f.frame(0);
+  assert.equal(JSON.parse(storage.get(key)).endTick, tick + 5);
+  f.frame(200); f.reopen(); f.frame(0);
   assert.equal(f.state.boat.voyage.id, voyageId); assert.equal(f.state.boat.voyage.challenge.id, challenge.id);
-  assert.equal(hooks.inspectReel().tick, tick); assert(f.byAction("play")); assert.equal(frames.size, 1);
-  assert.equal(window.count(), 2); assert.equal(document.count(), 1);
-  f.play(); f.hold(true); f.frame(50); const beforeHidden = hooks.inspectReel().tick;
+  assert.equal(hooks.inspectReel().tick, tick + 9);
+  assert.equal(f.byAction("hold").props["aria-pressed"], false);
+  assert.equal(frames.size, 1); assert.equal(window.count() + document.count(), listenerCount);
+  f.hold(true); f.frame(50); const beforeHidden = hooks.inspectReel().tick;
   document.hidden = true; document.dispatchEvent(new Event("visibilitychange")); f.render();
-  f.frame(500); assert.equal(hooks.inspectReel().tick, beforeHidden); assert(f.byAction("play"));
-  document.hidden = false; document.dispatchEvent(new Event("visibilitychange")); f.render();
+  f.advanceTo(Date.parse(f.view().serverTime) + 500);
+  document.hidden = false; document.dispatchEvent(new Event("visibilitychange")); f.frame(0);
+  assert.equal(hooks.inspectReel().tick, beforeHidden + 10);
+  assert.equal(f.byAction("hold").props["aria-pressed"], false);
+  f.hold(true); assert.equal(f.byAction("hold").props["aria-pressed"], true);
   assert.equal(f.state.boat.voyage.catches.length, 0); assert.equal(f.commands.filter(request => request.action === "begin_boat_cast").length, 1);
   f.close(); assert.equal(frames.size, 0); assert.equal(window.count() + document.count(), 0);
+});
+
+test("the last hooked attempt finishes once after reopening beyond its expiry before showing the return screen", () => {
+  const f = fixture(); f.state.boat.voyage.maxCasts = 1; f.state.boat.voyage.slots = f.state.boat.voyage.slots.slice(0, 1); f.render(); f.cast(); f.play();
+  f.hold(true); f.frame(150); f.hold(false); f.frame(100);
+  const challenge = structuredClone(f.state.boat.voyage.challenge), started = hooks.inspectReel();
+  const key = boatReelCheckpointKey("0000-0000-0000", f.state.boat.voyage.id, challenge.id);
+  f.close();
+  const saved = JSON.parse(storage.get(key)), expectedInputs = structuredClone(saved.inputs);
+  changeBoatReelInput(expectedInputs, saved.endTick, false);
+  let expected = started;
+  while (expected.status === "active") expected = stepBoatReel(challenge, expected, false);
+  assert.equal(expected.status, "escaped");
+  f.advanceTo(Date.parse(challenge.expiresAt) + 180_000); f.reopen(); f.frame(0);
+  assert.equal(f.pending.length, 1); assert.equal(f.pending[0].action, "submit_boat_cast");
+  const trace = f.pending[0].reel;
+  assert.equal(trace.deferred, true); assert.equal(trace.endTick, expected.tick);
+  assert.deepEqual(trace.inputs, expectedInputs.filter(input => input.tick < expected.tick));
+  assert.deepEqual(replayBoatReel(challenge, trace.inputs, trace.endTick), expected);
+  assert.equal(f.byAction("cast"), undefined);
+  assert.equal(f.find(node => node.props["aria-label"] === "Завершить рыбалку и вернуться домой"), undefined);
+  f.frame(100); f.render(); assert.equal(f.pending.length, 1);
+  f.flush(); assert.equal(f.state.boat.voyage.castsUsed, 1);
+  assert.equal(f.state.boat.voyage.challenge, undefined); assert.equal(f.state.boat.voyage.catches.length, 0);
+  assert(f.find(node => node.props["aria-label"] === "Завершить рыбалку и вернуться домой"));
+  assert.equal(f.commands.filter(request => request.action === "submit_boat_cast").length, 1);
+});
+
+test("a finished legacy draft without a start timestamp still delivers the last catch before expiry", () => {
+  const f = fixture(); f.state.boat.voyage.maxCasts = 1; f.state.boat.voyage.slots = f.state.boat.voyage.slots.slice(0, 1); f.render(); f.cast();
+  const voyageId = f.state.boat.voyage.id, challenge = structuredClone(f.state.boat.voyage.challenge);
+  f.close();
+  let result = initialBoatReel(challenge);
+  const inputs = [];
+  while (result.status === "active") {
+    const held = result.fish > result.bar + result.velocity * 4;
+    changeBoatReelInput(inputs, result.tick, held); result = stepBoatReel(challenge, result, held);
+  }
+  assert.equal(result.status, "caught");
+  const key = boatReelCheckpointKey("0000-0000-0000", voyageId, challenge.id);
+  writeBoatReelCheckpoint(window.sessionStorage, key, challenge, result, inputs);
+  assert.equal(JSON.parse(storage.get(key)).reelStartedAt, undefined);
+  f.advanceTo(Date.parse(challenge.expiresAt) - 1); f.reopen(); f.frame(0);
+  assert.equal(f.pending.length, 1); assert.equal(f.pending[0].reel.endTick, result.tick);
+  assert.deepEqual(replayBoatReel(challenge, f.pending[0].reel.inputs, result.tick), result);
+  assert.equal(f.byAction("cast"), undefined);
+  assert.equal(f.find(node => node.props["aria-label"] === "Завершить рыбалку и вернуться домой"), undefined);
+  f.flush(); assert.equal(f.state.boat.voyage.catches.length, 1); assert.equal(f.state.boat.voyage.castsUsed, 1);
+  assert.equal(f.commands.filter(request => request.action === "submit_boat_cast").length, 1);
+  assert(f.find(node => node.props["aria-label"] === "Завершить рыбалку и вернуться домой"));
 });
 
 test("caught UI automatically submits one replay verified trace then credits inventory only after confirmed return and unloading", () => {
@@ -430,10 +521,11 @@ test("escaped or expired attempts never give local fish and the real cast budget
   assert.equal(f.state.boat.voyage.catches.length, 0); assert.equal(f.state.boat.voyage.castsUsed, 1);
   f.cast(); const id = f.state.boat.voyage.challenge.id, expiry = Date.parse(f.state.boat.voyage.challenge.expiresAt);
   f.advanceTo(expiry); f.frame(0);
-  assert(f.find(node => node.props["data-reel-status"] === "expired")); assert(f.byAction("cast"));
-  assert.equal(f.byAction("submit"), undefined); assert.equal(f.state.boat.voyage.catches.length, 0);
+  assert.equal(f.pending.length, 1); assert.equal(f.pending[0].reel.challengeId, id); assert.equal(f.pending[0].reel.missedBite, true);
+  assert.equal(f.byAction("cast"), undefined); assert.equal(f.byAction("submit"), undefined);
+  f.flush(); assert(f.byAction("cast"));
   f.close(); f.reopen(); f.frame(0);
-  assert.equal(f.state.boat.voyage.challenge.id, id); assert.equal(f.state.boat.voyage.castsUsed, 2);
+  assert.equal(f.state.boat.voyage.challenge, undefined); assert.equal(f.state.boat.voyage.castsUsed, 2);
   assert.equal(f.state.boat.voyage.catches.length, 0);
 });
 
@@ -506,6 +598,7 @@ test("an exhausted empty trip and expired last attempt return directly after reo
   const f = fixture(); f.state.boat.voyage.maxCasts = 1; f.state.boat.voyage.slots = f.state.boat.voyage.slots.slice(0, 1); f.render(); f.cast();
   f.advanceTo(Date.parse(f.state.boat.voyage.challenge.expiresAt)); f.frame(0);
   assert.equal(f.byAction("cast"), undefined); assert.equal(f.byAction("play"), undefined);
+  assert.equal(f.pending.length, 1); assert.equal(f.pending[0].reel.missedBite, true); f.flush();
   assert(f.find(node => node.props["data-fishing-complete"]));
   assert.match(text(f.find(node => node.props["data-fishing-complete"])), /без улова/);
   f.close(); f.reopen(); f.frame(0);
@@ -514,20 +607,25 @@ test("an exhausted empty trip and expired last attempt return directly after reo
   assert.equal(f.pending.length, 1); assert.equal(f.pending[0].action, "return_boat");
 });
 
-test("a live final reel crossing expiry clears stale held fish and resistance before its controller unmounts", () => {
+test("a live final reel crossing expiry resolves its trace before allowing a direct return", () => {
   const f = fixture(); f.state.boat.voyage.maxCasts = 1; f.state.boat.voyage.slots = f.state.boat.voyage.slots.slice(0, 1); f.render();
   f.cast(); f.play(); f.hold(true); f.frame(50);
   const before = f.find(node => node.tag === "canvas").props.frame;
   assert.equal(before.stage, "reeling"); assert.equal(before.held, true); assert(before.reel);
-  const inventory = structuredClone(f.state.inventory);
-  f.advanceTo(Date.parse(f.state.boat.voyage.challenge.expiresAt));
-  const expired = f.find(node => node.tag === "canvas").props.frame;
-  assert.equal(expired.stage, "expired"); assert.equal(expired.held, false);
-  assert.equal(expired.reel, undefined); assert.equal(expired.resistancePhase, undefined);
-  assert.equal(f.find(node => node.props["data-boat-reel"]), undefined);
-  assert(f.find(node => node.props["data-fishing-complete"])); assert(f.byAction("return"));
-  assert.equal(frames.size, 0); assert.equal(f.pending.length, 0);
+  const inventory = structuredClone(f.state.inventory), challenge = structuredClone(f.state.boat.voyage.challenge);
+  f.advanceTo(Date.parse(challenge.expiresAt));
+  assert.equal(f.find(node => node.props["data-fishing-complete"]), undefined);
+  assert.equal(f.byAction("cast"), undefined);
+  f.frame(0);
+  const finished = f.find(node => node.tag === "canvas").props.frame, result = hooks.inspectReel();
+  assert.equal(result.status, "escaped"); assert.equal(finished.stage, "escaped"); assert.equal(finished.held, false);
+  assert.equal(f.pending.length, 1); assert.equal(f.pending[0].action, "submit_boat_cast");
+  assert.deepEqual(replayBoatReel(challenge, f.pending[0].reel.inputs, f.pending[0].reel.endTick), result);
   assert.deepEqual(f.state.inventory, inventory); assert.equal(f.state.boat.voyage.catches.length, 0);
+  f.flush();
+  assert.equal(f.find(node => node.props["data-boat-reel"]), undefined);
+  assert.equal(f.find(node => node.tag === "canvas").props.frame.reel, undefined);
+  assert(f.find(node => node.props["data-fishing-complete"])); assert(f.byAction("return"));
   f.click(f.byAction("return")); assert.equal(f.find(node => node.props.role === "alertdialog"), undefined);
   assert.equal(f.pending.length, 1); assert.equal(f.pending[0].action, "return_boat");
 });

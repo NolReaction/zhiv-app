@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { Pause, Play, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import type { FishingSceneFrame } from "./scene/fishing-scene-types";
 import { useBoatReelController, type BoatReelControllerProps } from "./use-boat-reel-controller";
 import { boatReelFeedback } from "./boat-reel-feedback";
@@ -27,22 +27,28 @@ export function BoatReelGame(props: Props) {
 }
 
 function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachObservation, ...props }: Props) {
-  const { reel, challenge, playing, held, ready, paused, expired, waitingForConfirmation, retryNeeded, togglePlay, changeHeld, submit,
+  const { reel, challenge, playing, held, ready, expired, waitingForConfirmation, retryNeeded, changeHeld, submit,
     status, castStage, missedBite, missedElsewhere, confirmMiss, hookFish } = useBoatReelController({ ...props, suspended });
   const holdButton = useRef<HTMLButtonElement>(null);
-  const resumeRequested = useRef(false);
   const input = useRef<string | number | null>(null);
   const blocked = !ready || suspended || props.disabled || waitingForConfirmation || expired || missedBite || missedElsewhere || reel.status !== "active";
-  useEffect(() => { if (blocked || paused) input.current = null; }, [blocked, paused]);
   useEffect(() => {
-    if (blocked || paused) return;
-    if (playing && resumeRequested.current) {
-      resumeRequested.current = false;
-      holdButton.current?.focus({ preventScroll: true });
-    } else focusBoatWaterIfIdle(holdButton.current);
-  }, [blocked, paused, playing]);
-  const stage: FishingSceneFrame["stage"] = waitingForConfirmation ? "pending" : expired ? "expired" : missedElsewhere ? "paused" : missedBite ? "escaped"
-    : reel.status === "caught" ? "caught" : reel.status === "escaped" ? "escaped" : playing ? "reeling" : paused ? "paused" : castStage;
+    if (blocked) input.current = null;
+    else focusBoatWaterIfIdle(holdButton.current);
+  }, [blocked]);
+  useEffect(() => {
+    // A released touch or key in another tab will never send its up event to this button.
+    const clearInput = () => { input.current = null; };
+    const onVisibility = () => { if (document.hidden) clearInput(); };
+    window.addEventListener("blur", clearInput);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("blur", clearInput);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+  const stage: FishingSceneFrame["stage"] = !ready ? "pending" : waitingForConfirmation ? "pending" : expired || missedElsewhere ? "expired" : missedBite ? "escaped"
+    : reel.status === "caught" ? "caught" : reel.status === "escaped" ? "escaped" : playing ? "reeling" : castStage;
   const resistancePhase = boatReelResistancePhase(challenge, reel.tick);
   // Older attempts start automatically and still need one frame for the bite cue.
   const visualStage = waitingForConfirmation && reel.status !== "active" ? reel.status : playing && challenge.rulesVersion < 6 && reel.tick === 0 ? "bite" : stage;
@@ -50,13 +56,15 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
     reel: { bar: reel.bar, fish: reel.fish, progress: reel.progress, zoneWidth: challenge.zoneWidth, velocity: reel.velocity } }),
   [challenge.id, challenge.zoneWidth, visualStage, held, resistancePhase, reel.bar, reel.fish, reel.progress, reel.velocity]);
   useEffect(() => { onVisualState?.(visual); }, [onVisualState, visual]);
-  useEffect(() => { onCoachObservation?.({ challengeId: challenge.id, stage, playing: playing && !suspended, held, tick: reel.tick, bar: reel.bar }); },
-    [onCoachObservation, challenge.id, stage, playing, suspended, held, reel.tick, reel.bar]);
+  useEffect(() => {
+    const canPractice = playing && !blocked && !document.hidden && (document.hasFocus?.() ?? true);
+    onCoachObservation?.({ challengeId: challenge.id, stage, playing: canPractice, held, tick: reel.tick, bar: reel.bar });
+  }, [onCoachObservation, challenge.id, stage, playing, blocked, held, reel.tick, reel.bar]);
   const coachText = coachView ? boatCoachInstruction(coachView, stage) : null;
   const feedback = boatResistanceFeedback(resistancePhase, boatReelFeedback(reel, challenge.zoneWidth));
-  const showMeter = !expired && !missedBite && !missedElsewhere && (playing || paused || reel.status !== "active");
+  const showMeter = !expired && !missedBite && !missedElsewhere && (playing || reel.status !== "active");
   const begin = (source: string | number) => {
-    if (blocked || paused || input.current !== null) return;
+    if (blocked || input.current !== null) return;
     input.current = source;
     if (!playing) hookFish();
     changeHeld(true);
@@ -77,10 +85,10 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
     <span className={gameStyles.srOnly} role="status">{status}</span>
     {waterActive && <button type="button" ref={holdButton} className={waterStyles.surface}
       data-fishing-action={playing ? "hold" : "line"} aria-pressed={playing ? held : undefined}
-      aria-label="Вода. Подсечка и вываживание" aria-keyshortcuts="Space Enter ArrowUp" disabled={blocked || paused}
+      aria-label="Вода. Подсечка и вываживание" aria-keyshortcuts="Space Enter ArrowUp" disabled={blocked}
       onContextMenu={event => event.preventDefault()} onDragStart={event => event.preventDefault()}
       onPointerDown={event => {
-        if (event.button !== 0 || !event.isPrimary || blocked || paused || input.current !== null) return;
+        if (event.button !== 0 || !event.isPrimary || blocked || input.current !== null) return;
         event.preventDefault();
         event.currentTarget.focus({ preventScroll: true });
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -99,17 +107,15 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
       }}
       onClick={event => {
         // Assistive switches may activate a button without sending pointer or key events.
-        if (event.detail !== 0 || blocked || paused || input.current !== null) return;
+        if (event.detail !== 0 || blocked || input.current !== null) return;
         if (playing) changeHeld(!held); else hookFish();
       }} />}
     {showMeter && <div className={gameStyles.instrument}>
-      <BoatReelMeter reel={{ bar: reel.bar, fish: reel.fish, zoneWidth: challenge.zoneWidth }} held={held} paused={!playing || suspended} tickMs={challenge.tickMs} danger={feedback.urgent} />
+      <BoatReelMeter reel={{ bar: reel.bar, fish: reel.fish, zoneWidth: challenge.zoneWidth }} held={held} tickMs={challenge.tickMs} danger={feedback.urgent} />
       <div className={gameStyles.readout}>
         <div className={gameStyles.distance}><span>К борту</span><strong>{Math.floor(reel.progress / 100)}%</strong></div>
         <BoatReelProgress value={reel.progress} danger={feedback.urgent} playing={playing && !suspended} />
         {playing && feedback.phaseLabel && <small className={resistanceStyles.phase} data-resistance-phase={resistancePhase}>{feedback.phaseLabel}</small>}
-        {waterActive && (playing ? <button type="button" className={gameStyles.toggle} data-fishing-action="pause" onClick={togglePlay} disabled={suspended} aria-label="Пауза"><Pause size={15} /></button>
-          : paused && <button type="button" className={gameStyles.toggle} data-fishing-action="play" disabled={blocked} onClick={() => { resumeRequested.current = true; togglePlay(); }}><Play size={14} />Продолжить</button>)}
       </div>
     </div>}
     {(deliveryMessage || coachText || retryNeeded || missedElsewhere) && <div className={gameStyles.message} data-with-meter={showMeter || undefined}>

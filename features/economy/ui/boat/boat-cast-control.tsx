@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { BOAT_CAST_CYCLE_MS, BOAT_CAST_GREEN_RADIUS, boatCastAim } from "@/features/economy/domain/boat-cast-aim";
 import styles from "./boat-cast-control.module.css";
+import { BOAT_CAST_MIN_HOLD_MS } from "./boat-cast-timing";
 import { focusBoatWaterIfIdle } from "./boat-water-focus";
 
 type CastGesture = { input: string; startedAt: number };
@@ -13,7 +14,7 @@ function eventTime(timestamp?: number) {
 }
 
 function CastMeter({ voyageId, castNumber, startedAt }: { voyageId: string; castNumber: number; startedAt: number }) {
-  const [aim, setAim] = useState(() => boatCastAim(voyageId, castNumber, 0));
+  const [aim, setAim] = useState(() => boatCastAim(voyageId, castNumber, performance.now() - startedAt));
   useEffect(() => {
     let frame = 0;
     const draw = (time: number) => {
@@ -48,11 +49,13 @@ export function BoatCastControl({ disabled, voyageId, castNumber, onCast, onChar
   const water = useRef<HTMLButtonElement>(null);
   useEffect(() => { if (!disabled) focusBoatWaterIfIdle(water.current); }, [disabled]);
   const press = useRef<CastGesture | null>(null);
+  const armTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const notify = useRef(onChargingChange);
   useEffect(() => { notify.current = onChargingChange; }, [onChargingChange]);
   const [gesture, setGesture] = useState<CastGesture | null>(null);
   const cancel = useCallback(() => {
     if (!press.current) return;
+    clearTimeout(armTimer.current);
     press.current = null;
     setGesture(null);
     notify.current?.(false);
@@ -70,22 +73,28 @@ export function BoatCastControl({ disabled, voyageId, castNumber, onCast, onChar
 
   const start = (input: string, timestamp?: number) => {
     if (disabled || press.current) return;
-    press.current = { input, startedAt: eventTime(timestamp) };
-    setGesture(press.current);
-    notify.current?.(true);
+    const active = { input, startedAt: eventTime(timestamp) };
+    press.current = active;
+    armTimer.current = setTimeout(() => {
+      if (press.current !== active) return;
+      setGesture(active);
+      notify.current?.(true);
+    }, Math.max(0, active.startedAt + BOAT_CAST_MIN_HOLD_MS - performance.now()));
   };
   const release = (input: string, timestamp?: number) => {
     const active = press.current;
     if (!active || active.input !== input) return;
-    const elapsed = Math.max(0, Math.floor(eventTime(timestamp) - active.startedAt)) % BOAT_CAST_CYCLE_MS;
+    const duration = Math.floor(eventTime(timestamp) - active.startedAt);
     cancel();
-    if (disabled) return;
+    if (disabled || duration < BOAT_CAST_MIN_HOLD_MS) return;
+    const elapsed = duration % BOAT_CAST_CYCLE_MS;
     const { power, quality } = boatCastAim(voyageId, castNumber, elapsed);
     onCast(power, elapsed, quality);
   };
+  const cancelPointer = (pointerId: number) => { if (press.current?.input === String(pointerId)) cancel(); };
   return <>
     <button type="button" ref={water} className={styles.surface} data-fishing-action="cast" disabled={disabled}
-      aria-label="Вода. Удерживайте для замаха и отпустите для заброса" aria-keyshortcuts="Space Enter"
+      aria-label="Вода. Удерживайте до появления шкалы и отпустите для заброса" aria-keyshortcuts="Space Enter"
       onContextMenu={event => event.preventDefault()} onDragStart={event => event.preventDefault()}
       onPointerDown={event => {
         if (!event.isPrimary || event.button !== 0) return;
@@ -99,8 +108,8 @@ export function BoatCastControl({ disabled, voyageId, castNumber, onCast, onChar
         event.preventDefault();
         release(String(event.pointerId), event.timeStamp);
       }}
-      onLostPointerCapture={event => { if (press.current?.input === String(event.pointerId)) cancel(); }}
-      onPointerCancel={cancel} onBlur={cancel}
+      onLostPointerCapture={event => cancelPointer(event.pointerId)}
+      onPointerCancel={event => cancelPointer(event.pointerId)} onBlur={cancel}
       onKeyDown={event => {
         if (event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing || (event.key !== " " && event.key !== "Enter")) return;
         event.preventDefault();

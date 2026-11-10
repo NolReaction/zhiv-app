@@ -97,14 +97,14 @@ test("saved trips with travel timers still show distinct journey phases without 
   assert.match(ready, /data-boat-phase="ready"/); assert.match(ready, /Завершить выход/);
 });
 
-test("live and expired challenges preserve their identity and do not expose a predetermined fish", () => {
+test("server markup preserves challenge identity and waits for saved local progress before offering another cast", () => {
   const value = state(); value.boat.level = 1; run(value, "depart_boat", "river_reach");
   const voyage = value.boat.voyage, arrival = Date.parse(voyage.arrivesAt); run(value, "begin_boat_cast", voyage.id, arrival);
   const before = structuredClone(value), live = render(value, arrival);
   assert.match(live, new RegExp(`data-boat-reel="${value.boat.voyage.challenge.id}"`));
   assert.match(live, /Забрасываем удочку/); assert.doesNotMatch(live, /Подсечь|Начать вываживание/); assert.doesNotMatch(live, /data-fishing-action="cast"|weightGrams|challengeSeed|slots/);
   const expired = render(value, arrival + 120000);
-  assert.match(expired, /data-reel-status="expired"/); assert.match(expired, /data-fishing-action="cast"/);
+  assert.match(expired, /data-reel-status="pending"/); assert.doesNotMatch(expired, /data-fishing-action="cast"/);
   assert.deepEqual(value, before);
 });
 

@@ -6,7 +6,7 @@ import styles from "./boat-reel-progress.module.css";
 const maximum = 10000;
 const normalize = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(maximum, value)) : 0;
 
-/** Milestones acknowledge new progress once, including when hidden/paused updates consume it. */
+/** Milestones acknowledge new progress once, including progress reached while a panel covers the river. */
 export function createBoatProgressMilestones(initialValue: number) {
   let highest = Math.floor(normalize(initialValue) / 2500);
   return {

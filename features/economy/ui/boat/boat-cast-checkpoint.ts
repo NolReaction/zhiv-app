@@ -14,13 +14,15 @@ export function createBoatCastCheckpoint(owner: string, voyage: string) {
     aim = next;
     try { window.sessionStorage.setItem(key, JSON.stringify(next)); } catch { /* Keep the in-memory aim. */ }
   };
+  const owns = (cast: number, challenge?: string) => Boolean(challenge && aim?.cast === cast && (!aim.challenge || aim.challenge === challenge));
   return {
+    owns,
     release(cast: number, power: number) { save({ voyage, cast, challenge: null, power }); },
     confirm(cast: number, challenge?: string) {
       if (challenge && aim?.cast === cast && aim.challenge === null) save({ ...aim, challenge });
     },
     power(cast: number, challenge?: string) {
-      return challenge && aim?.cast === cast && (!aim.challenge || aim.challenge === challenge) ? aim.power : 100;
+      return owns(cast, challenge) && aim ? aim.power : 100;
     },
   };
 }
