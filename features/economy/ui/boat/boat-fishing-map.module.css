@@ -106,5 +106,5 @@
 @media (max-height: 500px) and (max-width: 480px) { .bottomRow { gap: 5px; }.bottomRow .back { font-size: 10px !important; }.coachShortcut { min-width: 26px; } }
 
 .counter[data-pending-fish] { border-bottom-style: dashed; }
-[data-local-reveal] .controls > [data-confirmed-catch] { animation: none; }
-[data-local-reveal] [data-fishing-cue="cast"] { visibility: hidden; }
+.map[data-local-reveal] .controls > [data-confirmed-catch] { animation: none; }
+.map[data-local-reveal] [data-fishing-cue="cast"] { visibility: hidden; }
