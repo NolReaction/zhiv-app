@@ -13,6 +13,7 @@ const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/mo
 const { WorldOrderJournal } = await vite.ssrLoadModule("/features/economy/ui/orders/world-order-journal.tsx");
 const { ResidentOrderCard, residentOrderReplacementTerms, residentOrderQuoteReason } = await vite.ssrLoadModule("/features/economy/ui/orders/world-resident-order-board.tsx");
 const { OrderResidentTabs } = await vite.ssrLoadModule("/features/economy/ui/orders/order-resident-tabs.tsx");
+const { OrderWeeklyChooser } = await vite.ssrLoadModule("/features/economy/ui/orders/order-weekly-chooser.tsx");
 const { orderReputationPresentation } = await vite.ssrLoadModule("/features/economy/ui/orders/order-reputation-presentation.ts");
 const { orderJournalSummary } = await vite.ssrLoadModule("/features/economy/ui/orders/order-journal-summary.ts");
 const { residentOrderBoard, normalizedResidentOrders } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
@@ -55,6 +56,13 @@ test("orders retain All and five character tabs without exposing residents befor
   assert.equal((strip.match(/<canvas /g) ?? []).length, 2);
   assert.equal((strip.match(/tabindex="0"/g) ?? []).length, 1);
   assert.match(strip, /aria-controls="trade-panel"/);
+});
+
+test("empty weekly orders describe the active customer filter", () => {
+  const economy = controller({ buildings: { home: 1 } });
+  const props = { economy, available: ["builder", "plesk"] };
+  assert.match(render(OrderWeeklyChooser, { ...props, customer: "all" }), /У жителей пока нет доступных больших поручений/);
+  assert.match(render(OrderWeeklyChooser, { ...props, customer: "builder" }), /У этого жителя пока нет доступного большого поручения/);
 });
 
 test("character view shows the real long-term rank, benefit and remaining daily reputation", () => {

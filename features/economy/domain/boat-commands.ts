@@ -81,6 +81,7 @@ function transition(state: EconomyState, command: EconomyCommand, now: number, i
     const cost = { coins: 0, items: loadout.baitId ? { [loadout.baitId]: 1 } : {} };
     // All slots use server entropy independent of requestId and public reel seeds.
     const seed = `boat:${draw(0x1_0000_0000)}:${draw(0x1_0000_0000)}`;
+    const voyageId = id();
     const slots = Array.from({ length: maxCasts }, (_, index) => {
       const fishId = selectFishingCatch(seed, loadout.rodId, loadout.baitId, economyCatalog.fishing!, loadout.hookId, index), spec = config.weights[fishId];
       if (!spec) throw new Error("Boat species has no authored weight range");
@@ -88,11 +89,11 @@ function transition(state: EconomyState, command: EconomyCommand, now: number, i
       const rarity = economyCatalog.fishing!.fish.find(fish => fish.itemId === fishId)!.rarity;
       const difficulty = Math.min(5, ["common", "uncommon", "rare", "epic", "legendary"].indexOf(rarity) + 1
         + Number((weightGrams - spec.minGrams) * 100 > (spec.maxGrams - spec.minGrams) * 65));
-      return { fishId, weightGrams, difficulty, challengeSeed: draw(0x1_0000_0000), zoneWidth: boat.artifacts.includes("landing_net") ? config.netZoneWidth : config.zoneWidth };
+      return { fishId, weightGrams, difficulty, ticketId: id(), challengeSeed: draw(0x1_0000_0000), zoneWidth: boat.artifacts.includes("landing_net") ? config.netZoneWidth : config.zoneWidth };
     });
     services.debit(state, cost);
     saveFuel(fuel.cells - 1, fuel.capacity, fuel.nextAt);
-    boat.voyage = { id: id(), routeId: config.routeId, departedAt: iso(now), arrivesAt: iso(now + outboundSeconds * 1000),
+    boat.voyage = { id: voyageId, routeId: config.routeId, departedAt: iso(now), arrivesAt: iso(now + outboundSeconds * 1000),
       fishingUntil: iso(now + (outboundSeconds + config.activeSeconds) * 1000), outboundSeconds, inboundSeconds,
       maxCasts, maxCatches, castsUsed: 0, catches: [], loadout, slots };
     state.boat = boat;
@@ -101,6 +102,19 @@ function transition(state: EconomyState, command: EconomyCommand, now: number, i
   const voyage = boat.voyage;
   if (!voyage || voyage.id !== command.targetId) return fail("ECONOMY_BOAT_VOYAGE_GONE", "Поездка уже завершена или изменилась");
   const phase = boatPhase(boat, now);
+  const prepared = command.reel?.prepared;
+  if (command.action === "submit_boat_cast" && prepared) {
+    const reel = command.reel!;
+    const started = Date.parse(prepared.startedAt);
+    const earliestStart = Date.parse(voyage.lastCastEndedAt ?? voyage.arrivesAt);
+    const slot = voyage.slots[voyage.castsUsed];
+    if (voyage.returnStartedAt || voyage.outboundSeconds || voyage.inboundSeconds || !slot?.ticketId || slot.ticketId !== reel.challengeId
+      || prepared.castNumber !== voyage.castsUsed + 1 || !Number.isFinite(started) || started < earliestStart || started > now)
+      return fail("ECONOMY_BOAT_CAST_GONE", "Этот заброс уже изменился. Обновите улов");
+    // Both halves run on the same private clone. An invalid trace cannot debit an attempt.
+    transition(state, { ...command, action: "begin_boat_cast", reel: undefined, castHeldMs: prepared.castHeldMs }, started, () => slot.ticketId!, random, services);
+    return transition(state, { ...command, reel: { ...reel, prepared: undefined } }, now, id, random, services);
+  }
   if (command.action === "begin_boat_cast") {
     if (phase !== "fishing") return fail("ECONOMY_BOAT_PHASE", "Заброс доступен только на речном плёсе");
     if (voyage.challenge && now < Date.parse(voyage.challenge.expiresAt)) return fail("ECONOMY_BOAT_CAST_ACTIVE", "Завершите текущую поклёвку");
@@ -137,6 +151,7 @@ function transition(state: EconomyState, command: EconomyCommand, now: number, i
     const deliverLater = reel.deferred && !voyage.returnStartedAt && earliestFinish <= expiresAt && now <= expiresAt + 86_400_000;
     if ((phase !== "fishing" || now >= expiresAt) && !deliverLater) return fail("ECONOMY_BOAT_CAST_EXPIRED", "Рыба ушла. Можно сделать следующий заброс");
     if (now < earliestFinish) return fail("ECONOMY_BOAT_TRACE", "Дождитесь поклёвки и завершите вываживание");
+    voyage.lastCastEndedAt = iso(earliestFinish);
     if (reel.missedBite) {
       if (challenge.rulesVersion < 6 || reel.inputs.length || reel.endTick !== 0) return fail("ECONOMY_BOAT_TRACE", "Некорректный результат подсечки");
       delete voyage.challenge; state.boat = boat;

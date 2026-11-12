@@ -8,7 +8,8 @@ export async function sendPresence(command: PresenceCommand, signal?: AbortSigna
     const presence = gamePresenceHeaders();
     const response = await fetch("/api/v1/presence", { method: "POST", credentials: "same-origin", cache: "no-store", signal: requestSignal,
       headers: { Accept: "application/json", "Content-Type": "application/json", ...presence }, body: JSON.stringify(command) });
-    const body: unknown = await response.json();
+    // Proxies may send an empty body for a rate limit or expired login.
+    const body: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       const error = z.object({ code: z.string(), message: z.string() }).safeParse(body);
       reportInactivePresence(error.success ? error.data.code : undefined, presence);

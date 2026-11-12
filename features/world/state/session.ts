@@ -2,6 +2,7 @@ import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import { reportIncident, incidentCode } from "@/lib/client-incidents";
 import { ApiError } from "@/lib/check-in-api";
 import { createUuidV4 } from "@/lib/browser-uuid";
+import { createReceiptRetry } from "@/lib/receipt-retry";
 import { worldCommandSchema, type WorldCommand, type WorldSnapshot } from "@/features/world/domain/model";
 
 type Transport = {
@@ -14,12 +15,14 @@ type View = { snapshot: WorldSnapshot | null; error: string | null; syncError: s
 export function createWorldSession(owner: string | null, transport: Transport, onSessionLost: () => void, storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">) {
   let view: View = { snapshot: null, error: null, syncError: null, notice: "", busy: false, uncertain: false, feedbackAt: 0, directActionsAvailable: true };
   let pending: WorldCommand | null = null;
+  const receiptRetry = createReceiptRetry();
   let active = false, available = true, epoch = 0, readSequence = 0;
   let rateLimitedUntil = 0;
   let reading: Promise<void> | null = null, lastReadAt = -Infinity, blockedUntil = 0, failures = 0;
   let serverClock = Date.now(), localClock = performance.now();
   const storageKey = gameplayStorageKey(`zhiv:world:pending:v1:${owner}`);
   function remember(value: WorldCommand | null) {
+    if (!value) receiptRetry.reset();
     pending = value;
     try { if (value) storage?.setItem(storageKey, JSON.stringify(value)); else storage?.removeItem(storageKey); } catch { /* Memory remains available. */ }
   }
@@ -84,6 +87,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
   async function execute(command: WorldCommand) {
     if (!active || !available || view.busy || performance.now() < blockedUntil || command.ownerPublicId !== owner) return;
     const generation = epoch, request = controller();
+    receiptRetry.sending();
     ++readSequence;
     reading = null; remember(command); publish({ busy: true, error: null, notice: "" });
     try {
@@ -98,6 +102,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
         && ![401, 408, 425, 429].includes(error.status) && error.body?.code !== "GAME_SESSION_INACTIVE";
       if (throttled) blockedUntil = rateLimitedUntil = performance.now() + Math.max(1000, error.retryAfterMs ?? 60_000);
       if (definitive) remember(null);
+      else receiptRetry.failed(error);
       const message = error instanceof ApiError ? error.message : "Ответ не пришёл. Проверьте результат тем же запросом.";
       publish({ uncertain: !definitive, error: message, syncError: definitive ? null : message });
       if (error instanceof ApiError && error.status === 401) onSessionLost();
@@ -151,5 +156,6 @@ export function createWorldSession(owner: string | null, transport: Transport, o
       void execute({ requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, target });
     },
     retry: () => pending ? execute(pending) : refresh(),
+    retryPending: () => view.directActionsAvailable && pending && receiptRetry.due() ? execute(pending) : Promise.resolve(),
   };
 }

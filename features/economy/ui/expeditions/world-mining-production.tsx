@@ -7,6 +7,8 @@ import { miningBatchLimit, miningBatchProgress } from "@/features/economy/domain
 import { economyMinerConflict, isMinerJob } from "@/features/economy/domain/actor-availability";
 import { skillWorkDuration } from "@/features/economy/domain/craft-skill";
 import { tradeWorkDuration } from "@/features/economy/domain/trade-relations";
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { locked } from "@/features/economy/sync/controller-state";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import { ProductIcon, itemName, number, stationName } from "@/features/economy/ui/shared/world-economy-parts";
@@ -90,18 +92,22 @@ function MiningProduction({ economy, state, initialRouteId, onOpenPantry, onOpen
     if (locked(economy)) return "Дождитесь подтверждения последнего действия";
     return null;
   }
+  function deny(message: string) {
+    setNotice(message);
+    playUiCue(getAudioRuntime(), "ui.error");
+    return false;
+  }
   function start(route: Route) {
     onHelpContextChange?.({ intent: "expedition", routeId: route.id });
-    if (economy.snapshot?.ownerPublicId !== state.ownerPublicId || economy.snapshot.revision !== state.revision) { setNotice("Данные обновились. Выберите добычу снова."); return; }
-    if (pendingStart.current) { setNotice("Дождитесь подтверждения запуска."); return; }
+    if (economy.snapshot?.ownerPublicId !== state.ownerPublicId || economy.snapshot.revision !== state.revision) return deny("Данные обновились. Выберите добычу снова.");
+    if (pendingStart.current) return deny("Дождитесь подтверждения запуска.");
     const reason = routeReason(route);
-    if (reason) { setNotice(reason); return; }
+    if (reason) return deny(reason);
     const accepted = command.send("start_exploration", route.id, routeQuantity(route), 0);
-    if (accepted) {
-      pendingStart.current = { owner: state.ownerPublicId, revision: state.revision, error: economy.error ?? null };
-      launchFocus.current = { routeId: route.id, element: typeof document === "undefined" ? null : document.activeElement };
-    }
-    setNotice(accepted ? "Запускаем добычу…" : "Действие не отправлено. Попробуйте ещё раз.");
+    if (!accepted) return deny("Действие не отправлено. Попробуйте ещё раз.");
+    pendingStart.current = { owner: state.ownerPublicId, revision: state.revision, error: economy.error ?? null };
+    launchFocus.current = { routeId: route.id, element: typeof document === "undefined" ? null : document.activeElement };
+    setNotice("Запускаем добычу…");
   }
   return <div ref={section} className={styles.content} tabIndex={-1} data-mining-production>
     <section className={`${slotStyles.slots} ${slotStyles.compact}`} aria-label="Место добычи" data-production-slots="quarry" data-section-guide-target="workshop-queue">

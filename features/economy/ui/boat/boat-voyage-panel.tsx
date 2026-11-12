@@ -18,6 +18,14 @@ export function BoatVoyagePanel({ economy, disabled, send, onOpenPantry }: Props
   if (!voyage) return null;
   const phase = boatPhase(boat, economy.now);
   if (phase === "ready") {
+    if (economy.preparedBoatPending || economy.pendingBoatCastId && economy.pendingBoatCastId === voyage.challenge?.id) {
+      const pending = (economy.localBoatCatches ?? 0) + Number(economy.pendingBoatOutcome === "caught");
+      return <section className={summaryStyles.unloading} data-boat-manifest-pending role="status">
+        <h3>Лодка у причала</h3>
+        <p>{pending > 0 ? `Сохраняем улов · ${pending}. ` : ""}После сверки последнего заброса можно будет разгрузить лодку.</p>
+        <BoatCatchList state={state} boat={boat} />
+      </section>;
+    }
     const sale = boatDockSaleQuote(voyage.catches, state.catalog);
     const walletFull = sale != null && sale.total > ECONOMY_MAX_BALANCE - state.wallet.coins;
     const shortfall = Math.max(0, voyage.catches.length - state.storage.available);
@@ -25,7 +33,7 @@ export function BoatVoyagePanel({ economy, disabled, send, onOpenPantry }: Props
       <BoatTripSummary receipt={createBoatTripReceipt(state, voyage)} />
       <div className={summaryStyles.unloading}>
         {shortfall > 0 && <p>Освободите мест в кладовой: {shortfall}. Улов ждёт на борту.</p>}
-        {sale && <p>Выкуп у причала: {sale.base} монет за рыбу + {sale.bonus} за вес.{walletFull && " Кошелёк заполнен."}</p>}
+        {sale && <p>Выкуп у причала: {sale.base} за весь улов + {sale.bonus} за вес. После разгрузки в холодильнике рыба продаётся поштучно по цене своей редкости.{walletFull && " Кошелёк заполнен."}</p>}
         {sale && <button type="button" className={styles.secondary} disabled={disabled || walletFull}
           onClick={() => send("sell_boat_catch", voyage.id, undefined, sale.total)}><Coins size={17} />Продать весь улов · {sale.total} монет</button>}
         {shortfall > 0

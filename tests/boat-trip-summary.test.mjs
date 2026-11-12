@@ -72,8 +72,9 @@ test("the dock offers the full catch at its weight-adjusted price even with a fu
   const ready = report();
   assert.match(ready, /Принять улов/); assert.doesNotMatch(ready, /В кладовую|<details/);
   for (const html of [ready, full]) {
-    assert.match(html, /Выкуп у причала: \d+ монет за рыбу \+ \d+ за вес/);
-    assert.match(html, /Продать весь улов · \d+ монет/);
+    assert.match(html, /Выкуп у причала: 30 за весь улов \+ 1 за вес/);
+    assert.match(html, /После разгрузки в холодильнике рыба продаётся поштучно по цене своей редкости/);
+    assert.match(html, /Продать весь улов · 31\b/);
     assert.equal((html.match(/<button/g) || []).length, 2);
   }
   const oldCatalog = { ...state.catalog, boat: { ...state.catalog.boat, dockSaleBonusPercent: undefined } };

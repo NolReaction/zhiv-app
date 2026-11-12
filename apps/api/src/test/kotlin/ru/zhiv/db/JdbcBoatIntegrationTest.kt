@@ -91,6 +91,33 @@ class JdbcBoatIntegrationTest {
         assertEquals(saved, raw(p), "Public observations do not advance or reselect the voyage")
     }
 
+    @Test fun `offline cast settles once across reconnection and the next reserved cast remains playable`() = runBlocking<Unit> {
+        val p = player()
+        val at = Instant.now().minusSeconds(90)
+        val base = state(p).copy(boat = EconomyBoatState(level = 1))
+        val departed = EconomyBoats.command(base, command(p, economy.snapshot(p.hash), "depart_boat", "river_reach"), at).first
+        put(p, departed)
+        val view = economy.snapshot(p.hash)
+        val voyage = assertNotNull(view.boat.voyage)
+        val (first, second) = voyage.preparedCasts
+        fun missed(ticket: EconomyBoatPreparedCast, startedAt: Instant) = EconomyBoatReelSubmission(ticket.id, emptyList(), 0,
+            deferred = true, missedBite = true, prepared = EconomyPreparedCastStart(ticket.castNumber, startedAt.toString(), 280))
+        val request = command(p, view, "submit_boat_cast", voyage.id).copy(reel = missed(first, at.plusSeconds(1)))
+        val duplicates = listOf(async { economy.command(p.hash, request) }, async { economy.command(p.hash, request) }).awaitAll()
+        assertEquals(1, duplicates.count { it.replayed })
+        val reconnected = JdbcEconomyRepository(source)
+        val replay = reconnected.command(p.hash, request)
+        assertTrue(replay.replayed)
+        val next = assertNotNull(replay.state.boat.voyage)
+        assertEquals(1, next.castsUsed)
+        assertEquals(second, next.preparedCasts.first())
+        val secondCommand = command(p, replay.state, "submit_boat_cast", voyage.id).copy(reel = missed(second, at.plusSeconds(30)))
+        val completed = assertNotNull(reconnected.command(p.hash, secondCommand).state.boat.voyage)
+        assertEquals(2, completed.castsUsed)
+        assertTrue(completed.catches.isEmpty())
+        assertEquals(1, state(p).boat!!.fuel!!.cells)
+    }
+
     @Test fun `concurrent refill and exact replay after restart debit one cell once`() = runBlocking<Unit> {
         val p = player()
         val price = EconomyRules.catalog.boat!!.fuel.refillPricePearls

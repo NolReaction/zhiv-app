@@ -1,7 +1,7 @@
 import { fishingSceneFishAppearance } from "./fishing-scene-fish";
 import type { FishingSceneFrame, FishingScenePoint } from "./fishing-scene-types";
 
-/** A short water/glow flourish is shown only for a server-confirmed catch. */
+/** A short water/glow flourish is shown once the completed fight has revealed its fish. */
 export function paintFishingCatchEffects(ctx: CanvasRenderingContext2D, fish: FishingScenePoint,
   frame: FishingSceneFrame, age: number, still: boolean) {
   if (still || frame.stage !== "landed" || !frame.fishId || age < 0 || age >= 1.35) return;

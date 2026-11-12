@@ -29,9 +29,9 @@
 .trayClose { float: right; width: 32px; height: 32px; }
 .bottom { position: absolute; z-index: 4; left: 0; right: 0; bottom: max(14px, env(safe-area-inset-bottom)); display: flex; justify-content: center; pointer-events: none; }
 .controls { display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(500px, calc(100% - 24px)); pointer-events: none; }
-.controls[data-fishing-finished], .controls:not([data-fishing-finished]) > [data-confirmed-catch] { padding: 12px; border: 1px solid var(--river-edge); border-radius: 10px; background: #112d33f2; }
+.controls[data-fishing-finished], .controls:not([data-fishing-finished]) > :is([data-confirmed-catch], [data-local-catch]) { padding: 12px; border: 1px solid var(--river-edge); border-radius: 10px; background: #112d33f2; }
 .controls[data-fishing-finished] { align-items: stretch; pointer-events: auto; }
-.controls > [data-confirmed-catch] { pointer-events: auto; }
+.controls > [data-confirmed-catch], .controls > [data-local-catch] { pointer-events: none; }
 .riverHint, .riverNotice { margin: 0; padding: 7px 12px; border-radius: 8px; background: #112d33ec; color: #e5e3c5; font-size: 12px; line-height: 1.4; text-align: center; }
 .tool[aria-pressed='true'], .back[aria-pressed='true'] { border-color: #e0c490; color: #fff1c8; }
 .viewport { animation: riverEnter 420ms ease-out both; }
@@ -104,3 +104,7 @@
 @media (max-height: 500px) { .coachShortcut { display: inline-flex; min-width: 30px; } .bottomRow { gap: 7px; } }
 @media (max-width: 640px) and (min-height: 501px) { .tools { max-width: calc(100% - 20px); gap: 4px; } }
 @media (max-height: 500px) and (max-width: 480px) { .bottomRow { gap: 5px; }.bottomRow .back { font-size: 10px !important; }.coachShortcut { min-width: 26px; } }
+
+.counter[data-pending-fish] { border-bottom-style: dashed; }
+.map[data-local-reveal] .controls > [data-confirmed-catch] { animation: none; }
+.map[data-local-reveal] [data-fishing-cue="cast"] { visibility: hidden; }

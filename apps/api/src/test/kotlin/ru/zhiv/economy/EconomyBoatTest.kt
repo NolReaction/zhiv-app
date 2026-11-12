@@ -97,7 +97,7 @@ class EconomyBoatTest {
         val deadline = Instant.parse(challenge.biteAt).plusMillis(3200)
         failure("ECONOMY_BOAT_TRACE") { call(issued, "submit_boat_cast", id, deadline.minusMillis(1), missed) }
         val settled = call(issued, "submit_boat_cast", id, deadline, missed)
-        assertEquals(voyage.copy(challenge = null), settled.boat!!.voyage)
+        assertEquals(voyage.copy(challenge = null, lastCastEndedAt = deadline.toString()), settled.boat!!.voyage)
         failure("ECONOMY_BOAT_CAST_GONE") { call(settled, "submit_boat_cast", id, deadline, missed) }
     }
 
@@ -256,7 +256,7 @@ class EconomyBoatTest {
         failure("ECONOMY_BOAT_CAST_EXPIRED") { call(short, "submit_boat_cast", voyage.id, late.minusSeconds(1000), trace) }
     }
 
-    @Test fun `cast waits before replay and exposes only current rarity with legacy fallback`() {
+    @Test fun `paid cast previews its fixed landing while its award still waits for replay`() {
         val departed = depart(); val v = departed.boat!!.voyage!!
         val started = now.plusSeconds(300)
         val state = call(departed, "begin_boat_cast", v.id, started)
@@ -267,7 +267,11 @@ class EconomyBoatTest {
         assertEquals(6, challenge.rulesVersion); assertEquals("steady", challenge.resistance)
         val public = economyJson.encodeToString(EconomyBoats.publicView(state.boat))
         assertTrue("biteAt" in public); assertTrue("fishRarity" in public)
-        assertFalse("fishId" in public); assertFalse("weightGrams" in public); assertFalse("slots" in public)
+        val preview = EconomyBoats.publicView(state.boat).voyage!!.challenge!!.landingPreview!!
+        val issued = state.boat!!.voyage!!.slots.first()
+        assertEquals(EconomyBoatLandingPreview(issued.fishId, issued.weightGrams), preview)
+        assertFalse("slots" in public); assertFalse("challengeSeed" in public)
+        assertTrue(EconomyBoats.publicView(state.boat).voyage!!.catches.isEmpty())
         val reel = caughtTrace(challenge); val finished = bite.plusMillis(reel.endTick * 50L)
         failure("ECONOMY_BOAT_TRACE") { call(state, "submit_boat_cast", v.id, finished.minusMillis(1), reel) }
         assertEquals(1, call(state, "submit_boat_cast", v.id, finished, reel).boat!!.voyage!!.catches.size)
@@ -340,6 +344,79 @@ class EconomyBoatTest {
         failure("INVALID_ECONOMY_COMMAND") { validateEconomyCommand(valid.copy(quantity = 2)) }
         failure("INVALID_ECONOMY_COMMAND") { validateEconomyCommand(valid.copy(totalPrice = 10)) }
         assertFailsWith<IllegalArgumentException> { valid.reel!!.copy(inputs = listOf(EconomyBoatReelInput(2, true), EconomyBoatReelInput(1, false))) }
+    }
+
+    @Test fun `prepared casts disclose two control profiles and settle one private slot atomically`() {
+        val initial = depart()
+        val boat = initial.boat!!
+        val voyage = boat.voyage!!
+        val tickets = EconomyBoats.publicView(boat).voyage!!.preparedCasts
+        assertEquals(listOf(1, 2), tickets.map { it.castNumber })
+        assertEquals(voyage.slots.take(2).map { it.ticketId }, tickets.map { it.id })
+        assertFalse("fishId" in economyJson.encodeToString(tickets))
+        assertFalse("weightGrams" in economyJson.encodeToString(tickets))
+        assertTrue(EconomyBoats.publicView(legacyDepart().boat).voyage!!.preparedCasts.isEmpty())
+        assertTrue(EconomyBoats.publicView(boat.copy(voyage = voyage.copy(slots = voyage.slots.map { it.copy(ticketId = null) }))).voyage!!.preparedCasts.isEmpty())
+
+        val first = tickets.first()
+        val started = now.plusSeconds(1)
+        val online = EconomyBoats.command(initial, command("begin_boat_cast", voyage.id).copy(castHeldMs = 570), started, id = { first.id }).first
+        val challenge = online.boat!!.voyage!!.challenge!!
+        assertEquals(first.id, challenge.id)
+        assertEquals(first.zoneWidth, challenge.zoneWidth)
+        assertEquals(first.resistance, challenge.resistance)
+        assertEquals(first.motorResponse, challenge.motorResponse)
+        assertEquals(first.hullDamping, challenge.hullDamping)
+        assertEquals(first.biteDelayMs.toLong(), Instant.parse(challenge.biteAt).toEpochMilli() - started.toEpochMilli())
+        val inputs = caughtTrace(challenge)
+        val finished = Instant.parse(challenge.biteAt).plusMillis(inputs.endTick * challenge.tickMs.toLong())
+        val reel = inputs.copy(deferred = true, prepared = EconomyPreparedCastStart(1, started.toString(), 570))
+        val received = now.plusSeconds(2100)
+        val firstCommand = command("submit_boat_cast", voyage.id, reel)
+        assertEquals(firstCommand, decodeEconomyCommand(economyJson.encodeToJsonElement(firstCommand)))
+        val firstResult = EconomyRules.apply(initial, firstCommand, received).first
+        val settled = firstResult.boat!!.voyage!!
+        assertEquals(call(online, "submit_boat_cast", voyage.id, received, inputs.copy(deferred = true)), firstResult)
+        assertEquals(finished, Instant.parse(settled.lastCastEndedAt))
+        assertEquals(1, settled.castsUsed)
+        assertEquals(1, settled.catches.size)
+        assertNull(settled.challenge)
+        assertEquals(listOf(2, 3), EconomyBoats.publicView(firstResult.boat).voyage!!.preparedCasts.map { it.castNumber })
+
+        failure("ECONOMY_BOAT_TRACE") { call(initial, "submit_boat_cast", voyage.id, finished.minusMillis(1), reel) }
+        failure("ECONOMY_BOAT_TRACE") { call(initial, "submit_boat_cast", voyage.id, received, reel.copy(inputs = emptyList(), endTick = 1)) }
+        failure("ECONOMY_BOAT_CAST_GONE") { call(firstResult, "submit_boat_cast", voyage.id, received, reel) }
+        failure("ECONOMY_BOAT_CAST_GONE") { call(initial, "submit_boat_cast", voyage.id, received, reel.copy(challengeId = UUID.randomUUID().toString())) }
+        failure("ECONOMY_BOAT_CAST_GONE") { call(initial, "submit_boat_cast", voyage.id, now, reel) }
+        failure("ECONOMY_BOAT_CAST_EXPIRED") { call(initial, "submit_boat_cast", voyage.id, received.plusSeconds(86_400), reel) }
+        assertEquals(0, voyage.castsUsed)
+        assertTrue(voyage.catches.isEmpty())
+        val second = tickets.last()
+        val secondStart = EconomyPreparedCastStart(2, finished.toString(), 280)
+        val missed = EconomyBoatReelSubmission(second.id, emptyList(), 0, deferred = true, missedBite = true, prepared = secondStart)
+        failure("ECONOMY_BOAT_CAST_GONE") { call(initial, "submit_boat_cast", voyage.id, received, missed) }
+        failure("ECONOMY_BOAT_CAST_GONE") { call(firstResult, "submit_boat_cast", voyage.id, received,
+            missed.copy(prepared = secondStart.copy(startedAt = finished.minusMillis(1).toString()))) }
+        val final = call(firstResult, "submit_boat_cast", voyage.id, received, missed).boat!!.voyage!!
+        assertEquals(2, final.castsUsed)
+        assertEquals(settled.catches, final.catches)
+        assertEquals(finished.plusMillis(second.biteDelayMs + 3200L), Instant.parse(final.lastCastEndedAt))
+    }
+
+    @Test fun `prepared cast command strictly validates nested fields before replay`() {
+        val good = command("submit_boat_cast", UUID.randomUUID().toString(), EconomyBoatReelSubmission(UUID.randomUUID().toString(),
+            emptyList(), 0, missedBite = true, prepared = EconomyPreparedCastStart(1, now.toString(), 280)))
+        val root = economyJson.encodeToJsonElement(good).jsonObject
+        val reel = root.getValue("reel").jsonObject
+        val start = reel.getValue("prepared").jsonObject
+        val invalid = listOf(JsonObject(start - "castHeldMs"), JsonObject(start + ("weightGrams" to JsonPrimitive(60))),
+            JsonObject(start + ("castHeldMs" to JsonPrimitive("280"))), JsonObject(start + ("castHeldMs" to JsonPrimitive(60001))),
+            JsonObject(start + ("castNumber" to JsonPrimitive(0))), JsonObject(start + ("startedAt" to JsonPrimitive(""))),
+            JsonObject(start + ("startedAt" to JsonPrimitive("2026-99-45T10:55:23Z"))),
+            JsonObject(start + ("startedAt" to JsonPrimitive("+999999999-01-01T00:00:00Z"))), JsonNull)
+        for (bad in invalid) failure("INVALID_ECONOMY_COMMAND") {
+            decodeEconomyCommand(JsonObject(root + ("reel" to JsonObject(reel + ("prepared" to bad)))))
+        }
     }
 
     @Test fun `settled account merge keeps highest permanent progress without summing milestones and rejects active cargo`() {

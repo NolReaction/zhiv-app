@@ -67,6 +67,9 @@ private fun boatCost(value: EconomyCost) = require(value.coins in 0L..1_000_000_
     @EncodeDefault(EncodeDefault.Mode.NEVER) val reelSeconds: Int? = null) {
     init { require(castIndex in 0..10 && weightGrams in 1..1_000_000 && (reelSeconds == null || reelSeconds in 0..30)); boatItemId(fishId); Instant.parse(caughtAt) }
 }
+@Serializable data class EconomyBoatLandingPreview(val fishId: String, val weightGrams: Int) {
+    init { boatItemId(fishId); require(weightGrams in 1..1_000_000) }
+}
 @Serializable data class EconomyBoatLoadout(val rodId: String, val hookId: String, val baitId: String?) {
     init { boatItemId(rodId); boatItemId(hookId); baitId?.let(::boatItemId) }
 }
@@ -80,7 +83,8 @@ private fun boatCost(value: EconomyCost) = require(value.coins in 0L..1_000_000_
     @EncodeDefault(EncodeDefault.Mode.NEVER) val fishRarity: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val resistance: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val motorResponse: Int? = null,
-    @EncodeDefault(EncodeDefault.Mode.NEVER) val hullDamping: Int? = null) {
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val hullDamping: Int? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val landingPreview: EconomyBoatLandingPreview? = null) {
     init {
         boatUuid(id); require(rulesVersion in 1..6 && seed in 0L..0xffff_ffffL && tickMs == 50 && maxTicks == 600)
         require(EconomyBoatReel.validZoneWidth(rulesVersion, zoneWidth) && difficulty in 1..5 && Instant.parse(expiresAt).isAfter(Instant.parse(startedAt)))
@@ -93,8 +97,17 @@ private fun boatCost(value: EconomyCost) = require(value.coins in 0L..1_000_000_
                 else motorResponse == null && hullDamping == null)
     }
 }
-@Serializable data class EconomyBoatSlot(val fishId: String, val weightGrams: Int, val challengeSeed: Long, val difficulty: Int, val zoneWidth: Int) {
-    init { boatItemId(fishId); require(weightGrams in 1..1_000_000 && challengeSeed in 0L..0xffff_ffffL && difficulty in 1..5 && zoneWidth in setOf(3200,4000)) }
+/** Physics issued in advance. Species and weight stay inside the private slot. */
+@Serializable data class EconomyBoatPreparedCast(
+    val id: String, val castNumber: Int, val seed: Long, val zoneWidth: Int, val difficulty: Int,
+    val motorResponse: Int, val hullDamping: Int, val resistance: String, val fishRarity: String,
+    val biteDelayMs: Int, val rulesVersion: Int = 6, val tickMs: Int = 50, val maxTicks: Int = 600,
+)
+
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable data class EconomyBoatSlot(val fishId: String, val weightGrams: Int, val challengeSeed: Long, val difficulty: Int, val zoneWidth: Int,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val ticketId: String? = null) {
+    init { boatItemId(fishId); ticketId?.let(::boatUuid); require(weightGrams in 1..1_000_000 && challengeSeed in 0L..0xffff_ffffL && difficulty in 1..5 && zoneWidth in setOf(3200,4000)) }
 }
 
 /** Stored voyage contains the fixed private draw. Never serialize it as a public view. */
@@ -106,9 +119,10 @@ private fun boatCost(value: EconomyCost) = require(value.coins in 0L..1_000_000_
     @EncodeDefault(EncodeDefault.Mode.NEVER) val returnStartedAt: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val returnsAt: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val challenge: EconomyBoatChallenge? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val lastCastEndedAt: String? = null,
 ) {
     init {
-        boatUuid(id); boatItemId(routeId)
+        boatUuid(id); boatItemId(routeId); lastCastEndedAt?.let(Instant::parse)
         require(maxCasts in 1..11 && maxCatches in 1..10 && castsUsed in 0..maxCasts && catches.size <= minOf(maxCatches, castsUsed) && slots.size == maxCasts)
         require(catches.map { it.castIndex }.distinct().size == catches.size && catches.all { it.castIndex < castsUsed })
         require(outboundSeconds in 0L..3600L && inboundSeconds in 0L..3600L)
@@ -127,6 +141,7 @@ private fun boatCost(value: EconomyCost) = require(value.coins in 0L..1_000_000_
     @EncodeDefault(EncodeDefault.Mode.NEVER) val returnStartedAt: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val returnsAt: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val challenge: EconomyBoatChallenge? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val preparedCasts: List<EconomyBoatPreparedCast> = emptyList(),
 )
 
 @OptIn(ExperimentalSerializationApi::class)

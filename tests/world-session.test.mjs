@@ -60,6 +60,30 @@ test("same-revision gifts refresh; older reads cannot undo wardrobe and house up
   assert.equal(home.houseLevel, 3); assert.equal(home.workshop, true); assert.equal(home.equipment.neck, "amber_scarf"); assert.deepEqual(home.items, ["flower"]);
 });
 
+test("a lost wardrobe reply retries the original receipt automatically and only while connected", async t => {
+  let clock = 0; t.mock.method(performance, "now", () => clock);
+  const commands = [], answer = deferred();
+  const session = createWorldSession("OWNER", {
+    get: async () => snapshot(),
+    send: async command => {
+      commands.push(structuredClone(command));
+      if (commands.length === 1) throw new TypeError("response lost after commit");
+      return answer.promise;
+    },
+  }, () => assert.fail());
+  t.after(session.activate()); await session.refresh();
+  session.act("equip", "amber_scarf"); await flush();
+  assert.equal(session.getSnapshot().uncertain, true);
+  clock = 1999; await session.retryPending(); assert.equal(commands.length, 1);
+  session.setDirectActionsAvailable(false); clock++;
+  await session.retryPending(); assert.equal(commands.length, 1);
+  session.setDirectActionsAvailable(true); const delivery = session.retryPending();
+  await session.retryPending(); assert.deepEqual(commands, [commands[0], commands[0]]);
+  answer.resolve({ snapshot: snapshot("OWNER", 1), message: "Готово" }); await delivery;
+  assert.equal(session.getSnapshot().uncertain, false);
+  clock += 60_000; await session.retryPending(); assert.equal(commands.length, 2);
+});
+
 test("closing the map keeps an uncertain receipt and retry uses the identical command", async () => {
   const commands = []; let server = snapshot(); let charged = 0;
   const session = createWorldSession("OWNER", {

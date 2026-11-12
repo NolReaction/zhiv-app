@@ -39,7 +39,7 @@ export function fishingAudioFrame(ownerId: string, state: FishingAudioState): Au
     sources: loops.map(loop => ({ ...loop, reason: "fishing" })) };
 }
 
-/** Feedback observes public state; only an increased confirmed catch count sounds a reward. */
+/** A completed fight increases the displayed catch count. Its later receipt keeps the same count. */
 export function createFishingAudioController(runtime: AudioRuntime, ownerId: string, clock = {
   now: () => Date.now(), schedule: (callback: () => void, ms: number) => setTimeout(callback, ms),
   cancel: (timer: ReturnType<typeof setTimeout>) => clearTimeout(timer),

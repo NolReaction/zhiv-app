@@ -5,12 +5,12 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url)), virtual = "virtual:boat-reel-controller-hooks";
 const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: `/tmp/boat-reel-controller-${process.pid}`,
-  resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
+  resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false, watch: null },
   plugins: [{ name: "boat-reel-controller-lifecycle", enforce: "pre",
     resolveId(id) { if (id === virtual) return `\0${virtual}`; },
     load(id) { if (id === `\0${virtual}`) return `
-      let slots = [], cursor = 0, effects = [], dirty = false;
-      export function unmount() { for (const slot of slots) slot?.cleanup?.(); slots = []; effects = []; dirty = false; }
+      let slots = [], cursor = 0, layout = [], effects = [], dirty = false;
+      export function unmount() { for (const slot of slots) slot?.cleanup?.(); slots = []; layout = []; effects = []; dirty = false; }
       export function render() { cursor = 0; dirty = false; }
       export function changed() { return dirty; }
       export function useRef(initial) { return slots[cursor++] ??= { current: initial }; }
@@ -26,14 +26,16 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
         if (!previous || dependencies.some((value, i) => !Object.is(value, previous.dependencies[i]))) slots[index] = { dependencies, callback };
         return slots[index].callback;
       }
-      export function useEffect(callback, dependencies) {
+      function enqueue(queue, callback, dependencies) {
         const index = cursor++, previous = slots[index];
         if (!previous || dependencies.some((value, i) => !Object.is(value, previous.dependencies[i]))) {
           slots[index] = { dependencies, cleanup: previous?.cleanup };
-          effects.push(() => { slots[index].cleanup?.(); slots[index].cleanup = callback(); });
+          queue.push(() => { slots[index].cleanup?.(); slots[index].cleanup = callback(); });
         }
       }
-      export function flushEffects() { const pending = effects; effects = []; pending.forEach(callback => callback()); }
+      export function useLayoutEffect(callback, deps) { enqueue(layout, callback, deps); }
+      export function useEffect(callback, deps) { enqueue(effects, callback, deps); }
+      export function flushEffects() { const pending = [...layout, ...effects]; layout = []; effects = []; pending.forEach(callback => callback()); }
     `; },
     transform(source, id) { if (id.endsWith("/features/economy/ui/boat/use-boat-reel-controller.ts"))
       return source.replace('from "react";', `from "${virtual}";`); },

@@ -290,7 +290,7 @@ test("compact fish sales never scroll the inventory and omit repeated class expl
   form = render(PantrySale, { ...props, itemId: "fish_common" });
   assert.equal(scrolls, 0); assert.equal(form.nodes.filter(node => node.type === "h3").length, 0);
   assert.doesNotMatch(text(form.tree), /уценкой|округляется вниз|Плёска купит дороже/);
-  assert.match(text(form.tree), /В запасе 5/); assert.match(text(form.tree), /монет\/шт\./);
+  assert.match(text(form.tree), /В запасе 5/); assert.match(text(form.tree), /15 монет\/шт\. · цена по редкости, без надбавки за вес/);
 });
 
 test("dismissal refuses detached, disabled, removed-host or different-owner focus targets", () => {

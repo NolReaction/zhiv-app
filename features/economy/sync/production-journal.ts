@@ -9,10 +9,10 @@ import { recipeUnlocksMet } from "@/features/economy/domain/recipe-unlock";
 export const PRODUCTION_JOURNAL_LIMIT = 12;
 export type ProductionIntent = { requestId: string; targetId: string; command?: EconomyCommand };
 export type JournalStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
-export type ProductionJournal = { version: 1; owner: string; snapshot: EconomyView; entries: ProductionIntent[] };
+export type ProductionJournal = { version: 1; owner: string; snapshot: EconomyView; snapshotWallTime?: number; entries: ProductionIntent[] };
 const intentSchema = z.object({ requestId: economyCommandSchema.shape.requestId, targetId: economyCommandSchema.shape.targetId,
   command: economyCommandSchema.optional() }).strict();
-const journalSchema = z.object({ version: z.literal(1), owner: z.string(), snapshot: economyViewSchema,
+const journalSchema = z.object({ version: z.literal(1), owner: z.string(), snapshot: economyViewSchema, snapshotWallTime: z.number().int().nonnegative().safe().optional(),
   entries: z.array(intentSchema).max(PRODUCTION_JOURNAL_LIMIT) }).strict();
 export const productionJournalKey = (owner: string) => gameplayStorageKey(`zhiv:economy:production:v1:${owner}`);
 

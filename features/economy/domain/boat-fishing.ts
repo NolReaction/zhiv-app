@@ -1,5 +1,7 @@
 import { economyCatalog, type EconomyCatalog, type EconomyState } from "./model";
 import { boatPrivateStateSchema, type BoatState, type BoatPrivateState, type BoatVoyage, type BoatUpgradeId, type BoatCatalog, type BoatModuleId } from "./boat-model";
+import { boatReelZoneWidth, boatResistanceForClass } from "./boat-reel";
+import type { BoatPrivateVoyage, BoatPreparedCast } from "./boat-model";
 import { economyActorConflict } from "./actor-availability";
 import { fishingState, fishingBaitCompatible } from "./fishing";
 
@@ -51,9 +53,29 @@ export function boatPhase(boat: BoatState, now: number): "broken" | "repairing" 
   if (now >= boatReturnStartedAt(voyage)) return "returning";
   return now < Date.parse(voyage.arrivesAt) ? "outbound" : "fishing";
 }
+/** Only the two next playable slots disclose motion parameters. Species and weight stay in private slots. */
+function preparedCasts(boat: BoatState, voyage: BoatPrivateVoyage): BoatPreparedCast[] {
+  if (voyage.returnStartedAt || voyage.outboundSeconds || voyage.inboundSeconds) return [];
+  const config = boatConfig(), levels = boatModules(boat);
+  const motorResponse = config.moduleEffects.engine[levels.engine], hullDamping = config.moduleEffects.hull[levels.hull];
+  const limit = Math.min(2, voyage.maxCatches - voyage.catches.length);
+  return voyage.slots.slice(voyage.castsUsed, voyage.castsUsed + limit).flatMap((slot, i) => {
+    if (!slot.ticketId) return [];
+    const fishRarity = economyCatalog.fishing!.fish.find(fish => fish.itemId === slot.fishId)!.rarity;
+    return [{ id: slot.ticketId, castNumber: voyage.castsUsed + i + 1, rulesVersion: 6, seed: slot.challengeSeed, tickMs: 50, maxTicks: 600,
+      zoneWidth: boatReelZoneWidth(slot.zoneWidth, fishRarity, motorResponse, hullDamping), difficulty: slot.difficulty,
+      biteDelayMs: (4 + slot.challengeSeed % 4) * 1000, motorResponse, hullDamping, resistance: boatResistanceForClass(fishRarity, slot.challengeSeed), fishRarity }];
+  });
+}
 /** An explicit allowlist: private future draws never reach player or admin views. */
+function hasPrivateSlots(voyage: BoatVoyage): voyage is BoatPrivateVoyage {
+  return "slots" in voyage && Array.isArray(voyage.slots);
+}
 export function publicBoatState(value?: BoatState | null): BoatState {
   const boat = value ?? newBoatState(), voyage = boat.voyage;
+  const privateVoyage = voyage && hasPrivateSlots(voyage) ? voyage : undefined;
+  const prepared = privateVoyage ? preparedCasts(boat, privateVoyage) : [];
+  const issued = privateVoyage?.challenge ? privateVoyage.slots[privateVoyage.castsUsed - 1] : undefined;
   return { version: 1, level: boat.level, upgrades: [...boat.upgrades], blueprints: { ...boat.blueprints }, artifacts: [...boat.artifacts],
     ...(boat.modules ? { modules: { ...boatModules(boat) } } : {}),
     ...(boat.fuel ? { fuel: { cells: boat.fuel.cells, ...(boat.fuel.nextAt ? { nextAt: boat.fuel.nextAt } : {}) } } : {}),
@@ -63,12 +85,14 @@ export function publicBoatState(value?: BoatState | null): BoatState {
       cost: { coins: boat.work.cost.coins, items: { ...boat.work.cost.items } } } } : {}),
     ...(voyage ? { voyage: { id: voyage.id, routeId: voyage.routeId, departedAt: voyage.departedAt, arrivesAt: voyage.arrivesAt, fishingUntil: voyage.fishingUntil,
       ...(voyage.returnStartedAt ? { returnStartedAt: voyage.returnStartedAt } : {}), ...(voyage.returnsAt ? { returnsAt: voyage.returnsAt } : {}),
+      ...(prepared.length ? { preparedCasts: prepared } : {}),
       maxCasts: voyage.maxCasts, maxCatches: voyage.maxCatches, castsUsed: voyage.castsUsed, outboundSeconds: voyage.outboundSeconds, inboundSeconds: voyage.inboundSeconds,
       loadout: { rodId: voyage.loadout.rodId, hookId: voyage.loadout.hookId, baitId: voyage.loadout.baitId },
       catches: voyage.catches.map(caught => ({ castIndex: caught.castIndex, fishId: caught.fishId, weightGrams: caught.weightGrams, caughtAt: caught.caughtAt, ...(caught.reelSeconds != null ? { reelSeconds: caught.reelSeconds } : {}) })),
       ...(voyage.challenge ? { challenge: { id: voyage.challenge.id, rulesVersion: voyage.challenge.rulesVersion, seed: voyage.challenge.seed,
         tickMs: voyage.challenge.tickMs, maxTicks: voyage.challenge.maxTicks, zoneWidth: voyage.challenge.zoneWidth, difficulty: voyage.challenge.difficulty,
         startedAt: voyage.challenge.startedAt, expiresAt: voyage.challenge.expiresAt,
+        ...(issued ? { landingPreview: { fishId: issued.fishId, weightGrams: issued.weightGrams } } : {}),
         ...(voyage.challenge.rulesVersion >= 5 ? { motorResponse: voyage.challenge.motorResponse, hullDamping: voyage.challenge.hullDamping } : {}),
         ...(voyage.challenge.resistance ? { resistance: voyage.challenge.resistance } : {}),
         ...(voyage.challenge.biteAt ? { biteAt: voyage.challenge.biteAt } : {}),

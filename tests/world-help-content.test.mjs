@@ -415,7 +415,9 @@ test("fishing help quotes the real probability per fish class without promising 
 test("fishing guidance distinguishes an authoritative catch, class stock art and personal discoveries", () => {
   assert.match(answer("plesk"), /нынешние проценты с выбранной снастью в пяти строках/);
   assert.match(answer("plesk"), /Открытие не покупает снасть/);
-  assert.match(answer("fishing-result"), /Вид и вес следующей рыбы раскроются после вываживания/);
+  assert.match(answer("fishing-result"), /вид и вес появляются сразу после поимки/i);
+  assert.match(answer("fishing-result"), /заранее подготовленной попытки.*после синхронизации/);
+  assert.match(answer("boat-controls"), /до двух заранее подготовленных забросов/);
   assert.match(answer("fishing-result"), /Когда игра подтвердит возвращение.*виды, редкость и количество/);
   assert.match(answer("fishing-result"), /Нажмите «Забрать».*текущие запасы по видам и классам.*навсегда откроются в вашей книге/);
   assert.match(answer("fishing-result"), /прежних вылазок могут остаться общие классы рыб/);
