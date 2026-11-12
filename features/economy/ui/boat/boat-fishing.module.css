@@ -1,6 +1,15 @@
 .overlay { position: fixed; inset: 0; z-index: 145; background: #030c09bd; }
-.dialog { --forest-paper: #17231f; --forest-paper-light: #22322a; --forest-ink: #eee8d5; --forest-muted: #a0afa2; --forest-border: #4b5a49; --forest-primary: #c8a267; position: fixed; z-index: 146; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(1080px, calc(100vw - 24px)); max-height: min(900px, calc(100dvh - 24px)); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #697258; border-radius: 12px; background: var(--forest-paper); color: var(--forest-ink); box-shadow: 0 24px 90px #010905cc; font-size: 13px; line-height: 1.45; }
-.dialog:not([data-boat-unavailable]) { height: min(900px, calc(100dvh - 24px)); }
+.dialog { --forest-paper: #17231f; --forest-paper-light: #22322a; --forest-ink: #eee8d5; --forest-muted: #a0afa2; --forest-border: #4b5a49; --forest-primary: #c8a267; position: fixed; z-index: 146; --panel-gap: 12px; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #697258; border-radius: 12px; background: var(--forest-paper); color: var(--forest-ink); box-shadow: 0 24px 90px #010905cc; font-size: 13px; line-height: 1.45; }
+.dialog:not([data-boat-map-view]) {
+  --panel-top: calc(env(safe-area-inset-top, 0px) + var(--panel-gap));
+  --panel-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--panel-gap));
+  inset: var(--panel-top) calc(env(safe-area-inset-right, 0px) + var(--panel-gap))
+         var(--panel-bottom) calc(env(safe-area-inset-left, 0px) + var(--panel-gap));
+  margin: auto;
+  max-width: 1080px;
+  max-height: min(900px, calc(100dvh - var(--panel-top) - var(--panel-bottom)));
+}
+.dialog[data-boat-unavailable] { height: fit-content; }
 .dialog, .dialog * { box-sizing: border-box; }
 .dialog h2, .dialog h3, .dialog p { margin: 0; }
 .dialog button { font: inherit; cursor: pointer; touch-action: manipulation; }
@@ -76,7 +85,7 @@
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 @keyframes boat-drift { 0%,100% { transform: translateY(0) rotate(-.5deg); } 50% { transform: translateY(-3px) rotate(.5deg); } }
 @media (max-width: 640px) {
-  .dialog { width: calc(100vw - 12px); max-height: calc(100dvh - 12px); border-radius: 10px; }
+  .dialog { border-radius: 10px; }
   .header { gap: 9px; padding: 11px 13px; }
   .header h2 { font-size: 20px; }
   .tabs { padding: 7px 10px; gap: 3px; }
@@ -110,13 +119,13 @@
 /* Main workshop fills the panel. Additional text and large-type settings can still scroll. */
 .body:has([data-boat-garage]) { display: flex; flex-direction: column; overflow-y: auto; scrollbar-gutter: auto; padding: clamp(5px, 1vw, 12px); }
 @media (max-width: 680px), (max-height: 540px) {
-  .dialog:not([data-boat-unavailable]) { height: calc(100dvh - 12px); max-height: calc(100dvh - 12px); }
+  .dialog { --panel-gap: 6px; }
   .header { padding: 4px 9px; }
   .tabs { padding: 1px 6px; }
   .tab { padding: 4px; }
 }
 @media (max-height: 500px) {
-  .dialog:not([data-boat-unavailable]) { width: calc(100vw - 8px); height: calc(100dvh - 8px); max-height: calc(100dvh - 8px); }
+  .dialog { --panel-gap: 4px; }
   .header { padding-block: 0; }
   .header small { margin-bottom: 0; }
   .header h2 { font-size: 16px; }

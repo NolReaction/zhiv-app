@@ -402,6 +402,7 @@ test("overlays release the water, keep the fight visible and allow the fish to e
   const f = fixture({ dev: true }); f.cast(); f.play();
   const initialInventory = structuredClone(f.state.inventory);
   const scene = () => f.find(node => node.tag === "canvas").props.frame;
+  const waterInput = () => f.find(node => node.props["data-boat-map"]).props["data-water-input"];
   const catchButton = () => f.find(node => node.tag === "button" && text(node).startsWith("Улов ·"));
   const devButton = () => f.find(node => node.tag === "button" && text(node) === "DEV");
   const overlays = [
@@ -413,12 +414,14 @@ test("overlays release the water, keep the fight visible and allow the fish to e
   for (const [open, close] of overlays) {
     f.hold(true, "pointer"); f.frame(50); const tick = hooks.inspectReel().tick;
     f.click(open());
+    assert.equal(waterInput(), undefined, "the overlay permits normal text interaction");
     assert(f.byAction("hold").props.disabled); assert.equal(f.byAction("hold").props["aria-pressed"], false);
     f.frame(200);
     assert.equal(hooks.inspectReel().tick, tick + 4);
     assert.equal(scene().stage, "reeling"); assert.equal(scene().reel.bar, hooks.inspectReel().bar);
     assert.equal(scene().reel.fish, hooks.inspectReel().fish);
     f.click(close()); assert.equal(f.byAction("hold").props.disabled, false);
+    assert.equal(waterInput(), true, "holding the water also protects the reel meter from selection");
     assert.equal(f.byAction("play"), undefined);
   }
   f.click(f.byAction("album"));

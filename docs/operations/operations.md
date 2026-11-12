@@ -31,7 +31,14 @@ echo "Исходная версия: ${old_branch:-detached HEAD} $old_head"
 if git rev-parse -q --verify '47f72eb^{commit}' >/dev/null && [ "$old_head" != "$(git rev-parse 47f72eb)" ]; then
   git diff 47f72eb HEAD -- deploy
 fi
-test -S deploy/runtime/avto-gorizont/site.sock
+check_site_socket() {
+  local socket_path=deploy/runtime/avto-gorizont/site.sock
+  sudo test -S "$socket_path" || {
+    echo "Не удалось подтвердить Unix-сокет $socket_path. Обновление остановлено." >&2
+    return 1
+  }
+}
+check_site_socket
 dc() { sudo docker compose --env-file deploy/.env -f deploy/compose.yml "$@"; }
 flyway_version() {
   dc exec -T db psql -XAt -v ON_ERROR_STOP=1 -U zhiv -d zhiv \
@@ -60,9 +67,9 @@ previous_ref="backup/before-0.7.2-$stamp"
 git branch "$previous_ref" "$old_head"
 echo "Ветка для возврата: $previous_ref ($old_head)"
 git switch --no-overwrite-ignore -c "deploy/0.7.2-$stamp" "$release_commit"
-test -S deploy/runtime/avto-gorizont/site.sock
+check_site_socket
 dc config --quiet
-dc run --rm --no-deps -T --entrypoint caddy caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile |
+dc run --rm --no-deps -T --entrypoint caddy caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile </dev/null |
   python3 -c '
 import json, sys
 servers = json.load(sys.stdin)["apps"]["http"]["servers"].values()
@@ -71,7 +78,7 @@ hosts = {host: route for server in servers for route in server["routes"]
 assert "im-alive.ru" in hosts
 assert "unix//srv/deploy/avto-gorizont/site.sock" in json.dumps(hosts["auto-gorizont.ru"])
 '
-bash scripts/deploy-update.sh
+bash scripts/deploy-update.sh </dev/null
 site_check
 curl -fsS --max-time 20 -o /dev/null https://im-alive.ru/
 curl -fsS --max-time 20 https://im-alive.ru/healthz
@@ -85,6 +92,14 @@ test "$(flyway_version)" = 82
 При расхождении с ноябрьским снимком сверьте изменения в `deploy/` до ввода релизного SHA. Если исторического коммита в этом checkout нет, сравните действующие настройки общего Caddy, сокета и Compose с релизом. Запишите имя созданной ветки `backup/before-0.7.2-…`. Она сохраняет фактическую исходную версию, включая checkout с detached HEAD. Переключение в том же каталоге сохраняет прежнюю ветку, `deploy/.env`, каталог секретов и каталог с действующим сокетом. Закрытый режим второго сайта предполагает HTTP 401 на трёх путях. Если владелец открыл публичный сайт, сверьте ожидаемые ответы до и после с новой настройкой доступа.
 
 Скрипт собирает образы, проверяет Caddy и пересоздаёт только его контейнер на общем HTTPS-входе, поэтому возможен короткий разрыв соединения с обоими доменами. Затем во время техработ игры второй сайт продолжает обслуживать запросы. Скрипт останавливает игровой web/API и проверяет итоговый `/home/dima/zhiv-backups/before-update-*.dump` полным восстановлением во временный PostgreSQL до запуска Flyway. Сохраните путь из строки `Backup restored and verified`. После обновления проверьте защищённые страницы с действующими учётными записями обычным входом. Из игровой админки откройте игрока с лодкой и проверьте состояние поездки, улов и место для разгрузки.
+
+Для согласованного **сброса игрового прогресса всех игроков** при выкладке замените вызов скрипта в блоке выше на `bash scripts/deploy-update.sh --reset-game-progress-0.7.2 </dev/null`. Обычный вызов сохраняет прогресс. Скрипт репетирует сброс на восстановленной копии и применяет его один раз для 0.7.2. После завершения запрос из корня репозитория выводит время сброса и новое поколение игровых данных. Пустой результат означает, что сброс ещё не применён. [Что сбрасывается и что сохраняется](reset-game-progress.md).
+
+```bash
+sudo docker compose --env-file deploy/.env -f deploy/compose.yml exec -T db \
+  psql -X -v ON_ERROR_STOP=1 -U zhiv -d zhiv \
+  -c "SELECT completed_at, generation FROM public.gameplay_reset_runs WHERE reset_id = '0.7.2'"
+```
 
 **Если обновление прервалось.** Проверьте `sudo docker compose --env-file deploy/.env -f deploy/compose.yml ps -a` и `logs --tail 100 migrate api web caddy` с тем же префиксом. Фактическую версию Flyway посмотрите запросом выше. После устранения причины повторите `bash scripts/deploy-update.sh` в выбранной релизной ветке. Если история Flyway совпадает с исходной, передайте напечатанное имя ветки `backup/before-0.7.2-…` команде `git switch` и запустите штатное обновление прежней версии. После изменения схемы возврат кода сам по себе оставит новую БД. Если нужен откат базы, сохраните её текущее состояние, проверьте **конкретный предмиграционный** dump в изолированной среде и согласуйте переключение восстановленной базы вместе со старым web/API. Если игра успела открыться, учтите принятые после копии записи. Общий Caddy, его том сертификатов, каталог сокета и второй Compose-проект должны остаться на месте. [Проверка восстановления](#проверка-восстановления) и [статус при прерванном обновлении](client-updates.md#если-выпуск-оборвался).
 
