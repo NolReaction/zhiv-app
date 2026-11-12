@@ -110,7 +110,7 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
   const preparedCast = economy.preparedBoatCastAvailable === true;
   const preparedFight = Boolean(challenge && economy.preparedBoatChallengeId === challenge.id);
   const awaitingLanding = !preparedCast && Boolean(pendingLanding || !challenge && confirmedLanding && economy.busy && !economy.syncPending);
-  const completed = !liveChallenge && usableCasts === 0;
+  const completed = !liveChallenge && usableCasts === 0 && pendingCount === 0 && !economy.preparedBoatPending;
   const canStudy = !liveChallenge && !disabled && !covered && !aiming && !releasedCast && !completed;
   const courseOpen = canStudy && courseForCast === voyage.castsUsed;
   const controlsSuspended = covered || courseOpen;

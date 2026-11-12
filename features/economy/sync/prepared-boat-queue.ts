@@ -8,7 +8,7 @@ import type { JournalStorage } from "./production-journal";
 
 type Dependencies = {
   snapshot: () => EconomyView | null; confirmed: () => boolean; now: () => number;
-  storage: () => JournalStorage | undefined; canSend: () => boolean; localAllowed: () => boolean; preferPrepared: () => boolean;
+  storage: () => JournalStorage | undefined; canSend: () => boolean; localAllowed: () => boolean; canReserve: () => boolean; preferPrepared: () => boolean;
   legacyLanding: () => BoatReelCommand | undefined;
   send: (command: EconomyCommand, signal: AbortSignal) => Promise<EconomyResult>;
   get: (signal: AbortSignal) => Promise<EconomyView>;
@@ -45,7 +45,7 @@ export function createPreparedBoatQueue(owner: string | null, deps: Dependencies
     return projectPreparedBoat(voyage, entries, deps.now(), legacy?.challengeId, legacyCaught);
   };
   const available = (projected: ReturnType<typeof project>) => !!projected.next && !!deps.storage() && !failedStorage
-    && deps.localAllowed() && (entries.length > 0 || deps.preferPrepared());
+    && deps.localAllowed() && deps.canReserve() && (entries.length > 0 || deps.preferPrepared());
   function begin(voyageId: string, heldMs: number) {
     const projected = project(), { next, template } = projected;
     if (!next || !template || deps.snapshot()?.boat?.voyage?.id !== voyageId || !available(projected)

@@ -124,6 +124,8 @@ export function createEconomySession(owner: string | null, transport: Transport,
     now: () => now(), snapshot: () => view.snapshot, confirmed: () => view.snapshotConfirmed,
     storage: () => journalReady ? journalOptions?.storage : undefined,
     localAllowed: () => active && localActionsAvailable,
+    canReserve: () => journalReady && !journalFault && !(pending?.kind === "economy" && !isBoatLanding(pending.command)
+      && ["begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat", "sell_boat_catch"].includes(pending.command.action)),
     preferPrepared: () => !available || !view.directActionsAvailable || !view.snapshotConfirmed || performance.now() < blockedUntil
       || (pending?.kind === "economy" && isBoatLanding(pending.command)),
     legacyLanding: () => pending?.kind === "economy" && isBoatLanding(pending.command) ? pending.command.reel : undefined,
@@ -661,7 +663,10 @@ export function createEconomySession(owner: string | null, transport: Transport,
         if (view.busy) publish({ busy: false, uncertain: Boolean(pending) });
       };
     },
-    tickPreparedBoat: prepared.expireDraft,
+    tickPreparedBoat(online: boolean) {
+      prepared.expireDraft();
+      if (online && prepared.hasTerminal()) void prepared.drain();
+    },
     refresh, refreshTapBoost, refreshSoft: () => refresh(false), refreshMarket, refreshBarter, refreshNeighbor,
     act(action: EconomyCommand["action"], targetId: string, quantity = 1, totalPrice = 0, fishSelection?: Record<string, number>, shipCargo?: { voyageId: string; orderId: string; itemId: string }, boatInput?: BoatCommandInput) {
       const reel = boatInput && "inputs" in boatInput ? boatInput : undefined;

@@ -625,12 +625,25 @@ test("a landed trace survives a new tab without a reel draft, then a slow receip
   const fish = f.view().boat.voyage.challenge.landingPreview;
   assert(f.find(node => node.props["data-local-catch"] === fish.fishId));
   f.close(); storage.clear(); f.reopen(); f.frame(16);
+  assert.equal(f.byAction("skip-bite"), undefined, "a queued catch cannot be offered as a missed bite");
   assert(f.find(node => node.props["data-local-catch"] === fish.fishId));
   assert(f.find(node => node.props["data-pending-fish"] === 1));
   f.flush();
   assert.equal(f.state.boat.voyage.catches.length, 1);
   assert.deepEqual(fish, { fishId: f.state.boat.voyage.catches[0].fishId, weightGrams: f.state.boat.voyage.catches[0].weightGrams });
   assert.equal(f.find(node => node.props["data-pending-fish"]), undefined);
+});
+
+test("a voyage that expires during landing never offers an empty settlement before the real catch arrives", () => {
+  const f = fixture(); f.cast(); f.play(); assert.equal(f.playToResult().status, "caught");
+  f.advanceTo(Date.parse(f.state.boat.voyage.fishingUntil));
+  assert(f.find(node => node.props["data-boat-manifest-pending"]));
+  assert.equal(f.find(node => node.props["data-boat-trip-summary"]), undefined);
+  assert.equal(f.find(node => node.tag === "button" && text(node) === "Завершить выход"), undefined);
+  f.flush();
+  assert.equal(f.find(node => node.props["data-boat-manifest-pending"]), undefined);
+  assert(f.find(node => node.props["data-trip-catch"] === 0));
+  assert(f.find(node => node.tag === "button" && text(node) === "Принять улов"));
 });
 
 test("the identified local catch does not pop up again when its delayed receipt arrives", () => {

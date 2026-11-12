@@ -18,6 +18,14 @@ export function BoatVoyagePanel({ economy, disabled, send, onOpenPantry }: Props
   if (!voyage) return null;
   const phase = boatPhase(boat, economy.now);
   if (phase === "ready") {
+    if (economy.preparedBoatPending || economy.pendingBoatCastId && economy.pendingBoatCastId === voyage.challenge?.id) {
+      const pending = (economy.localBoatCatches ?? 0) + Number(economy.pendingBoatOutcome === "caught");
+      return <section className={summaryStyles.unloading} data-boat-manifest-pending role="status">
+        <h3>Лодка у причала</h3>
+        <p>{pending > 0 ? `Сохраняем улов · ${pending}. ` : ""}После сверки последнего заброса можно будет разгрузить лодку.</p>
+        <BoatCatchList state={state} boat={boat} />
+      </section>;
+    }
     const sale = boatDockSaleQuote(voyage.catches, state.catalog);
     const walletFull = sale != null && sale.total > ECONOMY_MAX_BALANCE - state.wallet.coins;
     const shortfall = Math.max(0, voyage.catches.length - state.storage.available);

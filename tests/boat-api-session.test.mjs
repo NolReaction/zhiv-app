@@ -398,3 +398,19 @@ test("a browser that disallows reading the prepared journal still sends ordinary
   assert.ok(session.act("begin_boat_cast", state.boat.voyage.id, 1, 0, undefined, undefined, { castHeldMs: 400 }));
   await flush(); assert.deepEqual(calls, ["begin_boat_cast"]); stop();
 });
+
+test("a disconnected ordinary cast with an unknown ACK cannot reuse its issued slot as a prepared cast", async () => {
+  const p = player(), { state } = send(p, "depart_boat", "river_reach");
+  const disk = store(), journal = { storage: disk, coordinate: async () => () => {} };
+  const calls = [];
+  const session = createEconomySession(state.ownerPublicId, { get: async () => read(p),
+    send: async command => { calls.push(command); api.commandDevEconomy(p.token, command, now); throw Error("lost ACK"); } },
+  () => assert.fail(), store(), journal);
+  const stop = session.activate(); await session.refresh();
+  const begin = () => session.act("begin_boat_cast", state.boat.voyage.id, 1, 0, undefined, undefined, { castHeldMs: 450 });
+  assert.ok(begin()); await flush();
+  session.setAvailable(false); session.setDirectActionsAvailable(false);
+  assert.equal(session.getSnapshot().preparedBoatCastAvailable, false);
+  assert.equal(begin(), false); assert.equal(calls.length, 1); assert.equal(row(p).state.boat.voyage.castsUsed, 1);
+  stop();
+});
