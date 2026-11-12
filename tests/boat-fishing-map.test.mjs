@@ -10,7 +10,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const hookId = "virtual:boat-map-hooks", shellId = "virtual:boat-map-shell", canvasId = "virtual:boat-map-canvas", audioId = "virtual:boat-map-audio";
 const vite = await createServer({ configFile: false, appType: "custom", root, cacheDir: `/tmp/boat-map-integration-${process.pid}`,
-  resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
+  resolve: { alias: { "@": root } }, server: { middlewareMode: true, watch: null, hmr: false, ws: false },
   plugins: [{ name: "boat-map-component-integration", enforce: "pre",
     resolveId(id) { if ([hookId, shellId, canvasId, audioId].includes(id)) return `\0${id}`; },
     load(id) {
@@ -86,6 +86,7 @@ const { economyCatalog, economyCommandSchema } = await vite.ssrLoadModule("/feat
 const { economyShipSchema } = await vite.ssrLoadModule("/features/economy/domain/ship-model.ts");
 const { newEconomyState, applyEconomyCommand, economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { publicBoatState } = await vite.ssrLoadModule("/features/economy/domain/boat-fishing.ts");
+const { preparedBoatOutcome } = await vite.ssrLoadModule("/features/economy/sync/prepared-boat-journal.ts");
 const { initialBoatReel, replayBoatReel, stepBoatReel } = await vite.ssrLoadModule("/features/economy/domain/boat-reel.ts");
 const { boatCastAim } = await vite.ssrLoadModule("/features/economy/domain/boat-cast-aim.ts");
 const { boatReelCheckpointKey, changeBoatReelInput, writeBoatReelCheckpoint } = await vite.ssrLoadModule("/features/economy/ui/boat/boat-reel-checkpoint.ts");
@@ -171,8 +172,10 @@ function fixture({ outbound = false, dev = false } = {}) {
   const render = () => {
     for (let iteration = 0; iteration < 30; iteration++) {
       hooks.begin();
+      const landing = pending.find(request => request.action === "submit_boat_cast");
       const economy = { snapshot: view(), now: time, snapshotConfirmed: true, busy, uncertain: false, retryAt: 0, error: null, devAvailable: dev, localBoatSettlement, lastBoatLanding,
-        pendingBoatCastId: pending.find(request => request.action === "submit_boat_cast")?.reel?.challengeId,
+        pendingBoatCastId: landing?.reel?.challengeId,
+        pendingBoatOutcome: landing && state.boat.voyage?.challenge ? preparedBoatOutcome(state.boat.voyage.challenge, landing.reel) : undefined,
         act(action, targetId, quantity, totalPrice, fishSelection, unused, reel) { if (busy) return false; busy = true; pending.push(command(action, targetId, reel)); return true; }, refresh() {}, retry() {} };
       tree = featureTree(open ? createElement(PlayableBoatFishingDialog, { economy, onClose() { open = false; } }) : null, "root", hosts);
       hooks.finish(); if (!hooks.changed()) return tree;
@@ -318,6 +321,19 @@ test("short taps and keystrokes neither wind up nor spend a cast; a fresh delibe
   assert.equal(f.pending.length, 1); assert.equal(f.pending[0].castHeldMs, 280);
   f.flush(); assert.equal(f.state.boat.voyage.castsUsed, 1);
 });
+
+for (const [clientX, clientY, expected] of [[340, 760, "upper left"], [50, 250, "lower right"]]) {
+  test(`touch cast keeps the gauge and its released score on the ${expected} side of the water`, t => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const f = fixture(), water = f.byAction("cast");
+    water.getBoundingClientRect = () => ({ left: 20, top: 50, width: 360, height: 780 });
+    water.props.onPointerDown(event(water, { pointerType: "touch", clientX, clientY }));
+    f.frame(350); t.mock.timers.tick(350); f.render();
+    assert.equal(f.find(node => node.props.role === "meter").props["data-meter-dock"], expected);
+    water.props.onPointerUp(event(water)); f.render(); f.flush();
+    assert.equal(f.find(node => node.props["data-cast-result"] !== undefined).props["data-meter-dock"], expected);
+  });
+}
 
 test("a new deliberate cast released during landing uses the confirmed revision exactly once", async () => {
   const f = fixture(); f.cast(); f.play(); assert.equal(f.playToResult().status, "caught");
@@ -558,9 +574,16 @@ test("a finished legacy draft without a start timestamp still delivers the last 
 test("caught UI automatically submits one replay verified trace then credits inventory only after confirmed return and unloading", () => {
   const f = fixture(); f.cast(); f.play(); const inventory = structuredClone(f.state.inventory), challenge = structuredClone(f.state.boat.voyage.challenge);
   const result = f.playToResult(); assert.equal(result.status, "caught");
-  assert.equal(f.find(node => node.tag === "canvas").props.frame.stage, "caught");
+  assert.equal(f.find(node => node.tag === "canvas").props.frame.stage, "landed");
   assert.deepEqual(f.state.inventory, inventory); assert.equal(f.state.boat.voyage.catches.length, 0);
   assert.equal(f.find(node => node.props["data-confirmed-catch"]), undefined);
+  const expected = f.view().boat.voyage.challenge.landingPreview;
+  const firstReveal = f.find(node => node.tag === "canvas").props.frame;
+  assert.equal(firstReveal.fishId, expected.fishId);
+  const preview = f.find(node => node.props["data-local-catch"] === expected.fishId);
+  assert.ok(preview); assert.match(text(preview), /Рыба поймана/);
+  assert.equal(f.find(node => node.props["data-pending-fish"] === 1).props["aria-label"], "Улов: 1. Сохраняется: 1");
+  assert.equal(f.find(node => node.props["data-boat-reel-meter"]), undefined);
   assert.equal(f.byAction("submit"), undefined); f.frame(16); f.render();
   assert.equal(f.pending.length, 1); assert.equal(f.state.boat.voyage.catches.length, 0);
   assert(f.find(node => node.props["data-reel-status"] === "pending"));
@@ -569,6 +592,7 @@ test("caught UI automatically submits one replay verified trace then credits inv
   assert.equal(f.find(node => node.tag === "canvas").props.frame.stage, "landed");
   assert.equal(f.find(node => node.tag === "canvas").props.frame.fishId, f.state.boat.voyage.catches[0].fishId);
   const receipt = f.find(node => node.props["data-confirmed-catch"]);
+  assert.equal(f.find(node => node.tag === "canvas").props.frame.catchKey, firstReveal.catchKey);
   assert.equal(receipt.props["data-confirmed-catch"], f.state.boat.voyage.catches[0].fishId);
   assert.match(text(receipt), /Улов подтверждён/); assert.deepEqual(f.state.inventory, inventory);
   assert.equal(f.commands.filter(command => command.action === "submit_boat_cast").length, 1);
@@ -594,6 +618,28 @@ test("caught UI automatically submits one replay verified trace then credits inv
   assert(f.find(node => node.props["data-boat-delivery"] && node.props.role === "status"));
   assert.equal(f.find(node => node.tag === "button" && text(node) === "Готово"), undefined);
   f.close();
+});
+
+test("a landed trace survives a new tab without a reel draft, then a slow receipt keeps exactly one fish", () => {
+  const f = fixture(); f.cast(); f.play(); assert.equal(f.playToResult().status, "caught");
+  const fish = f.view().boat.voyage.challenge.landingPreview;
+  assert(f.find(node => node.props["data-local-catch"] === fish.fishId));
+  f.close(); storage.clear(); f.reopen(); f.frame(16);
+  assert(f.find(node => node.props["data-local-catch"] === fish.fishId));
+  assert(f.find(node => node.props["data-pending-fish"] === 1));
+  f.flush();
+  assert.equal(f.state.boat.voyage.catches.length, 1);
+  assert.deepEqual(fish, { fishId: f.state.boat.voyage.catches[0].fishId, weightGrams: f.state.boat.voyage.catches[0].weightGrams });
+  assert.equal(f.find(node => node.props["data-pending-fish"]), undefined);
+});
+
+test("the identified local catch does not pop up again when its delayed receipt arrives", () => {
+  const f = fixture(); f.cast(); f.play(); assert.equal(f.playToResult().status, "caught");
+  f.frame(8000);
+  assert.equal(f.find(node => node.props["data-local-catch"]), undefined);
+  assert(f.find(node => node.props["data-pending-fish"] === 1));
+  f.flush(); assert.equal(f.state.boat.voyage.catches.length, 1);
+  assert.equal(f.find(node => node.props["data-confirmed-catch"]), undefined);
 });
 
 test("escaped or expired attempts never give local fish and the real cast budget survives scene remounts", () => {
@@ -633,7 +679,7 @@ test("the fishing album shows confirmed species and permanent records without tu
   assert.equal(f.find(node => node.props["data-album-fish"] === known.itemId).props["data-discovered"], true);
 });
 
-test("confirmed catch presentation celebrates a real weight record and never leaks its size before confirmation", () => {
+test("catch presentation reveals size after the fight and celebrates the confirmed record", () => {
   const f = fixture(); f.cast();
   const savedFish = f.state.boat.voyage.slots[0].fishId;
   f.state.boat.records[savedFish] = { weightGrams: 1, caughtAt: new Date(at).toISOString() };

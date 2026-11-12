@@ -98,6 +98,27 @@
   user-select: none;
 }
 
+/* The water is one large input. Keep the gauge on the far side of the initial
+   contact, in the clear band between the river toolbar and the navigation. */
+.meter[data-meter-dock] {
+  top: max(43%, calc(max(10px, env(safe-area-inset-top)) + 166px));
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+.meter[data-meter-dock~="lower"] {
+  top: min(79%, calc(100% - max(10px, env(safe-area-inset-bottom)) - 88px));
+}
+@media (orientation: landscape) {
+  .meter[data-meter-dock] {
+    --edge: max(16px, env(safe-area-inset-left), env(safe-area-inset-right));
+    top: 52%;
+    width: min(258px, calc(50% - var(--edge) - 32px));
+    transform: translateY(-50%);
+  }
+  .meter[data-meter-dock~="left"] { left: var(--edge); }
+  .meter[data-meter-dock~="right"] { left: auto; right: var(--edge); }
+}
+
 .caption {
   display: flex;
   align-items: baseline;

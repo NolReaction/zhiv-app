@@ -16,7 +16,11 @@ export function useWorld(owner: string | null, onSessionLost: () => void, enable
     const deactivate = session.activate();
     const refresh = () => { if (!document.hidden && navigator.onLine) void session.refreshSoft(); };
     const kickoff = setTimeout(() => { if (enabled) void session.refresh(); }, 0);
-    const timer = setInterval(() => { if (!document.hidden) setNow(session.now()); }, 1000);
+    const timer = setInterval(() => {
+      if (document.hidden) return;
+      setNow(session.now());
+      if (navigator.onLine) void session.retryPending();
+    }, 1000);
     const polling = setInterval(refresh, 30000);
     document.addEventListener("visibilitychange", refresh); window.addEventListener("online", refresh);
     return () => {

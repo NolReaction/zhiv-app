@@ -5,7 +5,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
-  resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+  resolve: { alias: { "@": root } }, server: { middlewareMode: true, watch: null, hmr: false, ws: false } });
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const api = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -187,6 +187,7 @@ test("a delayed online landing sends one POST, keeps the known state and adopts 
   const stop = session.activate(); await session.refresh();
   assert(session.act("submit_boat_cast", voyage.id, 1, 0, undefined, undefined, reel));
   assert.equal(session.getSnapshot().busy, true); assert.equal(session.getSnapshot().uncertain, false);
+  assert.equal(session.getSnapshot().pendingBoatOutcome, "caught");
   assert.equal(session.getSnapshot().snapshot.boat.voyage.catches.length, 0);
   await session.refreshSoft(); assert.equal(writes, 1);
   finish(); await flush();
@@ -282,4 +283,118 @@ test("an unavailable receipt store rejects an offline landing visibly and permit
   assert.equal(session.getSnapshot().snapshot.boat.voyage.catches.length, 1);
   assert.equal(session.getSnapshot().storageError, null);
   deactivate();
+});
+
+test("two issued casts play offline, survive a reload and settle in order after a lost ACK", async t => {
+  let elapsed = 0;
+  t.mock.method(performance, "now", () => elapsed);
+  t.mock.method(Date, "now", () => now + elapsed);
+  const p = player();
+  send(p, "depart_boat", "river_reach");
+  const v = row(p).state.boat.voyage;
+  v.slots.forEach(slot => Object.assign(slot, { challengeSeed: 37, fishId: "fish_silverfin", difficulty: 1 }));
+  const disk = store(), journal = { storage: disk, coordinate: async () => () => {} }, owner = p.me.user.publicId;
+  let round = 0;
+  const sent = [];
+  const transport = { get: async () => read(p, now + elapsed), send: async command => {
+    sent.push(structuredClone(command));
+    assert.ok(round > 0, "no transport was needed to finish the offline fights");
+    const result = api.commandDevEconomy(p.token, command, now + elapsed);
+    if (round === 1) throw Error("lost ACK after commit");
+    return result;
+  } };
+  const open = () => createEconomySession(owner, transport, () => assert.fail(), store(), journal);
+  let session = open(), stop = session.activate();
+  await session.refresh();
+  assert.equal(session.getSnapshot().preparedBoatCastAvailable, false, "healthy connection uses the issued-cast preview");
+  session.setAvailable(false); session.setDirectActionsAvailable(false);
+  const begin = () => session.act("begin_boat_cast", v.id, 1, 0, undefined, undefined, { castHeldMs: 700 });
+  const finish = reel => session.act("submit_boat_cast", v.id, 1, 0, undefined, undefined, { ...reel, deferred: true });
+  for (let i = 1; i <= 2; i++) {
+    assert.equal(session.getSnapshot().preparedBoatCastAvailable, true);
+    assert.equal(begin(), true); assert.equal(begin(), false);
+    const challenge = session.getSnapshot().localBoatVoyage.challenge, reel = trace(challenge, true);
+    assert.equal(physics.replayBoatReel(challenge, reel.inputs, reel.endTick).status, "caught");
+    if (i === 1) {
+      stop(); session = open(); session.setAvailable(false); session.setDirectActionsAvailable(false); stop = session.activate(); await session.refresh();
+      assert.equal(session.getSnapshot().localBoatVoyage.challenge.id, challenge.id, "the original release persists");
+    }
+    elapsed = Date.parse(challenge.biteAt) - now + reel.endTick * challenge.tickMs + 100;
+    assert.equal(finish(reel), true); assert.equal(finish(reel), false);
+    assert.equal(session.getSnapshot().localBoatCatches, i);
+    assert.equal(session.getSnapshot().snapshot.boat.voyage.catches.length, 0);
+    elapsed += 500;
+  }
+  assert.equal(session.getSnapshot().preparedBoatCastAvailable, false);
+  assert.equal(begin(), false, "cannot reserve beyond two server-issued casts");
+  assert.equal(session.act("return_boat", v.id), false);
+  stop(); round = 1; elapsed += 1000;
+  session = open(); stop = session.activate(); await session.refresh(); stop();
+  assert.deepEqual(row(p).state.boat.voyage.catches.map(caught => caught.castIndex), [0]);
+  round = 2; elapsed += 2000;
+  session = open(); stop = session.activate(); await session.refresh();
+  assert.deepEqual(sent[0], sent[1]); assert.notEqual(sent[1].requestId, sent[2].requestId);
+  assert.deepEqual(session.getSnapshot().snapshot.boat.voyage.catches.map(caught => caught.castIndex), [0, 1]);
+  assert.equal(session.getSnapshot().localBoatCatches, 0); assert.equal(session.getSnapshot().preparedBoatPending, false);
+  stop();
+});
+
+test("a slow normal landing leaves the next server-issued fight playable without losing its start when the ACK arrives", async t => {
+  let elapsed = 0;
+  t.mock.method(performance, "now", () => elapsed);
+  t.mock.method(Date, "now", () => now + elapsed);
+  const { p, voyage, cast, challenge, reel } = fishingAttempt();
+  let ack;
+  const disk = store(), journal = { storage: disk, coordinate: async () => () => {} };
+  const session = createEconomySession(cast.ownerPublicId, { get: async () => cast,
+    send: command => new Promise(resolve => { const result = api.commandDevEconomy(p.token, command, now + elapsed); ack = () => resolve(result); }),
+  }, () => assert.fail(), store(), journal);
+  const stop = session.activate(); await session.refresh();
+  elapsed = Date.parse(challenge.biteAt) - now + reel.endTick * challenge.tickMs + 10;
+  assert.ok(session.act("submit_boat_cast", voyage.id, 1, 0, undefined, undefined, reel));
+  assert.ok(session.getSnapshot().preparedBoatCastAvailable);
+  elapsed += 500;
+  assert.ok(session.act("begin_boat_cast", voyage.id, 1, 0, undefined, undefined, { castHeldMs: 440 }));
+  const local = session.getSnapshot().localBoatVoyage.challenge;
+  assert.equal(session.getSnapshot().localBoatVoyage.castsUsed, 2);
+  elapsed += 3500; ack(); await flush();
+  assert.deepEqual(session.getSnapshot().localBoatVoyage.challenge, local);
+  assert.equal(session.getSnapshot().snapshot.boat.voyage.catches.length, 1);
+  assert.ok(session.now() >= Date.parse(local.startedAt) + 3500, "old ACK cannot rewind the local cast clock");
+  stop();
+});
+
+test("a return on another device discards an unsent draft without charging its cast", async () => {
+  const p = player(), { state } = send(p, "depart_boat", "river_reach");
+  const voyage = state.boat.voyage, disk = store(), journal = { storage: disk, coordinate: async () => () => {} };
+  let clock = now, writes = 0;
+  const session = createEconomySession(state.ownerPublicId, { get: async () => read(p, clock),
+    send: async () => { writes++; assert.fail("no cast was submitted"); } }, () => assert.fail(), store(), journal);
+  const stop = session.activate(); await session.refresh();
+  session.setAvailable(false); session.setDirectActionsAvailable(false);
+  assert.ok(session.act("begin_boat_cast", voyage.id, 1, 0, undefined, undefined, { castHeldMs: 400 }));
+  clock += 15_000; send(p, "return_boat", voyage.id, clock);
+  session.setAvailable(true); await session.refresh();
+  assert.equal(session.getSnapshot().preparedBoatPending, false);
+  assert.equal(session.getSnapshot().preparedBoatCastAvailable, false);
+  assert.equal(session.getSnapshot().snapshot.boat.voyage.castsUsed, 0);
+  assert.equal(writes, 0); stop();
+});
+
+test("a browser that disallows reading the prepared journal still sends ordinary online casts", async () => {
+  const p = player(), { state } = send(p, "depart_boat", "river_reach");
+  const disk = store(), journal = { storage: { ...disk, getItem(key) {
+    if (key.includes("boat-journal")) throw new DOMException("Storage blocked", "SecurityError");
+    return disk.getItem(key);
+  } }, coordinate: async () => () => {} };
+  const calls = [];
+  const session = createEconomySession(state.ownerPublicId, { get: async () => read(p), send: async command => {
+    calls.push(command.action); return api.commandDevEconomy(p.token, command, now);
+  } }, () => assert.fail(), store(), journal);
+  const stop = session.activate(); await session.refresh();
+  session.setAvailable(false);
+  assert.equal(session.getSnapshot().preparedBoatCastAvailable, false);
+  session.setAvailable(true);
+  assert.ok(session.act("begin_boat_cast", state.boat.voyage.id, 1, 0, undefined, undefined, { castHeldMs: 400 }));
+  await flush(); assert.deepEqual(calls, ["begin_boat_cast"]); stop();
 });

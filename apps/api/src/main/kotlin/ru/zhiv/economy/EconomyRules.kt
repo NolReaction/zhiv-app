@@ -62,10 +62,18 @@ fun decodeEconomyCommand(element: JsonElement, validator: (EconomyCommand) -> Un
     }
     value["reel"]?.takeUnless { it == JsonNull }?.let { supplied ->
         val reel = supplied as? JsonObject ?: invalidEconomy()
-        if (reel.keys - "deferred" - "missedBite" != setOf("challengeId", "inputs", "endTick") || (reel["challengeId"] as? JsonPrimitive)?.isString != true) invalidEconomy()
+        if (reel.keys - "deferred" - "missedBite" - "prepared" != setOf("challengeId", "inputs", "endTick") || (reel["challengeId"] as? JsonPrimitive)?.isString != true) invalidEconomy()
         for (field in listOf("deferred", "missedBite")) {
             val flag = reel[field] ?: continue
             if (flag !is JsonPrimitive || flag.isString || flag.booleanOrNull == null) invalidEconomy()
+        }
+        reel["prepared"]?.let { suppliedStart ->
+            val start = suppliedStart as? JsonObject ?: invalidEconomy()
+            if (start.keys != setOf("castNumber", "startedAt", "castHeldMs") || (start["startedAt"] as? JsonPrimitive)?.isString != true) invalidEconomy()
+            for (key in listOf("castNumber", "castHeldMs")) {
+                val number = start[key] as? JsonPrimitive ?: invalidEconomy()
+                if (number.isString || number.intOrNull == null) invalidEconomy()
+            }
         }
         val end = reel["endTick"] as? JsonPrimitive ?: invalidEconomy()
         if (end.isString || end.intOrNull == null) invalidEconomy()

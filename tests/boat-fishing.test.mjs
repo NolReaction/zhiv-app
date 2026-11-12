@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { readFileSync } from "node:fs";
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, watch: null, hmr: false } });
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const boats = await vite.ssrLoadModule("/features/economy/domain/boat-fishing.ts");
 const schema = await vite.ssrLoadModule("/features/economy/domain/boat-model.ts");
@@ -57,6 +57,60 @@ test("boat defaults preserve old profiles and public projection never reveals se
   assert.ok(!("slots" in publicState.voyage)); assert.equal(publicState.voyage.catches.length, 0);
   publicState.upgrades.push("crate"); assert.deepEqual(state, before);
 });
+
+test("two private draws issue anonymous tickets; disconnected fights settle in order, once, at their original aim", async () => {
+  const { startPreparedBoatCast } = await vite.ssrLoadModule("/features/economy/domain/boat-prepared-cast.ts");
+  const state = ready(), voyage = depart(state);
+  const [first, second] = boats.publicBoatState(state.boat).voyage.preparedCasts;
+  assert.deepEqual([first.castNumber, second.castNumber], [1, 2]);
+  assert.notEqual(first.id, second.id);
+  for (const ticket of [first, second]) {
+    assert.ok(!("fishId" in ticket || "weightGrams" in ticket || "landingPreview" in ticket));
+  }
+  assert.equal(startPreparedBoatCast(first, Date.parse(voyage.fishingUntil) - 100, voyage.fishingUntil), null);
+  const start = at + 1000;
+  function fromTicket(ticket, when) {
+    const challenge = startPreparedBoatCast(ticket, when, voyage.fishingUntil);
+    const played = play(challenge);
+    assert.equal(played.result.status, "caught");
+    return { ...wireReel(played), deferred: true, prepared: { castNumber: ticket.castNumber, startedAt: challenge.startedAt, castHeldMs: 1620 } };
+  }
+  const reel = fromTicket(first, start);
+  const finish = start + first.biteDelayMs + reel.endTick * first.tickMs;
+  const other = fromTicket(second, finish + 500);
+  const delayed = Date.parse(voyage.fishingUntil) + 2000;
+  const send = (input, time = delayed) => run(state, "submit_boat_cast", voyage.id, time, { reel: input });
+  const initial = structuredClone(state);
+  assert.throws(() => send(other), { code: "ECONOMY_BOAT_CAST_GONE" });
+  assert.throws(() => send(reel, finish - 1), { code: "ECONOMY_BOAT_TRACE" });
+  assert.deepEqual(state, initial);
+  const online = structuredClone(state);
+  run(online, "begin_boat_cast", voyage.id, start, { castHeldMs: reel.prepared.castHeldMs });
+  const original = online.boat.voyage.challenge;
+  assert.deepEqual(startPreparedBoatCast(first, start, voyage.fishingUntil), { ...original, id: first.id });
+  send(reel);
+  assert.deepEqual(state.boat.voyage.catches.map(f => [f.castIndex, f.weightGrams]), [[0, online.boat.voyage.slots[0].weightGrams]]);
+  assert.throws(() => send(reel), { code: "ECONOMY_BOAT_CAST_GONE" });
+  assert.throws(() => send(fromTicket(second, finish - 100)), { code: "ECONOMY_BOAT_CAST_GONE" });
+  send(other);
+  assert.deepEqual(state.boat.voyage.catches.map(f => f.castIndex), [0, 1]);
+  assert.equal(state.boat.voyage.castsUsed, 2);
+  assert.equal(boats.publicBoatState(state.boat).voyage.preparedCasts[0].castNumber, 3);
+});
+
+test("previously saved boats without tickets use ordinary casts; returning retires unpublished catches", () => {
+  const legacy = ready(), voyage = depart(legacy);
+  for (const slot of voyage.slots) delete slot.ticketId;
+  assert.equal(boats.publicBoatState(legacy.boat).voyage.preparedCasts, undefined);
+  catchOne(legacy, at);
+  const current = ready(), freshVoyage = depart(current), [first] = boats.publicBoatState(current.boat).voyage.preparedCasts;
+  run(current, "return_boat", freshVoyage.id, at + 20_000);
+  assert.equal(boats.publicBoatState(current.boat).voyage.preparedCasts, undefined);
+  const reel = { challengeId: first.id, inputs: [], endTick: 0, missedBite: true, deferred: true,
+    prepared: { castNumber: 1, startedAt: new Date(at).toISOString(), castHeldMs: 350 } };
+  assert.throws(() => run(current, "submit_boat_cast", freshVoyage.id, at + 30_000, { reel }), { code: "ECONOMY_BOAT_CAST_GONE" });
+});
+
 test("instant starter repair costs nothing with a busy builder; paid work reserves the builder until claimed", () => {
   const starter = fresh();
   starter.inventory = { wood: 100, stone: 100 };
@@ -250,7 +304,7 @@ test("dock sale quotes the saved weights, confirms only the exact total and clos
   assert.equal(state.wallet.coins, totalPrice);
 });
 
-test("a cast publishes only its actual rarity and waits 4–7 seconds before any valid replay can finish", () => {
+test("a consumed cast publishes its own landing preview and waits 4–7 seconds before any valid replay can finish", () => {
   const state = ready(), voyage = depart(state), started = Date.parse(voyage.arrivesAt);
   const rarity = model.economyCatalog.fishing.fish.find(fish => fish.itemId === voyage.slots[0].fishId).rarity;
   run(state, "begin_boat_cast", voyage.id, started);
@@ -346,7 +400,10 @@ test("paid three-module legacy loadouts map once and all twenty sequential tiers
   run(state, "begin_boat_cast", v.id);
   const c = state.boat.voyage.challenge, view = schema.boatStateSchema.parse(boats.publicBoatState(state.boat));
   assert.equal(c.rulesVersion, 6); assert.equal(c.motorResponse, 5); assert.equal(c.hullDamping, 20);
-  assert.deepEqual(view.voyage.challenge, c); assert.equal(view.voyage.slots, undefined);
+  const { landingPreview, ...controls } = view.voyage.challenge;
+  const slot = state.boat.voyage.slots[0];
+  assert.deepEqual(landingPreview, { fishId: slot.fishId, weightGrams: slot.weightGrams });
+  assert.deepEqual(controls, c); assert.equal(view.voyage.slots, undefined);
   const unassisted = { ...c, rulesVersion: 4 };
   const turning = { ...physics.initialBoatReel(c), velocity: -100 };
   assert.equal(physics.stepBoatReel(c, turning, true).velocity - physics.stepBoatReel(unassisted, turning, true).velocity, 5);

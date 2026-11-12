@@ -73,7 +73,7 @@ function BoatDialogSession({ sharedRecordsAvailable, economy, onClose, onOpenPan
     && settlement.saleCoins === claimedTrip.receipt.saleCoins && boat.completedVoyages === claimedTrip.completedBefore + 1 ? claimedTrip.receipt : null;
   const sent = useRef(false), content = useRef<HTMLDivElement>(null), id = useId();
   const disabled = locked(economy) || economy.snapshotConfirmed === false;
-  const challenge = boat.voyage?.challenge;
+  const challenge = (economy.localBoatVoyage ?? boat.voyage)?.challenge;
   const unloading = phase === "ready";
   const onRiver = phase === "fishing" && Boolean(boat.voyage);
   const localDeparture = onRiver && economy.localBoatDepartureId === boat.voyage?.id;
@@ -95,7 +95,12 @@ function BoatDialogSession({ sharedRecordsAvailable, economy, onClose, onOpenPan
   }, [deliveredTrip]);
   const send: BoatSend = (action, targetId, input, saleQuote = 0) => {
     const localLanding = action === "submit_boat_cast" && input && "deferred" in input && input.deferred === true;
-    if ((!localLanding && disabled) || sent.current) return false;
+    // Prepared casts are reserved synchronously by the journal. Its exact
+    // ticket may be played while the previous server command is still in flight.
+    if ((action === "begin_boat_cast" && economy.preparedBoatCastAvailable
+      || localLanding && "challengeId" in input && input.challengeId === economy.preparedBoatChallengeId) && !suspended && !leaving && !arrival)
+      return economy.act(action, targetId, 1, 0, undefined, undefined, input) !== false;
+    if ((!localLanding && disabled) || sent.current || economy.preparedBoatPending && !localLanding) return false;
     sent.current = true;
     const receipt = (action === "claim_boat" || action === "sell_boat_catch") && boat.voyage?.id === targetId
       ? { receipt: createBoatTripReceipt(state, boat.voyage, action === "sell_boat_catch" ? saleQuote : undefined), completedBefore: boat.completedVoyages, revisionBefore: state.revision } : null;

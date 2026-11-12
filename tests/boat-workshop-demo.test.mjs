@@ -5,7 +5,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ configFile: false, appType: "custom", root,
-  resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+  resolve: { alias: { "@": root } }, server: { middlewareMode: true, watch: null, hmr: false, ws: false } });
 after(() => vite.close());
 const { createBoatWorkshopDemo } = await vite.ssrLoadModule("/features/economy/dev/boat-workshop-demo.ts");
 const { default: WorkshopPage } = await vite.ssrLoadModule("/app/prototype/boat-workshop/page.tsx");
@@ -69,7 +69,8 @@ test("ordinary instant repair, departure and cast run real rules against private
   assert.ok(cast.boat.voyage.challenge);
   assert.equal(cast.boat.voyage.slots, undefined);
   assert.equal(cast.boat.voyage.catches.length, 0);
-  assert.doesNotMatch(JSON.stringify(cast.boat), /"slots"|"weightGrams"/);
+  assert.doesNotMatch(JSON.stringify(cast.boat), /"slots"|"challengeSeed"/);
+  assert.ok(cast.boat.voyage.challenge.landingPreview.weightGrams > 0);
 });
 
 test("unrelated actions, stale revisions and another owner cannot mutate the demo", () => {

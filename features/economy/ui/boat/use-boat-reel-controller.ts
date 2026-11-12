@@ -8,7 +8,7 @@ import { boatReelCheckpointKey, boatReelSubmission, changeBoatReelInput, readBoa
 import { boatCastStage } from "./boat-cast-timing";
 
 export type BoatReelControllerProps = { owner: string; voyageId: string; challenge: BoatChallenge; now: number; readClock?: () => number; ownCast?: boolean; suspended?: boolean;
-  disabled: boolean; queued?: boolean; uncertain?: boolean; error?: string | null; onSubmit: (submission: BoatReelCommand) => boolean };
+  disabled: boolean; queued?: boolean; uncertain?: boolean; error?: string | null; onSubmit: (submission: BoatReelCommand, outcome: "caught" | "escaped") => boolean };
 // Input drafts belong to this tab. The completed submission has its own durable outbox.
 const storage = () => { try { return window.sessionStorage; } catch { return null; } };
 
@@ -165,7 +165,7 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
     submission.current = true;
     save();
     let accepted = false;
-    try { accepted = onSubmit(data.missed ? { challengeId: challenge.id, endTick: 0, inputs: [], missedBite: true } : boatReelSubmission(challenge, data.reel, data.inputs)); }
+    try { accepted = onSubmit(data.missed ? { challengeId: challenge.id, endTick: 0, inputs: [], missedBite: true } : boatReelSubmission(challenge, data.reel, data.inputs), data.reel.status === "caught" && !data.missed ? "caught" : "escaped"); }
     catch { /* The verified trace remains available for retry after a local transport failure. */ }
     submission.current = accepted; setDelivery(accepted ? "sent" : "retry");
   }, [challenge, onSubmit, save, serverTime, expiresAt, canDeliverLate]);
@@ -181,7 +181,7 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
     return () => window.removeEventListener("online", submit);
   }, [delivery, deliveryBlocked, expired, submit]);
   const missedElsewhere = manualHook && windowClosed && !started && !missedBite;
-  const status = waitingForConfirmation ? "Проверяем результат" : expired ? "Рыба ушла" : missedElsewhere ? "Время для подсечки прошло" : missedBite ? "Поклёвка пропущена" : reel.status === "caught" ? "Рыба у борта!" : reel.status === "escaped" ? "Рыба сорвалась" : playing ? "Рыба на крючке" : castStage === "casting" ? "Забрасываем удочку…" : castStage === "soaking" ? "Ждём поклёвку…" : "Поплавок нырнул";
+  const status = waitingForConfirmation ? missedBite ? "Поклёвка пропущена" : reel.status === "caught" ? "Рыба поймана" : reel.status === "escaped" ? "Рыба сорвалась" : "Попытка завершена" : expired ? "Рыба ушла" : missedElsewhere ? "Время для подсечки прошло" : missedBite ? "Поклёвка пропущена" : reel.status === "caught" ? "Рыба у борта!" : reel.status === "escaped" ? "Рыба сорвалась" : playing ? "Рыба на крючке" : castStage === "casting" ? "Забрасываем удочку…" : castStage === "soaking" ? "Ждём поклёвку…" : "Поплавок нырнул";
   return { challenge, reel, playing, held, ready, expired, waitingForConfirmation, retryNeeded: delivery === "retry", status, castStage,
     changeHeld, submit, hookFish, missedBite, missedElsewhere, confirmMiss, awaitingHook: manualHook && !windowClosed && !started && !missedBite && castStage === "bite" };
 }

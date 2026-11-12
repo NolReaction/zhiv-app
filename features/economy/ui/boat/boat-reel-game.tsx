@@ -62,7 +62,7 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
   }, [onCoachObservation, challenge.id, stage, playing, blocked, held, reel.tick, reel.bar]);
   const coachText = coachView ? boatCoachInstruction(coachView, stage) : null;
   const feedback = boatResistanceFeedback(resistancePhase, boatReelFeedback(reel, challenge.zoneWidth));
-  const showMeter = !expired && !missedBite && !missedElsewhere && (playing || reel.status !== "active");
+  const showMeter = !expired && !waitingForConfirmation && !missedBite && !missedElsewhere && playing;
   const begin = (source: string | number) => {
     if (blocked || input.current !== null) return;
     input.current = source;
@@ -75,11 +75,9 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
     changeHeld(false);
   };
   const waterActive = !expired && !missedBite && !missedElsewhere && !waitingForConfirmation && reel.status === "active";
-  const deliveryMessage = waitingForConfirmation ? missedBite ? "Поклёвка пропущена. Сохраняем завершение попытки."
-    : props.queued && props.uncertain ? "Результат записан. Улов появится на борту после синхронизации."
-    : reel.status === "escaped" ? "Рыба сорвалась." : "Проверяем улов. Рыба появится на борту после подтверждения."
-    : expired ? "Время этого заброса истекло." : missedElsewhere ? "Время для подсечки прошло. Если вываживаете рыбу в другой вкладке, закончите попытку там."
-    : missedBite ? "Рыба ушла." : reel.status === "caught" ? "Мохлик поднимает рыбу на борт…" : reel.status === "escaped" ? "Рыба сорвалась." : null;
+  const deliveryMessage = expired ? "Время этого заброса истекло."
+    : missedElsewhere && !waitingForConfirmation ? "Время для подсечки прошло. Если вываживаете рыбу в другой вкладке, закончите попытку там."
+    : missedBite ? "Поклёвка пропущена." : reel.status === "escaped" ? "Рыба сорвалась." : null;
   return <section className={gameStyles.attempt} data-boat-reel={challenge.id} data-reel-status={stage}
     data-reel-tick={reel.tick} data-reel-progress={reel.progress} aria-label="Вываживание рыбы">
     <span className={gameStyles.srOnly} role="status">{status}</span>

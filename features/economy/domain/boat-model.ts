@@ -15,7 +15,8 @@ export const boatArtifactIds = ["landing_net", "telescope"] as const;
 const artifact = z.enum(boatArtifactIds);
 export const boatReelInputSchema = z.object({ tick: count.max(599), held: z.boolean() }).strict();
 export const BOAT_HOOK_WINDOW_MS = 3200;
-export const boatReelCommandSchema = z.object({ challengeId: uuid, deferred: z.boolean().optional(), missedBite: z.literal(true).optional(), inputs: z.array(boatReelInputSchema).max(600), endTick: count.max(600) }).strict()
+export const boatReelCommandSchema = z.object({ challengeId: uuid, deferred: z.boolean().optional(), missedBite: z.literal(true).optional(),
+  prepared: z.object({ castNumber: count.min(1).max(11), startedAt: instant, castHeldMs: count.max(60_000) }).strict().optional(), inputs: z.array(boatReelInputSchema).max(600), endTick: count.max(600) }).strict()
   .refine(value => value.missedBite ? value.endTick === 0 && value.inputs.length === 0 : value.endTick > 0, "A missed bite has no reel input")
   .refine(value => value.inputs.every((input, index) => input.tick < value.endTick && (!index || input.tick > value.inputs[index - 1].tick)), "Inputs must be ordered within the attempt");
 export const boatResistanceIds = ["steady", "sprightly", "surging", "stubborn"] as const;
@@ -23,6 +24,7 @@ export type BoatResistance = typeof boatResistanceIds[number];
 export const boatChallengeSchema = z.object({ id: uuid, rulesVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]), seed: count.max(0xffff_ffff), tickMs: z.literal(50),
   maxTicks: z.literal(600), zoneWidth: count.min(590).max(4000).multipleOf(2), difficulty: count.min(1).max(5), startedAt: instant, expiresAt: instant,
   motorResponse: count.max(5).optional(), hullDamping: count.max(20).optional(),
+  landingPreview: z.object({ fishId: id, weightGrams: count.min(1).max(1_000_000) }).optional(),
   resistance: z.enum(boatResistanceIds).optional(), biteAt: instant.optional(), fishRarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).optional() })
   .refine(value => Date.parse(value.expiresAt) > Date.parse(value.startedAt)
     && (!value.biteAt || Date.parse(value.biteAt) >= Date.parse(value.startedAt) && Date.parse(value.biteAt) < Date.parse(value.expiresAt)), "Attempt bite must be within its lifetime")
@@ -30,6 +32,11 @@ export const boatChallengeSchema = z.object({ id: uuid, rulesVersion: z.union([z
   .refine(value => value.rulesVersion === 1 || value.resistance !== undefined, "Versioned attempts require their saved resistance profile")
   .refine(value => value.rulesVersion < 3 || value.fishRarity !== undefined, "V3+ attempts require their public fish class")
   .refine(value => value.rulesVersion < 5 || value.motorResponse !== undefined && value.hullDamping !== undefined, "V5+ attempts require saved control parameters");
+export const boatPreparedCastSchema = z.object({ id: uuid, castNumber: count.min(1).max(11), rulesVersion: z.literal(6),
+  seed: count.max(0xffff_ffff), tickMs: z.literal(50), maxTicks: z.literal(600), zoneWidth: count.min(590).max(4000).multipleOf(2),
+  difficulty: count.min(1).max(5), motorResponse: count.max(5), hullDamping: count.max(20), resistance: z.enum(boatResistanceIds),
+  fishRarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]), biteDelayMs: count.min(4000).max(7000) });
+export type BoatPreparedCast = z.infer<typeof boatPreparedCastSchema>;
 const boatCatchSchema = z.object({ castIndex: count.max(10), reelSeconds: count.max(30).optional(), fishId: id, weightGrams: count.min(1).max(1_000_000), caughtAt: instant });
 const boatWorkSchema = z.object({ id: uuid, upgradeId: z.enum(boatUpgradeIds), startedAt: instant, finishesAt: instant, cost })
   .refine(value => Date.parse(value.finishesAt) > Date.parse(value.startedAt), "Boat work must take time");
@@ -37,7 +44,7 @@ const voyageFields = { id: uuid, routeId: id, departedAt: instant, arrivesAt: in
   returnStartedAt: instant.optional(), returnsAt: instant.optional(), maxCasts: count.min(1).max(11), maxCatches: count.min(1).max(10),
   castsUsed: count.max(11), catches: z.array(boatCatchSchema).max(10),
   loadout: z.object({ rodId: id, hookId: id, baitId: id.nullable() }), outboundSeconds: count.max(3600), inboundSeconds: count.max(3600),
-  challenge: boatChallengeSchema.optional() };
+  challenge: boatChallengeSchema.optional(), preparedCasts: z.array(boatPreparedCastSchema).max(2).optional() };
 export const boatVoyageSchema = z.object(voyageFields).refine(value => value.castsUsed <= value.maxCasts
   && value.catches.length <= Math.min(value.maxCatches, value.castsUsed)
   && new Set(value.catches.map(caught => caught.castIndex)).size === value.catches.length && value.catches.every(caught => caught.castIndex < value.castsUsed)
@@ -45,8 +52,8 @@ export const boatVoyageSchema = z.object(voyageFields).refine(value => value.cas
   && (value.returnStartedAt == null) === (value.returnsAt == null)
   && (!value.returnStartedAt || Date.parse(value.returnsAt!) >= Date.parse(value.returnStartedAt))
   && (!value.challenge || value.castsUsed > 0 && !value.returnStartedAt), "Invalid saved boat voyage");
-export const boatPrivateVoyageSchema = boatVoyageSchema.safeExtend({ slots: z.array(z.object({ fishId: id, weightGrams: count.min(1).max(1_000_000),
-  challengeSeed: count.max(0xffff_ffff), difficulty: count.min(1).max(5), zoneWidth: z.union([z.literal(3200), z.literal(4000)]) })).min(1).max(11) })
+export const boatPrivateVoyageSchema = boatVoyageSchema.safeExtend({ lastCastEndedAt: instant.optional(), slots: z.array(z.object({ fishId: id, weightGrams: count.min(1).max(1_000_000),
+  ticketId: uuid.optional(), challengeSeed: count.max(0xffff_ffff), difficulty: count.min(1).max(5), zoneWidth: z.union([z.literal(3200), z.literal(4000)]) })).min(1).max(11) })
   .refine(value => value.slots.length === value.maxCasts, "Each attempt needs its saved outcome");
 const stateFields = { version: z.literal(1).prefault(1), level: count.max(1).prefault(0),
   modules: z.object({ engine: moduleTier, tank: moduleTier, hull: moduleTier, storage: moduleTier }).optional(),

@@ -21,6 +21,8 @@ export function createActivitySession(options: Options) {
   let explicitResumeAttempt = false;
   let lastInput = now(), acknowledgedInput = lastInput - 1, lastBeat = -Infinity;
   let presenceId: string | null = null, sequence = 0, pendingResume: PresenceCommand | null = null;
+  let confirmedUntil = 0, heartbeatRetryAt = 0;
+  let pendingHeartbeat: { command: PresenceCommand; inputAt: number } | null = null;
   let connectionFailures = 0;
   let request: AbortController | null = null;
   const listeners = new Set<() => void>();
@@ -29,6 +31,13 @@ export function createActivitySession(options: Options) {
     view = { ...view, ...patch }; listeners.forEach(listener => listener());
   };
   const idle = () => now() - lastInput >= ACTIVITY_IDLE_MS;
+  function rememberDeadline(answer: PresenceView, sentAt: number) {
+    // Use the server's remaining duration. Account for the time spent in transit
+    // conservatively and never assume that a lost reply extended the lease.
+    const expiresAt = Math.min(Date.parse(answer.leaseExpiresAt ?? ""), Date.parse(answer.idleExpiresAt ?? ""));
+    const remaining = expiresAt - Date.parse(answer.serverNow);
+    confirmedUntil = sentAt + (Number.isFinite(remaining) ? Math.max(0, remaining) : 0);
+  }
   function connectionRetryDelay(error?: unknown) {
     // A failed reconciliation already consumed a lease. Repeated failures must
     // not exhaust the account's hourly connection budget while the user waits.
@@ -40,6 +49,7 @@ export function createActivitySession(options: Options) {
   function disconnect(mode: ActivityMode, notify = true) {
     const previous = presenceId;
     ++generation; request?.abort(); request = null; presenceId = null; pendingResume = null;
+    pendingHeartbeat = null; heartbeatRetryAt = 0; confirmedUntil = 0;
     options.connected(null);
     publish({ mode, error: null, retryAt: Math.max(view.retryAt, mode === "error" ? now() + 3000 : 0) });
     if (previous && notify && online) {
@@ -48,7 +58,7 @@ export function createActivitySession(options: Options) {
     }
   }
   async function connect(explicit: boolean) {
-    if (!running || request || !online || !visible || now() < view.retryAt) return;
+    if (!running || request || !online || !visible || view.mode === "active" || now() < view.retryAt) return;
     if (explicit) { lastInput = now(); explicitResumeAttempt = true; }
     else if (view.mode === "away" || idle() || view.resumeRequired && !explicitResumeAttempt) { disconnect("away"); return; }
     const epoch = ++generation, controller = new AbortController(); request = controller;
@@ -56,6 +66,7 @@ export function createActivitySession(options: Options) {
     pendingResume = command;
     options.connected(null); publish({ mode: "connecting", error: null, retryAt: 0 });
     try {
+      const sentAt = now();
       const answer = await options.send(command, controller.signal);
       if (!running || epoch !== generation) return;
       if (answer.presenceId !== command.presenceId) throw new Error("Presence owner mismatch");
@@ -65,6 +76,7 @@ export function createActivitySession(options: Options) {
         return;
       }
       presenceId = command.presenceId; sequence = 0; pendingResume = null;
+      rememberDeadline(answer, sentAt);
       acknowledgedInput = lastInput; lastBeat = now(); options.connected(presenceId);
       const ready = await options.reconcile();
       if (!running || epoch !== generation) return;
@@ -86,19 +98,27 @@ export function createActivitySession(options: Options) {
     } finally { if (request === controller) request = null; }
   }
   async function heartbeat() {
-    if (!running || request || !presenceId || view.mode !== "active" || !online || !visible) return;
+    if (!running || request || !presenceId || view.mode !== "active" || !online || !visible || now() < heartbeatRetryAt) return;
     if (idle()) { disconnect("away"); return; }
     const epoch = generation, controller = new AbortController(); request = controller;
-    const inputAt = lastInput, command = { kind: "heartbeat" as const, presenceId, sequence: ++sequence, active: inputAt > acknowledgedInput };
-    lastBeat = now();
+    pendingHeartbeat ??= { inputAt: lastInput, command: { kind: "heartbeat", presenceId, sequence: ++sequence, active: lastInput > acknowledgedInput } };
+    const { inputAt, command } = pendingHeartbeat;
+    const sentAt = now(); lastBeat = sentAt;
     try {
       const answer = await options.send(command, controller.signal);
       if (!running || epoch !== generation) return;
-      if (answer.presenceId !== command.presenceId) throw new Error("Presence owner mismatch");
+      if (answer.presenceId !== command.presenceId) { disconnect("error", false); return; }
       if (answer.status !== "active") { disconnect(answer.status === "idle" ? "away" : "error", false); return; }
       acknowledgedInput = inputAt;
+      rememberDeadline(answer, sentAt);
+      pendingHeartbeat = null; heartbeatRetryAt = 0; connectionFailures = 0;
     } catch (error) {
       if (!running || epoch !== generation) return;
+      const transient = !(error instanceof ApiError) || error.status >= 500 || error.status === 408;
+      if (transient && now() < confirmedUntil) {
+        heartbeatRetryAt = now() + connectionRetryDelay();
+        return;
+      }
       disconnect("error", false);
       if (error instanceof ApiError && error.status === 401) options.sessionLost();
       publish({ error: "Потеряна связь с сервером. Сверим сохранённые действия перед продолжением.",
@@ -117,7 +137,8 @@ export function createActivitySession(options: Options) {
       if (idle()) disconnect("away"); else { lastInput = now(); if (lastInput - acknowledgedInput >= ACTIVITY_IDLE_MS - 60_000) void heartbeat(); }
     },
     check() { if (!running) return; if (view.mode !== "away" && idle()) { disconnect("away"); return; }
-      if (view.mode === "active" && now() - lastBeat >= ACTIVITY_HEARTBEAT_MS) void heartbeat();
+      if (view.mode === "active" && pendingHeartbeat && now() >= confirmedUntil) { disconnect("error", false); return; }
+      if (view.mode === "active" && (heartbeatRetryAt ? now() >= heartbeatRetryAt : now() - lastBeat >= ACTIVITY_HEARTBEAT_MS)) void heartbeat();
       else if (online && visible && (view.mode === "error" || view.mode === "offline" || view.mode === "hidden")
         && (!view.resumeRequired || explicitResumeAttempt)) void connect(false);
     },

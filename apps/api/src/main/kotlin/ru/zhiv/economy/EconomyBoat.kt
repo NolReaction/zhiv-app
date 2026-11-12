@@ -26,11 +26,29 @@ object EconomyBoats {
             else -> "fishing"
         }
     }
+    private fun prepareCast(boat: EconomyBoatState, slot: EconomyBoatSlot, castNumber: Int, id: String): EconomyBoatPreparedCast {
+        val rarity = checkNotNull(EconomyRules.catalog.fishing).fish.single { it.itemId == slot.fishId }.rarity
+        val modules = EconomyBoatWorkshop.modules(boat)
+        val response = config.moduleEffects.engine[modules.engine]
+        val damping = config.moduleEffects.hull[modules.hull]
+        return EconomyBoatPreparedCast(id, castNumber, slot.challengeSeed, EconomyBoatReel.zoneWidth(slot.zoneWidth, rarity, response, damping),
+            slot.difficulty, response, damping, EconomyBoatReel.resistanceForClass(rarity, slot.challengeSeed), rarity, ((4 + slot.challengeSeed % 4) * 1000).toInt())
+    }
+    private fun preparedCasts(boat: EconomyBoatState, voyage: EconomyBoatVoyage): List<EconomyBoatPreparedCast> {
+        if (voyage.returnStartedAt != null || voyage.outboundSeconds + voyage.inboundSeconds != 0L) return emptyList()
+        val limit = minOf(2, voyage.maxCatches - voyage.catches.size)
+        return voyage.slots.drop(voyage.castsUsed).take(limit).mapIndexedNotNull { index, slot ->
+            slot.ticketId?.let { prepareCast(boat, slot, voyage.castsUsed + index + 1, it) }
+        }
+    }
     fun publicView(value: EconomyBoatState?): EconomyBoatView {
         val b = value ?: EconomyBoatState()
         val voyage = b.voyage?.let { v -> EconomyBoatVoyageView(v.id, v.routeId, v.departedAt, v.arrivesAt, v.fishingUntil,
             v.maxCasts, v.maxCatches, v.castsUsed, v.catches, v.loadout, v.outboundSeconds, v.inboundSeconds,
-            v.returnStartedAt, v.returnsAt, v.challenge) }
+            v.returnStartedAt, v.returnsAt, v.challenge?.let { challenge ->
+                val slot = v.slots[v.castsUsed - 1]
+                challenge.copy(landingPreview = EconomyBoatLandingPreview(slot.fishId, slot.weightGrams))
+            }, preparedCasts(b, v)) }
         return EconomyBoatView(b.version, b.level, b.upgrades, b.blueprints, b.artifacts, b.completedVoyages, b.qualifiedVoyages, b.records, b.work, voyage, b.modules, b.fuel)
     }
     fun fishWeight(minGrams: Int, maxGrams: Int, first: Int, second: Int): Int {
@@ -107,21 +125,33 @@ object EconomyBoats {
                 val cost = EconomyCost(items = t.equippedBaitId?.let { mapOf(it to 1L) } ?: emptyMap())
                 val spent = EconomyRules.spend(state, cost)
                 val seed = "boat:${draw(0x1_0000_0000L)}:${draw(0x1_0000_0000L)}"
+                val voyageId = id()
                 val slots = (0 until casts).map { index ->
                     val fish = EconomyRules.selectFishingCatch(seed, loadout.rodId, loadout.baitId, loadout.hookId, index)
                     val weight = config.weights.getValue(fish)
                     val grams = fishWeight(weight.minGrams, weight.maxGrams, draw(10001).toInt(), draw(10001).toInt())
                     val rarity = checkNotNull(EconomyRules.catalog.fishing).fish.single { it.itemId == fish }.rarity
                     val difficulty = minOf(5, fishingShopRarities.indexOf(rarity) + 1 + if ((grams - weight.minGrams).toLong() * 100 > (weight.maxGrams - weight.minGrams).toLong() * 65) 1 else 0)
-                    EconomyBoatSlot(fish, grams, draw(0x1_0000_0000L), difficulty, if ("landing_net" in b.artifacts) config.netZoneWidth else config.zoneWidth)
+                    EconomyBoatSlot(fish, grams, draw(0x1_0000_0000L), difficulty, if ("landing_net" in b.artifacts) config.netZoneWidth else config.zoneWidth, ticketId = id())
                 }
-                val voyage = EconomyBoatVoyage(id(), config.routeId, now.toString(), now.plusSeconds(outbound).toString(),
+                val voyage = EconomyBoatVoyage(voyageId, config.routeId, now.toString(), now.plusSeconds(outbound).toString(),
                     now.plusSeconds(outbound + config.activeSeconds).toString(), casts, maxCatches, loadout = loadout,
                     outboundSeconds = outbound, inboundSeconds = inbound, slots = slots)
                 return spent.copy(boat = b.copy(voyage = voyage, fuel = EconomyBoatWorkshop.useCell(b, now))) to "Мохлик отправился на речной плёс"
             }
         }
         val v = b.voyage?.takeIf { it.id == command.targetId } ?: economyFailure("ECONOMY_BOAT_VOYAGE_GONE", "Поездка уже завершена или изменилась")
+        val prepared = command.reel?.prepared
+        if (command.action == "submit_boat_cast" && prepared != null) {
+            val ticket = v.slots.getOrNull(v.castsUsed)?.ticketId
+            val started = Instant.parse(prepared.startedAt)
+            if (v.returnStartedAt != null || v.outboundSeconds + v.inboundSeconds != 0L || ticket == null || ticket != command.reel.challengeId ||
+                prepared.castNumber != v.castsUsed + 1 || started.isBefore(Instant.parse(v.lastCastEndedAt ?: v.arrivesAt)) || started.isAfter(now))
+                economyFailure("ECONOMY_BOAT_CAST_GONE", "Этот заброс уже изменился. Обновите улов")
+            val begin = command.copy(action = "begin_boat_cast", reel = null, castHeldMs = prepared.castHeldMs)
+            val issued = command(state, begin, started, reserved, random, id = { ticket }).first
+            return command(issued, command.copy(reel = command.reel.copy(prepared = null)), now, reserved, random, id)
+        }
         val phase = phase(b, now)
         when (command.action) {
             "begin_boat_cast" -> {
@@ -130,19 +160,15 @@ object EconomyBoats {
                 if (v.castsUsed >= v.maxCasts || v.catches.size >= v.maxCatches) economyFailure("ECONOMY_BOAT_CAST_LIMIT", "Забросы закончились. Пора возвращаться")
                 val slot = v.slots[v.castsUsed]
                 val expiry = minOf(now.plusSeconds(config.castExpirySeconds), Instant.parse(v.fishingUntil))
-                val biteAt = now.plusSeconds(4 + slot.challengeSeed % 4)
-                if (!biteAt.plusMillis(50).isBefore(expiry)) economyFailure("ECONOMY_BOAT_CAST_WAIT", "Для нового заброса не хватает времени. Пора возвращаться")
-                val rarity = checkNotNull(EconomyRules.catalog.fishing).fish.single { it.itemId == slot.fishId }.rarity
-                val modules = EconomyBoatWorkshop.modules(b)
-                val response = config.moduleEffects.engine[modules.engine]
-                val damping = config.moduleEffects.hull[modules.hull]
-                val modern = v.outboundSeconds + v.inboundSeconds == 0L
-                val width = if (modern) EconomyBoatReel.zoneWidth(slot.zoneWidth, rarity, response, damping) else slot.zoneWidth
-                val challenge = EconomyBoatChallenge(id(), rulesVersion = if (modern) 6 else 4,
-                    motorResponse = response.takeIf { modern }, hullDamping = damping.takeIf { modern },
-                    resistance = EconomyBoatReel.resistanceForClass(rarity, slot.challengeSeed), seed = slot.challengeSeed, zoneWidth = width, difficulty = slot.difficulty,
-                    startedAt = now.toString(), expiresAt = expiry.toString(), biteAt = biteAt.toString(), fishRarity = rarity)
                 val castNumber = v.castsUsed + 1
+                val params = prepareCast(b, slot, castNumber, id())
+                val biteAt = now.plusMillis(params.biteDelayMs.toLong())
+                if (!biteAt.plusMillis(50).isBefore(expiry)) economyFailure("ECONOMY_BOAT_CAST_WAIT", "Для нового заброса не хватает времени. Пора возвращаться")
+                val modern = v.outboundSeconds + v.inboundSeconds == 0L
+                val challenge = EconomyBoatChallenge(params.id, rulesVersion = if (modern) params.rulesVersion else 4,
+                    motorResponse = params.motorResponse.takeIf { modern }, hullDamping = params.hullDamping.takeIf { modern },
+                    resistance = params.resistance, seed = params.seed, zoneWidth = if (modern) params.zoneWidth else slot.zoneWidth, difficulty = params.difficulty,
+                    startedAt = now.toString(), expiresAt = expiry.toString(), biteAt = biteAt.toString(), fishRarity = params.fishRarity)
                 val slots = command.castHeldMs?.let { held ->
                     val quality = boatCastQuality(v.id, castNumber, held)
                     val range = config.weights.getValue(slot.fishId)
@@ -164,7 +190,7 @@ object EconomyBoats {
                     economyFailure("ECONOMY_BOAT_TRACE", "Дождитесь поклёвки и завершите вываживание")
                 if (reel.missedBite) {
                     if (challenge.rulesVersion < 6) economyFailure("ECONOMY_BOAT_TRACE", "Некорректный результат подсечки")
-                    return state.copy(boat = b.copy(voyage = v.copy(challenge = null))) to "Поклёвка пропущена. Улов остаётся на борту"
+                    return state.copy(boat = b.copy(voyage = v.copy(challenge = null, lastCastEndedAt = earliestFinish.toString()))) to "Поклёвка пропущена. Улов остаётся на борту"
                 }
                 val result = try { EconomyBoatReel.replay(challenge, reel) }
                     catch (_: IllegalArgumentException) { economyFailure("ECONOMY_BOAT_TRACE", "Не удалось проверить управление удочкой") }
@@ -175,7 +201,7 @@ object EconomyBoats {
                     v.catches + EconomyBoatCatch(v.castsUsed - 1, slot.fishId, slot.weightGrams, minOf(now, expiry).toString(),
                         if (v.outboundSeconds + v.inboundSeconds == 0L) reel.endTick * challenge.tickMs / 1000 else null)
                 } else v.catches
-                return state.copy(boat = b.copy(voyage = v.copy(catches = catches, challenge = null))) to
+                return state.copy(boat = b.copy(voyage = v.copy(catches = catches, challenge = null, lastCastEndedAt = earliestFinish.toString()))) to
                     if (result.status == "caught") "Рыба в лодке! Заберите улов после возвращения" else "Рыба сорвалась"
             }
             "return_boat" -> {

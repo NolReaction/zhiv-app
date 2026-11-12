@@ -4,13 +4,22 @@ import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import ru.zhiv.http.parseCanonicalUuidV4
+import java.time.Instant
 import kotlin.math.abs
+
+@Serializable data class EconomyPreparedCastStart(val castNumber: Int, val startedAt: String, val castHeldMs: Int) {
+    init {
+        require(castNumber in 1..11 && castHeldMs in 0..BOAT_CAST_CYCLE_MS)
+        require(startedAt.length in 20..30 && startedAt[4] == '-' && startedAt.endsWith("Z") && runCatching { Instant.parse(startedAt) }.isSuccess)
+    }
+}
 
 @Serializable data class EconomyBoatReelInput(val tick: Int, val held: Boolean)
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyBoatReelSubmission(val challengeId: String, val inputs: List<EconomyBoatReelInput>, val endTick: Int,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val deferred: Boolean = false,
-    @EncodeDefault(EncodeDefault.Mode.NEVER) val missedBite: Boolean = false) {
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val missedBite: Boolean = false,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val prepared: EconomyPreparedCastStart? = null) {
     init {
         require(parseCanonicalUuidV4(challengeId) != null && inputs.size <= 600)
         require(if (missedBite) endTick == 0 && inputs.isEmpty() else endTick in 1..600)

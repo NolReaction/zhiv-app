@@ -1,20 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { FishingRod } from "lucide-react";
 import { BOAT_CAST_CYCLE_MS, BOAT_CAST_GREEN_RADIUS, boatCastAim } from "@/features/economy/domain/boat-cast-aim";
 import styles from "./boat-cast-control.module.css";
 import { BOAT_CAST_MIN_HOLD_MS } from "./boat-cast-timing";
 import { focusBoatWaterIfIdle } from "./boat-water-focus";
 
-type CastGesture = { input: string; startedAt: number };
+type CastGesture = { input: string; startedAt: number; dock?: string };
+
+// Store both axes so the same feedback can reflow if the screen rotates after release.
+function meterDock(event: PointerEvent<HTMLButtonElement>) {
+  if (event.pointerType !== "touch" && event.pointerType !== "pen") return undefined;
+  const water = event.currentTarget.getBoundingClientRect();
+  const vertical = event.clientY - water.top >= water.height * 0.61 ? "upper" : "lower";
+  const horizontal = event.clientX - water.left >= water.width / 2 ? "left" : "right";
+  return `${vertical} ${horizontal}`;
+}
 
 function eventTime(timestamp?: number) {
   const now = performance.now();
   return timestamp != null && timestamp > 0 && timestamp <= now ? timestamp : now;
 }
 
-function CastMeter({ voyageId, castNumber, startedAt }: { voyageId: string; castNumber: number; startedAt: number }) {
+function CastMeter({ voyageId, castNumber, startedAt, dock }: { voyageId: string; castNumber: number; startedAt: number; dock?: string }) {
   const [aim, setAim] = useState(() => boatCastAim(voyageId, castNumber, performance.now() - startedAt));
   useEffect(() => {
     let frame = 0;
@@ -32,7 +41,7 @@ function CastMeter({ voyageId, castNumber, startedAt }: { voyageId: string; cast
   } as CSSProperties;
   return <span className={styles.meter} role="meter" aria-label="Точность заброса"
     aria-valuemin={0} aria-valuemax={100} aria-valuenow={aim.quality}
-    data-marker={aim.marker} data-target={aim.target} style={position}>
+    data-meter-dock={dock} data-marker={aim.marker} data-target={aim.target} style={position}>
     <span className={styles.caption} aria-hidden="true">Точность заброса <b>{aim.quality}%</b></span>
     <span className={styles.track} aria-hidden="true"><i className={styles.window} /><i className={styles.needle} /></span>
   </span>;
@@ -43,7 +52,7 @@ type Props = {
   awaitingLanding?: boolean;
   voyageId: string;
   castNumber: number;
-  onCast: (power: number, heldMs: number, quality: number) => void;
+  onCast: (power: number, heldMs: number, quality: number, dock?: string) => void;
   onChargingChange?: (charging: boolean) => void;
 };
 
@@ -54,7 +63,7 @@ export function BoatCastControl({ disabled, awaitingLanding = false, voyageId, c
   const armTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const notify = useRef(onChargingChange);
   useEffect(() => { notify.current = onChargingChange; }, [onChargingChange]);
-  const prepared = useRef<{ power: number; elapsed: number; quality: number } | null>(null);
+  const prepared = useRef<{ power: number; elapsed: number; quality: number; dock?: string } | null>(null);
   const [waiting, setWaiting] = useState(false);
   const discard = useCallback(() => {
     if (!prepared.current) return;
@@ -93,14 +102,14 @@ export function BoatCastControl({ disabled, awaitingLanding = false, voyageId, c
     queueMicrotask(() => {
       if (!active || prepared.current !== cast) return;
       discard();
-      if (!document.hidden && (document.hasFocus?.() ?? true)) onCast(cast.power, cast.elapsed, cast.quality);
+      if (!document.hidden && (document.hasFocus?.() ?? true)) onCast(cast.power, cast.elapsed, cast.quality, cast.dock);
     });
     return () => { active = false; };
   }, [disabled, awaitingLanding, discard, onCast]);
 
-  const start = (input: string, timestamp?: number) => {
+  const start = (input: string, timestamp?: number, dock?: string) => {
     if (disabled || press.current || prepared.current) return;
-    const active = { input, startedAt: eventTime(timestamp) };
+    const active = { input, startedAt: eventTime(timestamp), dock };
     press.current = active;
     armTimer.current = setTimeout(() => {
       if (press.current !== active) return;
@@ -117,9 +126,9 @@ export function BoatCastControl({ disabled, awaitingLanding = false, voyageId, c
     const elapsed = duration % BOAT_CAST_CYCLE_MS;
     const { power, quality } = boatCastAim(voyageId, castNumber, elapsed);
     if (awaitingLanding) {
-      prepared.current = { power, elapsed, quality };
+      prepared.current = { power, elapsed, quality, dock: active.dock };
       setWaiting(true);
-    } else onCast(power, elapsed, quality);
+    } else onCast(power, elapsed, quality, active.dock);
   };
   const cancelPointer = (pointerId: number) => { if (press.current?.input === String(pointerId)) cancel(); };
   return <>
@@ -131,7 +140,7 @@ export function BoatCastControl({ disabled, awaitingLanding = false, voyageId, c
         event.preventDefault();
         event.currentTarget.focus({ preventScroll: true });
         event.currentTarget.setPointerCapture(event.pointerId);
-        start(String(event.pointerId), event.timeStamp);
+        start(String(event.pointerId), event.timeStamp, meterDock(event));
       }}
       onPointerUp={event => {
         if (!event.isPrimary) return;
@@ -159,6 +168,6 @@ export function BoatCastControl({ disabled, awaitingLanding = false, voyageId, c
         <FishingRod size={20} />{waiting ? "Замах готов" : "Удерживать для заброса"}
       </span>}
     </button>
-    {gesture && !disabled && <CastMeter voyageId={voyageId} castNumber={castNumber} startedAt={gesture.startedAt} />}
+    {gesture && !disabled && <CastMeter voyageId={voyageId} castNumber={castNumber} startedAt={gesture.startedAt} dock={gesture.dock} />}
   </>;
 }

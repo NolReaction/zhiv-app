@@ -35,10 +35,11 @@ export function useEconomy(owner: string | null, onSessionLost: () => void, enab
     const kickoff = setTimeout(() => { void session.refresh(); }, 0);
     const clock = setInterval(() => {
       if (!document.hidden) {
+        if (session.getSnapshot().preparedBoatPending) session.tickPreparedBoat();
         setNow(session.now());
         if (navigator.onLine) {
-          if (session.getSnapshot().pendingBoatCastId || session.getSnapshot().pendingProductionCount > 0) void session.refreshSoft();
-          else void session.retryThrottled();
+          void session.retryPending();
+          if (session.getSnapshot().preparedBoatPending || session.getSnapshot().pendingBoatCastId || session.getSnapshot().pendingProductionCount > 0) void session.refreshSoft();
         }
       }
     }, 1000);

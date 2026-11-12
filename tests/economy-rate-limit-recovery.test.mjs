@@ -104,18 +104,18 @@ test("a long server wait retries the same construction receipt once at its deadl
   assert.equal(session.getSnapshot().rateLimited, true); assert.equal(session.getSnapshot().uncertain, true);
   assert.equal(session.getSnapshot().retryAt - session.now(), 2_051_000); assert.equal(cache.data.size, 1);
   session.setAvailable(false); clock = 1_800_000; session.setAvailable(true);
-  for (let i = 0; i < 30; i++) { await session.retryThrottled(); await session.retry(); await session.refreshSoft(); }
+  for (let i = 0; i < 30; i++) { await session.retryPending(); await session.retry(); await session.refreshSoft(); }
   assert.equal(sent.length, 1); assert.equal(reads, 1, "polling also respects the cooldown");
-  clock = 2_050_999; await session.retryThrottled(); assert.equal(sent.length, 1);
-  clock++; const retry = session.retryThrottled();
-  for (let i = 0; i < 30; i++) { await session.retryThrottled(); await session.retry(); }
+  clock = 2_050_999; await session.retryPending(); assert.equal(sent.length, 1);
+  clock++; const retry = session.retryPending();
+  for (let i = 0; i < 30; i++) { await session.retryPending(); await session.retry(); }
   assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
   assert.equal(session.getSnapshot().busy, true); assert.equal(session.getSnapshot().rateLimited, false);
   answer.resolve(result(state(1))); await retry;
   assert.equal(session.getSnapshot().uncertain, false); assert.equal(session.getSnapshot().syncPending, false); assert.equal(cache.data.size, 0);
 });
 
-test("a repeated 429 establishes a fresh full wait; a later network failure retains the receipt without an automatic retry loop", async t => {
+test("a repeated 429 establishes a fresh full wait; network failures retry automatically with bounded backoff", async t => {
   let clock = 0; t.mock.method(performance, "now", () => clock);
   const sent = [], cache = storage();
   const session = createEconomySession(owner, transport({ send: async value => {
@@ -125,13 +125,14 @@ test("a repeated 429 establishes a fresh full wait; a later network failure reta
     throw new TypeError("Failed to fetch");
   } }), () => assert.fail(), cache);
   t.after(session.activate()); await session.refresh(); session.act("start_construction", "home"); await flush();
-  clock = 2000; await session.retryThrottled(); assert.equal(sent.length, 2);
+  clock = 2000; await session.retryPending(); assert.equal(sent.length, 2);
   assert.equal(session.getSnapshot().retryAt - session.now(), 30_000);
-  clock = 31_999; await session.retryThrottled(); assert.equal(sent.length, 2);
-  clock++; await session.retryThrottled(); assert.equal(sent.length, 3);
+  clock = 31_999; await session.retryPending(); assert.equal(sent.length, 2);
+  clock++; await session.retryPending(); assert.equal(sent.length, 3);
   assert.equal(session.getSnapshot().rateLimited, false); assert.equal(session.getSnapshot().uncertain, true); assert.equal(cache.data.size, 1);
-  for (let i = 0; i < 120; i++) { clock += 1000; await session.retryThrottled(); }
-  assert.equal(sent.length, 3); assert.deepEqual(sent[2], sent[0]);
+  for (let i = 0; i < 120; i++) { clock += 1000; await session.retryPending(); }
+  assert.equal(sent.length, 8, "network retries occur after 2, 4, 8, 16, and 32 seconds; the next waits 60 seconds");
+  assert.ok(sent.every(command => JSON.stringify(command) === JSON.stringify(sent[0])));
 });
 
 test("a poll that is throttled at a pending command's deadline publishes the full extended wait and preserves its receipt", async t => {
@@ -151,15 +152,15 @@ test("a poll that is throttled at a pending command's deadline publishes the ful
   assert.equal(session.getSnapshot().retryAt - session.now(), 1_323_000, "the displayed deadline follows the newly enforced server wait");
   assert.equal(session.getSnapshot().error, original.error); assert.equal(session.getSnapshot().syncError, original.syncError);
   assert.equal([...cache.data.values()][0], receipt); assert.equal(session.getSnapshot().uncertain, true);
-  for (let i = 0; i < 10; i++) { await session.retryThrottled(); await session.retry(); }
+  for (let i = 0; i < 10; i++) { await session.retryPending(); await session.retry(); }
   assert.equal(sent.length, 1);
-  clock += 1_322_999; await session.retryThrottled(); assert.equal(sent.length, 1);
-  clock++; await session.retryThrottled();
+  clock += 1_322_999; await session.retryPending(); assert.equal(sent.length, 1);
+  clock++; await session.retryPending();
   assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
   assert.equal(session.getSnapshot().uncertain, false); assert.equal(session.getSnapshot().rateLimited, false);
 });
 
-test("a throttled GET cannot enable automatic recovery for an ordinary unknown network receipt", async t => {
+test("automatic recovery of an ordinary unknown receipt respects a later GET cooldown", async t => {
   let clock = 0, reads = 0; t.mock.method(performance, "now", () => clock);
   const sent = [], cache = storage();
   const session = createEconomySession(owner, transport({
@@ -171,11 +172,11 @@ test("a throttled GET cannot enable automatic recovery for an ordinary unknown n
   await session.refresh();
   assert.equal(session.getSnapshot().rateLimited, false); assert.equal(session.getSnapshot().error, original.error);
   assert.equal([...cache.data.values()][0], receipt); assert.equal(session.getSnapshot().uncertain, true);
-  await session.retryThrottled(); await session.retry(); assert.equal(sent.length, 1, "manual recovery also honors the GET cooldown");
+  await session.retryPending(); await session.retry(); assert.equal(sent.length, 1, "manual recovery also honors the GET cooldown");
   clock = 30_000;
-  for (let i = 0; i < 10; i++) await session.retryThrottled();
-  assert.equal(sent.length, 1, "GET throttling cannot turn an unknown write into automatic work");
-  await session.retry(); assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
+  for (let i = 0; i < 10; i++) await session.retryPending();
+  assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
+  assert.equal(session.getSnapshot().uncertain, false); assert.equal(cache.data.size, 0);
 });
 
 test("429 without a usable server deadline waits a minute; explicit rejection never retries automatically", async t => {
@@ -187,10 +188,10 @@ test("429 without a usable server deadline waits a minute; explicit rejection ne
   } }), () => assert.fail(), cache);
   t.after(session.activate()); await session.refresh(); session.act("start_construction", "home"); await flush();
   assert.equal(session.getSnapshot().retryAt - session.now(), 60_000);
-  clock = 59_999; await session.retryThrottled(); assert.equal(sent.length, 1);
-  clock++; await session.retryThrottled(); assert.equal(sent.length, 2);
+  clock = 59_999; await session.retryPending(); assert.equal(sent.length, 1);
+  clock++; await session.retryPending(); assert.equal(sent.length, 2);
   assert.equal(session.getSnapshot().rateLimited, false); assert.equal(session.getSnapshot().uncertain, false); assert.equal(cache.data.size, 0);
-  for (let i = 0; i < 10; i++) await session.retryThrottled();
+  for (let i = 0; i < 10; i++) await session.retryPending();
   assert.equal(sent.length, 2); assert.match(session.getSnapshot().error, /Недостаточно/);
 });
 
@@ -200,11 +201,11 @@ test("paused, deactivated, or different-owner sessions cannot send a throttled r
   const wire = transport({ send: async value => { sent.push(value); if (sent.length === 1) throw limited(1000); return result(state(1)); } });
   const session = createEconomySession(owner, wire, () => assert.fail(), cache), stop = session.activate();
   await session.refresh(); session.act("start_construction", "home"); await flush(); clock = 2000;
-  session.setAvailable(false); await session.retryThrottled(); assert.equal(sent.length, 1);
-  stop(); session.setAvailable(true); await session.retryThrottled(); assert.equal(sent.length, 1);
+  session.setAvailable(false); await session.retryPending(); assert.equal(sent.length, 1);
+  stop(); session.setAvailable(true); await session.retryPending(); assert.equal(sent.length, 1);
   const foreign = createEconomySession(other, wire, () => assert.fail(), cache); t.after(foreign.activate());
-  await foreign.retryThrottled(); assert.equal(sent.length, 1); assert.equal(foreign.getSnapshot().syncPending, false);
-  t.after(session.activate()); await session.retryThrottled(); assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
+  await foreign.retryPending(); assert.equal(sent.length, 1); assert.equal(foreign.getSnapshot().syncPending, false);
+  t.after(session.activate()); await session.retryPending(); assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
 });
 
 test("queued production keeps its receipt and full 429 wait before draining once", async t => {
@@ -225,13 +226,21 @@ test("queued production keeps its receipt and full 429 wait before draining once
   assert.equal(session.getSnapshot().pendingProductionCount, 0); assert.equal(session.getSnapshot().rateLimited, false);
 });
 
-test("the real economy hook only resumes a throttled command while visible, online, enabled, and still owned", async t => {
+for (const failure of ["429", "lost acknowledgement", "lost acknowledgement with a local cast"]) test(`the real economy hook recovers ${failure} only while visible, online, enabled, and still owned`, async t => {
   hooks.reset(); t.after(() => hooks.reset());
   let clock = 0; t.mock.method(performance, "now", () => clock);
   const timers = new Map(), kickoff = new Map(), sent = [], answer = deferred();
   const document = new EventTarget(); document.hidden = false;
   const window = new EventTarget(); window.sessionStorage = storage();
   const navigator = { onLine: true };
+  let initial = state();
+  if (failure.endsWith("local cast")) {
+    const { createBoatWorkshopDemo } = await vite.ssrLoadModule("/features/economy/dev/boat-workshop-demo.ts");
+    const demo = createBoatWorkshopDemo({ ownerPublicId: owner, now: () => time });
+    const act = (action, targetId) => demo.send({ ...command(), expectedRevision: demo.read().revision, action, targetId });
+    act("start_boat_upgrade", "repair"); initial = act("depart_boat", economyCatalog.boat.routeId).state;
+    window.localStorage = storage(); navigator.locks = { request: (_name, _options, acquire) => acquire({}) };
+  }
   globalValue(t, "document", document); globalValue(t, "window", window); globalValue(t, "navigator", navigator);
   t.mock.method(globalThis, "setInterval", (callback, delay) => { const id = {}; timers.set(id, { callback, delay }); return id; });
   t.mock.method(globalThis, "clearInterval", id => timers.delete(id));
@@ -239,17 +248,28 @@ test("the real economy hook only resumes a throttled command while visible, onli
   t.mock.method(globalThis, "setTimeout", (callback, delay) => { if (delay !== 0) return realTimeout(callback, delay); const id = {}; kickoff.set(id, callback); return id; });
   t.mock.method(globalThis, "clearTimeout", id => { if (!kickoff.delete(id)) realClear(id); });
   t.mock.method(globalThis, "fetch", async (_path, options) => {
-    if (options.method === "GET") return Response.json(state());
+    if (options.method === "GET") return Response.json(initial);
     sent.push(JSON.parse(options.body));
-    if (sent.length === 1) return new Response("", { status: 429, headers: { "Retry-After": "2" } });
+    if (sent.length === 1) {
+      if (failure !== "429") throw new TypeError("Connection reset after commit");
+      return new Response("", { status: 429, headers: { "Retry-After": "2" } });
+    }
     await answer.promise; return Response.json(result(state(1)));
   });
   const onSessionLost = () => assert.fail();
   const Render = (enabled = true, identity = owner) => { hooks.render(); const view = useEconomy(identity, onSessionLost, enabled); hooks.flush(); return view; };
   const tick = async () => { for (const timer of timers.values()) if (timer.delay === 1000) timer.callback(); await flush(); };
   let view = Render(); for (const callback of kickoff.values()) callback(); kickoff.clear(); await flush();
-  view = Render(); assert.ok(view.snapshot); view.act("start_construction", "home"); await flush();
-  assert.equal(Render().rateLimited, true);
+  view = Render(); assert.ok(view.snapshot);
+  if (failure.endsWith("local cast")) {
+    view.setDirectActionsAvailable(false);
+    assert.equal(view.act("begin_boat_cast", initial.boat.voyage.id, 1, 0, undefined, undefined, { castHeldMs: 400 }), true);
+    view.setDirectActionsAvailable(true);
+    assert.equal(Render().preparedBoatPending, true, "the local draft must not monopolize the delivery clock");
+  }
+  assert.equal(view.act("start_construction", "home"), true); await flush();
+  assert.equal(Render().rateLimited, failure === "429");
+  clock = 1999; await tick(); assert.equal(sent.length, 1);
   clock = 2000; document.hidden = true; await tick(); assert.equal(sent.length, 1);
   document.hidden = false; navigator.onLine = false; await tick(); assert.equal(sent.length, 1);
   navigator.onLine = true; Render(false); await tick(); assert.equal(sent.length, 1);

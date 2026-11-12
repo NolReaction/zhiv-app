@@ -7,7 +7,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ root, configFile: false, appType: "custom", optimizeDeps: { noDiscovery: true, include: [] },
-  resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
+  resolve: { alias: { "@": root } }, server: { middlewareMode: true, watch: null, hmr: false, ws: false },
   plugins: [{ name: "reel-meter-controller-probe", enforce: "pre", transform(source, id) {
     if (id.endsWith("/features/economy/ui/boat/use-boat-reel-controller.ts")) return "export function useBoatReelController(){return globalThis.__reelMeterController}";
   } }],
@@ -89,10 +89,10 @@ test("an open panel blocks direct input while the active reel retains its normal
 
 test("a local success remains anonymous until the server confirms it, and expiry removes the meter", () => {
   const caught = renderGame({ playing: false, held: false, status: "Рыба у борта!", reel: { tick: 250, bar: 5000, fish: 5000, progress: 10000, velocity: 0, status: "caught" } });
-  assert.match(caught, /data-boat-reel-meter/); assert.match(caught, /поднимает рыбу на борт/); assert.doesNotMatch(caught, /data-fishing-action="submit"/);
+  assert.doesNotMatch(caught, /data-boat-reel-meter|data-fishing-action="submit"/);
   assert.doesNotMatch(caught, /fish_mooncarp|Легендарная|Улов подтверждён/);
   const pending = renderGame({ playing: false, waitingForConfirmation: true, status: "Проверяем результат" });
-  assert.match(pending, /Рыба появится на борту после подтверждения/); assert.doesNotMatch(pending, /data-fishing-action="submit"/);
+  assert.doesNotMatch(pending, /после подтверждения|data-boat-reel-meter|data-fishing-action="submit"/);
   const expired = renderGame({ playing: false, expired: true, status: "Рыба ушла" });
   assert.doesNotMatch(expired, /data-boat-reel-meter|data-fishing-action="hold"|data-fishing-action="submit"/);
 });
