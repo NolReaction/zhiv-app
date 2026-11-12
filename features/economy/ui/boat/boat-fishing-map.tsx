@@ -107,7 +107,8 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
   };
   const finishReturn = () => { if (!disabled && !suspended && send("return_boat", voyage.id)) setConfirmReturn(false); };
   const requestReturn = () => { if (!disabled && !suspended) { if (completed) finishReturn(); else setConfirmReturn(true); } };
-  return <section ref={river} className={styles.map} data-boat-map data-fishing-stage={frame.stage} aria-label="Карта речной рыбалки">
+  return <section ref={river} className={styles.map} data-boat-map data-fishing-stage={frame.stage}
+    data-water-input={!controlsSuspended && !completed || undefined} aria-label="Карта речной рыбалки">
     <RiverScene base={frame} owner={state.ownerPublicId} voyageId={voyage.id} count={voyage.catches.length} feed={feed} suspended={controlsSuspended} />
     <header className={styles.header}><div className={styles.location}><span>РЕЧНАЯ РЫБАЛКА</span><h2>{config.name}</h2><small>{completed ? <><Sailboat size={13} />Можно возвращаться домой</> : <><Clock3 size={13} /><span className={styles.returnLabel}>До возвращения</span><BoatCountdown until={Date.parse(voyage.fishingUntil)} now={economy.now} readClock={economy.readServerNow} /></>}</small></div>
       <div className={styles.headerActions}><span className={styles.counter}><FishingRod size={16} />{remaining}<small>забросов</small></span><span className={styles.counter}><Fish size={16} />{voyage.catches.length} / {voyage.maxCatches}<small>на борту</small></span>
