@@ -14,9 +14,9 @@ export function useEconomyAudioFeedback(view: EconomyAudioFeedbackView, enabled 
   useEffect(() => {
     if (!enabled || !owner) return;
     const controller = new AbortController();
-    // Prepare construction and short production-input cues before the action.
+    // Prepare short economy cues before a player acts, including a local refusal.
     // Cold network/decode work must not consume their event lifetimes.
-    void getAudioRuntime().prepare(["ui.construction-complete", "ui.production-start", "ui.collect"], { signal: controller.signal }).catch(() => {});
+    void getAudioRuntime().prepare(["ui.construction-complete", "ui.production-start", "ui.collect", "ui.error"], { signal: controller.signal }).catch(() => {});
     return () => controller.abort();
   }, [enabled, owner]);
   useEffect(() => {

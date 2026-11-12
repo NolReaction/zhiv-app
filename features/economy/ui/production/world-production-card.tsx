@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Clock3, Flame, LockKeyhole } from "lucide-react";
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { locked, productionLocked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import { worldCostShortfalls, worldItemAvailable, worldRecipeCost, worldProductionReason, worldRecipeAccessReason, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
@@ -84,6 +86,11 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
       setFeedback(null);
     }
   }, [state.ownerPublicId, state.revision, economy.busy, economy.uncertain, economy.error]);
+  function deny(message: string) {
+    setNotice(message);
+    playUiCue(getAudioRuntime(), "ui.error");
+    return false;
+  }
   function start(selection?: FishSelection): boolean {
     context();
     const current = latest.current, snapshot = current.economy.productionSnapshot ?? current.economy.snapshot;
@@ -97,20 +104,17 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
     const missing = currentReason === "Не хватает материалов или монет" ? worldCostShortfalls(snapshot, worldRecipeCost(snapshot, current.recipe))
       .map(entry => `${entry.id === "coins" ? "Монеты" : itemName(snapshot, entry.id)} ×${number(entry.required - entry.available)}`).join(", ") : "";
     const blocked = wait ?? (missing ? `Не хватает: ${missing}.` : currentReason);
-    if (blocked) { setNotice(blocked); return false; }
+    if (blocked) return deny(blocked);
     if (hasFish && !selection) {
       fishFocusOrigin.current = { element: button.current, owner: snapshot.ownerPublicId, recipeId: current.recipe.id };
       setChoosingFish(true); return false;
     }
-    if (selection && !fishSelectionMatches(snapshot, worldRecipeCost(snapshot, current.recipe).items, selection)) return false;
+    if (selection && !fishSelectionMatches(snapshot, worldRecipeCost(snapshot, current.recipe).items, selection)) return deny("Запас рыбы изменился. Выберите рыбу снова.");
     const action = current.tutorialHarvestActive && canPrepareTutorialHarvest(snapshot, current.recipe.id)
       ? "start_tutorial_harvest" : "start_production";
     const accepted = selection ? current.economy.act(action, current.recipe.id, 1, 0, selection)
       : current.economy.act(action, current.recipe.id, 1);
-    if (!accepted) {
-      setNotice("Не удалось начать. Проверьте соединение и попробуйте ещё раз.");
-      return false;
-    }
+    if (!accepted) return deny("Не удалось начать. Проверьте соединение и попробуйте ещё раз.");
     pending.current = { owner: snapshot.ownerPublicId, revision: snapshot.revision, busySeen: false, previousError: current.economy.error };
     setChoosingFish(false);
     setNotice(durableProduction ? "Сохранено" : "Запускаем…");

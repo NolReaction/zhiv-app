@@ -83,7 +83,9 @@ export function OrderWeeklyChooser({ economy, customer, available }: {
           <button type="button" disabled={locked(economy) || pending} onClick={() => review(offer)} aria-label={`Посмотреть поручение: ${offer.name}, ${resident.name}`}>Посмотреть три этапа</button>
         </article>;
       })}</div>
-      {!candidates.length && <p className={styles.intro}>У этого жителя пока нет доступного большого поручения.</p>}
+      {!candidates.length && <p className={styles.intro}>{customer === "all"
+        ? "У жителей пока нет доступных больших поручений."
+        : "У этого жителя пока нет доступного большого поручения."}</p>}
     </> : <section className={styles.review} aria-labelledby={titleId} data-weekly-review>
       <button type="button" className={styles.back} disabled={pending} onClick={() => setQuote(null)}><ArrowLeft size={14} aria-hidden="true" />К выбору поручения</button>
       <header><p>{orderResidents[selected.residentId].name} · {orderDifficultyNames[orderDifficulty(selected.effortSeconds, true)].toLocaleLowerCase("ru-RU")} поручение</p><h4 id={titleId} ref={heading} tabIndex={-1}>{selected.name}</h4></header>

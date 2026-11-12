@@ -244,6 +244,8 @@ test("one tap dispatches a single unit, reports shortages and refuses repeated s
       resolveId(id) { if (id === hookModule) return `\0${id}`; },
       load(id) { if (id === `\0${hookModule}`) return `
         let slots = [], cursor = 0, effects = [];
+        export const cues = [];
+        export const getAudioRuntime = () => ({ play: event => cues.push(event.cueId) });
         export function reset() { slots = []; cursor = 0; effects = []; }
         export function render() { cursor = 0; effects = []; }
         export function flush() { for (const effect of effects) effect(); }
@@ -253,7 +255,7 @@ test("one tap dispatches a single unit, reports shortages and refuses repeated s
         export function useEffect(effect, dependencies) { const previous = useRef(null); if (!previous.current || dependencies.some((value, index) => !Object.is(value, previous.current[index]))) { previous.current = dependencies; effects.push(effect); } }
         export const useLayoutEffect = useEffect;
       `; },
-      transform(source, id) { if (id.endsWith("/features/economy/ui/production/world-production-card.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
+      transform(source, id) { if (id.endsWith("/features/economy/ui/production/world-production-card.tsx")) return source.replace('from "react";', `from "${hookModule}";`).replace('from "@/features/audio/runtime/audio-service";', `from "${hookModule}";`); },
     }],
   });
   try {
@@ -275,7 +277,8 @@ test("one tap dispatches a single unit, reports shortages and refuses repeated s
     hooks.reset();
     const first = action(render());
     assert.deepEqual(calls, [], "rendering and reading costs cannot spend");
-    first.props.onClick(); first.props.onClick();
+    first.props.onClick(); assert.deepEqual(hooks.cues, [], "accepting a recipe cannot play the refusal cue");
+    first.props.onClick(); assert.deepEqual(hooks.cues, ["ui.error"]);
     assert.deepEqual(calls, [["start_production", "make_planks", 1]], "a double press cannot queue two jobs from one intent");
     assert.match(renderToStaticMarkup(render()), /role="status"[^>]*>Дождитесь завершения действия/);
     assert.deepEqual(contexts[0], { intent: "production", stationId: "workshop", recipeId: "make_planks", quantity: 1 });
@@ -289,7 +292,9 @@ test("one tap dispatches a single unit, reports shortages and refuses repeated s
     }
     hooks.reset(); Object.assign(economy, { busy: false, uncertain: false, retryAt: 0, error: null });
     economy.snapshot.inventory.wood = 0;
+    hooks.cues.length = 0;
     action(render()).props.onClick();
+    assert.deepEqual(hooks.cues, ["ui.error"], "the shortage is audible immediately, without a request");
     assert.match(renderToStaticMarkup(render()), /Не хватает: Бревно ×1/);
     const before = calls.length;
     economy.snapshot.inventory.wood = 2;

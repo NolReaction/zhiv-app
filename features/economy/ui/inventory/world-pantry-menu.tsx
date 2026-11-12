@@ -105,7 +105,7 @@ export function PantrySale({ economy, itemId, fishItemId, compact = false, onClo
       <h3>{displayName}</h3>
       {onClose && <button type="button" className={styles.iconButton} onClick={onClose} aria-label="Свернуть продажу"><ChevronUp size={16} aria-hidden="true" /></button>}
     </div>}
-    <p className={styles.muted}>В запасе {number(stock)} · {compact ? `${number(economyLocalSellPrice(item.baseSellPrice, 1, buyer, item.id))} монет/шт.` : discount > 0 ? `Быстрая продажа с уценкой ${number(discount)}%` : `${number(fixedPrice ?? item.baseSellPrice)} монет за штуку`}</p>
+    <p className={styles.muted}>В запасе {number(stock)} · {compact ? `${number(economyLocalSellPrice(item.baseSellPrice, 1, buyer, item.id))} монет/шт.` : discount > 0 ? `Быстрая продажа с уценкой ${number(discount)}%` : `${number(fixedPrice ?? item.baseSellPrice)} монет за штуку`}{fishClass && " · цена по редкости, без надбавки за вес"}</p>
     {!compact && discount > 0 && <p className={styles.muted}>Сумма за всё количество округляется вниз до целой монеты.</p>}
     {betterFishPrice && (!compact || onOpenFishingShop) && <p className={styles.fishBuyer}>{!compact && <>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку.</>}{onOpenFishingShop && <button type="button" className={styles.textButton} onClick={onOpenFishingShop}>{compact ? `Плёска · ${number(item.baseSellPrice)} монет/шт.` : "К Плёске"}</button>}</p>}
     {goal && needed > 0 && <p className={styles.goalNote}>Для цели «{goal.name}» нужно оставить {number(Math.min(stock, needed))} шт., включая сырьё для изготовления.</p>}

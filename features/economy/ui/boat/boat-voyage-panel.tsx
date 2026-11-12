@@ -25,7 +25,7 @@ export function BoatVoyagePanel({ economy, disabled, send, onOpenPantry }: Props
       <BoatTripSummary receipt={createBoatTripReceipt(state, voyage)} />
       <div className={summaryStyles.unloading}>
         {shortfall > 0 && <p>Освободите мест в кладовой: {shortfall}. Улов ждёт на борту.</p>}
-        {sale && <p>Выкуп у причала: {sale.base} монет за рыбу + {sale.bonus} за вес.{walletFull && " Кошелёк заполнен."}</p>}
+        {sale && <p>Выкуп у причала: {sale.base} за весь улов + {sale.bonus} за вес. После разгрузки в холодильнике рыба продаётся поштучно по цене своей редкости.{walletFull && " Кошелёк заполнен."}</p>}
         {sale && <button type="button" className={styles.secondary} disabled={disabled || walletFull}
           onClick={() => send("sell_boat_catch", voyage.id, undefined, sale.total)}><Coins size={17} />Продать весь улов · {sale.total} монет</button>}
         {shortfall > 0

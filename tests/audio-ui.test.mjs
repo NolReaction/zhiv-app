@@ -217,18 +217,20 @@ test("freeze and pagehide fence stale visibility and gestures until both lifecyc
   } finally { if (saved) Object.defineProperty(globalThis, "KeyboardEvent", saved); else delete globalThis.KeyboardEvent; }
 });
 
-test("delegation only accepts opted-in enabled buttons, not inputs, invalid cues or disabled controls", () => {
+test("delegation keeps enabled opt-in cues and reports keyboard activation of focusable unavailable controls", () => {
   const saved = Object.getOwnPropertyDescriptor(globalThis, "Element");
   class Element {
-    constructor({ cue = "ui.click", button = true, disabled = false, inert = false } = {}) { Object.assign(this, { dataset: { audioCue: cue }, button, disabled, inert }); }
+    constructor({ cue = "ui.click", button = true, disabled = false, ariaDisabled = false, inert = false } = {}) { Object.assign(this, { dataset: { audioCue: cue }, button, disabled, ariaDisabled, inert }); }
     closest(selector) { return selector === "[inert]" ? (this.inert ? this : null) : this.button ? this : null; }
     matches() { return this.disabled; }
+    getAttribute(name) { return name === "aria-disabled" && this.ariaDisabled ? "true" : null; }
   }
   Object.defineProperty(globalThis, "Element", { value: Element, configurable: true });
   try {
     assert.equal(uiCueFromTarget(new Element()), "ui.click");
     for (const config of [{ button: false }, { disabled: true }, { inert: true }, { cue: "world.step" }, { cue: "" }]) assert.equal(uiCueFromTarget(new Element(config)), null);
     assert.equal(uiCueFromTarget(null), null);
+    assert.equal(uiCueFromTarget(new Element({ ariaDisabled: true })), "ui.error");
     const calls = [];
     playUiCue({ play: event => calls.push(event) }, "ui.open");
     playUiCue({ play: event => calls.push(event) }, "ui.open");
@@ -236,4 +238,42 @@ test("delegation only accepts opted-in enabled buttons, not inputs, invalid cues
     assert.equal(calls.length, 2);
     assert.notEqual(calls[0].id, calls[1].id);
   } finally { if (saved) Object.defineProperty(globalThis, "Element", saved); else delete globalThis.Element; }
+});
+
+test("only a completed tap on the same native disabled button emits a single local refusal", () => {
+  const savedElement = Object.getOwnPropertyDescriptor(globalThis, "Element");
+  const savedKey = Object.getOwnPropertyDescriptor(globalThis, "KeyboardEvent");
+  class Button {
+    constructor() { this.disabled = true; this.inert = false; this.dataset = {}; }
+    closest(selector) { return selector === "button:disabled" ? this.disabled && this : selector === "[inert]" ? this.inert && this : this; }
+    matches() { return this.disabled; }
+    getAttribute() { return null; }
+  }
+  Object.defineProperty(globalThis, "Element", { value: Button, configurable: true });
+  Object.defineProperty(globalThis, "KeyboardEvent", { value: class {}, configurable: true });
+  try {
+    const page = eventSurface(), surface = eventSurface(), sounds = [];
+    const cleanup = attachAudioLifecycle({ getSettings: () => ({ enabled: true }), getDiagnostics: () => ({ state: "running" }),
+      setVisible() {}, play: event => sounds.push(event.cueId) }, page, surface);
+    const button = new Button(), other = new Button();
+    const emit = (type, changes = {}) => page.emit(type, { target: button, isTrusted: true, isPrimary: true, pointerType: "touch",
+      button: 0, pointerId: 1, clientX: 20, clientY: 30, ...changes });
+    emit("pointerdown"); emit("pointerup"); emit("click");
+    assert.deepEqual(sounds, ["ui.error"]);
+    for (const cancel of ["pointercancel", "contextmenu"]) { emit("pointerdown"); emit(cancel); emit("pointerup"); }
+    for (const release of [{ clientY: 100 }, { target: other }, { pointerId: 2 }, { isTrusted: false }]) {
+      emit("pointerdown"); emit("pointerup", release);
+    }
+    for (const press of [{ isTrusted: false }, { button: 2 }, { isPrimary: false }]) {
+      emit("pointerdown", press); emit("pointerup");
+    }
+    emit("pointerdown"); page.hidden = true; page.emit("visibilitychange"); page.hidden = false; emit("pointerup");
+    emit("pointerdown"); button.disabled = false; emit("pointerup");
+    button.disabled = true; button.inert = true; emit("pointerdown"); emit("pointerup");
+    assert.deepEqual(sounds, ["ui.error"]);
+    cleanup(); assert.equal(page.count() + surface.count(), 0);
+  } finally {
+    if (savedElement) Object.defineProperty(globalThis, "Element", savedElement); else delete globalThis.Element;
+    if (savedKey) Object.defineProperty(globalThis, "KeyboardEvent", savedKey); else delete globalThis.KeyboardEvent;
+  }
 });
