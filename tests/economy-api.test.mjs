@@ -49,6 +49,83 @@ test("local economy routes require account cookies and never cache private state
   assert.equal((await GET(read("?ownerPublicId=someone"))).status, 400);
 });
 
+test("catalog negotiation keeps complete snapshots compatible and compact receipts validate every player field", async () => {
+  const p = player(), http = await vite.ssrLoadModule("/features/economy/sync/api.ts");
+  const header = "X-Economy-Catalog";
+  const full = await GET(read()), tag = full.headers.get(header);
+  assert.match(tag, /^[a-f0-9]{64}$/);
+  assert.equal(full.headers.get("vary"), header);
+  const original = await full.json();
+  const stale = await GET(new Request(read(), { headers: { [header]: "0".repeat(64) } }));
+  assert.deepEqual((await stale.json()).catalog, original.catalog);
+  const sent = [], replies = [];
+  let corrupt;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    const headers = new Headers(options.headers);
+    sent.push(headers.get(header));
+    const response = options.method === "GET" ? await GET(new Request(read(), { headers }))
+      : await POST(post(options.body, Object.fromEntries(headers)));
+    let body = await response.json();
+    replies.push("state" in body ? body.state.catalog : body.catalog);
+    if (corrupt) body = corrupt(body);
+    return Response.json(body, { status: response.status, headers: response.headers });
+  };
+  try {
+    const state = await http.getEconomy();
+    assert.deepEqual(state.catalog, original.catalog);
+    state.catalog.items.length = 0;
+    const cmd = command(p);
+    const accepted = await http.sendEconomyCommand(cmd);
+    const replay = await http.sendEconomyCommand(cmd);
+    assert.deepEqual(sent, [null, tag, tag]);
+    assert.deepEqual(replies.slice(1), [tag, tag]);
+    assert.deepEqual(accepted.state.catalog, original.catalog);
+    assert.equal(replay.replayed, true);
+    assert.equal(replay.state.revision, accepted.state.revision);
+    assert.equal(replay.state.jobs.length, 1);
+    corrupt = body => ({ ...body, wallet: { coins: -1, pearls: 0 } });
+    await assert.rejects(http.getEconomy(), error => error.status === 502);
+    corrupt = body => ({ ...body, catalog: "f".repeat(64) });
+    await assert.rejects(http.getEconomy(), error => error.status === 502);
+    corrupt = undefined;
+    assert.deepEqual((await http.getEconomy()).catalog, original.catalog);
+    assert.deepEqual(sent.slice(-3), [tag, null, null]);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("a rolling deployment cannot swap the catalog under an in-flight command", async () => {
+  const p = player(), http = await vite.ssrLoadModule("/features/economy/sync/api.ts");
+  const body = economy.getDevEconomy(p.token);
+  const revised = structuredClone(body);
+  revised.catalog.items[0].name += " · обновлено";
+  const oldTag = "a".repeat(64), newTag = "b".repeat(64), seen = [];
+  const write = command(p);
+  const reply = (value, tag) => Response.json(value, { headers: { "X-Economy-Catalog": tag } });
+  const realFetch = globalThis.fetch;
+  let finish;
+  globalThis.fetch = async (_url, options) => {
+    seen.push(new Headers(options.headers).get("X-Economy-Catalog"));
+    if (seen.length === 1) return reply(body, oldTag);
+    if (seen.length === 2) return new Promise(resolve => { finish = resolve; });
+    if (seen.length === 3) return reply(revised, newTag);
+    return reply({ ...revised, catalog: newTag }, newTag);
+  };
+  try {
+    await http.getEconomy();
+    const slow = http.sendEconomyCommand(write);
+    await http.getEconomy();
+    finish(reply({ state: { ...body, catalog: oldTag }, message: "OK", acceptedRevision: body.revision, replayed: false }, oldTag));
+    assert.deepEqual((await slow).state.catalog, body.catalog);
+    assert.deepEqual((await http.getEconomy()).catalog, revised.catalog);
+    assert.deepEqual(seen.slice(1), [oldTag, oldTag, newTag]);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 test("authenticated production distinguishes an explicit one-time teaching request from an ordinary crop", async () => {
   const ordinaryPlayer = player();
   const ordinary = await (await POST(post(command(ordinaryPlayer)))).json();

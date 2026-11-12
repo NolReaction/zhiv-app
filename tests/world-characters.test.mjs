@@ -65,7 +65,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
       }
       export function useWorldRewardPromptGate() { return false; }
       export function useForestObservation() { return guideContext.observation ?? null; }
-      const refreshRewards = () => Promise.resolve();
+      const refreshRewards = () => Promise.resolve(guideContext.onRefreshRewards?.());
       export function useGameRewards() { return { data: guideContext.rewards ?? null, refresh: refreshRewards }; }
     `; },
     transform(source, id) {
@@ -256,6 +256,24 @@ test("confirmed achievement rewards light the world profile and open claims ther
     assert.equal(next.props["data-achievements-ready"], undefined);
     assert.doesNotMatch(next.props["aria-label"], /Есть награды/);
   } finally { nav.restore(); }
+});
+
+test("ordinary confirmed economy revisions do not reload achievement rewards", t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let reads = 0;
+  const world = pointerNavigation({ onRefreshRewards: () => { reads++; } });
+  try {
+    const economy = world.nav.props.economy;
+    economy.snapshotConfirmed = true;
+    world.render();
+    t.mock.timers.tick(1000);
+    for (const revision of [2, 3, 4]) {
+      economy.snapshot = { ...economy.snapshot, revision };
+      world.render();
+      t.mock.timers.tick(1000);
+    }
+    assert.equal(reads, 0);
+  } finally { world.restore(); }
 });
 
 test("WorldView keeps every explicit key unique among its real siblings across loaded surfaces", () => {
