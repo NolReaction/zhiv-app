@@ -170,7 +170,7 @@
         <div aria-live="polite" aria-atomic="true">
           <div class="folio" id="folio">Уровень III</div>
           <h2 id="stage-name">Каменный горн</h2>
-          <p class="desc" id="description">В левой стене сложен горн. Из каменной арки видно огонь, а кирпичная труба выходит над коньком.</p>
+          <p class="desc" id="description">У левой стены сложен горн. Его кладка сужается к дымоходу. Пилу и верстак перенесли под правый навес.</p>
         </div>
         <div class="settings">
           <fieldset><legend>Фон</legend><div class="seg">
@@ -188,7 +188,7 @@
           <label class="choice"><input class="control" type="radio" name="level" value="1" aria-label="Уровень I. Столярный домик"><span class="tile"><span class="mini"><img src="workshop-1.svg" alt="" width="120" height="90"></span><span class="tile-foot"><span class="numeral">I</span><span class="tile-name">Домик</span></span></span></label>
           <label class="choice"><input class="control" type="radio" name="level" value="2" aria-label="Уровень II. Навес для досок"><span class="tile"><span class="mini"><img src="workshop-2.svg" alt="" width="120" height="90"></span><span class="tile-foot"><span class="numeral">II</span><span class="tile-name">Навес</span></span></span></label>
           <label class="choice"><input class="control" type="radio" name="level" value="3" aria-label="Уровень III. Каменный горн" checked><span class="tile"><span class="mini"><img src="workshop-3.svg" alt="" width="120" height="90"></span><span class="tile-foot"><span class="numeral">III</span><span class="tile-name">Горн</span></span></span></label>
-          <label class="choice"><input class="control" type="radio" name="level" value="4" aria-label="Уровень IV. Светлая мансарда"><span class="tile"><span class="mini"><img src="workshop-4.svg" alt="" width="120" height="90"></span><span class="tile-foot"><span class="numeral">IV</span><span class="tile-name">Мансарда</span></span></span></label>
+          <label class="choice"><input class="control" type="radio" name="level" value="4" aria-label="Уровень IV. Слуховое окно"><span class="tile"><span class="mini"><img src="workshop-4.svg" alt="" width="120" height="90"></span><span class="tile-foot"><span class="numeral">IV</span><span class="tile-name">Окно</span></span></span></label>
           <label class="choice"><input class="control" type="radio" name="level" value="5" aria-label="Уровень V. Подъёмная стрела"><span class="tile"><span class="mini"><img src="workshop-5.svg" alt="" width="120" height="90"></span><span class="tile-foot"><span class="numeral">V</span><span class="tile-name">Стрела</span></span></span></label>
         </div>
       </fieldset>
@@ -198,9 +198,9 @@
     const stages = [
       { numeral: "I", title: "Столярный домик", detail: "Под зелёной крышей — одна комната. Верстак стоит снаружи, у деревянной стены.", alt: "Деревянный домик столяра с открытым верстаком" },
       { numeral: "II", title: "Навес для досок", detail: "Сбоку пристраивают навес. Под ним помещаются рабочее место и запас пиломатериалов.", alt: "Столярная мастерская с боковым навесом и запасом досок" },
-      { numeral: "III", title: "Каменный горн", detail: "В левой стене сложен горн. Из каменной арки видно огонь, а кирпичная труба выходит над коньком.", alt: "Лесная мастерская III уровня с каменным горном и трубой" },
-      { numeral: "IV", title: "Светлая мансарда", detail: "В кровлю врезают застеклённую мансарду. Высокое окно даёт свет верхнему этажу.", alt: "Столярная мастерская с застеклённой мансардой и трубой" },
-      { numeral: "V", title: "Подъёмная стрела", detail: "У верстака появилась подъёмная стрела. На её тросе висит связка досок.", alt: "Полностью достроенная мастерская с подъёмной стрелой и подвешенным грузом" }
+      { numeral: "III", title: "Каменный горн", detail: "У левой стены сложен горн. Его кладка сужается к дымоходу. Пилу и верстак перенесли под правый навес.", alt: "Лесная мастерская III уровня с каменным горном и трубой" },
+      { numeral: "IV", title: "Слуховое окно", detail: "В скат встроено слуховое окно. Три застеклённые створки освещают чердак.", alt: "Столярная мастерская со слуховым окном на скате и дымоходом у левой стены" },
+      { numeral: "V", title: "Подъёмная стрела", detail: "Справа от навеса стоит кран. Лебёдка поднимает связку досок над погрузочной площадкой.", alt: "Полностью достроенная мастерская с подъёмной стрелой и подвешенным грузом" }
     ];
     const scene = document.getElementById("scene");
     const sprite = document.getElementById("sprite");
