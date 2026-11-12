@@ -48,7 +48,7 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
     };
   }, []);
   const stage: FishingSceneFrame["stage"] = !ready ? "pending" : waitingForConfirmation ? "pending" : expired || missedElsewhere ? "expired" : missedBite ? "escaped"
-    : reel.status === "caught" ? "caught" : reel.status === "escaped" ? "escaped" : playing ? "reeling" : castStage;
+    : retryNeeded ? "pending" : reel.status === "caught" ? "caught" : reel.status === "escaped" ? "escaped" : playing ? "reeling" : castStage;
   const resistancePhase = boatReelResistancePhase(challenge, reel.tick);
   // Older attempts start automatically and still need one frame for the bite cue.
   const visualStage = waitingForConfirmation && reel.status !== "active" ? reel.status : playing && challenge.rulesVersion < 6 && reel.tick === 0 ? "bite" : stage;
@@ -75,8 +75,9 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
     changeHeld(false);
   };
   const waterActive = !expired && !missedBite && !missedElsewhere && !waitingForConfirmation && reel.status === "active";
+  const canSkip = !expired && !waitingForConfirmation && missedElsewhere;
   const deliveryMessage = expired ? "Время этого заброса истекло."
-    : missedElsewhere && !waitingForConfirmation ? "Время для подсечки прошло. Если вываживаете рыбу в другой вкладке, закончите попытку там."
+    : canSkip ? "Время для подсечки прошло. Если вываживаете рыбу в другой вкладке, закончите попытку там."
     : missedBite ? "Поклёвка пропущена." : reel.status === "escaped" ? "Рыба сорвалась." : null;
   return <section className={gameStyles.attempt} data-boat-reel={challenge.id} data-reel-status={stage}
     data-reel-tick={reel.tick} data-reel-progress={reel.progress} aria-label="Вываживание рыбы">
@@ -122,10 +123,10 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
         {playing && feedback.phaseLabel && <small className={resistanceStyles.phase} data-resistance-phase={resistancePhase}>{feedback.phaseLabel}</small>}
       </div>
     </div>}
-    {(deliveryMessage || coachText || retryNeeded || missedElsewhere) && <div className={gameStyles.message} data-with-meter={showMeter || undefined}>
+    {(deliveryMessage || coachText && waterActive || retryNeeded) && <div className={gameStyles.message} data-with-meter={showMeter || undefined}>
       {deliveryMessage && <span role="status">{deliveryMessage}</span>}
       {coachText && waterActive && <span data-fishing-coach="control">{coachText}</span>}
-      {!expired && missedElsewhere && <button type="button" className={styles.secondary} data-fishing-action="skip-bite"
+      {canSkip && <button type="button" className={styles.secondary} data-fishing-action="skip-bite"
         disabled={!ready || suspended || props.disabled} onClick={confirmMiss}>Завершить без улова</button>}
       {!expired && retryNeeded && <button type="button" className={styles.secondary} data-fishing-action="retry-landing"
         disabled={props.disabled || suspended} onClick={submit}><RotateCcw size={16} />Повторить отправку результата</button>}

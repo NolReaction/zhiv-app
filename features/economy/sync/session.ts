@@ -127,9 +127,9 @@ export function createEconomySession(owner: string | null, transport: Transport,
     canReserve: () => journalReady && !journalFault && !(pending?.kind === "economy" && !isBoatLanding(pending.command)
       && ["begin_boat_cast", "submit_boat_cast", "return_boat", "claim_boat", "sell_boat_catch"].includes(pending.command.action)),
     preferPrepared: () => !available || !view.directActionsAvailable || !view.snapshotConfirmed || performance.now() < blockedUntil
-      || (pending?.kind === "economy" && isBoatLanding(pending.command)),
+      || Boolean(pending) || view.busy || productionEntries.length > 0,
     legacyLanding: () => pending?.kind === "economy" && isBoatLanding(pending.command) ? pending.command.reel : undefined,
-    canSend: () => active && available && !pending && !view.busy && !productionSending && performance.now() >= blockedUntil,
+    canSend: () => active && available && !pending && !view.busy && !productionEntries.length && !productionSending && performance.now() >= blockedUntil,
     get: transport.get, send: transport.send, adopt, changed: (patch = {}) => publish(patch), sessionLost: () => onSessionLost(),
   });
   const publish = (patch: Partial<View>) => {

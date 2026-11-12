@@ -414,3 +414,19 @@ test("a disconnected ordinary cast with an unknown ACK cannot reuse its issued s
   assert.equal(begin(), false); assert.equal(calls.length, 1); assert.equal(row(p).state.boat.voyage.castsUsed, 1);
   stop();
 });
+
+test("a slow unrelated transaction permits a prepared fight without issuing another financial request", async () => {
+  const p = player(), { state } = send(p, "depart_boat", "river_reach");
+  const disk = store(), journal = { storage: disk, coordinate: async () => () => {} };
+  const sent = [];
+  const session = createEconomySession(state.ownerPublicId, { get: async () => read(p),
+    send: (command, signal) => new Promise((_, reject) => {
+      sent.push(command.action); signal.addEventListener("abort", () => reject(Error("closed")), { once: true });
+    }) }, () => assert.fail(), store(), journal);
+  const stop = session.activate(); await session.refresh();
+  assert.ok(session.act("start_construction", "garden"));
+  assert.equal(session.getSnapshot().preparedBoatCastAvailable, true);
+  assert.ok(session.act("begin_boat_cast", state.boat.voyage.id, 1, 0, undefined, undefined, { castHeldMs: 480 }));
+  assert.ok(session.getSnapshot().preparedBoatChallengeId);
+  assert.deepEqual(sent, ["start_construction"]); stop();
+});

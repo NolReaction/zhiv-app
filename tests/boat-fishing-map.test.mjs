@@ -620,6 +620,25 @@ test("caught UI automatically submits one replay verified trace then credits inv
   f.close();
 });
 
+test("the last fight tick on pagehide hands off its exact catch before any subsequent React render", () => {
+  const f = fixture(); f.cast(); f.play();
+  const challenge = f.state.boat.voyage.challenge;
+  for (let i = 0; i < challenge.maxTicks; i++) {
+    const reel = hooks.inspectReel(), held = reel.fish > reel.bar + reel.velocity * 4;
+    f.hold(held);
+    if (stepBoatReel(challenge, reel, held).status === "caught") break;
+    f.frame(50);
+  }
+  assert.equal(f.pending.length, 0);
+  clock += 50;
+  window.dispatchEvent(new Event("pagehide"));
+  assert.equal(f.pending.length, 1, "capture must finish in the pagehide event");
+  const { inputs, endTick } = f.pending[0].reel;
+  assert.equal(replayBoatReel(challenge, inputs, endTick).status, "caught");
+  f.frame(50); f.flush();
+  assert.equal(f.state.boat.voyage.catches.length, 1);
+});
+
 test("a landed trace survives a new tab without a reel draft, then a slow receipt keeps exactly one fish", () => {
   const f = fixture(); f.cast(); f.play(); assert.equal(f.playToResult().status, "caught");
   const fish = f.view().boat.voyage.challenge.landingPreview;

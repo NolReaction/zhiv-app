@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BOAT_HOOK_WINDOW_MS } from "@/features/economy/domain/boat-model";
 import type { BoatChallenge, BoatReelCommand, BoatReelInput } from "@/features/economy/domain/boat-model";
 import { initialBoatReel, stepBoatReel } from "@/features/economy/domain/boat-reel";
@@ -60,6 +60,28 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
     return time <= expiresAt + 86_400_000 && (data.missed && gates.current.ownCast && hookDeadline <= expiresAt
       || data.reel.status !== "active" && data.reelStartedAt !== null && data.reelStartedAt + data.reel.tick * challenge.tickMs <= expiresAt);
   }, [challenge.tickMs, expiresAt, hookDeadline]);
+  const submitAction = useRef(onSubmit);
+  useLayoutEffect(() => { submitAction.current = onSubmit; }, [onSubmit]);
+  const submit = useCallback(() => {
+    const data = runtime.current;
+    const currentTime = serverTime();
+    if (submission.current || !data.ready || data.expired || (!data.missed && data.reel.status === "active")) return;
+    if (currentTime >= expiresAt && !canDeliverLate(currentTime)) {
+      data.expired = true; setDeadlineReached(true); return;
+    }
+    save();
+    if (gates.current.deliveryBlocked) return;
+    // The guard also covers reentrant callbacks and Strict Mode's repeated effects.
+    submission.current = true;
+    let accepted = false;
+    try {
+      const trace = data.missed ? { challengeId: challenge.id, endTick: 0, inputs: [], missedBite: true as const }
+        : boatReelSubmission(challenge, data.reel, data.inputs);
+      accepted = submitAction.current(trace, !data.missed && data.reel.status === "caught" ? "caught" : "escaped");
+    }
+    catch { /* The verified trace remains available for retry after a local transport failure. */ }
+    submission.current = accepted; setDelivery(accepted ? "sent" : "retry");
+  }, [challenge, save, serverTime, expiresAt, canDeliverLate]);
   const advance = useCallback((time: number) => {
     const data = runtime.current;
     if (data.reelStartedAt === null || data.expired || data.reel.status !== "active") return;
@@ -68,14 +90,19 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
     while (data.reel.tick < target && data.reel.status === "active") data.reel = stepBoatReel(challenge, data.reel, data.held);
     if (data.reel.tick === before) return;
     setReel(data.reel);
-    if (data.reel.status !== "active") { data.held = false; setHeld(false); setTimedResult(canDeliverLate(time)); }
-    if (data.reel.status !== "active" || Math.floor(before / 20) !== Math.floor(data.reel.tick / 20)) save();
-  }, [challenge, save, expiresAt, canDeliverLate]);
+    if (data.reel.status !== "active") {
+      data.held = false; setHeld(false); setTimedResult(canDeliverLate(time));
+      // pagehide can advance the last tick without giving React another render.
+      // Save the draft even when delivery is blocked, then hand off the exact trace now.
+      submit();
+    } else if (Math.floor(before / 20) !== Math.floor(data.reel.tick / 20)) save();
+  }, [challenge, save, expiresAt, canDeliverLate, submit]);
   const release = useCallback(() => {
     const data = runtime.current;
     if (!data.ready) return;
     advance(serverTime());
-    if (data.held && data.reel.status === "active") changeBoatReelInput(data.inputs, data.reel.tick, false);
+    if (data.reel.status !== "active") return;
+    if (data.held) changeBoatReelInput(data.inputs, data.reel.tick, false);
     data.held = false; setHeld(false);
     save();
   }, [advance, save, serverTime]);
@@ -122,6 +149,7 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
       }
       if (!data.missed && data.reel.status === "active") frame = requestAnimationFrame(update);
     };
+    if (data.reel.status !== "active") submit();
     update();
     setCastStage(publishedStage); setReady(true);
     window.addEventListener("blur", blur); window.addEventListener("focus", focus);
@@ -133,7 +161,7 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
       window.removeEventListener("pagehide", release); document.removeEventListener("visibilitychange", visibility);
       document.removeEventListener("freeze", release);
     };
-  }, [key, challenge, owner, advance, save, release, serverTime, biteAt, hookDeadline, expiresAt, canDeliverLate, manualHook]);
+  }, [key, challenge, owner, advance, save, release, serverTime, biteAt, hookDeadline, expiresAt, canDeliverLate, manualHook, submit]);
 
   const hookFish = () => {
     const data = runtime.current, time = serverTime();
@@ -154,23 +182,8 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
     changeBoatReelInput(data.inputs, data.reel.tick, next); data.held = next; setHeld(next);
     save();
   };
-  const submit = useCallback(() => {
-    const data = runtime.current;
-    const currentTime = serverTime();
-    if (submission.current || gates.current.deliveryBlocked || !data.ready || data.expired || (!data.missed && data.reel.status === "active")) return;
-    if (currentTime >= expiresAt && !canDeliverLate(currentTime)) {
-      data.expired = true; setDeadlineReached(true); return;
-    }
-    // The guard also covers reentrant callbacks and Strict Mode's repeated effects.
-    submission.current = true;
-    save();
-    let accepted = false;
-    try { accepted = onSubmit(data.missed ? { challengeId: challenge.id, endTick: 0, inputs: [], missedBite: true } : boatReelSubmission(challenge, data.reel, data.inputs), data.reel.status === "caught" && !data.missed ? "caught" : "escaped"); }
-    catch { /* The verified trace remains available for retry after a local transport failure. */ }
-    submission.current = accepted; setDelivery(accepted ? "sent" : "retry");
-  }, [challenge, onSubmit, save, serverTime, expiresAt, canDeliverLate]);
   useEffect(() => {
-    // Persist the verified trace to the external outbox before this view can unmount.
+    // Resume a blocked terminal handoff and settle a missed bite without another input event.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (ready && (missedBite || reel.status !== "active") && delivery === "idle" && !deliveryBlocked && !expired) submit();
   }, [ready, reel.status, missedBite, delivery, deliveryBlocked, expired, submit]);

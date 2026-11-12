@@ -97,7 +97,7 @@ class EconomyBoatTest {
         val deadline = Instant.parse(challenge.biteAt).plusMillis(3200)
         failure("ECONOMY_BOAT_TRACE") { call(issued, "submit_boat_cast", id, deadline.minusMillis(1), missed) }
         val settled = call(issued, "submit_boat_cast", id, deadline, missed)
-        assertEquals(voyage.copy(challenge = null), settled.boat!!.voyage)
+        assertEquals(voyage.copy(challenge = null, lastCastEndedAt = deadline.toString()), settled.boat!!.voyage)
         failure("ECONOMY_BOAT_CAST_GONE") { call(settled, "submit_boat_cast", id, deadline, missed) }
     }
 
