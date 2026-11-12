@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f0e3">
+  <title>Лесная мастерская · Жив</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f5f0e3;
+      --ink: #243c33;
+      --quiet: #566357;
+      --line: #c9c6b4;
+      --copper: #915630;
+      --serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Times New Roman", serif;
+      --sans: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font: 16px/1.45 var(--sans);
+      background: var(--paper);
+      color: var(--ink);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; }
+    h1, h2, p, figure, fieldset { margin: 0; }
+    fieldset { border: 0; padding: 0; min-width: 0; }
+    a { color: inherit; }
+    .wrap { width: min(1380px, calc(100% - clamp(36px, 8vw, 140px))); margin-inline: auto; }
+    .mast { display: flex; align-items: center; justify-content: space-between; min-height: 74px; border-bottom: 1px solid var(--line); gap: 12px; }
+    .identity, .download, .brand { display: inline-flex; align-items: center; }
+    .identity { gap: 18px; min-width: 0; }
+    .brand { gap: 9px; font: 700 29px/.95 var(--serif); letter-spacing: -.085em; }
+    .seal { width: 31px; height: 31px; color: var(--ink); }
+    .collection { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--quiet); border-left: 1px solid var(--line); padding-left: 18px; }
+    .download { gap: 9px; border: 1px solid #a3aa98; border-radius: 5px; min-height: 39px; padding: 8px 14px; text-decoration: none; font: 600 13px/1.2 var(--sans); transition: background .15s; white-space: nowrap; }
+    .download:hover { background: #e6e5d6; }
+    .icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.55; stroke-linecap: round; stroke-linejoin: round; }
+    a:focus-visible, input:focus-visible + .chip, input:focus-visible + .tile { outline: 3px solid #a64e21; outline-offset: 3px; }
+    .title { padding: clamp(18px, 2.6vw, 38px) 0 clamp(18px, 1.9vw, 28px); }
+    h1 { font: 500 clamp(38px, 5.45vw, 82px)/1.02 var(--serif); letter-spacing: -.055em; }
+    .sheet { display: grid; grid-template-columns: minmax(0, 1fr) minmax(218px, 23%); gap: 24px clamp(22px, 3.2vw, 50px); padding-bottom: 32px; align-items: start; }
+    .scene {
+      position: relative; isolation: isolate; overflow: hidden; container-type: size;
+      aspect-ratio: 2.02; min-height: 280px; width: 100%;
+      border-radius: 8px; background-color: #cfcca4;
+      box-shadow: inset 0 0 0 1px #2c3e291d;
+    }
+    .field { position: absolute; inset: 0; z-index: -1; background: center/cover no-repeat url("field.svg"); }
+    .scene[data-ground="plain"] {
+      background-color: #ece8dc;
+      background-image: linear-gradient(#9f9c881c 1px, transparent 1px), linear-gradient(90deg, #9f9c881c 1px, transparent 1px);
+      background-size: 18px 18px;
+      background-position: center;
+    }
+    .scene[data-ground="plain"] .field { display: none; }
+    .sprite {
+      position: absolute; left: 50%; top: 71%;
+      top: calc(50% + max(20.5cqh, 10.022cqw));
+      width: min(72%, 116cqh); height: auto; display: block;
+      transform: translate(-47.71%, -83.06%);
+      user-select: none; -webkit-user-drag: none;
+    }
+    .scene[data-scale="game"] .sprite { width: 128px; }
+    .crop { position: absolute; width: 11px; height: 11px; border: solid #f7f1d79c; pointer-events: none; }
+    .scene[data-ground="plain"] .crop { border-color: #71725ba3; }
+    .crop.a { top: 12px; left: 12px; border-width: 1px 0 0 1px; }
+    .crop.b { top: 12px; right: 12px; border-width: 1px 1px 0 0; }
+    .crop.c { bottom: 12px; left: 12px; border-width: 0 0 1px 1px; }
+    .crop.d { bottom: 12px; right: 12px; border-width: 0 1px 1px 0; }
+    .notes { align-self: stretch; display: flex; flex-direction: column; justify-content: space-between; border-top: 2px solid var(--ink); border-bottom: 1px solid var(--line); padding: clamp(16px, 2vw, 28px) 0 17px; gap: 20px; }
+    .folio { color: var(--copper); font: 650 11px/1.2 var(--sans); letter-spacing: .15em; text-transform: uppercase; }
+    h2 { font: 500 clamp(27px, 2.85vw, 47px)/1.03 var(--serif); letter-spacing: -.045em; margin: 11px 0 10px; text-wrap: balance; }
+    .desc { font-size: clamp(14px, 1.12vw, 16px); line-height: 1.55; color: var(--quiet); max-width: 34ch; }
+    .settings { display: grid; gap: 15px; }
+    legend { margin: 0 0 7px; padding: 0; font-weight: 600; font-size: 12px; color: var(--quiet); }
+    .seg { display: flex; padding: 3px; border: 1px solid var(--line); border-radius: 6px; background: #ece9dc; }
+    .option { position: relative; display: flex; cursor: pointer; flex: 1; min-width: 0; }
+    .control { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; }
+    .chip { display: flex; align-items: center; justify-content: center; text-align: center; gap: 7px; width: 100%; min-height: 32px; border-radius: 4px; white-space: nowrap; color: #47584e; font: 600 12px/1.2 var(--sans); transition: background .15s, color .15s; }
+    .chip .icon { width: 14px; height: 14px; }
+    .option:hover .chip { background: #e0e0cf; }
+    .option input:checked + .chip { color: #fffaf0; background: var(--ink); }
+    .levels { grid-column: 1/-1; }
+    .levels > legend { font: 500 24px/1.15 var(--serif); letter-spacing: -.035em; color: var(--ink); padding: 0; margin-bottom: 12px; }
+    .tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: clamp(6px, 1.2vw, 17px); }
+    .choice { position: relative; cursor: pointer; min-width: 0; display: block; }
+    .tile { position: relative; display: flex; flex-direction: column; background: linear-gradient(145deg, #edeadb, #e8e4d3); border: 1px solid #c5c3b0; border-radius: 6px; overflow: hidden; color: var(--ink); transition: border-color .15s, background .15s; }
+    .choice:hover .tile { border-color: #838b73; }
+    .choice input:checked + .tile { border-color: #304c3e; background: #e2e6d7; box-shadow: inset 0 0 0 1px #304c3e; }
+    .mini { height: clamp(60px, 6.8vw, 100px); display: grid; place-items: center; }
+    .mini img { display: block; width: min(83%, 132px); height: 100%; max-height: 100%; object-fit: contain; pointer-events: none; }
+    .tile-foot { border-top: 1px solid #a2a48f66; display: flex; gap: 7px; align-items: baseline; padding: 6px 10px 7px; }
+    .choice input:checked + .tile .tile-foot { background: #304c3e; border-color: #304c3e; color: #fcf6e6; }
+    .numeral { font: 600 17px/1.1 var(--serif); min-width: 14px; }
+    .tile-name { font-size: clamp(11px,.95vw,14px); font-weight: 500; line-height: 1.2; }
+    .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    @media (min-width: 1550px) { .scene { max-height: 515px; } }
+    @media (max-width: 1000px) and (min-width: 701px) {
+      .sheet { grid-template-columns: minmax(0, 1fr) 215px; }
+      .chip { gap: 4px; }
+    }
+    @media (max-width: 700px) {
+      .wrap { width: calc(100% - 32px); }
+      .mast { min-height: 58px; }
+      .identity { gap: 12px; }
+      .collection { padding-left: 12px; font-size: 11px; }
+      .brand { font-size: 25px; }
+      .seal { width: 26px; height: 26px; }
+      .download { padding: 7px 10px; min-height: 36px; gap: 6px; font-size: 12px; }
+      .title { padding: 20px 0 17px; }
+      .sheet { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+      .scene { grid-row: 1; min-height: 0; height: clamp(225px, 54vw, 320px); aspect-ratio: auto; }
+      .sprite { width: min(86%, 113cqh); }
+      .levels { grid-row: 2; }
+      .levels > legend { font-size: 21px; margin-bottom: 8px; }
+      .tiles { gap: 5px; }
+      .tile-name { display: none; }
+      .mini { height: clamp(48px, 10.5vw, 70px); }
+      .mini img { width: 98%; }
+      .tile-foot { display: block; padding: 4px 0 5px; text-align: center; }
+      .numeral { font-size: 15px; }
+      .notes { grid-row: 3; display: grid; grid-template-columns: minmax(0, 1fr) minmax(155px, .9fr); gap: 16px; padding: 14px 0; }
+      .notes h2 { margin: 7px 0; font-size: 27px; }
+      .desc { font-size: 13px; }
+      .settings { gap: 9px; }
+      .chip { min-height: 34px; gap: 4px; font-size: 11px; }
+      .chip .icon { display: none; }
+      legend { margin-bottom: 4px; }
+    }
+    @media (max-width: 370px) {
+      .wrap { width: calc(100% - 24px); }
+      .identity { gap: 8px; }
+      .collection { padding-left: 8px; }
+      .notes { grid-template-columns: minmax(0, 1fr); }
+      .settings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="download" viewBox="0 0 20 20"><path d="M10 2v10m-4-4 4 4 4-4M3 13.5v3h14v-3"/></symbol>
+    <symbol id="landscape" viewBox="0 0 20 20"><rect x="2.5" y="3" width="15" height="14" rx="2"/><path d="m3 14 4.5-5 3.5 3 2.5-2.3 3.3 3.3"/><circle cx="12.6" cy="7" r="1"/></symbol>
+    <symbol id="grid" viewBox="0 0 20 20"><rect x="2.5" y="3" width="15" height="14" rx="2"/><path d="M7.5 3v14m5-14v14M3 7.5h14M3 12.5h14"/></symbol>
+  </svg>
+  <header class="mast wrap">
+    <div class="identity">
+      <span class="brand">
+        <svg class="seal" viewBox="0 0 36 36" aria-hidden="true">
+          <path fill="currentColor" d="m17.8 1.5 12 5.5 4.4 11.4-5.9 11.8-11.7 4.3L5.1 28 .8 16.5l5.9-11z"/>
+          <g fill="none" stroke="#eee9d6" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"><path d="M9 23.5c-4-6.5-.2-14 7.1-15.6 6.1-1.4 11.7 2.5 12.3 8.5.6 5.4-3.3 10-8.6 10.7-4 .5-7.5-2.4-8-6.3-.5-4 2-7.5 5.7-8.3 3.7-.9 7.2 1.3 7.5 4.9.4 2.7-1.6 5-4.3 5.5-2.2.3-4.3-1-4.7-3.1-.2-1.8.8-3.3 2.5-3.8"/><path d="m7 27 8.2-5.1"/></g>
+        </svg>
+        Жив
+      </span>
+      <span class="collection">Атлас построек</span>
+    </div>
+    <a class="download" id="source" href="workshop-3.svg" download="workshop-3.svg" aria-label="Скачать SVG мастерской III уровня">
+      <svg class="icon" aria-hidden="true"><use href="#download"/></svg> Скачать SVG
+    </a>
+  </header>
+  <main class="wrap">
+    <div class="title"><h1>Лесная мастерская</h1></div>
+    <div class="sheet">
+      <figure class="scene" id="scene" data-ground="field" data-scale="detail">
+        <div class="field" aria-hidden="true"></div>
+        <img class="sprite" id="sprite" src="workshop-3.svg" width="480" height="360" alt="Лесная мастерская III уровня с каменным горном и трубой" draggable="false">
+        <i class="crop a" aria-hidden="true"></i><i class="crop b" aria-hidden="true"></i>
+        <i class="crop c" aria-hidden="true"></i><i class="crop d" aria-hidden="true"></i>
+      </figure>
+      <aside class="notes" aria-label="Описание и параметры просмотра">
+        <div aria-live="polite" aria-atomic="true">
+          <div class="folio" id="folio">Уровень III</div>
+          <h2 id="stage-name">Каменный горн</h2>
+          <p class="desc" id="description">В левой стене сложен горн. Из каменной арки видно огонь, а кирпичная труба выходит над коньком.</p>
+        </div>
+        <div class="settings">
+          <fieldset><legend>Фон</legend><div class="seg">
+            <label class="option"><input class="control" type="radio" name="ground" value="field" checked><span class="chip"><svg class="icon" aria-hidden="true"><use href="#landscape"/></svg>На поляне</span></label>
+            <label class="option"><input class="control" type="radio" name="ground" value="plain"><span class="chip"><svg class="icon" aria-hidden="true"><use href="#grid"/></svg>Без фона</span></label>
+          </div></fieldset>
+          <fieldset><legend>Масштаб</legend><div class="seg">
+            <label class="option"><input class="control" type="radio" name="scale" value="detail" checked><span class="chip">Крупно</span></label>
+            <label class="option"><input class="control" type="radio" name="scale" value="game"><span class="chip">128 px</span></label>
+          </div></fieldset>
+        </div>
+      </aside>
+      <fieldset class="levels"><legend>Уровни мастерской</legend>
+        <div class="tiles">
+          <label class="choice"><input class="control" type="radio" name="level" value="1" aria-label="Уровень I. Столярный домик"><span class="tile"><span class="mini"><img src="workshop-1.svg" alt="" width="120" height="90"></span><span class="tile-foot"><span class="numeral">I</span><span class="tile-name">Домик</span></span></span></label>
+          <label class="choice"><input class="control" type="radio" name="level" value="2" aria-label="Уровень II. Навес для досок"><span class="tile"><span class="mini"><img src="workshop-2.svg" alt="" width="120" height="90"></span><span class="tile-foot"><span class="numeral">II</span><span class="tile-name">Навес</span></span></span></label>
+          <label class="choice"><input class="control" type="radio" name="level" value="3" aria-label="Уровень III. Каменный горн" checked><span class="tile"><span class="mini"><img src="workshop-3.svg" alt="" width="120" height="90"></span><span class="tile-foot"><span class="numeral">III</span><span class="tile-name">Горн</span></span></span></label>
+          <label class="choice"><input class="control" type="radio" name="level" value="4" aria-label="Уровень IV. Светлая мансарда"><span class="tile"><span class="mini"><img src="workshop-4.svg" alt="" width="120" height="90"></span><span class="tile-foot"><span class="numeral">IV</span><span class="tile-name">Мансарда</span></span></span></label>
+          <label class="choice"><input class="control" type="radio" name="level" value="5" aria-label="Уровень V. Подъёмная стрела"><span class="tile"><span class="mini"><img src="workshop-5.svg" alt="" width="120" height="90"></span><span class="tile-foot"><span class="numeral">V</span><span class="tile-name">Стрела</span></span></span></label>
+        </div>
+      </fieldset>
+    </div>
+  </main>
+  <script>
+    const stages = [
+      { numeral: "I", title: "Столярный домик", detail: "Под зелёной крышей — одна комната. Верстак стоит снаружи, у деревянной стены.", alt: "Деревянный домик столяра с открытым верстаком" },
+      { numeral: "II", title: "Навес для досок", detail: "Сбоку пристраивают навес. Под ним помещаются рабочее место и запас пиломатериалов.", alt: "Столярная мастерская с боковым навесом и запасом досок" },
+      { numeral: "III", title: "Каменный горн", detail: "В левой стене сложен горн. Из каменной арки видно огонь, а кирпичная труба выходит над коньком.", alt: "Лесная мастерская III уровня с каменным горном и трубой" },
+      { numeral: "IV", title: "Светлая мансарда", detail: "В кровлю врезают застеклённую мансарду. Высокое окно даёт свет верхнему этажу.", alt: "Столярная мастерская с застеклённой мансардой и трубой" },
+      { numeral: "V", title: "Подъёмная стрела", detail: "У верстака появилась подъёмная стрела. На её тросе висит связка досок.", alt: "Полностью достроенная мастерская с подъёмной стрелой и подвешенным грузом" }
+    ];
+    const scene = document.getElementById("scene");
+    const sprite = document.getElementById("sprite");
+    const source = document.getElementById("source");
+    function selectLevel(number) {
+      const stage = stages[number - 1];
+      if (!stage) return;
+      const filename = "workshop-" + number + ".svg";
+      sprite.src = filename;
+      sprite.alt = stage.alt;
+      document.getElementById("folio").textContent = "Уровень " + stage.numeral;
+      document.getElementById("stage-name").textContent = stage.title;
+      document.getElementById("description").textContent = stage.detail;
+      source.href = filename;
+      source.download = filename;
+      source.setAttribute("aria-label", "Скачать SVG мастерской " + stage.numeral + " уровня");
+    }
+    function restoreView() {
+      const selected = (name) => document.querySelector('input[name="' + name + '"]:checked').value;
+      selectLevel(Number(selected("level")));
+      scene.dataset.scale = selected("scale");
+      scene.dataset.ground = selected("ground");
+    }
+    document.querySelector(".sheet").addEventListener("change", (event) => {
+      const input = event.target;
+      if (!(input instanceof HTMLInputElement) || !input.checked) return;
+      if (input.name === "level") selectLevel(Number(input.value));
+      if (input.name === "ground") scene.dataset.ground = input.value;
+      if (input.name === "scale") scene.dataset.scale = input.value;
+    });
+    window.addEventListener("pageshow", restoreView);
+  </script>
+</body>
+</html>
