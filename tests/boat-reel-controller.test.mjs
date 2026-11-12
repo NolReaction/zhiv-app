@@ -145,6 +145,18 @@ test("blur, hiding, pagehide and trays release the line and tick through every u
   }
 });
 
+test("an unrelated pending write delays delivery but does not stop hooking or steering the fish", () => {
+  const attempt = { ...challenge(), rulesVersion: 6, fishRarity: "common", resistance: "steady", motorResponse: 0,
+    hullDamping: 0, biteAt: new Date(at + 4000).toISOString() };
+  const f = fixture({ challenge: attempt, ownCast: true, disabled: true });
+  f.frame(4000); f.value.hookFish(); f.value.changeHeld(true); f.frame(100);
+  assert.equal(f.value.playing, true); assert.equal(f.value.held, true);
+  f.value.changeHeld(false); f.render(); assert.equal(f.value.held, false);
+  while (f.value.reel.status === "active") f.frame(50);
+  assert.equal(f.submissions.length, 0);
+  f.render({ disabled: false }); assert.equal(f.submissions.length, 1);
+});
+
 test("a slow frame honors the previous input up to the next actual input time", () => {
   const f = fixture(); f.frame(0);
   clock += 510; f.value.changeHeld(true); f.frame(50);

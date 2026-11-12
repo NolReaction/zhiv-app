@@ -86,15 +86,6 @@ export default function WorldView({ open, suspended = false, world, economy, mai
   const currentOwner = useRef(ownerPublicId);
   const achievementRewards = useGameRewards(ownerPublicId, open && !suspended && isOnline !== false, onSessionLost);
   const availableAchievements = achievementRewardSummary(achievementRewards.data, ownerPublicId);
-  const refreshAchievementRewards = achievementRewards.refresh;
-  const economyRevision = economy.snapshot?.ownerPublicId === ownerPublicId && economy.snapshotConfirmed ? economy.snapshot.revision : null;
-  useEffect(() => {
-    if (!open || suspended || isOnline === false || economyRevision === null) return;
-    // Coalesce confirmed production/order/build changes before asking the server
-    // which medals may be claimed; wallet changes alone never grant a reward.
-    const timer = setTimeout(() => { if (!document.hidden) void refreshAchievementRewards(); }, 750);
-    return () => clearTimeout(timer);
-  }, [open, suspended, isOnline, economyRevision, refreshAchievementRewards]);
   const mailUnread = mailbox?.ownerPublicId === ownerPublicId ? mailbox.unreadCount : 0;
   useLayoutEffect(() => { currentOwner.current = ownerPublicId; }, [ownerPublicId]);
   const constructionGoal = useConstructionGoal(ownerPublicId, economy.snapshot);

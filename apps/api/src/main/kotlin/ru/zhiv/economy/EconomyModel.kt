@@ -1,5 +1,6 @@
 package ru.zhiv.economy
 
+import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -302,7 +303,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
 @Serializable data class EconomyView(
     val ownerPublicId: String, val revision: Long, val serverTime: String,
     val wallet: EconomyWallet, val inventory: Map<String, Long>, val buildings: Map<String, Int>,
-    val jobs: List<EconomyJob>, val migration: EconomyMigration, val catalog: EconomyCatalog,
+    val jobs: List<EconomyJob>, val migration: EconomyMigration, @Contextual val catalog: EconomyCatalog,
     val storage: EconomyStorage, val completedExplorations: Long = 0, val fishing: EconomyFishing = EconomyFishing(),
     val progression: EconomyProgression = EconomyProgression(), val wardrobe: List<String> = listOf("moss", "amber_scarf"), val fishingShop: EconomyFishingShop? = null, val currencyScale: Int = 10, val pearlScale: Int = 50,
     val productionSlots: Map<String, Int> = emptyMap(),

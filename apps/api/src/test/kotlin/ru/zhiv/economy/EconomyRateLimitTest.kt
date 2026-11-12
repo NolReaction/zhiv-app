@@ -14,6 +14,8 @@ import io.ktor.server.routing.routing
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.checkins.CheckInRepository
 import ru.zhiv.checkins.CheckInResult
@@ -41,6 +43,40 @@ import kotlin.test.assertTrue
 class EconomyRateLimitTest {
     @Test fun `open boat routes accept play commands and the full bounded trace`() = checkBoatCommands(true)
     @Test fun `paused boat routes reject new play and permit existing trips to finish`() = checkBoatCommands(false)
+
+    @Test fun `confirmed catalog sends a reference alongside fresh private state and command receipt`() = testApplication {
+        val fixture = Fixture()
+        installApi(fixture)
+        val catalogHeader = "X-Economy-Catalog"
+        suspend fun read(cookie: String, known: String? = null) = client.get("/api/v1/economy") {
+            header(HttpHeaders.Cookie, cookie)
+            if (known != null) header(catalogHeader, known)
+        }
+        val full = read(fixture.first)
+        val tag = assertNotNull(full.headers[catalogHeader])
+        assertTrue(tag.matches(Regex("[a-f0-9]{64}")))
+        assertTrue(full.headers[HttpHeaders.Vary]?.contains(catalogHeader) == true)
+        val initial = economyJson.decodeFromString<EconomyView>(full.bodyAsText())
+        assertEquals(EconomyRules.catalog, initial.catalog)
+        val changed = read(fixture.first, "0".repeat(64))
+        assertEquals(initial.catalog, economyJson.decodeFromString<EconomyView>(changed.bodyAsText()).catalog)
+        val compact = economyJson.parseToJsonElement(read(fixture.otherAccount, tag).bodyAsText()).jsonObject
+        assertEquals(fixture.owner(fixture.otherAccount), compact.getValue("ownerPublicId").jsonPrimitive.content)
+        assertEquals(tag, compact.getValue("catalog").jsonPrimitive.content)
+        val response = client.post("/api/v1/economy/commands") {
+            header(HttpHeaders.Cookie, fixture.first)
+            header(HttpHeaders.Origin, "http://localhost")
+            header(catalogHeader, tag)
+            contentType(ContentType.Application.Json)
+            setBody(economyJson.encodeToString(EconomyCommand(UUID.randomUUID().toString(), initial.ownerPublicId, initial.revision, "start_production", "grow_berries")))
+        }
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertEquals(tag, response.headers[catalogHeader])
+        val result = economyJson.parseToJsonElement(response.bodyAsText()).jsonObject
+        assertEquals(tag, result.getValue("state").jsonObject.getValue("catalog").jsonPrimitive.content)
+        assertEquals("1", result.getValue("acceptedRevision").jsonPrimitive.content)
+        assertEquals("no-store", response.headers[HttpHeaders.CacheControl])
+    }
 
     private fun checkBoatCommands(boatFishingEnabled: Boolean) = testApplication {
         val fixture = Fixture()

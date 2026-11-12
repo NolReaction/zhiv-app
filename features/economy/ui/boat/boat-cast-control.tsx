@@ -40,19 +40,27 @@ function CastMeter({ voyageId, castNumber, startedAt }: { voyageId: string; cast
 
 type Props = {
   disabled: boolean;
+  awaitingLanding?: boolean;
   voyageId: string;
   castNumber: number;
   onCast: (power: number, heldMs: number, quality: number) => void;
   onChargingChange?: (charging: boolean) => void;
 };
 
-export function BoatCastControl({ disabled, voyageId, castNumber, onCast, onChargingChange }: Props) {
+export function BoatCastControl({ disabled, awaitingLanding = false, voyageId, castNumber, onCast, onChargingChange }: Props) {
   const water = useRef<HTMLButtonElement>(null);
   useEffect(() => { if (!disabled) focusBoatWaterIfIdle(water.current); }, [disabled]);
   const press = useRef<CastGesture | null>(null);
   const armTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const notify = useRef(onChargingChange);
   useEffect(() => { notify.current = onChargingChange; }, [onChargingChange]);
+  const prepared = useRef<{ power: number; elapsed: number; quality: number } | null>(null);
+  const [waiting, setWaiting] = useState(false);
+  const discard = useCallback(() => {
+    if (!prepared.current) return;
+    prepared.current = null;
+    setWaiting(false);
+  }, []);
   const [gesture, setGesture] = useState<CastGesture | null>(null);
   const cancel = useCallback(() => {
     if (!press.current) return;
@@ -62,18 +70,36 @@ export function BoatCastControl({ disabled, voyageId, castNumber, onCast, onChar
     notify.current?.(false);
   }, []);
   useEffect(() => {
-    const hidden = () => { if (document.hidden) cancel(); };
-    window.addEventListener("blur", cancel);
+    const abandon = () => { cancel(); discard(); };
+    const hidden = () => { if (document.hidden) abandon(); };
+    window.addEventListener("blur", abandon);
+    window.addEventListener("pagehide", abandon);
+    window.addEventListener("offline", abandon);
     document.addEventListener("visibilitychange", hidden);
     return () => {
-      window.removeEventListener("blur", cancel);
+      window.removeEventListener("blur", abandon);
+      window.removeEventListener("pagehide", abandon);
+      window.removeEventListener("offline", abandon);
       document.removeEventListener("visibilitychange", hidden);
-      cancel();
+      abandon();
     };
-  }, [cancel, voyageId, castNumber, disabled]);
+  }, [cancel, discard, voyageId, castNumber, disabled]);
+  useEffect(() => {
+    if (disabled || awaitingLanding || !prepared.current) return;
+    const cast = prepared.current;
+    // The enclosing dialog releases its previous command latch in the same commit.
+    // Unmounting or moving to a different receipt cancels this particular gesture.
+    let active = true;
+    queueMicrotask(() => {
+      if (!active || prepared.current !== cast) return;
+      discard();
+      if (!document.hidden && (document.hasFocus?.() ?? true)) onCast(cast.power, cast.elapsed, cast.quality);
+    });
+    return () => { active = false; };
+  }, [disabled, awaitingLanding, discard, onCast]);
 
   const start = (input: string, timestamp?: number) => {
-    if (disabled || press.current) return;
+    if (disabled || press.current || prepared.current) return;
     const active = { input, startedAt: eventTime(timestamp) };
     press.current = active;
     armTimer.current = setTimeout(() => {
@@ -90,12 +116,15 @@ export function BoatCastControl({ disabled, voyageId, castNumber, onCast, onChar
     if (disabled || duration < BOAT_CAST_MIN_HOLD_MS) return;
     const elapsed = duration % BOAT_CAST_CYCLE_MS;
     const { power, quality } = boatCastAim(voyageId, castNumber, elapsed);
-    onCast(power, elapsed, quality);
+    if (awaitingLanding) {
+      prepared.current = { power, elapsed, quality };
+      setWaiting(true);
+    } else onCast(power, elapsed, quality);
   };
   const cancelPointer = (pointerId: number) => { if (press.current?.input === String(pointerId)) cancel(); };
   return <>
-    <button type="button" ref={water} className={styles.surface} data-fishing-action="cast" disabled={disabled}
-      aria-label="Удерживать для заброса. Отпустите, когда метка войдёт в зелёную зону" aria-keyshortcuts="Space Enter"
+    <button type="button" ref={water} className={styles.surface} data-boat-water-control data-fishing-action="cast" disabled={disabled}
+      aria-busy={waiting || undefined} aria-label={waiting ? "Замах готов" : "Удерживать для заброса. Отпустите, когда метка войдёт в зелёную зону"} aria-keyshortcuts="Space Enter"
       onContextMenu={event => event.preventDefault()} onDragStart={event => event.preventDefault()}
       onPointerDown={event => {
         if (!event.isPrimary || event.button !== 0) return;
@@ -127,7 +156,7 @@ export function BoatCastControl({ disabled, voyageId, castNumber, onCast, onChar
         else start("activation", event.timeStamp);
       }}>
       {!gesture && !disabled && <span className={styles.actionCue} data-fishing-cue="cast" aria-hidden="true">
-        <FishingRod size={20} />Удерживать для заброса
+        <FishingRod size={20} />{waiting ? "Замах готов" : "Удерживать для заброса"}
       </span>}
     </button>
     {gesture && !disabled && <CastMeter voyageId={voyageId} castNumber={castNumber} startedAt={gesture.startedAt} />}

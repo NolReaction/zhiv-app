@@ -52,6 +52,7 @@ type View = {
   completedConstructions: readonly ConstructionCompletion[];
   localBoatUpgrade?: BoatUpgradeReceipt;
   localBoatDepartureId?: string;
+  lastBoatLanding?: { challengeId: string; revision: number };
   localBoatSettlement?: { requestId: string; voyageId: string; revision: number; saleCoins?: number };
   directActionsAvailable: boolean;
   snapshotConfirmed: boolean;
@@ -513,6 +514,9 @@ export function createEconomySession(owner: string | null, transport: Transport,
           ...(upgrade ? { localBoatUpgrade: upgrade } : {}),
           ...(settlement ? { localBoatSettlement: settlement } : {}),
           ...(departed ? { localBoatDepartureId: departed } : {}),
+          ...(value.kind === "economy" && isBoatLanding(value.command) && !result.replayed
+            && result.acceptedRevision === value.command.expectedRevision + 1 && view.snapshot?.revision === result.acceptedRevision
+            ? { lastBoatLanding: { challengeId: value.command.reel.challengeId, revision: result.acceptedRevision } } : {}),
           ...(purchase ? { localLeaftailPurchase: purchase } : {}),
           ...(exploration ? { localExploration: exploration } : {}),
           ...(completed.length ? { completedConstructions: [...view.completedConstructions, ...completed].slice(-8) } : {}),
@@ -633,7 +637,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
         }
         const receipt: Pending = { kind: "economy", command };
         remember(receipt);
-        publish({ uncertain: true, error: null, storageError: view.storageError === landingStorageMessage ? null : view.storageError,
+        publish({ uncertain: !canSend, error: null, storageError: view.storageError === landingStorageMessage ? null : view.storageError,
           notice: canSend ? "Отправляем результат рыбалки." : "Результат сохранён и ждёт связи." });
         if (canSend) void execute(receipt);
         return true;

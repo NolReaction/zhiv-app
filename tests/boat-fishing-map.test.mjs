@@ -137,9 +137,9 @@ function featureTree(element, path, hosts, context = {}) {
   }
   if (typeof type !== "string") return [{ tag: "icon", props: {}, children: [] }];
   let host = hosts.get(childPath);
-  if (!host) { host = { tag: type, props, children: [], focus() { document.activeElement = this; }, scrollTo() {}, closest(selector) {
+  if (!host) { host = Object.assign(new TrackedEvents(), { tag: type, props, children: [], focus() { document.activeElement = this; }, scrollTo() {}, closest(selector) {
       return selector === "[data-boat-dialog]" ? [...hosts.values()].find(host => host.props["data-boat-dialog"]) : null;
-    }, setPointerCapture(id) { this.captured = id; } }; hosts.set(childPath, host); }
+    }, setPointerCapture(id) { this.captured = id; } }); hosts.set(childPath, host); }
   host.props = props; host.children = featureTree(props.children, childPath, hosts, context);
   if (props.ref) { if (typeof props.ref === "function") props.ref(host); else props.ref.current = host; }
   return [host];
@@ -155,7 +155,7 @@ function fixture({ outbound = false, dev = false } = {}) {
   state.wallet.coins = 100000; state.inventory = { planks: 20, rope: 20 }; state.buildings.warehouse = 5; state.boat.level = 1;
   let time = at, revision = 1, open = true, busy = false, tree = [], hosts = new Map();
   const pending = [], commands = [];
-  let localBoatSettlement;
+  let localBoatSettlement, lastBoatLanding;
   const apply = command => { const next = structuredClone(state); applyEconomyCommand(next, command, time, () => crypto.randomUUID(), {}, maximum => 37 % maximum); state = next; revision++; commands.push(command); };
   const command = (action, targetId, input) => economyCommandSchema.parse({ requestId: crypto.randomUUID(), ownerPublicId: "0000-0000-0000", expectedRevision: revision, action, targetId, quantity: 1, totalPrice: 0, ...(input && "castHeldMs" in input ? { castHeldMs: input.castHeldMs } : input ? { reel: input } : {}) });
   apply(command("depart_boat", economyCatalog.boat.routeId));
@@ -171,7 +171,8 @@ function fixture({ outbound = false, dev = false } = {}) {
   const render = () => {
     for (let iteration = 0; iteration < 30; iteration++) {
       hooks.begin();
-      const economy = { snapshot: view(), now: time, snapshotConfirmed: true, busy, uncertain: false, retryAt: 0, error: null, devAvailable: dev, localBoatSettlement,
+      const economy = { snapshot: view(), now: time, snapshotConfirmed: true, busy, uncertain: false, retryAt: 0, error: null, devAvailable: dev, localBoatSettlement, lastBoatLanding,
+        pendingBoatCastId: pending.find(request => request.action === "submit_boat_cast")?.reel?.challengeId,
         act(action, targetId, quantity, totalPrice, fishSelection, unused, reel) { if (busy) return false; busy = true; pending.push(command(action, targetId, reel)); return true; }, refresh() {}, retry() {} };
       tree = featureTree(open ? createElement(PlayableBoatFishingDialog, { economy, onClose() { open = false; } }) : null, "root", hosts);
       hooks.finish(); if (!hooks.changed()) return tree;
@@ -182,9 +183,10 @@ function fixture({ outbound = false, dev = false } = {}) {
   const byAction = action => find(node => node.props["data-fishing-action"] === action);
   const click = node => { assert(node, "Expected an available control"); assert.equal(Boolean(node.props.disabled), false); node.props.onClick?.(event(node)); render(); };
   const frame = (elapsed = 50) => { clock += elapsed; time += elapsed; for (const [id, callback] of [...frames]) if (frames.delete(id)) callback(clock); render(); };
-  const flush = () => {
+  const flush = ({ local = true } = {}) => {
     for (const request of pending.splice(0)) {
       apply(request);
+      if (local && request.action === "submit_boat_cast") lastBoatLanding = { challengeId: request.reel.challengeId, revision };
       if (request.action === "claim_boat" || request.action === "sell_boat_catch") {
         localBoatSettlement = { voyageId: request.targetId, requestId: request.requestId, revision,
           ...(request.action === "sell_boat_catch" ? { saleCoins: request.totalPrice } : {}) };
@@ -315,6 +317,49 @@ test("short taps and keystrokes neither wind up nor spend a cast; a fresh delibe
   water.props.onPointerUp(event(water)); water.props.onPointerUp(event(water)); f.render();
   assert.equal(f.pending.length, 1); assert.equal(f.pending[0].castHeldMs, 280);
   f.flush(); assert.equal(f.state.boat.voyage.castsUsed, 1);
+});
+
+test("a new deliberate cast released during landing uses the confirmed revision exactly once", async () => {
+  const f = fixture(); f.cast(); f.play(); assert.equal(f.playToResult().status, "caught");
+  const water = f.byAction("cast"); assert(water); assert.equal(water.props.disabled, false);
+  water.props.onPointerUp(event(water)); f.render(); // Lift the finger originally used to reel.
+  assert.equal(f.pending.length, 1);
+  water.props.onPointerDown(event(water)); f.frame(370); water.props.onPointerUp(event(water)); f.render();
+  assert.equal(f.pending.length, 1); assert.match(text(f.byAction("cast")), /Замах готов/);
+  f.flush(); await Promise.resolve(); f.render(); await Promise.resolve();
+  assert.deepEqual(f.pending.map(row => row.action), ["begin_boat_cast"]); assert.equal(f.pending[0].castHeldMs, 370);
+  f.flush(); assert.equal(f.state.boat.voyage.castsUsed, 2); assert.equal(f.state.boat.voyage.catches.length, 1);
+});
+
+test("a fresh cast held across confirmation charges continuously but spends nothing until release", () => {
+  const f = fixture(); f.cast(); f.play(); f.playToResult();
+  const water = f.byAction("cast"); water.props.onPointerDown(event(water)); f.frame(150);
+  f.flush(); f.frame(190); assert.equal(f.pending.length, 0);
+  assert.equal(f.byAction("cast"), water);
+  water.props.onPointerUp(event(water)); f.render();
+  assert.deepEqual(f.pending.map(row => row.action), ["begin_boat_cast"]); assert.equal(f.pending[0].castHeldMs, 340);
+});
+
+for (const reason of ["close", "blur", "album", "foreign receipt"]) test(`a prepared cast is discarded on ${reason}`, async () => {
+  const f = fixture(); f.cast(); f.play(); f.playToResult();
+  const water = f.byAction("cast"); water.props.onPointerDown(event(water)); f.frame(350); water.props.onPointerUp(event(water)); f.render();
+  assert.match(text(f.byAction("cast")), /Замах готов/);
+  if (reason === "close") f.close();
+  if (reason === "blur") window.dispatchEvent(new Event("blur"));
+  if (reason === "album") f.click(f.byAction("album"));
+  f.flush({ local: reason !== "foreign receipt" }); await Promise.resolve(); f.render();
+  assert.deepEqual(f.pending, []); assert.equal(f.state.boat.voyage.castsUsed, 1);
+});
+
+test("the last hold space permits another wind-up after a miss but not after a local catch", () => {
+  const caught = fixture(); caught.state.boat.voyage.maxCatches = 1;
+  caught.cast(); caught.play(); caught.playToResult(); assert.equal(caught.byAction("cast"), undefined);
+  caught.close(); caught.flush();
+  const missed = fixture(); missed.state.boat.voyage.maxCatches = 1; missed.cast();
+  const bite = Date.parse(missed.state.boat.voyage.challenge.biteAt);
+  missed.advanceTo(bite + 4000); missed.frame(0);
+  assert.equal(missed.pending[0]?.reel.missedBite, true);
+  assert.equal(missed.byAction("cast")?.props.disabled, false);
 });
 
 test("cancelled charges keep the budget and a missed bite settles once with no catch", t => {
@@ -559,7 +604,7 @@ test("escaped or expired attempts never give local fish and the real cast budget
   f.cast(); const id = f.state.boat.voyage.challenge.id, expiry = Date.parse(f.state.boat.voyage.challenge.expiresAt);
   f.advanceTo(expiry); f.frame(0);
   assert.equal(f.pending.length, 1); assert.equal(f.pending[0].reel.challengeId, id); assert.equal(f.pending[0].reel.missedBite, true);
-  assert.equal(f.byAction("cast"), undefined); assert.equal(f.byAction("submit"), undefined);
+  assert.equal(f.byAction("cast")?.props.disabled, false); assert.equal(f.byAction("submit"), undefined);
   f.flush(); assert(f.byAction("cast"));
   f.close(); f.reopen(); f.frame(0);
   assert.equal(f.state.boat.voyage.challenge, undefined); assert.equal(f.state.boat.voyage.castsUsed, 2);
@@ -605,6 +650,30 @@ test("confirmed catch presentation celebrates a real weight record and never lea
   assert.ok(scene.catchKey.endsWith(".0"));
   f.frame(4000); assert(f.find(node => node.props["data-confirmed-catch"]), "a record remains visible longer than an ordinary catch");
   f.frame(2001); assert.equal(f.find(node => node.props["data-confirmed-catch"]), undefined);
+});
+
+test("native long presses stay on the river across removal of a held reel and the final catch receipt", () => {
+  const f = fixture();
+  f.state.boat.voyage.maxCatches = 1;
+  f.render();
+  const surface = () => f.find(node => node.props["data-boat-water"]);
+  const water = surface();
+  const nativeEvent = type => new Event(type, { cancelable: true });
+  assert.equal(water.dispatchEvent(nativeEvent("touchstart")), false);
+  f.cast(); f.play();
+  assert.equal(f.playToResult().status, "caught");
+  assert.equal(f.byAction("hold"), undefined);
+  assert.equal(surface(), water, "the native target outlives the reel button");
+  assert.equal(water.dispatchEvent(nativeEvent("touchstart")), false, "a long press during confirmation cannot open an edit menu");
+  assert.equal(water.dispatchEvent(nativeEvent("contextmenu")), false);
+  f.flush();
+  assert(f.find(node => node.props["data-fishing-finished"]));
+  assert.equal(surface(), water);
+  assert.equal(water.dispatchEvent(nativeEvent("selectstart")), false);
+  assert.equal(water.dispatchEvent(nativeEvent("touchend")), false);
+  assert.equal(f.byAction("return").dispatchEvent(nativeEvent("touchstart")), true);
+  f.close();
+  assert.equal(water.count(), 0);
 });
 
 test("the final confirmed fish keeps a prominent direct return action and then shows the actual onboard recap", () => {

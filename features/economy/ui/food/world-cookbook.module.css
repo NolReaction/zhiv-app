@@ -125,6 +125,9 @@
   .recipe strong { font-size: 10px; }
   .recipe > svg, .recipe > span:first-child { flex-shrink: 0; }
 }
+@media (pointer: coarse) {
+  .search input, .rarityFilter select { font-size: 16px; }
+}
 @media (max-height: 560px) {
   .topline { min-height: 36px; }
   .pot { height: 36px; flex-basis: 44px !important; width: 44px; }

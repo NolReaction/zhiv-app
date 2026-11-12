@@ -8,7 +8,6 @@ import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.request.receive
 import io.ktor.server.response.header
-import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -45,7 +44,8 @@ fun Route.economyRoutes(
             get {
                 val hash = call.economySession(config, codec)
                 if (!call.request.queryParameters.isEmpty()) invalidEconomy()
-                call.respond(repository.snapshot(hash))
+                val snapshot = repository.snapshot(hash)
+                call.respondEconomySnapshot(snapshot, snapshot.catalog)
             }
         }
         rateLimit(RateLimitName("economy-write")) {
@@ -58,7 +58,8 @@ fun Route.economyRoutes(
                     val command = decodeEconomyCommand(call.receive<JsonElement>())
                     if (!boatFishingEnabled && command.action in releaseFeatures.boatFishingPlayActions)
                         economyFailure("ECONOMY_BOAT_PAUSED", "Лодочная рыбалка временно закрыта")
-                    call.respond(repository.command(hash, command))
+                    val result = repository.command(hash, command)
+                    call.respondEconomySnapshot(result, result.state.catalog)
                 }
             }
         }

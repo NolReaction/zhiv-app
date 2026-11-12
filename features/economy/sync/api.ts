@@ -7,16 +7,25 @@ import { economyResultSchema, economyViewSchema, marketCommandSchema, marketView
 import type { EconomyDevCommand } from "@/features/economy/dev/dev-model";
 import { neighborCommandSchema, neighborResultSchema, neighborViewSchema, type NeighborCommand } from "@/features/economy/domain/neighbor-model";
 
-async function request<T>(path: string, schema: z.ZodType<T, unknown>, command?: EconomyCommand | MarketCommand | EconomyDevCommand | NeighborCommand, signal?: AbortSignal): Promise<T> {
+const catalogHeader = "X-Economy-Catalog";
+// Retain only the private JSON parser's copy of public rules, never a player's snapshot.
+let cachedCatalog: { tag: string; rules: object } | undefined;
+
+function jsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function request<T>(path: string, schema: z.ZodType<T, unknown>, command?: EconomyCommand | MarketCommand | EconomyDevCommand | NeighborCommand, signal?: AbortSignal, catalogShape?: "snapshot" | "result"): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (signal?.aborted) abort(); else signal?.addEventListener("abort", abort, { once: true });
   const timeout = setTimeout(abort, 10_000);
   try {
     const presence = gamePresenceHeaders();
+    const known = catalogShape ? cachedCatalog : undefined;
     const response = await fetch(path, {
       method: command ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal: controller.signal,
-      headers: { ...presence, Accept: "application/json", ...(command ? { "Content-Type": "application/json" } : {}) },
+      headers: { ...presence, Accept: "application/json", ...(known && { [catalogHeader]: known.tag }), ...(command ? { "Content-Type": "application/json" } : {}) },
       ...(command ? { body: JSON.stringify(command) } : {}),
     });
     const body: unknown = await response.json().catch(() => null);
@@ -30,8 +39,20 @@ async function request<T>(path: string, schema: z.ZodType<T, unknown>, command?:
       throw new ApiError(failure?.message ?? "Не удалось связаться с хозяйством", response.status,
         failure, response.headers.get("X-Request-ID"), retryAfterMs(response.headers.get("Retry-After")));
     }
+    const state = catalogShape === "result" && jsonObject(body) ? body.state : body;
+    const tag = catalogShape ? response.headers.get(catalogHeader) : null;
+    // Bind a compact response to the exact catalog this request advertised, even
+    // when a different request has already received rules from a newer deployment.
+    const compact = jsonObject(state) && typeof state.catalog === "string";
+    if (compact && known && tag === known.tag && state.catalog === known.tag) state.catalog = known.rules;
     const parsed = schema.safeParse(body);
-    if (!parsed.success) throw new ApiError("Обновите приложение: хозяйство получило новую версию", 502);
+    if (!parsed.success) {
+      if (known && cachedCatalog === known) cachedCatalog = undefined;
+      throw new ApiError("Обновите приложение: хозяйство получило новую версию", 502);
+    }
+    if (!compact && jsonObject(state) && jsonObject(state.catalog) && tag && /^[a-f0-9]{64}$/.test(tag)) {
+      cachedCatalog = { tag, rules: state.catalog };
+    }
     return parsed.data;
   } finally {
     clearTimeout(timeout); signal?.removeEventListener("abort", abort);
@@ -39,9 +60,9 @@ async function request<T>(path: string, schema: z.ZodType<T, unknown>, command?:
 }
 
 export const getEconomy = (signal?: AbortSignal) => request(
-  "/api/v1/economy", economyViewSchema, undefined, signal);
+  "/api/v1/economy", economyViewSchema, undefined, signal, "snapshot");
 export const sendEconomyCommand = (command: EconomyCommand, signal?: AbortSignal) => request(
-  "/api/v1/economy/commands", economyResultSchema, command, signal);
+  "/api/v1/economy/commands", economyResultSchema, command, signal, "result");
 export const getEconomyMarket = (signal?: AbortSignal) => request(
   "/api/v1/economy/market",
   marketViewSchema, undefined, signal);

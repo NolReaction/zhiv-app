@@ -28,7 +28,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
 after(() => { hooks.reset(); return vite.close(); });
 const hooks = await vite.ssrLoadModule(hooksId);
 const { ActivityGate } = await vite.ssrLoadModule("/features/activity/activity-gate.tsx");
-const { ConnectionStatus, CONNECTION_PENDING_DELAY_MS, connectConnectionStatusHost } = await vite.ssrLoadModule("/features/activity/connection-status.tsx");
+const { ConnectionStatus, connectConnectionStatusHost } = await vite.ssrLoadModule("/features/activity/connection-status.tsx");
 function nodes(tree) { const found = []; const visit = node => { if (node?.$$typeof === Symbol.for("react.portal")) Children.forEach(node.children, visit); else if (isValidElement(node)) { found.push(node); Children.forEach(node.props.children, visit); } }; visit(tree); return found; }
 function render(component, props, beforeEffects) { let tree, passes = 0; do { hooks.render(component.name); tree = component(props); beforeEffects?.(tree); hooks.flush(); assert.ok(++passes < 10, "state settles after derived display reset"); } while (hooks.needsRender()); return { tree, nodes: nodes(tree) }; }
 const text = node => typeof node === "string" || typeof node === "number" ? String(node) : Array.isArray(node) ? node.map(text).join("") : isValidElement(node) ? text(node.props.children) : "";
@@ -179,37 +179,15 @@ test("a throttled read is visible and actual offline or reconnecting state takes
   assert.equal(attr(view, "data-connection-status").props["data-rate-limited"], undefined);
 });
 
-test("healthy production acknowledgements under the pending delay never flash a connection indicator", t => {
+test("slow healthy acknowledgements and growing production queues never cover the game", t => {
   t.mock.timers.enable({ apis: ["setTimeout"] }); hooks.reset();
-  const props = { online: true, pending: true, queuedCount: 1 };
+  const props = { online: true, pending: true, queuedCount: 0 };
   assert.equal(render(ConnectionStatus, props).tree, null);
-  t.mock.timers.tick(CONNECTION_PENDING_DELAY_MS - 1); assert.equal(render(ConnectionStatus, props).tree, null);
+  t.mock.timers.tick(5000); assert.equal(render(ConnectionStatus, props).tree, null);
+  props.queuedCount = 12; t.mock.timers.tick(5000); assert.equal(render(ConnectionStatus, props).tree, null);
+  props.online = false; assert.ok(attr(render(ConnectionStatus, props), "data-connection-toggle"));
+  props.online = true; assert.equal(render(ConnectionStatus, props).tree, null);
   props.pending = false; props.queuedCount = 0; assert.equal(render(ConnectionStatus, props).tree, null);
-  t.mock.timers.tick(CONNECTION_PENDING_DELAY_MS * 2); assert.equal(render(ConnectionStatus, props).tree, null);
-});
-
-test("real unconfirmed work becomes visible after its delay and growing the same queue does not restart that delay", t => {
-  t.mock.timers.enable({ apis: ["setTimeout"] }); hooks.reset();
-  const props = { online: true, pending: true, queuedCount: 1 };
-  assert.equal(render(ConnectionStatus, props).tree, null); t.mock.timers.tick(CONNECTION_PENDING_DELAY_MS - 100);
-  props.queuedCount = 13; assert.equal(render(ConnectionStatus, props).tree, null);
-  t.mock.timers.tick(100); const view = render(ConnectionStatus, props);
-  assert.equal(view.tree.props.open, false); assert.match(attr(view, "data-connection-toggle").props["aria-label"], /13/);
-  assert.match(text(view.tree), /9\+/); assert.equal(attr(view, "data-connection-status").props["data-connection-pending"], true);
-  assert.equal(attr(view, "data-connection-toggle").props["data-unstable"], true);
-});
-
-test("a later pending batch gets a fresh delay while offline pending remains visible after connection recovery", t => {
-  t.mock.timers.enable({ apis: ["setTimeout"] }); hooks.reset();
-  const props = { online: true, pending: true };
-  render(ConnectionStatus, props); t.mock.timers.tick(CONNECTION_PENDING_DELAY_MS - 100);
-  props.pending = false; render(ConnectionStatus, props); props.pending = true; render(ConnectionStatus, props);
-  t.mock.timers.tick(100); assert.equal(render(ConnectionStatus, props).tree, null, "previous batch timer cannot reveal a new batch");
-  t.mock.timers.tick(CONNECTION_PENDING_DELAY_MS - 100); assert.ok(attr(render(ConnectionStatus, props), "data-connection-toggle"));
-  hooks.reset(); props.online = false;
-  assert.ok(attr(render(ConnectionStatus, props), "data-connection-toggle")); props.online = true;
-  assert.ok(attr(render(ConnectionStatus, props), "data-connection-toggle"), "transport recovery still has unconfirmed work");
-  props.pending = false; assert.equal(render(ConnectionStatus, props).tree, null);
 });
 
 test("connection details report unconfirmed queue truthfully and opening, closing or cancellation sends nothing", () => {
@@ -221,16 +199,13 @@ test("connection details report unconfirmed queue truthfully and opening, closin
   view.tree.props.onOpenChange(false); view = render(ConnectionStatus, props); assert.equal(attr(view, "data-connection-details"), undefined); assert.deepEqual(calls, []);
 });
 
-test("connection retry honors the latest network/transport state, cooldown and in-flight latch", async t => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  for (const patch of [{ online: false }, { reconnecting: true }, { busy: true }, { retrySeconds: 4 }, { pending: false }]) {
-    hooks.reset(); const calls = [], props = { online: true, pending: true, onRetry() { calls.push("retry"); } };
-    render(ConnectionStatus, props); t.mock.timers.tick(CONNECTION_PENDING_DELAY_MS);
+test("connection retry honors the latest network/transport state, cooldown and in-flight latch", async () => {
+  for (const patch of [{ online: false }, { reconnecting: true }, { busy: true }, { retrySeconds: 4 }, { error: null }]) {
+    hooks.reset(); const calls = [], props = { online: true, pending: true, error: "Нет ответа", onRetry() { calls.push("retry"); } };
     let view = render(ConnectionStatus, props); view.tree.props.onOpenChange(true); view = render(ConnectionStatus, props); const oldButton = button(view);
     Object.assign(props, patch); render(ConnectionStatus, props); oldButton.props.onClick(); assert.deepEqual(calls, [], JSON.stringify(patch));
   }
-  hooks.reset(); const pending = deferred(), calls = [], props = { online: true, pending: true, onRetry() { calls.push("retry"); return pending.promise; } };
-  render(ConnectionStatus, props); t.mock.timers.tick(CONNECTION_PENDING_DELAY_MS);
+  hooks.reset(); const pending = deferred(), calls = [], props = { online: true, pending: true, error: "Нет ответа", onRetry() { calls.push("retry"); return pending.promise; } };
   let view = render(ConnectionStatus, props); view.tree.props.onOpenChange(true); view = render(ConnectionStatus, props);
   button(view).props.onClick(); button(view).props.onClick(); assert.deepEqual(calls, ["retry"]);
   pending.resolve(); await tick();
