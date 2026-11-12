@@ -13,12 +13,14 @@
   color: #f2e8cf;
 }
 .stage {
+  /* Foot position in the side-profile studio scene: y=789 on the 941px backdrop. */
+  --stand-floor: 83.85%;
   position: relative;
   grid-area: stage;
   overflow: hidden;
   isolation: isolate;
   border-bottom: 1px solid #796a4b;
-  background: linear-gradient(180deg,#09170d08 65%,#211d1459),url('/world/boat-garage/garage.webp?v=side-profile-2') center 61% / cover;
+  background: linear-gradient(180deg,#09170d08 65%,#211d1459),url('/world/boat-garage/garage.webp?v=side-profile-2') center var(--stand-floor) / cover;
 }
 .readiness {
   position: absolute;
@@ -36,8 +38,12 @@
   font-size: 11px;
 }
 .readiness[data-ready] { border-color: #859a6d; color: #d2e6b5; }
-.assembly { display: grid; position: absolute; inset: 18px 10px 5px; place-items: center; container-type: size; }
-.rig { position: relative; width: 100%; height: 100%; }
+.assembly { display: grid; position: absolute; inset: min(18px, 4%) 10px calc(100% - var(--stand-floor)); place-items: end center; container-type: size; }
+.rig {
+  position: relative; width: 100%; height: 100%;
+  /* The 490-unit SVG includes 18.125 units of transparent space below the feet. */
+  transform: translateY(3.7%);
+}
 .rig > svg { display: block; width: 100%; height: 100%; }
 @supports (width: 1cqw) { .rig { width: min(100cqw, 204.0816cqh); height: auto; aspect-ratio: 1000 / 490; } }
 .hotspots { position: absolute; inset: 0; pointer-events: none; }
@@ -103,7 +109,7 @@
   .effect { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 2px 8px; padding-block: 4px; }
   .inspector .buy { min-height: 42px; margin: 0; padding: 5px 7px; }
   .readiness { top: 5px; right: 5px; padding: 2px 5px; font-size: 10px; }
-  .assembly { inset: 12px 4px 0; }
+  .assembly { top: min(12px, 4%); inset-inline: 4px; }
   .hotspot > small { display: none; }
   .hotspot[aria-pressed=true] > small, .hotspot:focus-visible > small { display: block; }
 }

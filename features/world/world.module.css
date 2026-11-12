@@ -48,6 +48,7 @@
 @media (prefers-reduced-motion: reduce) { .mapAnchors button::after { transition: none; } }
 .away { position: absolute; top: calc(120px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 90px); font-size: .875rem; }
 .objectLayer { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+.objectLayer:has([data-side="cookbook"]) { z-index: 20; }
 .mapAnchors button { touch-action: none; }
 .feedback { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(148px + env(safe-area-inset-bottom)); width: min(440px, calc(100% - 100px)); pointer-events: none; z-index: 4; font-size: .875rem; }
 .feedback > p { margin: 0; border-radius: 12px; padding: 10px 13px; border: 1px solid #dae4b134; background: #142319ed; text-align: center; line-height: 1.5; }
