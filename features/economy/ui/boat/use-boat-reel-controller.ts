@@ -31,7 +31,9 @@ export function useBoatReelController({ owner, voyageId, challenge: incomingChal
     missed: false, hookClosed: false, ready: false, expired: false, focused: true });
   const current = useRef({ now, observedAt: 0, wallAt: 0, readClock });
   const deliveryBlocked = disabled || queued || uncertain;
-  const blocked = deliveryBlocked || suspended;
+  // Hooking and the fight are local. A different in-flight command can delay
+  // delivery of the recorded result, but must never release the player's line.
+  const blocked = queued || suspended;
   const gates = useRef({ blocked, deliveryBlocked, ownCast });
   const submission = useRef(false);
   // A definitive response can arrive without a rendered busy frame. Keep its retry available

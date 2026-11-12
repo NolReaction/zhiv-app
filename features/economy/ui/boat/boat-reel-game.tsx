@@ -31,7 +31,7 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
     status, castStage, missedBite, missedElsewhere, confirmMiss, hookFish } = useBoatReelController({ ...props, suspended });
   const holdButton = useRef<HTMLButtonElement>(null);
   const input = useRef<string | number | null>(null);
-  const blocked = !ready || suspended || props.disabled || waitingForConfirmation || expired || missedBite || missedElsewhere || reel.status !== "active";
+  const blocked = !ready || suspended || waitingForConfirmation || expired || missedBite || missedElsewhere || reel.status !== "active";
   useEffect(() => {
     if (blocked) input.current = null;
     else focusBoatWaterIfIdle(holdButton.current);
@@ -76,14 +76,14 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
   };
   const waterActive = !expired && !missedBite && !missedElsewhere && !waitingForConfirmation && reel.status === "active";
   const deliveryMessage = waitingForConfirmation ? missedBite ? "Поклёвка пропущена. Сохраняем завершение попытки."
-    : props.queued ? "Результат записан. Улов появится на борту после синхронизации."
-    : "Проверяем улов. Рыба появится на борту после подтверждения."
+    : props.queued && props.uncertain ? "Результат записан. Улов появится на борту после синхронизации."
+    : reel.status === "escaped" ? "Рыба сорвалась." : "Проверяем улов. Рыба появится на борту после подтверждения."
     : expired ? "Время этого заброса истекло." : missedElsewhere ? "Время для подсечки прошло. Если вываживаете рыбу в другой вкладке, закончите попытку там."
     : missedBite ? "Рыба ушла." : reel.status === "caught" ? "Мохлик поднимает рыбу на борт…" : reel.status === "escaped" ? "Рыба сорвалась." : null;
   return <section className={gameStyles.attempt} data-boat-reel={challenge.id} data-reel-status={stage}
     data-reel-tick={reel.tick} data-reel-progress={reel.progress} aria-label="Вываживание рыбы">
     <span className={gameStyles.srOnly} role="status">{status}</span>
-    {waterActive && <button type="button" ref={holdButton} className={waterStyles.surface}
+    {waterActive && <button type="button" ref={holdButton} className={waterStyles.surface} data-boat-water-control
       data-fishing-action={playing ? "hold" : "line"} aria-pressed={playing ? held : undefined}
       aria-label={!playing ? "Вода. Подсечка и вываживание" : held ? "Ослабить снасть. Отпустите для спуска" : "Тянуть снасть. Удерживайте для подъёма"}
       aria-keyshortcuts="Space Enter ArrowUp" disabled={blocked}

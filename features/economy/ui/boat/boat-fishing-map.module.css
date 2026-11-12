@@ -1,7 +1,8 @@
 .viewport[data-boat-dialog][data-boat-map-view] { left: 0; top: 0; transform: none; width: 100vw; height: 100dvh; max-height: none; max-width: none; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: #122d32; }
 .map { position: relative; isolation: isolate; width: 100%; height: 100%; min-height: 0; overflow: hidden; color: #f0ead6; background: #183c40; font-size: 13px; --river-ink: #102c30; --river-paper: #efe3bd; --river-gold: #d3b276; --river-edge: #bfa16b70; }
+.waterSurface { position: absolute; inset: 0; touch-action: none; }
 /* iOS can select an overlaid meter label even when pointer events reach the water beneath it. */
-.map[data-water-input], .map[data-water-input] * {
+.map[data-water-input], .map[data-water-input] *, .waterSurface, .waterSurface * {
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;

@@ -177,6 +177,25 @@ test("the last issued cast accepts one late terminal replay with its original ti
   assert.throws(() => send(p, "submit_boat_cast", voyage.id, late, { reel }), { code: "ECONOMY_BOAT_CAST_GONE" });
 });
 
+test("a delayed online landing sends one POST, keeps the known state and adopts its ACK without a GET", async () => {
+  const { p, voyage, cast, challenge, reel, late } = fishingAttempt();
+  let reads = 0, writes = 0, finish;
+  const session = createEconomySession(cast.ownerPublicId, {
+    get: async () => { reads++; return cast; },
+    send: command => { writes++; return new Promise(resolve => { finish = () => resolve(api.commandDevEconomy(p.token, command, late)); }); },
+  }, () => assert.fail(), store());
+  const stop = session.activate(); await session.refresh();
+  assert(session.act("submit_boat_cast", voyage.id, 1, 0, undefined, undefined, reel));
+  assert.equal(session.getSnapshot().busy, true); assert.equal(session.getSnapshot().uncertain, false);
+  assert.equal(session.getSnapshot().snapshot.boat.voyage.catches.length, 0);
+  await session.refreshSoft(); assert.equal(writes, 1);
+  finish(); await flush();
+  const view = session.getSnapshot();
+  assert.deepEqual(view.lastBoatLanding, { challengeId: challenge.id, revision: view.snapshot.revision });
+  assert.equal(view.snapshot.boat.voyage.catches.length, 1); assert.equal(reads, 1); assert.equal(writes, 1);
+  stop();
+});
+
 test("offline landing is saved before any network call and delivered from a fresh tab after the voyage timer", async () => {
   const { p, voyage, cast, challenge, reel, late } = fishingAttempt();
   const disk = store(), transport = { get: async () => cast, send: async () => assert.fail("offline") };
@@ -187,6 +206,7 @@ test("offline landing is saved before any network call and delivered from a fres
   const sendLocal = () => first.act("submit_boat_cast", voyage.id, 1, 0, undefined, undefined, reel);
   assert.equal(sendLocal(), true); assert.equal(sendLocal(), false);
   assert.equal(first.getSnapshot().pendingBoatCastId, challenge.id);
+  assert.equal(first.getSnapshot().uncertain, true);
   assert.equal(first.getSnapshot().snapshot.boat.voyage.catches.length, 0);
   stop();
   const sent = [];
@@ -205,6 +225,7 @@ test("offline landing is saved before any network call and delivered from a fres
   const stopThird = third.activate(); await third.refresh();
   assert.equal(sent.length, 2); assert.deepEqual(sent[0], sent[1]);
   assert.equal(third.getSnapshot().pendingBoatCastId, undefined);
+  assert.equal(third.getSnapshot().lastBoatLanding, undefined, "a replay cannot release a new cast");
   assert.equal(third.getSnapshot().snapshot.boat.voyage.catches.length, 1);
   assert.equal(disk.getItem("zhiv:economy:boat-landing:v1:" + cast.ownerPublicId), null);
   stopThird();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertDialog, Dialog } from "radix-ui";
 import { ArrowLeft, BookOpen, CircleHelp, Clock3, Fish, FishingRod, Sailboat, X } from "lucide-react";
 import { boatConfig, boatModules, boatState } from "@/features/economy/domain/boat-fishing";
@@ -51,6 +51,22 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
   const [showHints, setShowHints] = useState(false);
   const [courseForCast, setCourseForCast] = useState<number | null>(null);
   const river = useRef<HTMLElement>(null);
+  const waterSurface = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const water = waterSurface.current;
+    if (!water) return;
+    // WebKit opens its edit menu from native touchstart, even when pointerdown
+    // canceled selection. Keep this listener alive while a held reel resolves.
+    const preventCallout = (event: Event) => {
+      const target = event.target as Element;
+      if (!target.closest?.("button:not([data-boat-water-control])")) event.preventDefault();
+    };
+    const events = ["touchstart", "touchend", "contextmenu", "selectstart"] as const;
+    for (const type of events) water.addEventListener(type, preventCallout, { capture: true, passive: false });
+    return () => {
+      for (const type of events) water.removeEventListener(type, preventCallout, true);
+    };
+  }, []);
   const [missedCast, setMissedCast] = useState<string | null>(null);
   const [showAlbum, setShowAlbum] = useState(false);
   const [confirmReturn, setConfirmReturn] = useState(false), [showCatch, setShowCatch] = useState(false), [showDev, setShowDev] = useState(false);
@@ -67,6 +83,17 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
   const liveChallenge = Boolean(challenge && !expired);
   const full = voyage.catches.length >= voyage.maxCatches;
   const usableCasts = full ? 0 : remaining;
+  // Keep the same cast control across this landing's ACK. A foreign result, an
+  // uncertain delivery or a different revision replaces it and drops the gesture.
+  const confirmedLanding = economy.lastBoatLanding?.revision === state.revision ? economy.lastBoatLanding.challengeId : undefined;
+  const localStage = stageSample?.challengeId === challenge?.id ? stageSample?.stage : undefined;
+  const landedStage = missedCast && missedCast === challenge?.id ? "escaped"
+    : localStage === "caught" || localStage === "escaped" ? localStage : undefined;
+  const pendingLanding = economy.busy && !economy.uncertain && !economy.error && economy.directActionsAvailable !== false
+    && economy.snapshotConfirmed && (queued && (voyage.catches.length + 1 < voyage.maxCatches || landedStage === "escaped") || !challenge)
+    ? economy.pendingBoatCastId : undefined;
+  const followup = pendingLanding ?? (!challenge ? confirmedLanding : undefined);
+  const awaitingLanding = Boolean(pendingLanding || !challenge && confirmedLanding && economy.busy && !economy.syncPending);
   const completed = !liveChallenge && usableCasts === 0;
   const canStudy = !liveChallenge && !disabled && !covered && !aiming && !releasedCast && !completed;
   const courseOpen = canStudy && courseForCast === voyage.castsUsed;
@@ -84,7 +111,7 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
   const landed = !challenge && lastCatch && economy.now >= Date.parse(lastCatch.caughtAt) && economy.now - Date.parse(lastCatch.caughtAt) < (lastPresentation?.revealMs ?? 3500) ? lastCatch : undefined;
   const fishRarity = landed ? state.catalog.fishing?.fish.find(fish => fish.itemId === landed.fishId)?.rarity : undefined;
   const ownRelease = releasedCast?.voyageId === voyage.id && releasedCast.number === voyage.castsUsed + (liveChallenge ? 0 : 1) ? releasedCast : null;
-  const stage = challenge ? queued ? "pending" : expired ? "expired" : stageSample?.challengeId === challenge.id ? stageSample.stage : boatCastStage(challenge, economy.now) : landed && !aiming && !ownRelease ? "landed" : "waiting";
+  const stage = challenge ? queued ? landedStage ?? "pending" : expired ? "expired" : localStage ?? boatCastStage(challenge, economy.now) : landed && !aiming && !ownRelease ? "landed" : "waiting";
   const localDisabled = suspended || economy.busy || economy.uncertain || (economy.pendingProductionCount ?? 0) > 0;
   const frame = useMemo<FishingSceneFrame>(() => ({ stage, castPower, aiming: aiming && !controlsSuspended, sceneKey: voyage.id, castKey: challenge?.id, resistance: challenge?.resistance,
     ambience: { now: economy.now, timeZone }, biteLeadSeconds: challenge ? Math.max(0, (Date.parse(challenge.biteAt ?? challenge.startedAt) - economy.now) / 1000) : undefined,
@@ -121,21 +148,25 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
     {showDev && <aside className={styles.devTray}><button type="button" className={styles.trayClose} onClick={() => setShowDev(false)} aria-label="Закрыть DEV рыбалки"><X size={18} /></button><BoatDevControls economy={economy} compact /></aside>}
     {economy.error && !economy.pendingBoatCastId && <p className={styles.error} role="alert">{economy.error}</p>}
     {economy.uncertain && !economy.pendingBoatCastId && <div className={styles.recovery}><span>Проверяем последнее действие.</span><button type="button" disabled={economy.busy} onClick={() => economy.retry()}>Проверить результат</button></div>}
-    {challenge && <BoatReelGame owner={state.ownerPublicId} voyageId={voyage.id} challenge={challenge} ownCast={castAim.owns(voyage.castsUsed, challenge.id)} now={economy.now} readClock={economy.readServerNow} disabled={localDisabled}
-      queued={queued} uncertain={economy.uncertain} error={economy.error} coachView={showHints ? coach.view : undefined} onCoachObservation={showHints ? coach.observe : undefined}
-      suspended={controlsSuspended} onVisualState={publishVisual} onSubmit={reel => {
-        const sent = send("submit_boat_cast", voyage.id, { ...reel, deferred: true });
-        if (sent && reel.missedBite) setMissedCast(reel.challengeId);
-        return sent;
-      }} />}
-    {(!challenge || expired) && usableCasts > 0 && <BoatCastControl voyageId={voyage.id} castNumber={voyage.castsUsed + 1} disabled={disabled || controlsSuspended}
-      onChargingChange={setAiming} onCast={(power, heldMs, quality) => {
-        if (send("begin_boat_cast", voyage.id, { castHeldMs: heldMs })) {
-          castAim.release(voyage.castsUsed + 1, power);
-          setReleasedCast({ voyageId: voyage.id, number: voyage.castsUsed + 1, quality });
-          setMissedCast(null);
-        }
-      }} />}
+    <div className={styles.waterSurface} data-boat-water ref={waterSurface}>
+      {challenge && <BoatReelGame owner={state.ownerPublicId} voyageId={voyage.id} challenge={challenge} ownCast={castAim.owns(voyage.castsUsed, challenge.id)} now={economy.now} readClock={economy.readServerNow} disabled={localDisabled}
+        queued={queued} uncertain={economy.uncertain} error={economy.error} coachView={showHints ? coach.view : undefined} onCoachObservation={showHints ? coach.observe : undefined}
+        suspended={controlsSuspended} onVisualState={publishVisual} onSubmit={reel => {
+          const sent = send("submit_boat_cast", voyage.id, { ...reel, deferred: true });
+          if (sent && reel.missedBite) setMissedCast(reel.challengeId);
+          return sent;
+        }} />}
+      {(!challenge || expired || pendingLanding) && usableCasts > 0 && <BoatCastControl key={followup ?? voyage.castsUsed}
+        voyageId={voyage.id} castNumber={voyage.castsUsed + 1} awaitingLanding={awaitingLanding}
+        disabled={controlsSuspended || disabled && !awaitingLanding}
+        onChargingChange={setAiming} onCast={(power, heldMs, quality) => {
+          if (send("begin_boat_cast", voyage.id, { castHeldMs: heldMs })) {
+            castAim.release(voyage.castsUsed + 1, power);
+            setReleasedCast({ voyageId: voyage.id, number: voyage.castsUsed + 1, quality });
+            setMissedCast(null);
+          }
+        }} />}
+    </div>
     {ownRelease && !controlsSuspended && !aiming && !economy.error && (!liveChallenge || stage === "casting" || stage === "soaking") &&
       <span className={castStyles.meter} role="status" data-cast-result={ownRelease.quality}>
         <span className={castStyles.caption}>Точность заброса <b>{ownRelease.quality}%</b></span>
