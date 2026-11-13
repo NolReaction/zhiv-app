@@ -3,6 +3,7 @@ package ru.zhiv.mochlik.lab;
 import android.Manifest;
 import android.content.Intent;
 import android.os.Build;
+import androidx.lifecycle.Lifecycle;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -56,7 +57,9 @@ public final class MochlikLocationPlugin extends Plugin {
     private void start(PluginCall call, boolean requireFocus) {
         try {
             JSObject settings = call.getObject("settings");
-            if (settings == null || getActivity().isFinishing() || getActivity().isDestroyed() || requireFocus && !getActivity().hasWindowFocus()) throw new IllegalStateException("Visible app required");
+            if (settings == null || getActivity().isFinishing() || getActivity().isDestroyed()
+                || !getActivity().getLifecycle().getCurrentState().isAtLeast(Lifecycle.State.STARTED)
+                || requireFocus && !getActivity().hasWindowFocus()) throw new IllegalStateException("Visible app required");
             long ticket = LocationPublishingService.authorizeLaunch(settings);
             Intent intent = new Intent(getContext(), LocationPublishingService.class).putExtra("settings", settings.toString()).putExtra("launchTicket", ticket);
             if (Build.VERSION.SDK_INT >= 26) getContext().startForegroundService(intent); else getContext().startService(intent);

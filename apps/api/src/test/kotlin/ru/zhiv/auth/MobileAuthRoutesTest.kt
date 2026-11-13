@@ -9,6 +9,7 @@ import io.ktor.server.application.install
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.ratelimit.RateLimit
 import io.ktor.server.plugins.ratelimit.RateLimitName
+import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
@@ -42,6 +43,40 @@ class MobileAuthRoutesTest {
         assertEquals(HttpStatusCode.OK, client.get("/api/v1/probe") { bearerAuth(mobile) }.status)
         assertEquals(HttpStatusCode.TooManyRequests, client.get("/api/v1/probe") { bearerAuth(mobile) }.status)
         assertEquals(1, lookups)
+    }
+
+    @Test fun `global limit precedes native lookup and account bucket regardless of plugin install order`() = testApplication {
+        val events = mutableListOf<String>()
+        application {
+            install(MobileSessionAuthentication) {
+                cookieName = config.cookieName
+                validate = { events += "authenticate"; it == mobile }
+            }
+            install(RateLimit) {
+                global {
+                    rateLimiter(1, 1.hours)
+                    requestKey { events += "global"; "ip" }
+                }
+                register(RateLimitName("probe")) {
+                    rateLimiter(10, 1.hours)
+                    requestKey { call ->
+                        events += "account"
+                        assertEquals(mobile, call.sessionCookie(config), "account bucket requires verified native identity")
+                        "account"
+                    }
+                }
+            }
+            routing {
+                rateLimit(RateLimitName("probe")) {
+                    get("/api/v1/probe") { events += "handler"; call.respond(HttpStatusCode.OK) }
+                }
+            }
+        }
+        assertEquals(HttpStatusCode.OK, client.get("/api/v1/probe") { bearerAuth(mobile) }.status)
+        assertEquals(listOf("global", "authenticate", "account", "handler"), events)
+        events.clear()
+        assertEquals(HttpStatusCode.TooManyRequests, client.get("/api/v1/probe") { bearerAuth(mobile) }.status)
+        assertEquals(listOf("global"), events, "exhausted global budget must prevent all authentication and account lookups")
     }
 
     private class Repository : MobileAuthRepository {

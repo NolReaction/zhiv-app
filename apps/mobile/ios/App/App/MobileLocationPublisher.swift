@@ -62,7 +62,7 @@ final class MobileLocationPublisher: NSObject, CLLocationManagerDelegate {
         manager.activityType = .other
         manager.showsBackgroundLocationIndicator = true
         observers.append(NotificationCenter.default.addObserver(forName: Notification.Name("mochlikNativeSessionWillChange"), object: nil, queue: .main) { [weak self] _ in
-            self?.stop(reason: nil, lost: true)
+            self?.stop(reason: nil)
         })
         observers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }

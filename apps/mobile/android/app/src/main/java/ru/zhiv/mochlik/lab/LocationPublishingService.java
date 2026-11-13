@@ -67,7 +67,10 @@ public final class LocationPublishingService extends Service implements Location
     private boolean active, sessionLost;
     private long sequence, started, usedTimestamp, lastAttempt;
     private long deadline;
-    private final Runnable sessionChanged = () -> { cancelAllLaunches(); generation.incrementAndGet(); cancelTransfer(); main.post(() -> retire(null, true)); };
+    private final Runnable sessionChanged = () -> {
+        cancelAllLaunches(); long stoppedGeneration = generation.incrementAndGet(); cancelTransfer();
+        main.post(() -> { if (generation.get() == stoppedGeneration) retire(null, false); });
+    };
     private final Runnable expiry = new Runnable() {
         @Override public void run() {
             if (!active) return;
@@ -249,7 +252,12 @@ public final class LocationPublishingService extends Service implements Location
         });
     }
     private void checkResponse(NativeHttpClient.Response response, NativeSessionStore.Session expected) throws Exception {
-        if (response.status == 401) { store.clearIfToken(expected.token); NativeSessionEvents.invalidate(expected.token); throw new EndPublication("Сеанс завершён"); }
+        if (response.status == 401) {
+            try { store.clearIfToken(expected.token); }
+            catch (Exception ignored) { /* A failed disk cleanup must not preserve the active credential or publisher. */ }
+            finally { NativeSessionEvents.invalidate(expected.token); }
+            throw new EndPublication("Сеанс завершён");
+        }
         if (response.status == 403 || response.status == 409) throw new EndPublication("Право передачи геопозиции изменилось");
         if (response.status < 200 || response.status >= 300 || response.body.length > 65536) throw new IllegalStateException("Request failed");
     }

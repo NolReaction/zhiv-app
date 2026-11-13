@@ -1,6 +1,6 @@
 # Где менять код
 
-Нативный эксперимент iOS/Android: [`apps/mobile/`](../apps/mobile/README.md), адаптер [`native-location.ts`](../features/earth/native-location.ts). [План переноса, границы первого этапа и проверка устройств](development/native-mobile.md).
+Мобильный клиент iOS/Android: [`apps/mobile/`](../apps/mobile/README.md), общий игровой интерфейс и нативные сервисы аккаунта, хранения, геопозиции и уведомлений. [Сборка, серверные требования, покрытие и проверка устройств](development/native-mobile.md).
 
 Для ручной работы в редакторе начните с [памятки Tiled: слои и конкретные действия](game/tiled-quickstart.md).
 
