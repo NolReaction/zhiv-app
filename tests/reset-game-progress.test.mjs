@@ -152,3 +152,12 @@ test("standalone reset refuses the deployment lock before any Docker action", ()
   assert.match(result.stderr, /Another deployment or game reset/);
   assert.deepEqual(await calls(), []);
 }));
+
+
+test("gameplay reset preserves mobile authorization proofs with browser sessions", () => {
+  const preserved = sql.match(/preserved_tables text\[\] := ARRAY\[([\s\S]*?)\];/)?.[1] ?? "";
+  const cleared = sql.match(/cleared_tables text\[\] := ARRAY\[([\s\S]*?)\];/)?.[1] ?? "";
+  assert.match(preserved, /'mobile_authorization_codes'/);
+  assert.match(preserved, /'app_sessions'/);
+  assert.doesNotMatch(cleared, /'mobile_authorization_codes'/);
+});

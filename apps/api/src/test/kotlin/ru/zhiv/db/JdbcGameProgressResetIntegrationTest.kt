@@ -85,6 +85,9 @@ class JdbcGameProgressResetIntegrationTest {
                 INSERT INTO app_sessions(id,user_id,token_hash,expires_at)
                   VALUES ('30000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000001',
                     decode(repeat('12',32),'hex'),clock_timestamp()+interval '1 day');
+                INSERT INTO mobile_authorization_codes(code_hash,source_session_id,user_id,challenge,state_hash,platform)
+                  VALUES (decode(repeat('97',32),'hex'),'30000000-0000-4000-8000-000000000003',
+                    '10000000-0000-4000-8000-000000000001',repeat('A',43),decode(repeat('98',32),'hex'),'ios');
                 INSERT INTO account_login_identities(provider,subject,user_id)
                   VALUES ('email','reset-test@example.invalid','10000000-0000-4000-8000-000000000001');
                 INSERT INTO account_recovery_codes(code_hash,user_id)
@@ -231,6 +234,7 @@ class JdbcGameProgressResetIntegrationTest {
                 "SELECT jsonb_agg(to_jsonb(b) ORDER BY id)::text FROM notification_batches b WHERE id='b1000000-0000-4000-8000-000000000001'",
             ).associateWith { selectedRows(source, it) }
             val before = snapshot(source)
+            assertNotEquals("[]", before.getValue("mobile_authorization_codes"), "An unconsumed native login proof is present before gameplay reset")
             assertNotEquals("[]", before.getValue("earth_frozen_locations"), "The reset fixture includes a frozen recipient snapshot")
             source.connection.use { connection ->
                 assertEquals(1L, connection.economyRows("SELECT count(*) FROM earth_sharing_recipients WHERE frozen") { it.getLong(1) }.single(),
@@ -241,13 +245,13 @@ class JdbcGameProgressResetIntegrationTest {
             assertEquals(0, preview.exitCode, preview.stderr)
             assertEquals(before, snapshot(source), "No-argument SQL invocation must be read only")
 
-            execute(source, "UPDATE flyway_schema_history SET version='83' WHERE version='82'")
+            execute(source, "UPDATE flyway_schema_history SET version='84' WHERE version='83'")
             val unreviewed = snapshot(source)
             val wrongVersion = reset(true)
             assertNotEquals(0, wrongVersion.exitCode)
-            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V82"), wrongVersion.stderr)
+            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V83"), wrongVersion.stderr)
             assertEquals(unreviewed, snapshot(source), "An unreviewed migration must fail before deletion")
-            execute(source, "UPDATE flyway_schema_history SET version='82' WHERE version='83'")
+            execute(source, "UPDATE flyway_schema_history SET version='83' WHERE version='84'")
 
             execute(source, "CREATE TABLE ci_unreviewed_game_reset_guard(value text)")
             val unexpected = snapshot(source)
@@ -290,6 +294,8 @@ class JdbcGameProgressResetIntegrationTest {
                 .find(sql)!!.groupValues[1].let { body -> Regex("'([a-z_]+)'").findAll(body).map { it.groupValues[1] }.toList() }
             for (table in tables("preserved_tables") + "flyway_schema_history")
                 assertEquals(before.getValue(table), after.getValue(table), "Preserved full contents: $table")
+            assertEquals(before.getValue("mobile_authorization_codes"), after.getValue("mobile_authorization_codes"),
+                "Gameplay reset preserves native login proofs and their browser sessions exactly")
             for (table in tables("cleared_tables")) assertEquals("[]", after.getValue(table), "Cleared: $table")
             assertEquals("[]", after.getValue("economy_market_listings"), "All old stock and unclaimed proceeds are reset")
             assertEquals("[]", after.getValue("economy_market_receipts"), "Generation and revisions fence the cleared receipts")
@@ -401,4 +407,35 @@ class JdbcGameProgressResetIntegrationTest {
             assertEquals(1L, presence.currentGeneration(), "A repeated release does not advance generation")
         }
     }
+
+    @Test fun `full user data reset removes mobile proofs together with accounts and sessions`() {
+        val script = generateSequence(Path.of("").toAbsolutePath()) { it.parent }
+            .map { it.resolve("scripts/reset-user-data.sql") }.first { Files.exists(it) }
+        postgres.copyFileToContainer(MountableFile.forHostPath(script), "/tmp/reset-user-data.sql")
+        val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
+        DatabaseFactory.create(config).use { source ->
+            DatabaseFactory.migrate(source)
+            execute(source, """
+                INSERT INTO app_users(id,public_id,display_name)
+                  VALUES ('10000000-0000-4000-8000-000000000001','0000-0000-0001','Mobile reset');
+                INSERT INTO app_sessions(id,user_id,token_hash,expires_at)
+                  VALUES ('30000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000001',
+                    decode(repeat('12',32),'hex'),clock_timestamp()+interval '1 day');
+                INSERT INTO mobile_authorization_codes(code_hash,source_session_id,user_id,challenge,state_hash,platform)
+                  VALUES (decode(repeat('97',32),'hex'),'30000000-0000-4000-8000-000000000003',
+                    '10000000-0000-4000-8000-000000000001',repeat('A',43),decode(repeat('98',32),'hex'),'android');
+            """.trimIndent())
+            val before = snapshot(source)
+            assertNotEquals("[]", before.getValue("mobile_authorization_codes"))
+            val result = postgres.execInContainer("psql", "-X", "-U", postgres.username, "-d", postgres.databaseName,
+                "-v", "ON_ERROR_STOP=1", "-f", "/tmp/reset-user-data.sql")
+            assertEquals(0, result.exitCode, result.stderr)
+            val after = snapshot(source)
+            for (table in listOf("mobile_authorization_codes", "app_sessions", "app_users"))
+                assertEquals("[]", after.getValue(table), "Account deletion clears native auth data: $table")
+            for (table in listOf("flyway_schema_history", "gameplay_generations", "gameplay_reset_runs", "game_tap_collection_metadata"))
+                assertEquals(before.getValue(table), after.getValue(table), "Account reset preserves global metadata: $table")
+        }
+    }
+
 }

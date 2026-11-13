@@ -40,7 +40,7 @@ DECLARE
         'account_login_flows', 'account_login_identities', 'account_merge_previews',
         'account_merge_sources', 'account_operation_receipts', 'account_recovery_attempts',
         'account_recovery_codes', 'account_recovery_contact_removals', 'account_recovery_contacts',
-        'account_registration_tickets', 'admin_mail_broadcasts', 'admin_actions', 'app_sessions',
+        'account_registration_tickets', 'mobile_authorization_codes', 'admin_mail_broadcasts', 'admin_actions', 'app_sessions',
         'circle_invites', 'circle_memberships',
         'circle_sharing_preferences', 'circles', 'direct_invite_links', 'direct_invite_redemptions',
         'direct_person_favorites', 'direct_requests', 'earth_sharing_settings', 'earth_sharing_recipients',
@@ -88,15 +88,16 @@ BEGIN
     -- progression XP, seasonal contribution and tap boosts without relying on a field allowlist.
     -- Every later migration still requires an explicit inventory/policy review.
     -- V82 indexes all confirmed fish records. They are removed with the economy during a reset.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 82
+    -- V83 mobile login proofs are authentication data and survive gameplay resets with sessions.
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 83
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,82) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,83) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL','71:SQL','72:SQL','73:SQL','74:SQL','75:SQL','76:SQL','77:SQL','78:SQL','79:SQL','80:SQL','81:SQL','82:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL','71:SQL','72:SQL','73:SQL','74:SQL','75:SQL','76:SQL','77:SQL','78:SQL','79:SQL','80:SQL','81:SQL','82:SQL','83:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V82. Game reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V83. Game reset cancelled.';
     END IF;
 
     IF apply_mode THEN

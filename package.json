@@ -56,7 +56,13 @@
     "earth:models:check": "node scripts/prepare-earth-model.mjs --check",
     "predev": "npm run earth:prepare",
     "test:earth": "node --test --test-concurrency=1 tests/earth-*.test.mjs",
-    "test:targeted": "node scripts/run-node.mjs --serial --test"
+    "test:targeted": "node scripts/run-node.mjs --serial --test",
+    "mobile:dev": "npm run dev --workspace @zhiv/mobile",
+    "mobile:build": "npm run build --workspace @zhiv/mobile",
+    "mobile:sync": "npm run mobile:build && npm run sync --workspace @zhiv/mobile",
+    "mobile:ios": "npm run ios --workspace @zhiv/mobile",
+    "mobile:android": "npm run android --workspace @zhiv/mobile",
+    "test:mobile": "node scripts/run-node.mjs --serial --test tests/earth-native-location.test.mjs tests/mobile-*.test.mjs"
   },
   "dependencies": {
     "class-variance-authority": "0.7.1",
@@ -105,6 +111,7 @@
   "displayName": "Я живой",
   "workspaces": [
     "packages/engine",
-    "apps/engine"
+    "apps/engine",
+    "apps/mobile"
   ]
 }

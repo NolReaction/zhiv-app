@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { gamePresenceHeaders, reportInactivePresence } from "@/features/activity/transport-state";
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
@@ -57,7 +58,7 @@ async function request<T>(path: string, schema: z.ZodType<T, unknown>, signal?: 
   const timer = setTimeout(abort, 8000);
   try {
     const presence = gamePresenceHeaders();
-    const response = await fetch(path, { method: command ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal: controller.signal,
+    const response = await apiFetch(path, { method: command ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal: controller.signal,
       headers: { ...presence, Accept: "application/json", ...(command ? { "Content-Type": "application/json" } : {}) },
       ...(command ? { body: JSON.stringify(command) } : {}) });
     const body: unknown = await response.json().catch(() => null);

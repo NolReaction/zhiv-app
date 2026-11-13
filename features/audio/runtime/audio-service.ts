@@ -1,3 +1,4 @@
+import { deviceSettingsStorage } from "@/lib/client-persistence";
 import { sanitizeAudioSettings } from "@/features/audio/domain/settings";
 import type { AudioRuntime } from "@/features/audio/domain/types";
 import { createAudioRuntime } from "./audio-runtime";
@@ -13,7 +14,7 @@ export function getAudioRuntime(): AudioRuntime {
   // Set the policy once, before any AudioContext or music element is unlocked.
   configureAmbientAudioSession(window.navigator);
   let saved: unknown;
-  try { saved = JSON.parse(window.localStorage.getItem(AUDIO_SETTINGS_STORAGE_KEY) ?? "null"); } catch { /* Storage is optional in private mode. */ }
+  try { saved = JSON.parse(deviceSettingsStorage()?.getItem(AUDIO_SETTINGS_STORAGE_KEY) ?? "null"); } catch { /* Storage is optional in private mode. */ }
   let cacheStorage: CacheStorage | undefined;
   try { cacheStorage = window.caches; } catch { /* Restricted storage does not disable sound. */ }
   const runtime = createAudioRuntime({ initialSettings: sanitizeAudioSettings(saved), cacheStorage });
@@ -22,7 +23,7 @@ export function getAudioRuntime(): AudioRuntime {
     const settings = runtime.getSettings();
     if (settings === lastSettings) return;
     lastSettings = settings;
-    try { window.localStorage.setItem(AUDIO_SETTINGS_STORAGE_KEY, JSON.stringify(settings)); } catch { /* Settings still work for this session. */ }
+    try { deviceSettingsStorage()?.setItem(AUDIO_SETTINGS_STORAGE_KEY, JSON.stringify(settings)); } catch { /* Settings still work for this session. */ }
   });
   browserRuntime = runtime;
   return runtime;

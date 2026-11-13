@@ -1,0 +1,21 @@
+:root { font-family: ui-rounded, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #edf4ec; background: #11140f; color-scheme: dark; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+html, body, #root { min-height: 100%; }
+.mobile-start { display: flex; flex-direction: column; justify-content: center; align-items: stretch; width: min(100%, 480px); min-height: 100dvh; margin: auto; padding: max(28px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); }
+.mobile-start h1 { margin: 18px 0 12px; font-size: clamp(28px, 8vw, 40px); line-height: 1.1; letter-spacing: -1px; }
+.mobile-start p { color: #b8c5ad; line-height: 1.55; }
+.mobile-start .mobile-eyebrow { letter-spacing: 3px; font-size: 12px; font-weight: 800; color: #c5e79c; margin-bottom: 0; }
+.mobile-start button, .mobile-start a, .mobile-diagnostics-close { min-height: 48px; border: 1px solid transparent; border-radius: 14px; padding: 14px 18px; font: inherit; font-weight: 750; background: #c7e5a3; color: #18311d; cursor: pointer; touch-action: manipulation; text-align: center; text-decoration: none; }
+.mobile-start button { margin-top: 14px; }
+.mobile-start .mobile-secondary { background: transparent; border-color: #51634a; color: #d9e5d4; }
+.mobile-start button:disabled { opacity: .55; cursor: wait; }
+.mobile-start .mobile-caption { font-size: 13px; color: #9daf95; }
+.mobile-brand { object-fit: contain; align-self: flex-start; }
+.mobile-diagnostics { position: fixed; inset: 0; z-index: 2000; overflow-y: auto; overscroll-behavior: contain; background: #102219; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+.mobile-diagnostics-close { position: sticky; top: 0; display: block; width: min(calc(100% - 36px), 584px); margin: 12px auto; background: #d1e7b5; z-index: 1; }
+.mobile-diagnostics .mobile-device-lab { padding-top: 8px; }
+.mobile-storage-warning { position: fixed; z-index: 1900; top: calc(env(safe-area-inset-top) + 8px); left: 16px; right: 16px; margin: auto; max-width: 460px; padding: 12px 16px; border-radius: 12px; background: #4c3826; color: #f4dfb9; font-size: 13px; line-height: 1.45; }
+/* A solid status-bar surface keeps scrolled content below the device chrome. */
+body::before { content: ""; position: fixed; z-index: 2100; pointer-events: none; inset: 0 0 auto; height: env(safe-area-inset-top); background: #11140f; }
+button:focus-visible, a:focus-visible { outline: 3px solid #e5cf89; outline-offset: 4px; }

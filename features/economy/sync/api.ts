@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { fishingStandingsSchema, type FishingStandings } from "./boat-records-model";
 import { gamePresenceHeaders, reportInactivePresence } from "@/features/activity/transport-state";
 import { z } from "zod";
@@ -23,7 +24,7 @@ async function request<T>(path: string, schema: z.ZodType<T, unknown>, command?:
   try {
     const presence = gamePresenceHeaders();
     const known = catalogShape ? cachedCatalog : undefined;
-    const response = await fetch(path, {
+    const response = await apiFetch(path, {
       method: command ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal: controller.signal,
       headers: { ...presence, Accept: "application/json", ...(known && { [catalogHeader]: known.tag }), ...(command ? { "Content-Type": "application/json" } : {}) },
       ...(command ? { body: JSON.stringify(command) } : {}),

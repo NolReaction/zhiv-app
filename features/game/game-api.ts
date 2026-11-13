@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { gamePresenceHeaders, reportInactivePresence } from "@/features/activity/transport-state";
 import { playerTagSchema } from "@/lib/player-tag";
 import { z } from "zod";
@@ -117,7 +118,7 @@ async function gameRequest<T>(
   const timer = setTimeout(() => controller.abort(), 8_000);
   try {
     const presence = gamePresenceHeaders();
-    const response = await fetch(path, {
+    const response = await apiFetch(path, {
       method,
       credentials: "same-origin",
       cache: "no-store",

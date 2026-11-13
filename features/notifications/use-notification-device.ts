@@ -6,6 +6,7 @@ import { getNotificationSettings } from "./notification-api";
 import { connectPush, currentPushSubscription, disconnectPush, notificationSupport, preparePushConnection, type PreparedPushConnection } from "./notification-browser";
 import type { NotificationSnapshot } from "./notification-contract";
 import type { NotificationDeviceState } from "./notification-device-card";
+import { getNativeNotifications } from "./native-notifications";
 
 function permission(): NotificationPermission | "unavailable" {
   return typeof Notification === "undefined" ? "unavailable" : Notification.permission;
@@ -37,14 +38,24 @@ export function useNotificationDevice(owner: string, isOnline: boolean, onSnapsh
     refreshAbort.current = abort;
     const generation = lifetime.current.generation;
     const current = () => !abort.signal.aborted && lifetime.current.mounted && lifetime.current.generation === generation;
-    const support = notificationSupport();
+    const native = getNativeNotifications();
+    const support = native ? { supported: true, reason: null } : notificationSupport();
     prepared.current = null;
-    setState(previous => ({ ...previous, support, permission: permission(), prepared: false, phase: "preparing",
+    setState(previous => ({ ...previous, support, permission: native ? previous.permission : permission(), deliveryMode: native ? "local" : "push", prepared: false, phase: "preparing",
       ...(clearError ? { error: "", notice: "" } : {}) }));
     try {
       const value = await getNotificationSettings(owner, abort.signal);
       if (!current()) return;
       snapshot.current = value; onSnapshot(value); setLoadError("");
+      if (native) {
+        await native.setOwner(owner);
+        if (!current()) return;
+        await native.setPreferences(value);
+        const status = await native.status(owner);
+        if (current()) setState(previous => ({ ...previous, configured: true, connected: status.enabled,
+          permission: status.permission, prepared: true, error: status.error }));
+        return;
+      }
       setState(previous => ({ ...previous, configured: value.delivery.configured }));
       if (!support.supported || !value.delivery.configured) {
         const subscription = await currentPushSubscription();
@@ -65,7 +76,7 @@ export function useNotificationDevice(owner: string, isOnline: boolean, onSnapsh
         setState(previous => ({ ...previous, error: message }));
       }
     } finally {
-      if (current()) setState(previous => ({ ...previous, phase: "idle", support: notificationSupport(), permission: permission() }));
+      if (current()) setState(previous => ({ ...previous, phase: "idle", support: native ? support : notificationSupport(), permission: native ? previous.permission : permission() }));
     }
   }, [owner, onSnapshot, onSessionLost]);
 
@@ -89,7 +100,8 @@ export function useNotificationDevice(owner: string, isOnline: boolean, onSnapsh
 
   function toggle() {
     const value = snapshot.current;
-    if (action.current || !isOnline || !value || value.ownerPublicId !== owner || (!state.connected && !prepared.current)) return;
+    const native = getNativeNotifications();
+    if (action.current || (!isOnline && !(native && state.connected)) || !value || value.ownerPublicId !== owner || (!state.connected && !(native ? state.prepared : prepared.current))) return;
     const generation = lifetime.current.generation;
     const current = () => lifetime.current.mounted && lifetime.current.generation === generation;
     action.current = true;
@@ -97,14 +109,15 @@ export function useNotificationDevice(owner: string, isOnline: boolean, onSnapsh
     const disconnecting = state.connected;
     setState(previous => ({ ...previous, phase: disconnecting ? "disconnecting" : "subscribing", error: "", notice: "" }));
     // No await here: Safari must see subscribe() in this button's activation.
-    const operation = disconnecting ? disconnectPush(owner) : connectPush(owner, value, prepared.current ?? undefined, phase => {
+    const operation = native ? (disconnecting ? native.disable(owner) : native.enable(owner)).then(() => null)
+      : disconnecting ? disconnectPush(owner) : connectPush(owner, value, prepared.current ?? undefined, phase => {
       if (current()) setState(previous => ({ ...previous, phase }));
     });
     prepared.current = null;
     void operation.then(result => {
       if (!current()) return;
       if (result) { snapshot.current = result; onSnapshot(result); }
-      setState(previous => ({ ...previous, connected: !disconnecting && result?.subscription.subscribed === true,
+      setState(previous => ({ ...previous, connected: !disconnecting && (native !== null || result?.subscription.subscribed === true),
         notice: disconnecting ? "На этом устройстве уведомления выключены" : "Уведомления подключены на этом устройстве" }));
     }).catch(error => {
       if (!current()) return;
@@ -113,7 +126,7 @@ export function useNotificationDevice(owner: string, isOnline: boolean, onSnapsh
     }).finally(() => {
       if (!current()) return;
       action.current = false;
-      setState(previous => ({ ...previous, prepared: false, phase: "idle", permission: permission(), support: notificationSupport() }));
+      setState(previous => ({ ...previous, prepared: false, phase: "idle", permission: native ? previous.permission : permission(), support: native ? previous.support : notificationSupport() }));
       void refresh();
     });
   }

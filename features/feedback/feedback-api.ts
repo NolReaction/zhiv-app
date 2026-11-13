@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
 import { hasUserTextControls } from "@/lib/user-text";
@@ -46,7 +47,7 @@ async function request<T>(path: string, schema: z.ZodType<T, unknown>, signal?: 
   else signal?.addEventListener("abort", abort, { once: true });
   const timer = globalThis.setTimeout(() => controller.abort(), 15_000);
   try {
-    const response = await fetch(`/api/v1/${path}`, { method: body ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal: controller.signal,
+    const response = await apiFetch(`/api/v1/${path}`, { method: body ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal: controller.signal,
       headers: { Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
     const value: unknown = await response.json().catch(() => null);
     if (!response.ok) {

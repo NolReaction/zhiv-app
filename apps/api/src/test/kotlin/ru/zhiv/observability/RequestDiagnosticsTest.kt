@@ -26,6 +26,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.slf4j.LoggerFactory
 import ru.zhiv.auth.AuthFailure
+import ru.zhiv.auth.issueMobileToken
 import ru.zhiv.checkins.CheckInRepository
 import ru.zhiv.checkins.CheckInResult
 import ru.zhiv.config.AppConfig
@@ -36,6 +37,7 @@ import ru.zhiv.identity.DisplayNameUpdateResult
 import ru.zhiv.identity.IdentityRepository
 import ru.zhiv.identity.UserSnapshot
 import ru.zhiv.installZhivApi
+import ru.zhiv.security.TokenCodec
 import java.sql.SQLException
 import java.util.UUID
 import kotlin.test.Test
@@ -118,7 +120,14 @@ class RequestDiagnosticsTest {
 
     @Test
     fun `unexpected failures correlate without exposing sql messages causes or request material`() = capture { logs ->
-        val secrets = listOf("person@example.invalid", "otp-946271", "cookie-super-secret", "oauth-code-secret", "token-secret", "sql-parameter-secret")
+        val tokens = TokenCodec()
+        val nativeToken = issueMobileToken(tokens)
+        val userId = UUID.randomUUID()
+        val authenticatedRepository = object : IdentityRepository by UnusedRepository {
+            override suspend fun findSessionUserId(sessionTokenHash: ByteArray): UUID? =
+                userId.takeIf { sessionTokenHash.contentEquals(tokens.hash(nativeToken)) }
+        }
+        val secrets = listOf("person@example.invalid", "otp-946271", "cookie-super-secret", "oauth-code-secret", nativeToken, "sql-parameter-secret")
         val failure = SQLException("INSERT account VALUES ('${secrets[0]}', '${secrets[5]}')", "23505").apply {
             initCause(IllegalStateException(secrets.joinToString("\n")))
             addSuppressed(IllegalArgumentException("suppressed-secret"))
@@ -126,13 +135,14 @@ class RequestDiagnosticsTest {
         var requestId: String? = null
         testApplication {
             application {
-                installZhivApi(UnusedRepository, UnusedRepository, config())
+                installZhivApi(authenticatedRepository, UnusedRepository, config())
                 routing {
                     post("/api/v1/auth/email/verify") { throw failure }
                 }
             }
             val response = client.post("/api/v1/auth/email/verify?code=${secrets[3]}&state=${secrets[4]}") {
-                header(HttpHeaders.Cookie, "zhiv_session_dev=${secrets[2]}")
+                // Exercise cookie redaction without mixing browser and native session credentials.
+                header(HttpHeaders.Cookie, "diagnostics_fixture=${secrets[2]}")
                 header(HttpHeaders.Authorization, "Bearer ${secrets[4]}")
                 header(HttpHeaders.UserAgent, secrets[0])
                 header(REQUEST_ID_HEADER, "spoofed-request")

@@ -6,12 +6,14 @@ import type { EarthShareOptions } from "./sharing";
 import type { EarthPosition } from "./location";
 import { getEarthLocationPreferenceStore } from "./location-preferences";
 import * as transport from "./sharing-api";
+import { createNativeEarthPublisher } from "./native-publisher";
 
 /** Keep this hook in AppShell so explicit privacy commands survive map unmounts. */
 export function useEarthSharing({ ownerPublicId, visible, publicationVisible = visible, isOnline, onSessionLost }: {
   ownerPublicId: string | null; visible: boolean; publicationVisible?: boolean; isOnline: boolean; onSessionLost?: () => void;
 }) {
-  const controller = useMemo(() => createEarthSharingController({ ownerPublicId, transport }), [ownerPublicId]);
+  const nativePublisher = useMemo(() => createNativeEarthPublisher(ownerPublicId), [ownerPublicId]);
+  const controller = useMemo(() => createEarthSharingController({ ownerPublicId, transport, nativePublisher }), [ownerPublicId, nativePublisher]);
   const preference = useMemo(() => getEarthLocationPreferenceStore(ownerPublicId), [ownerPublicId]);
   const locationChoice = useSyncExternalStore(preference.subscribe, preference.getSnapshot, preference.getServerSnapshot);
   useLayoutEffect(() => { controller.configure({ onSessionLost }); }, [controller, onSessionLost]);
@@ -44,7 +46,7 @@ export function useEarthSharing({ ownerPublicId, visible, publicationVisible = v
     ? controller.setFrozen(circleId, frozen) : Promise.resolve(false), [controller, preference]);
   const ghost = useCallback(() => { if (preference.getSnapshot().enabled) controller.ghost(); }, [controller, preference]);
   const setPosition = useCallback((position: EarthPosition | null) => controller.setPosition(preference.getSnapshot().enabled ? position : null), [controller, preference]);
-  return { ...state, share, resume, ghost, off: controller.off,
+  return { ...state, nativePublishing: !!nativePublisher, share, resume, ghost, off: controller.off,
     setFrozen, revokeRecipient: controller.revokeRecipient,
     stopPublishing: controller.stopPublishing, refresh: controller.refresh, setPosition };
 }

@@ -4,12 +4,14 @@ import { useEffect, useId, useRef, useSyncExternalStore } from "react";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { createFishingAudioController, FISHING_AUDIO_CUES, type FishingAudioState } from "@/features/audio/ui/fishing-audio";
 import { TILED_WORLD } from "@/features/world/scene/presentation";
+import { deviceHaptic, deviceIsActive, subscribeDeviceEnvironment } from "@/lib/device-runtime";
 
-const visibleSnapshot = () => !document.hidden && document.hasFocus();
+const visibleSnapshot = () => deviceIsActive() && document.hasFocus();
 const serverVisibleSnapshot = () => false;
 const subscribeVisibility = (notify: () => void) => {
+  const unsubscribe = subscribeDeviceEnvironment(notify);
   document.addEventListener("visibilitychange", notify); window.addEventListener("blur", notify); window.addEventListener("focus", notify);
-  return () => { document.removeEventListener("visibilitychange", notify); window.removeEventListener("blur", notify); window.removeEventListener("focus", notify); };
+  return () => { unsubscribe(); document.removeEventListener("visibilitychange", notify); window.removeEventListener("blur", notify); window.removeEventListener("focus", notify); };
 };
 
 type Options = Omit<FishingAudioState, "sceneId"> & { ownerPublicId: string };
@@ -24,7 +26,7 @@ export function useFishingAudio({ ownerPublicId, voyageId, stage, castKey, held,
     if (stage !== "bite" || !castKey || lastBite.current === castKey) return;
     lastBite.current = castKey;
     if (!visible || suspended) return;
-    try { navigator.vibrate?.([65, 45, 90]); } catch { /* The float and sound also signal the bite. */ }
+    deviceHaptic("bite");
   }, [stage, castKey, visible, suspended]);
   const sceneId = `zhiv:mochlik:presence:${ownerPublicId}:${TILED_WORLD.id}`;
   useEffect(() => {

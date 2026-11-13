@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { gamePresenceHeaders, reportInactivePresence, subscribeGamePresence } from "@/features/activity/transport-state";
 import { ApiError } from "@/lib/check-in-api";
 import { forestMemoryResultSchema, forestMemoryViewSchema,
@@ -50,7 +51,7 @@ function retryAfter(value: string | null): number | undefined {
 
 async function request(path: string, signal: AbortSignal, command?: ForestMemoryCommand, keepalive = false) {
   const presence = gamePresenceHeaders();
-  const response = await fetch(path, { method: command ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal,
+  const response = await apiFetch(path, { method: command ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal,
     headers: { ...presence, Accept: "application/json", ...(command ? { "Content-Type": "application/json" } : {}) },
     ...(command ? { body: JSON.stringify(command), keepalive } : {}) });
   const body: unknown = await response.json().catch(() => null);

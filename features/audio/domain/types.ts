@@ -53,6 +53,8 @@ export interface AudioRuntime {
   preview(cueId: string): void;
   previewTone(bus?: AudioBus): void;
   setVisible(visible: boolean): void;
+  /** Release inactive decoded buffers after a native memory warning; active voices keep their buffers. */
+  trimMemory?(): void;
   getDiagnostics(): AudioDiagnostics;
   subscribe(listener: () => void): () => void;
   dispose(): void;

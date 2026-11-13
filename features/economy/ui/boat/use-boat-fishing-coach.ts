@@ -1,9 +1,11 @@
 "use client";
 
+import { deviceSettingsStorage } from "@/lib/client-persistence";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { claimBoatFishingCourse, createBoatFishingCoach, type BoatCoachObservation } from "./boat-fishing-coach";
 
-const storage = () => { try { return window.localStorage; } catch { return null; } };
+const storage = () => { return deviceSettingsStorage() ?? null; };
 
 /** Hint completion is scoped to this account on this device; it never changes a voyage. */
 export function useBoatFishingCoach(owner: string) {

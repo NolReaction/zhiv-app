@@ -1,3 +1,4 @@
+import { getClientPlatform } from "@/lib/client-platform";
 type PreferenceStorage = Pick<Storage, "getItem" | "setItem">;
 export type EarthLocationPreference = Readonly<{ enabled: boolean; automaticStartAllowed: boolean }>;
 
@@ -37,7 +38,7 @@ export function createEarthLocationPreferenceStore(
       const storage = getStorage();
       if (!storage) return lastKnown;
       const value = storage.getItem(key);
-      lastKnown = value === "ready" ? READY : value === "active" || value === null ? ACTIVE : OFF;
+      lastKnown = value === "ready" ? READY : value === "active" ? ACTIVE : value === null ? getClientPlatform() ? READY : ACTIVE : OFF;
       return lastKnown;
     } catch { return lastKnown; }
   };

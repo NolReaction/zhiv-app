@@ -8,12 +8,20 @@ import { normalizeRecoveryCode } from "@/lib/recovery-code";
 import { createRecoveryAttemptStore, recoveryAttemptRejected, recoveryAttemptStorage, type RecoveryAttempt } from "./recovery-attempt";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RecoveryCodeCard } from "./recovery-code-card";
+import { getClientPlatform } from "@/lib/client-platform";
+import { NativeAccountManagement } from "./native-account-entry";
 import styles from "./recovery-starter.module.css";
 import { TransientNotice } from "@/components/app-notifications";
 
-export function RecoveryStarter({context,isOnline,onRecovered}: {
+type RecoveryStarterProps = {
   context:"onboarding"|"session-lost"|"profile";isOnline:boolean;onRecovered:(me:MeResponse)=>void;
-}) {
+};
+
+export function RecoveryStarter(props: RecoveryStarterProps) {
+  return getClientPlatform() ? <NativeAccountManagement isOnline={props.isOnline} label="Восстановить доступ в браузере" /> : <BrowserRecoveryStarter {...props} />;
+}
+
+function BrowserRecoveryStarter({context,isOnline,onRecovered}: RecoveryStarterProps) {
   const [open,setOpen]=useState(false), [code,setCode]=useState(""), [busy,setBusy]=useState(false);
   const [error,setError]=useState(""),[recovered,setRecovered]=useState<MeResponse|null>(null);
   const [attempts] = useState(() => createRecoveryAttemptStore(recoveryAttemptStorage()));

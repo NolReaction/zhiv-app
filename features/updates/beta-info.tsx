@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import type { ReleaseNote } from "@/features/updates/release-notes";
 import { useReleaseNotes } from "@/features/updates/use-release-notes";
 import { FeedbackDialog } from "@/features/feedback/feedback-dialog";
+import { getClientPlatform } from "@/lib/client-platform";
 import styles from "./beta-info.module.css";
 
 export function unreadReleaseLabel(count: number): string {
@@ -56,6 +57,7 @@ export function BetaInfo({ ownerPublicId }: { ownerPublicId: string }) {
 }
 
 function BetaInfoDialog({ ownerPublicId }: { ownerPublicId: string }) {
+  const platform = getClientPlatform();
   const { releases, unreadIds, unreadCount, checking, refresh, markRead, refreshError } = useReleaseNotes(ownerPublicId);
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -97,14 +99,15 @@ function BetaInfoDialog({ ownerPublicId }: { ownerPublicId: string }) {
       </section>
       <section className={styles.updates} aria-label="Обновления приложения">
         <div className={styles.updatesHeader}>
-          <h2>Что нового</h2>
-          <button type="button" className={styles.refresh} onClick={refresh} disabled={checking} aria-label="Проверить обновления">
+          <h2>{platform ? "История установленной версии" : "Что нового"}</h2>
+          <button type="button" className={styles.refresh} onClick={refresh} disabled={checking} aria-label={platform ? "Перечитать историю" : "Проверить обновления"}>
             <RefreshCw size={16} aria-hidden="true" className={checking ? styles.spinning : undefined} />
           </button>
         </div>
         <p role="status" className={styles.status}>
-          {checking ? "Проверяем обновления…" : refreshError ? "Не удалось проверить новости. Показаны сохранённые записи." : "Новые версии сверху"}
+          {checking ? (platform ? "Читаем историю…" : "Проверяем обновления…") : refreshError ? "Не удалось прочитать новости. Показаны сохранённые записи." : "Новые версии сверху"}
         </p>
+        {platform && <p className={styles.status}>Приложение {platform.appVersion}. Для обновления установите новую версию приложения. История ниже входит в установленную версию.</p>}
         {releases.length > 0
           ? <ReleaseNotesList releases={releases} unreadIds={unreadIds} expandedId={expandedId} onToggle={toggleRelease} />
           : <p className={styles.empty}>Здесь появятся новости следующих версий.</p>}

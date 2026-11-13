@@ -103,6 +103,7 @@ import { CheckInReceipt } from "@/features/check-in/check-in-receipt";
 import { useSimpleView } from "@/features/app/use-simple-view";
 import { useWorldPortal } from "@/features/world/use-world-portal";
 import { useNotificationNavigation, useNotificationPresence } from "@/features/notifications/use-notification-presence";
+import { useNativeGameNotifications } from "@/features/notifications/use-native-game-notifications";
 import { useMailbox } from "@/features/mailbox/use-mailbox";
 import { MailboxDialog } from "@/features/mailbox/mailbox-dialog";
 import { MailboxNotifications } from "@/features/mailbox/mailbox-notifications";
@@ -671,6 +672,8 @@ function CheckInContent() {
 
   const world = useWorld(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
   const economy = useEconomy(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
+  useNativeGameNotifications({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null,
+    snapshot: economy.snapshot, confirmed: economy.snapshotConfirmed, serverNow: economy.readServerNow });
   const { reconcile: reconcileWorld, getReconciliationError: worldReconciliationError, setAvailable: setWorldAvailable, setDirectActionsAvailable: setWorldDirectActions } = world;
   const { reconcile: reconcileEconomy, getReconciliationError: economyReconciliationError, setAvailable: setEconomyAvailable, setDirectActionsAvailable: setEconomyDirectActions, setLocalActionsAvailable: setLocalEconomyActions } = economy;
   const reconcileGameplay = useCallback(() => reconcileGameplaySessions(

@@ -9,6 +9,7 @@ import { NotificationSettingsPanel, type NotificationSettingsExit } from "@/feat
 import { useSectionGuideLauncherPreference } from "@/features/onboarding/use-section-guide-preferences";
 import { WorldTapHintSetting } from "@/features/world/ui/profile/world-tap-hint-setting";
 import { ProfileLocationSettings, type LocationPrivacyState } from "./profile-location-settings";
+import { getClientPlatform } from "@/lib/client-platform";
 import styles from "./profile-settings.module.css";
 
 const screens = [
@@ -31,6 +32,8 @@ export function ProfileSettings({ ownerPublicId, isOnline, onSessionLost, simple
   active?: boolean;
   locationPrivacy?: LocationPrivacyState;
 }) {
+  const native = getClientPlatform();
+  const availableScreens = screens.map(item => item.id === "installation" && native ? { ...item, title: "Приложение и устройство", description: "Версия приложения и проверка геопозиции" } : item);
   const { showSectionGuideLauncher, setShowSectionGuideLauncher } = useSectionGuideLauncherPreference(ownerPublicId);
   const [screen, setScreen] = useState<SettingsScreen | null>(null);
   const [visited, setVisited] = useState<SettingsScreen[]>([]);
@@ -57,7 +60,7 @@ export function ProfileSettings({ ownerPublicId, isOnline, onSessionLost, simple
     else leave();
   }
 
-  const currentTitle = screens.find(item => item.id === screen)?.title;
+  const currentTitle = availableScreens.find(item => item.id === screen)?.title;
 
   return <div className={styles.settings} data-profile-settings-screen={screen ?? "menu"}>
     <section className={styles.menu} hidden={screen !== null} aria-labelledby="profile-settings-title">
@@ -66,7 +69,7 @@ export function ProfileSettings({ ownerPublicId, isOnline, onSessionLost, simple
         <p>Выберите, что хотите настроить</p>
       </header>
       <div className={styles.entries}>
-        {screens.map(({ id, title, description, icon: Icon }) => <button key={id} type="button"
+        {availableScreens.map(({ id, title, description, icon: Icon }) => <button key={id} type="button"
           ref={element => { entryRefs.current[id] = element; }}
           className={styles.entry} onClick={() => openScreen(id)} data-audio-cue="ui.open">
           <span className={styles.icon}><Icon size={21} aria-hidden="true" /></span>
@@ -84,7 +87,7 @@ export function ProfileSettings({ ownerPublicId, isOnline, onSessionLost, simple
     </div>}
     {/* Keep visited screens mounted so returning does not discard notification drafts. */}
     {visited.includes("installation") && <div className={styles.screen} hidden={screen !== "installation"}>
-      <InstallPanel compact context="settings" />
+      <>{native ? <section className={styles.appearanceCard}><h2>Мохлик</h2><p className={styles.hint}>{native.kind === "ios" ? "iPhone / iPad" : "Android"} · версия {native.appVersion}</p><p className={styles.hint}>Приложение установлено. Обновления устанавливаются новой сборкой приложения.</p><button type="button" className={styles.back} onClick={native.openDiagnostics}>Проверить устройство</button></section> : <InstallPanel compact context="settings" />}</>
     </div>}
     {visited.includes("notifications") && <div className={styles.screen} hidden={screen !== "notifications"}>
       <NotificationSettingsPanel ownerPublicId={ownerPublicId} isOnline={isOnline} onSessionLost={onSessionLost} exitRef={notificationSettingsExit} />

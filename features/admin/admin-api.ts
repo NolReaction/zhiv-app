@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { z } from "zod";
 import { GAME_ITEMS, GAME_ACHIEVEMENTS, type GameItemId } from "@/features/game/game-rewards";
 import type { GameAchievementId } from "@/features/game/game-api";
@@ -61,7 +62,7 @@ export async function adminRequest<T>(path: string, schema: z.ZodType<T, unknown
   else signal?.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(() => controller.abort(), 15_000);
   try {
-    const response = await fetch(`/api/v1/admin/${path}`, {
+    const response = await apiFetch(`/api/v1/admin/${path}`, {
       method: body ? "POST" : "GET", mode: "same-origin", credentials: "same-origin", cache: "no-store", signal: controller.signal,
       headers: { Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),

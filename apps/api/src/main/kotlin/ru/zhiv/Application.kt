@@ -105,6 +105,8 @@ import ru.zhiv.db.EarthLocationMaintenance
 import ru.zhiv.security.TokenCodec
 import ru.zhiv.auth.*
 import ru.zhiv.db.JdbcAuthRepository
+import ru.zhiv.db.JdbcMobileAuthRepository
+import ru.zhiv.http.MobileSessionAuthentication
 import ru.zhiv.admin.AdminConfig
 import ru.zhiv.admin.AdminRepository
 import ru.zhiv.admin.adminRoutes
@@ -180,6 +182,7 @@ fun Application.module() {
         recovery = recovery,
         readiness = JdbcReadinessProbe(dataSource),
         auth = JdbcAuthRepository(dataSource),
+        mobileAuth = JdbcMobileAuthRepository(dataSource),
         authConfig = authConfig,
         telegram = telegram,
         mailer = mailer,
@@ -241,6 +244,7 @@ fun Application.installZhivApi(
     playerMail: MailRepository? = null,
     earthLocations: EarthLocationRepository? = null,
     rateLimitClock: () -> Long = System::currentTimeMillis,
+    mobileAuth: MobileAuthRepository? = null,
 ) {
     val metrics = RuntimeMetrics.shared
     val traffic = RequestTraffic()
@@ -326,6 +330,10 @@ fun Application.installZhivApi(
             requestKey { call -> clientIpKey(call) }
         }
     }
+    install(MobileSessionAuthentication) {
+        cookieName = config.cookieName
+        validate = { raw -> identities.findSessionUserId(tokenCodec.hash(raw)) != null }
+    }
     install(ContentNegotiation) {
         json(Json {
             ignoreUnknownKeys = false
@@ -407,6 +415,7 @@ fun Application.installZhivApi(
             presence = presence,
         )
         auth?.let { authRoutes(it, identities, tokenCodec, config, authConfig, telegram, mailer, vk) }
+        mobileAuth?.let { mobileAuthRoutes(it, tokenCodec, config) }
         rateLimit(RateLimitName("check-in-attempt")) { checkInRoutes(checkIns, tokenCodec, config, presence) }
         gameEventRoutes(identities, tokenCodec, config, gameEvents)
         games?.let { gameRoutes(it, tokenCodec, config, presence) }

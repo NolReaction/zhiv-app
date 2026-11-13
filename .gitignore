@@ -42,6 +42,8 @@ next-env.d.ts
 /apps/engine/dist/
 /apps/engine/.cache/
 /apps/engine/node_modules/
+/apps/mobile/dist/
+/apps/mobile/node_modules/
 /packages/engine/dist/
 /packages/engine/node_modules/
 /.wrangler/

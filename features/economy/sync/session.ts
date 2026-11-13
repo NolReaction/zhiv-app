@@ -751,7 +751,15 @@ export function createEconomySession(owner: string | null, transport: Transport,
       if (command.success) void execute({ kind: "dev", command: command.data });
     },
     retry: () => pending ? execute(pending) : productionEntries.length ? drainProduction() : refresh(),
-    retryPending: () => view.directActionsAvailable && pending && receiptRetry.due() ? execute(pending) : Promise.resolve(),
+    retryPending: () => {
+      // A native write-ahead store may expose another uncertain receipt after
+      // the previous one settles. It never sends until this owner is active.
+      if (active && !pending && !view.busy) {
+        restore();
+        if (pending) receiptRetry.failed(new Error("Recovered pending receipt"));
+      }
+      return view.directActionsAvailable && pending && receiptRetry.due() ? execute(pending) : Promise.resolve();
+    },
     retryGardenCollection() {
       if (pending?.kind !== "economy" || !active || !available || view.busy || performance.now() < blockedUntil) return false;
       const { action, targetId } = pending.command;
