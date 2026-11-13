@@ -296,22 +296,34 @@ test("returning from native settings rechecks permission and retires the prior o
   } finally { s.deactivate(); }
 });
 
-test("permission-query failure does not manufacture revocation, while watch errors remain authoritative", async () => {
+test("a failed native registration preflight reports unavailability without starting a native watch", async () => {
+  for (const error of [{ code: "OS-PLUG-GLOC-0007" }, new Error("bridge unavailable")]) {
+    const s = await session();
+    try {
+      s.setPermissionError(error);
+      s.controller.start(); await settle();
+      assert.equal(s.watches.length, 0, "failed preflight must not enter native watch/settings resolution");
+      assert.equal(s.controller.getSnapshot().status, "unavailable");
+      assert.equal(s.denials, 0, "disabled services and query failures are not permission revocations");
+    } finally { s.deactivate(); }
+  }
+});
+
+test("an observer-only permission-query failure does not retire an existing native watch", async () => {
   const s = await session();
   try {
     s.controller.start(); await settle();
-    await settle();
     s.watches[0].callback(fix());
-    s.setActive(false);
     s.setPermissionError({ code: "OS-PLUG-GLOC-0007" });
+    // Repeated active notifications recheck permission without replacing an
+    // already active watch. Only its own outcome can fail this session.
     s.setActive(true);
     await settle();
     assert.equal(s.denials, 0);
-    s.watches[1].callback(null, { code: "OS-PLUG-GLOC-0007" });
-    await settle();
-    s.watches[2].callback(null, { code: "OS-PLUG-GLOC-0007" });
-    assert.equal(s.controller.getSnapshot().status, "unavailable");
-    assert.equal(s.denials, 0);
+    assert.equal(s.controller.getSnapshot().status, "active");
+    assert.equal(s.watches.length, 1);
+    s.watches[0].callback(fix(2_000));
+    assert.equal(s.controller.getSnapshot().position.timestamp, 2_000);
   } finally { s.deactivate(); }
 });
 

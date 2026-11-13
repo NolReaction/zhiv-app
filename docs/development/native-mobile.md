@@ -182,7 +182,7 @@ React и WebView не являются фоновым исполнителем. 
 
 ## Проверки и границы выпуска
 
-13 ноября 2026, подготовка первого стенда: прошли 127 профильных JS-тестов (26 новых), TypeScript, ESLint, архитектурная проверка, mobile build/sync, Next/VPS и Sites build. Xcode project/plist разобраны, Privacy Manifest включён в ресурсы. Production dependency audit: 0 уязвимостей. Физические устройства и нативная компиляция локально не проверялись. Визуальный проход заблокирован средой: Chromium не запускается, облачный браузер не подключается к локальному preview.
+13 ноября 2026, подготовка первого стенда: прошли 128 профильных JS-тестов (27 новых), TypeScript, ESLint, архитектурная проверка, mobile build/sync, Next/VPS и Sites build. Xcode project/plist разобраны, Privacy Manifest включён в ресурсы. Production dependency audit: 0 уязвимостей. Физические устройства и нативная компиляция локально не проверялись. На `1e618f8` GitHub CI успешно собрал Android debug APK с lint и приложение для симулятора iOS; [прогон с APK](https://github.com/NolReaction/zhiv-app/actions/runs/43409469939). Результаты последующих изменений — в [PR №41](https://github.com/NolReaction/zhiv-app/pull/41). Визуальный проход заблокирован средой: Chromium не запускается, облачный браузер не подключается к локальному preview.
 
 Для изменения общих TypeScript-модулей выполнить `npm run typecheck`, `npm run architecture:check`, `npm run lint` и профильные тесты геопозиции/адаптера. Отдельно выполнить `npm run mobile:build` и `npm run mobile:sync`. Перед выпуском общего клиента нужны штатные Sites/Next/API-проверки из [CONTRIBUTING.md](../../CONTRIBUTING.md); команды, использующие `dist/`, запускать последовательно.
 

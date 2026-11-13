@@ -164,17 +164,20 @@ export function createNativeEarthLocationEnvironment({ geolocation, app, documen
           // The Android plugin requests fine permission again for a high-
           // accuracy watch. Respect an existing approximate grant on every
           // restart instead of repeatedly prompting during stationary refresh.
-          let permissions: Awaited<ReturnType<NativeLocationPort["checkPermissions"]>> | undefined;
-          try { permissions = await geolocation.checkPermissions(); } catch { /* The watch reports service failures. */ }
+          // Native checkPermissions also validates device location services.
+          // Do not fall through into the plugin's settings-resolution flow
+          // after this required preflight fails. Observer-only queries above
+          // remain advisory and never manufacture a permission revocation.
+          let permissions = await geolocation.checkPermissions();
           if (watch.cancelled || !visible()) return;
-          if (permissions && permissionState(permissions) !== "granted") {
+          if (permissionState(permissions) !== "granted") {
             // Ask before registering a watch: clearWatch cannot cancel the
             // plugin's pending permission callback on every native platform.
             permissions = await geolocation.requestPermissions({ permissions: ["location"] });
             if (watch.cancelled || !visible()) return;
             if (permissionState(permissions) !== "granted") { fail({ code: "OS-PLUG-GLOC-0003" }); return; }
           }
-          const nativeOptions = permissions?.coarseLocation === "granted" && permissions.location !== "granted"
+          const nativeOptions = permissions.coarseLocation === "granted" && permissions.location !== "granted"
             ? { ...options, enableHighAccuracy: false } : options;
           const nativeId = await geolocation.watchPosition(nativeOptions, (position, error) => {
             if (watch.cancelled || !visible()) return;
