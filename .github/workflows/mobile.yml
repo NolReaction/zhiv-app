@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: mobile-${{ github.ref }}
+  group: mobile-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -38,6 +38,9 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+          log-accepted-android-sdk-licenses: false
       - run: npm ci --no-audit --no-fund
       - run: npm run test:mobile
       - run: npm run mobile:build
