@@ -89,6 +89,37 @@ test("reusable features cannot depend on app-shell or route orchestration", () =
   assert.deepEqual(diagnostics.map(item => item.rule).sort(), ["app-orchestration", "route-orchestration"]);
 });
 
+test("native composition alone can mount shared app-shell and its global stylesheet", () => {
+  const shared = {
+    "features/app/app-shell.tsx": "export const AppShell = 1;",
+    "app/globals.css": "body {}",
+    "app/page.tsx": "export default 1;",
+  };
+  assert.deepEqual(inspect({ ...shared,
+    "apps/mobile/src/mobile-app.tsx": 'import "@/app/globals.css"; export const load = () => import("@/features/app/app-shell");',
+  }), []);
+  assert.equal(inspect({ ...shared,
+    "apps/mobile/src/mobile-app.tsx": 'import "@/app/page";',
+  })[0].rule, "route-orchestration");
+  const helpers = inspect({ ...shared,
+    "apps/mobile/src/helper.ts": 'import "@/app/globals.css"; export const load = () => import("@/features/app/app-shell");',
+  });
+  assert.deepEqual(helpers.map(item => item.rule).sort(), ["app-orchestration", "route-orchestration"]);
+});
+
+test("shared features use native ports without importing mobile implementations", () => {
+  const files = {
+    "features/earth/location.ts": "export const controller = 1;",
+    "apps/mobile/src/location-adapter.ts": 'import "@/features/earth/location";',
+  };
+  assert.deepEqual(inspect(files), []);
+  const diagnostics = inspect({ ...files,
+    "features/earth/location.ts": 'import "@/apps/mobile/src/location-adapter";',
+  });
+  assert.ok(diagnostics.some(item => item.rule === "mobile-app-dependency"));
+  assert.ok(diagnostics.some(item => item.rule === "feature-cycle"));
+});
+
 test("missing aliases and relative imports are checked even when type-only; comments and packages are ignored", () => {
   const diagnostics = inspect({
     "features/world/domain/rules.ts": '// import missing from "./comment";\nconst label = "import broken from \'./text\'";\nimport type { Missing } from "./missing";\nexport { missing } from "@/features/missing";\nimport { z } from "zod";',

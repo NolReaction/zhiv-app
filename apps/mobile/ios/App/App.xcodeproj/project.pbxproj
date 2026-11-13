@@ -7,6 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		BD2F0C0404CC35057FA2722B /* MochlikLocationPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C42DE1BD76885F47683B946 /* MochlikLocationPlugin.swift */; };
+		DCB193CDD98FA83983374806 /* MobileLocationPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86A85252256D31B98C189CDE /* MobileLocationPublisher.swift */; };
+		72D3D82E2091C0E45F1AB4E2 /* MochlikStoragePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2D7A5F6F4595318C3496610 /* MochlikStoragePlugin.swift */; };
+		41A6234D96C54C0F084110D5 /* MochlikNativePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 190FEAEB80176966DF740AA2 /* MochlikNativePlugin.swift */; };
+		AD3E59B686D30B3A266A615F /* MobileHTTPTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26F7F6B0545E0C3B2D10D9AB /* MobileHTTPTransfer.swift */; };
+		F10FC251F9D8C2FC2D7678A7 /* MobileSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD76AEB41C668911E4A5CD5A /* MobileSessionStore.swift */; };
+		CC6D384846E926BFA4688D06 /* MobileRequestPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 186DA751CDBA7CEA651750E8 /* MobileRequestPolicy.swift */; };
+		0E75043EDC9E5DDED154366F /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07DB3B629735C3CAB67D1D79 /* MainViewController.swift */; };
 		D90C41A12FF0000100000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D90C41A12FF0000100000002 /* PrivacyInfo.xcprivacy */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
@@ -20,6 +28,14 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		4C42DE1BD76885F47683B946 /* MochlikLocationPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MochlikLocationPlugin.swift; sourceTree = "<group>"; };
+		86A85252256D31B98C189CDE /* MobileLocationPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileLocationPublisher.swift; sourceTree = "<group>"; };
+		D2D7A5F6F4595318C3496610 /* MochlikStoragePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MochlikStoragePlugin.swift; sourceTree = "<group>"; };
+		190FEAEB80176966DF740AA2 /* MochlikNativePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MochlikNativePlugin.swift; sourceTree = "<group>"; };
+		26F7F6B0545E0C3B2D10D9AB /* MobileHTTPTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileHTTPTransfer.swift; sourceTree = "<group>"; };
+		BD76AEB41C668911E4A5CD5A /* MobileSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSessionStore.swift; sourceTree = "<group>"; };
+		186DA751CDBA7CEA651750E8 /* MobileRequestPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileRequestPolicy.swift; sourceTree = "<group>"; };
+		07DB3B629735C3CAB67D1D79 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		D90C41A12FF0000100000002 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
@@ -67,6 +83,14 @@
 			isa = PBXGroup;
 			children = (
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
+				4C42DE1BD76885F47683B946 /* MochlikLocationPlugin.swift */,
+				86A85252256D31B98C189CDE /* MobileLocationPublisher.swift */,
+				D2D7A5F6F4595318C3496610 /* MochlikStoragePlugin.swift */,
+				190FEAEB80176966DF740AA2 /* MochlikNativePlugin.swift */,
+				26F7F6B0545E0C3B2D10D9AB /* MobileHTTPTransfer.swift */,
+				BD76AEB41C668911E4A5CD5A /* MobileSessionStore.swift */,
+				186DA751CDBA7CEA651750E8 /* MobileRequestPolicy.swift */,
+				07DB3B629735C3CAB67D1D79 /* MainViewController.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
@@ -164,6 +188,14 @@
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
+				BD2F0C0404CC35057FA2722B /* MochlikLocationPlugin.swift in Sources */,
+				DCB193CDD98FA83983374806 /* MobileLocationPublisher.swift in Sources */,
+				72D3D82E2091C0E45F1AB4E2 /* MochlikStoragePlugin.swift in Sources */,
+				41A6234D96C54C0F084110D5 /* MochlikNativePlugin.swift in Sources */,
+				AD3E59B686D30B3A266A615F /* MobileHTTPTransfer.swift in Sources */,
+				F10FC251F9D8C2FC2D7678A7 /* MobileSessionStore.swift in Sources */,
+				CC6D384846E926BFA4688D06 /* MobileRequestPolicy.swift in Sources */,
+				0E75043EDC9E5DDED154366F /* MainViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -304,14 +336,15 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
+				OTHER_LDFLAGS = "$(inherited) -lsqlite3";
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = ru.zhiv.mochlik.lab;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -326,14 +359,15 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
+				OTHER_LDFLAGS = "$(inherited) -lsqlite3";
 				PRODUCT_BUNDLE_IDENTIFIER = ru.zhiv.mochlik.lab;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";

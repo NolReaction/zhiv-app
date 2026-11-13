@@ -28,7 +28,20 @@ export type EarthLocationEnvironment = {
   schedule(callback: () => void, delay: number): unknown;
   cancel(timer: unknown): void;
   queryPermission?: () => Promise<LocationPermission>;
+  errorMessages?: Partial<Record<EarthLocationStatus, string>>;
 };
+
+let installedEnvironment: (() => EarthLocationEnvironment) | undefined;
+
+/** Configure before mounting the game; browser builds keep their existing adapter. */
+export function configureEarthLocationEnvironment(factory: () => EarthLocationEnvironment): () => void {
+  installedEnvironment = factory;
+  return () => { if (installedEnvironment === factory) installedEnvironment = undefined; };
+}
+
+function defaultEarthLocationEnvironment(): EarthLocationEnvironment {
+  return installedEnvironment ? installedEnvironment() : browserEarthLocationEnvironment();
+}
 
 const IDLE: EarthLocationState = { position: null, status: "idle", error: null };
 // A stationary device may never emit another watchPosition callback. Ask the
@@ -85,7 +98,7 @@ export function browserEarthLocationEnvironment(): EarthLocationEnvironment {
  */
 export function createEarthLocationController(
   ownerPublicId: string,
-  getEnvironment: () => EarthLocationEnvironment = browserEarthLocationEnvironment,
+  getEnvironment: () => EarthLocationEnvironment = defaultEarthLocationEnvironment,
   onPermissionDenied: () => void = () => {},
 ) {
   let state = IDLE;
@@ -161,7 +174,7 @@ export function createEarthLocationController(
     if (status === "denied") onPermissionDenied();
     // A transient provider failure does not erase the last private fix. Keep its
     // original timestamp: it must never look like a freshly acquired position.
-    publish({ position: status === "unavailable" || status === "timeout" ? state.position : null, status, error: ERRORS[status] });
+    publish({ position: status === "unavailable" || status === "timeout" ? state.position : null, status, error: environment?.errorMessages?.[status] ?? ERRORS[status] });
   }
 
   function observePermission() {

@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { ApiError } from "@/lib/check-in-api";
 import { withRequestDeadline, retryAfterMs } from "@/lib/request-deadline";
 import { presenceViewSchema, type PresenceCommand } from "./model";
@@ -6,7 +7,7 @@ import { z } from "zod";
 export async function sendPresence(command: PresenceCommand, signal?: AbortSignal) {
   return withRequestDeadline(8_000, signal, async requestSignal => {
     const presence = gamePresenceHeaders();
-    const response = await fetch("/api/v1/presence", { method: "POST", credentials: "same-origin", cache: "no-store", signal: requestSignal,
+    const response = await apiFetch("/api/v1/presence", { method: "POST", credentials: "same-origin", cache: "no-store", signal: requestSignal,
       headers: { Accept: "application/json", "Content-Type": "application/json", ...presence }, body: JSON.stringify(command) });
     // Proxies may send an empty body for a rate limit or expired login.
     const body: unknown = await response.json().catch(() => null);

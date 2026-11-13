@@ -1,4 +1,5 @@
 import type { AudioBus, AudioRuntime } from "@/features/audio/domain/types";
+import { deviceIsActive, subscribeDeviceEnvironment, subscribeMemoryPressure } from "@/lib/device-runtime";
 
 const UI_CUES = new Set(["ui.click", "ui.open", "ui.close", "ui.tab", "ui.confirm", "ui.error", "ui.reward"]);
 let uiEventSequence = 0;
@@ -37,7 +38,7 @@ export function uiCueFromTarget(target: EventTarget | null): string | null {
  * authorized context when visibility returns. Missed events are never replayed. */
 export function attachAudioLifecycle(runtime: AudioRuntime, page: Document, surface: Window) {
   let frozen = false, parked = false;
-  const available = () => !page.hidden && !frozen && !parked;
+  const available = () => deviceIsActive(page) && !frozen && !parked;
   let disabledPress: { button: Element; id: number; x: number; y: number } | null = null;
   const clearPress = () => { disabledPress = null; };
   const visible = () => {
@@ -82,6 +83,8 @@ export function attachAudioLifecycle(runtime: AudioRuntime, page: Document, surf
     if (cue) playUiCue(runtime, cue);
   };
   visible();
+  const unsubscribeDevice = subscribeDeviceEnvironment(visible);
+  const unsubscribeMemory = subscribeMemoryPressure(() => runtime.trimMemory?.());
   page.addEventListener("visibilitychange", visible);
   surface.addEventListener("focus", visible);
   surface.addEventListener("pagehide", hide);
@@ -96,6 +99,7 @@ export function attachAudioLifecycle(runtime: AudioRuntime, page: Document, surf
   page.addEventListener("keydown", resumeFromGesture, true);
   page.addEventListener("click", click, true);
   return () => {
+    unsubscribeDevice(); unsubscribeMemory();
     page.removeEventListener("visibilitychange", visible);
     surface.removeEventListener("focus", visible);
     surface.removeEventListener("pagehide", hide);

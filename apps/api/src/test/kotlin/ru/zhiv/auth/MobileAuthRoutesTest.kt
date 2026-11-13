@@ -32,6 +32,18 @@ class MobileAuthRoutesTest {
     private val browser = "b".repeat(43)
     private val config = AppConfig("", "", "", true, setOf("https://example.com"))
 
+    @Test fun `global IP limiter bounds native session lookup before authentication`() = testApplication {
+        var lookups = 0
+        application {
+            install(RateLimit) { global { rateLimiter(1, 1.hours) } }
+            install(MobileSessionAuthentication) { cookieName = config.cookieName; validate = { lookups++; it == mobile } }
+            routing { get("/api/v1/probe") { call.respond(HttpStatusCode.OK) } }
+        }
+        assertEquals(HttpStatusCode.OK, client.get("/api/v1/probe") { bearerAuth(mobile) }.status)
+        assertEquals(HttpStatusCode.TooManyRequests, client.get("/api/v1/probe") { bearerAuth(mobile) }.status)
+        assertEquals(1, lookups)
+    }
+
     private class Repository : MobileAuthRepository {
         var authorization: MobileAuthorization? = null
         var consumed = false

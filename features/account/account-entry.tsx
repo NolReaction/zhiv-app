@@ -8,6 +8,8 @@ import { isValidDisplayName, limitDisplayNameInput, normalizeDisplayName } from 
 import type { MeResponse } from "@/lib/check-in-contract";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import styles from "./account-access.module.css";
+import { getClientPlatform } from "@/lib/client-platform";
+import { NativeAccountEntry, NativeAccountManagement } from "./native-account-entry";
 import { TransientNotice } from "@/components/app-notifications";
 
 export function AuthReturnNotice() {
@@ -26,7 +28,13 @@ export function AuthReturnNotice() {
   return <TransientNotice message={message} />;
 }
 
-export function AccountEntry({ isOnline, onAuthenticated, children }: { isOnline: boolean; onAuthenticated: (me: MeResponse) => void; children?: ReactNode }) {
+type AccountEntryProps = { isOnline: boolean; onAuthenticated: (me: MeResponse) => void; children?: ReactNode };
+
+export function AccountEntry(props: AccountEntryProps) {
+  return getClientPlatform() ? <NativeAccountEntry {...props} /> : <BrowserAccountEntry {...props} />;
+}
+
+function BrowserAccountEntry({ isOnline, onAuthenticated, children }: AccountEntryProps) {
   const [options, setOptions] = useState<AuthOptions | null>(null);
   const [failed, setFailed] = useState(false);
   const [pending, setPending] = useState(false);
@@ -47,7 +55,13 @@ export function AccountEntry({ isOnline, onAuthenticated, children }: { isOnline
   </div>;
 }
 
-export function LoginForm({ options, isOnline, link = false, pending = false, onDone }: { options: AuthOptions; isOnline: boolean; link?: boolean; pending?: boolean; onDone: () => Promise<void> }) {
+type LoginFormProps = { options: AuthOptions; isOnline: boolean; link?: boolean; pending?: boolean; onDone: () => Promise<void> };
+
+export function LoginForm(props: LoginFormProps) {
+  return getClientPlatform() ? <NativeAccountManagement isOnline={props.isOnline} onRefresh={props.onDone} /> : <BrowserLoginForm {...props} />;
+}
+
+function BrowserLoginForm({ options, isOnline, link = false, pending = false, onDone }: LoginFormProps) {
   const id = useId();
   const [needsName, setNeedsName] = useState(pending);
   const [name, setName] = useState("");

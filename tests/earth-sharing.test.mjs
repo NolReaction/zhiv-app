@@ -16,7 +16,7 @@ const id = sequence => `00000000-0000-4000-8000-${String(sequence).padStart(12, 
 async function flush() { for (let index = 0; index < 30; index++) await Promise.resolve(); }
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 function privacyBus() { return { values: new Map(), listeners: new Map() }; }
-function fixture({ owner = OWNER, bus = privacyBus(), initial = {}, visible = true, publicationVisible, online = true, automaticResumeAllowed = true } = {}) {
+function fixture({ owner = OWNER, bus = privacyBus(), initial = {}, visible = true, publicationVisible, online = true, automaticResumeAllowed = true, nativePublisher = null } = {}) {
   let mono = 0, wallOffset = 0, sequence = 0, timerSequence = 0, documentVisible = true;
   const timers = new Map(), visibilityListeners = new Set(), calls = { settings: [], people: [], updates: [], resumes: [], positions: [], stops: [], order: [] };
   const iso = offset => new Date(BASE + mono + offset).toISOString();
@@ -95,7 +95,7 @@ function fixture({ owner = OWNER, bus = privacyBus(), initial = {}, visible = tr
     async getEarthPeople(signal) { calls.people.push(signal); calls.order.push("people"); return { ownerPublicId: owner, people: [], serverTime: iso(0) }; },
   };
   let lost = 0;
-  const controller = createEarthSharingController({ ownerPublicId: owner, transport, getEnvironment: () => environment, onSessionLost: () => lost++ });
+  const controller = createEarthSharingController({ ownerPublicId: owner, transport, getEnvironment: () => environment, onSessionLost: () => lost++, nativePublisher });
   let deactivate;
   return { controller, calls, transport, environment, timers, bus, clock,
     setServer(patch) { server = { ...server, ...patch }; },
@@ -112,6 +112,90 @@ function fixture({ owner = OWNER, bus = privacyBus(), initial = {}, visible = tr
       accuracyMeters: 1_500, precision: "APPROXIMATE", updatedAt: iso(0), expiresAt: iso(120_000), ...overrides }; },
   };
 }
+
+function nativePublisherFixture(background = true) {
+  const listeners = new Set(), adopted = [], permissions = [];
+  let stops = 0;
+  return {
+    adopted, permissions, get stops() { return stops; },
+    async adopt(settings, options) { adopted.push(settings); permissions.push(options.requestPermission); }, stop() { stops++; },
+    canContinueInBackground: () => background,
+    subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+    emit(value) { for (const listener of listeners) listener(value); },
+  };
+}
+
+test("native publisher owns uploads and retains one lease while opted-in app is hidden", async t => {
+  const native = nativePublisherFixture();
+  const s = fixture({ nativePublisher: native, initial: { mode: "SHARING", recipientCircleIds: [CIRCLE] } }); t.after(() => s.stop());
+  await s.start();
+  assert.equal(native.adopted.length, 1);
+  s.controller.setPosition(s.fix()); await flush();
+  assert.equal(s.calls.positions.length, 0, "React cannot upload alongside the native publisher");
+  const stops = native.stops;
+  s.hide(true); await flush();
+  assert.equal(native.stops, stops);
+  assert.equal(s.calls.stops.length, 0);
+  assert.equal(s.controller.getSnapshot().publishing, true);
+  native.emit({ epoch: native.adopted[0].publicationEpoch, active: true, lastPublishedAt: s.clock.iso(0), error: null });
+  assert.equal(s.controller.getSnapshot().lastPublishedAt, s.clock.iso(0));
+  s.hide(false); await flush();
+  assert.equal(native.adopted.length, 1); assert.equal(s.calls.resumes.length, 1);
+});
+
+test("native publisher without background opt-in stops on hide and obtains fresh lease on return", async t => {
+  const native = nativePublisherFixture(false);
+  const s = fixture({ nativePublisher: native, initial: { mode: "SHARING", recipientCircleIds: [CIRCLE] } }); t.after(() => s.stop());
+  await s.start(); const stops = native.stops;
+  s.hide(true); await flush();
+  assert.ok(native.stops > stops); assert.equal(s.calls.stops.length, 1);
+  assert.equal(s.controller.getSnapshot().publishing, false);
+  s.hide(false); await flush(); assert.equal(native.adopted.length, 2);
+  assert.notEqual(native.adopted[0].publicationEpoch, native.adopted[1].publicationEpoch);
+});
+
+test("ghost and OFF synchronously retire native publication even while hidden", async t => {
+  for (const mode of ["ghost", "off"]) {
+    const native = nativePublisherFixture();
+    const s = fixture({ nativePublisher: native, initial: { mode: "SHARING", recipientCircleIds: [CIRCLE] } }); t.after(() => s.stop());
+    await s.start(); s.hide(true); const stops = native.stops;
+    const lease = native.adopted[0].publicationEpoch;
+    s.controller[mode]();
+    assert.ok(native.stops > stops); assert.equal(s.controller.getSnapshot().publishing, false);
+    native.emit({ epoch: lease, active: true, lastPublishedAt: s.clock.iso(0), error: null });
+    assert.equal(s.controller.getSnapshot().publishing, false, "late native callback cannot restore an old epoch");
+    await flush(); assert.equal(s.calls.updates.at(-1).write.mode, mode.toUpperCase());
+  }
+});
+
+test("failed native startup retires the acquired epoch without falling back to JS upload", async t => {
+  const native = nativePublisherFixture(); native.adopt = async () => { throw new Error("permission denied"); };
+  const s = fixture({ nativePublisher: native, initial: { mode: "SHARING", recipientCircleIds: [CIRCLE] } }); t.after(() => s.stop());
+  await s.start(); s.controller.setPosition(s.fix()); await flush();
+  assert.equal(s.controller.getSnapshot().publishing, false); assert.equal(s.calls.stops.length, 1); assert.equal(s.calls.positions.length, 0);
+  assert.ok(s.controller.getSnapshot().publicationError);
+});
+
+test("automatic native resume cannot prompt for OS permission while an explicit share can", async t => {
+  const automatic = nativePublisherFixture();
+  const resumed = fixture({ nativePublisher: automatic, initial: { mode: "SHARING", recipientCircleIds: [CIRCLE] } });
+  t.after(() => resumed.stop()); await resumed.start();
+  assert.deepEqual(automatic.permissions, [false], "saved web consent cannot imply native permission consent");
+  const explicit = nativePublisherFixture();
+  const shared = fixture({ nativePublisher: explicit });
+  t.after(() => shared.stop()); await shared.start();
+  assert.equal(await shared.controller.share(options), true);
+  assert.deepEqual(explicit.permissions, [true]);
+});
+
+test("native lost session and controller disposal clear its publisher without another resume", async t => {
+  const native = nativePublisherFixture();
+  const s = fixture({ nativePublisher: native, initial: { mode: "SHARING", recipientCircleIds: [CIRCLE] } }); t.after(() => s.stop());
+  await s.start();
+  native.emit({ epoch: native.adopted[0].publicationEpoch, active: false, lastPublishedAt: null, error: "Сеанс завершён", sessionLost: true });
+  assert.equal(s.lost, 1); assert.equal(s.controller.getSnapshot().publishing, false);
+  const adopted = native.adopted.length; s.hide(true); s.hide(false); await flush(); assert.equal(native.adopted.length, adopted);
+});
 
 test("a visible map resumes the exact saved consent without a full share write and requires a post-lease fix", async t => {
   const until = new Date(BASE + 125_000).toISOString();

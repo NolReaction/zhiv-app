@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { ApiError } from "@/lib/check-in-api";
 
@@ -133,7 +134,7 @@ export async function flushIncidents(owner: string) {
       const timer = setTimeout(() => controller.abort(), 5000);
       sendingEvents.add(item.eventId);
       try {
-        const response = await fetch("/api/v1/client-incidents", { method: "POST", credentials: "same-origin", cache: "no-store",
+        const response = await apiFetch("/api/v1/client-incidents", { method: "POST", credentials: "same-origin", cache: "no-store",
           headers: { "Content-Type": "application/json" }, body: JSON.stringify(item), signal: controller.signal });
         if (!response.ok) {
           // One obsolete/malformed record must not block all later diagnostics for seven days.

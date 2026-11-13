@@ -101,8 +101,8 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
             assertEquals(before, population(source)); assertEquals(base, history(source, "version::integer<=49"))
             assertEquals(revisions.mapValues { it.value + 1 }, economyRevisions(source), "V55 advances each profile exactly once")
             assertEquals(adminHistory, installedAdminHistory(source), "Only version and script may change in historical admin rows")
-            assertEquals("82", scalar(source, "SELECT max(version::integer)::text FROM flyway_schema_history"))
-            assertEquals("V82__automatic_game_records.sql", scalar(source,
+            assertEquals("83", scalar(source, "SELECT max(version::integer)::text FROM flyway_schema_history"))
+            assertEquals("V83__mobile_authorization_codes.sql", scalar(source,
                 "SELECT script FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("3", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE version IN ('50','51','52') AND success"))
             val after = history(source)
@@ -166,31 +166,31 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
         }
     }
 
-    @Test fun `canonical notification V50 history is a no-op and migrates normally to V82`() {
+    @Test fun `canonical notification V50 history is a no-op and migrates normally to V83`() {
         DatabaseFactory.create(config()).use { source ->
             Flyway.configure().dataSource(source).locations("classpath:db/migration").target("50").load().migrate()
             val before = history(source)
             assertFalse(normalizeLegacyAdminMigrationHistory(source)); assertEquals(before, history(source))
             migrateWithLegacyAdminHistory(source)
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
-            assertEquals("82", scalar(source, "SELECT max(version::integer)::text FROM flyway_schema_history"))
+            assertEquals("83", scalar(source, "SELECT max(version::integer)::text FROM flyway_schema_history"))
             val after = history(source)
             assertFalse(normalizeLegacyAdminMigrationHistory(source)); assertEquals(after, history(source))
-            // Accept only the packaged V82 fingerprint. The immediately following
+            // Accept only the packaged V83 fingerprint. The immediately following
             // unknown version remains fail-closed; no repair may mutate history.
             val alteredTail = listOf(
-                "UPDATE flyway_schema_history SET version='83' WHERE version='82'" to
-                    "UPDATE flyway_schema_history SET version='82' WHERE version='83'",
-                "UPDATE flyway_schema_history SET version='81' WHERE version='82'" to
-                    "UPDATE flyway_schema_history SET version='82' WHERE script='V82__automatic_game_records.sql'",
-                "UPDATE flyway_schema_history SET script='V82__unknown.sql' WHERE version='82'" to
-                    "UPDATE flyway_schema_history SET script='V82__automatic_game_records.sql' WHERE version='82'",
-                "UPDATE flyway_schema_history SET checksum=checksum+1 WHERE version='82'" to
-                    "UPDATE flyway_schema_history SET checksum=checksum-1 WHERE version='82'",
-                "UPDATE flyway_schema_history SET type='JDBC' WHERE version='82'" to
-                    "UPDATE flyway_schema_history SET type='SQL' WHERE version='82'",
-                "UPDATE flyway_schema_history SET success=false WHERE version='82'" to
-                    "UPDATE flyway_schema_history SET success=true WHERE version='82'",
+                "UPDATE flyway_schema_history SET version='84' WHERE version='83'" to
+                    "UPDATE flyway_schema_history SET version='83' WHERE version='84'",
+                "UPDATE flyway_schema_history SET version='82' WHERE version='83'" to
+                    "UPDATE flyway_schema_history SET version='83' WHERE script='V83__mobile_authorization_codes.sql'",
+                "UPDATE flyway_schema_history SET script='V83__unknown.sql' WHERE version='83'" to
+                    "UPDATE flyway_schema_history SET script='V83__mobile_authorization_codes.sql' WHERE version='83'",
+                "UPDATE flyway_schema_history SET checksum=checksum+1 WHERE version='83'" to
+                    "UPDATE flyway_schema_history SET checksum=checksum-1 WHERE version='83'",
+                "UPDATE flyway_schema_history SET type='JDBC' WHERE version='83'" to
+                    "UPDATE flyway_schema_history SET type='SQL' WHERE version='83'",
+                "UPDATE flyway_schema_history SET success=false WHERE version='83'" to
+                    "UPDATE flyway_schema_history SET success=true WHERE version='83'",
             )
             alteredTail.forEach { (change, restore) ->
                 execute(source, change)
@@ -199,7 +199,7 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
                 assertEquals(altered, history(source), "Rejected current/future history remains untouched")
                 execute(source, restore)
                 assertFalse(normalizeLegacyAdminMigrationHistory(source))
-                assertEquals(after, history(source), "Restoring the exact V82 fingerprint returns to a no-op")
+                assertEquals(after, history(source), "Restoring the exact V83 fingerprint returns to a no-op")
             }
         }
     }
@@ -208,7 +208,7 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
         DatabaseFactory.create(config()).use { source ->
             migrateWithLegacyAdminHistory(source)
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
-            assertEquals("34", scalar(source, "SELECT count(*) FROM flyway_schema_history"))
+            assertEquals("35", scalar(source, "SELECT count(*) FROM flyway_schema_history"))
             assertEquals("B49__current_schema.sql", scalar(source,
                 "SELECT script FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
             val before = history(source)

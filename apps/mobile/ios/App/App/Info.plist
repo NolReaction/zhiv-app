@@ -2,16 +2,22 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>MobileBackendOrigin</key>
+    <string>https://im-alive.ru</string>
+    <key>CFBundleURLTypes</key>
+    <array><dict><key>CFBundleURLSchemes</key><array><string>ru.zhiv.mochlik.lab</string></array></dict></array>
   <key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>ru</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Мохлик определяет ваше положение по нажатию «Найти меня». В этом стенде координаты видны только вам и не отправляются на сервер.</string>
+	<string>Мохлик показывает ваше место на карте. Передача выбранным близким включается отдельно в настройках геопозиции.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Геопозиция нужна для проверки положения на устройстве. Этот стенд использует её только при открытом приложении.</string>
+	<string>Если вы отдельно включили фоновую передачу, Мохлик обновляет ваше место для выбранных близких при свёрнутом приложении.</string>
+	<key>UIBackgroundModes</key>
+	<array><string>location</string></array>
 	<key>CFBundleDisplayName</key>
-        <string>Мохлик · Лаборатория</string>
+        <string>Мохлик · Тест</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

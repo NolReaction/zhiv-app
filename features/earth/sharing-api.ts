@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
 import { retryAfterMs, withRequestDeadline } from "@/lib/request-deadline";
@@ -10,7 +11,7 @@ const apiErrorSchema = z.object({ code: z.string(), message: z.string() });
 
 async function request<T>(path: string, schema: z.ZodType<T, unknown>, init: RequestInit = {}): Promise<T> {
   return withRequestDeadline(8_000, init.signal, async signal => {
-    const response = await fetch(path, {
+    const response = await apiFetch(path, {
       ...init, signal, cache: "no-store", credentials: "same-origin",
       headers: { Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}), ...init.headers },
     });

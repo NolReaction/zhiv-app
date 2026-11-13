@@ -39,8 +39,8 @@ test("the reset inventory covers every migrated user table and preserves global 
   assert.ok(userTableArray, "Reset must declare its reviewed user table inventory");
   const cleared = [...userTableArray.matchAll(/'([a-z_]+)'/g)].map(match => match[1]);
   assert.equal(new Set(cleared).size, cleared.length, "Reset table list must not contain duplicates");
-  for (const table of ["earth_sharing_settings", "earth_sharing_recipients", "earth_latest_locations", "earth_frozen_locations"])
-    assert.ok(cleared.includes(table), `${table}: full account deletion clears geolocation data and consent`);
+  for (const table of ["earth_sharing_settings", "earth_sharing_recipients", "earth_latest_locations", "earth_frozen_locations", "mobile_authorization_codes"])
+    assert.ok(cleared.includes(table), `${table}: full account deletion clears private location/authentication data`);
   const versioned = files.filter(file => file.prefix === "V");
   const paths = [{ name: "historical V chain", files: versioned },
     ...files.filter(file => file.prefix === "B").map(baseline => ({

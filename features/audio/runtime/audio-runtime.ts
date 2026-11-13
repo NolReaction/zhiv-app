@@ -942,6 +942,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       else if (everUnlocked && settings.enabled) void unlock();
       updateMix(); publish();
     },
+    trimMemory() { if (!disposed) cache.trimUnused(); },
     getDiagnostics: () => snapshot,
     subscribe(listener) { if (disposed) return () => {}; subscribers.add(listener); return () => { subscribers.delete(listener); }; },
     dispose() {

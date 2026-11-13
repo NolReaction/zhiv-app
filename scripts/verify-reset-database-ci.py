@@ -114,6 +114,9 @@ def main():
         INSERT INTO app_sessions (user_id, token_hash, expires_at)
         VALUES ('00000000-0000-4000-8000-000000000051', decode(repeat('10', 32), 'hex'),
                 clock_timestamp() + interval '1 day');
+        INSERT INTO mobile_authorization_codes(code_hash,source_session_id,user_id,challenge,state_hash,platform)
+        SELECT decode(repeat('15',32),'hex'), id, user_id, repeat('A',43), decode(repeat('16',32),'hex'), 'ios'
+        FROM app_sessions WHERE user_id='00000000-0000-4000-8000-000000000051';
         INSERT INTO account_login_flows (token_hash, browser_hash, provider, intent)
         VALUES (decode(repeat('11', 32), 'hex'), decode(repeat('12', 32), 'hex'), 'vk', 'login');
         INSERT INTO account_registration_tickets (token_hash, browser_hash, provider, subject)
@@ -136,11 +139,13 @@ def main():
     assert interactive_reset("WRONG CONFIRMATION") == 2
     assert sql("SELECT value FROM ci_reset_obsolete.marker") == "original-data"
     assert sql("SELECT count(*) FROM app_users") == "1"
+    assert sql("SELECT count(*) FROM mobile_authorization_codes") == "1"
     assert json.loads(runtime_status.read_text(encoding="utf8")) == stale_status
     backup_dir = ROOT.parent / "zhiv-backups"
     previous_backups = set(backup_dir.glob("before-database-reset-*.dump"))
     reset_started_epoch = float(sql("SELECT extract(epoch FROM clock_timestamp())"))
     assert interactive_reset("RESET zhiv") == 0
+    assert sql("SELECT count(*) FROM mobile_authorization_codes") == "0", "Full reset must remove native login proofs"
     assert not runtime_status.exists(), "A ready status from the previous web build must not shadow the new build"
     built_status = json.loads(run(COMPOSE + ["exec", "-T", "web", "node", "-e",
         'fetch("http://127.0.0.1:3000/app-status.json").then(async r=>{if(!r.ok)throw Error("Missing build status");console.log(await r.text())}).catch(()=>process.exit(1))'],
@@ -166,7 +171,7 @@ def main():
                           AND m.started_at=h.installed_on::timestamptz))
                     OR (ARRAY(SELECT h.version || ':' || h.type || ':' || h.success::text
                         FROM flyway_schema_history h ORDER BY h.installed_rank)
-                        = ARRAY['49:SQL_BASELINE:true','50:SQL:true','51:SQL:true','52:SQL:true','53:SQL:true','54:SQL:true','55:SQL:true','56:SQL:true','57:SQL:true','58:SQL:true','59:SQL:true','60:SQL:true','61:SQL:true','62:SQL:true','63:SQL:true','64:SQL:true','65:SQL:true','66:SQL:true','67:SQL:true','68:SQL:true','69:SQL:true','70:SQL:true','71:SQL:true','72:SQL:true','73:SQL:true','74:SQL:true','75:SQL:true','76:SQL:true','77:SQL:true','78:SQL:true','79:SQL:true','80:SQL:true','81:SQL:true','82:SQL:true']
+                        = ARRAY['49:SQL_BASELINE:true','50:SQL:true','51:SQL:true','52:SQL:true','53:SQL:true','54:SQL:true','55:SQL:true','56:SQL:true','57:SQL:true','58:SQL:true','59:SQL:true','60:SQL:true','61:SQL:true','62:SQL:true','63:SQL:true','64:SQL:true','65:SQL:true','66:SQL:true','67:SQL:true','68:SQL:true','69:SQL:true','70:SQL:true','71:SQL:true','72:SQL:true','73:SQL:true','74:SQL:true','75:SQL:true','76:SQL:true','77:SQL:true','78:SQL:true','79:SQL:true','80:SQL:true','81:SQL:true','82:SQL:true','83:SQL:true']
                       AND m.started_at BETWEEN to_timestamp({reset_started_epoch}) AND clock_timestamp())
                   )) FROM game_tap_collection_metadata m""") == "t"
     assert sql("SELECT count(*)=1 AND bool_and(singleton AND generation=0 AND reset_at IS NULL) FROM gameplay_generations") == "t"
@@ -188,6 +193,7 @@ def main():
         assert sql("SELECT count(*) FROM app_users", verify_db) == "1"
         assert sql("SELECT count(*) FROM account_login_identities", verify_db) == "1"
         assert sql("SELECT count(*) FROM app_sessions", verify_db) == "1"
+        assert sql("SELECT count(*) FROM mobile_authorization_codes", verify_db) == "1", "Backup preserves pre-reset native proofs"
         assert sql("SELECT count(*) FROM player_feedback", verify_db) == "1"
         assert sql("SELECT count(*) FROM player_feedback_actions", verify_db) == "1"
         assert sql("SELECT row_to_json(m)::text FROM game_tap_collection_metadata m", verify_db) == original_metadata

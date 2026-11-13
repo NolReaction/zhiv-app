@@ -1,3 +1,4 @@
+import { getDeviceCapabilities } from "./device-runtime";
 export type NativeShareOutcome = "shared" | "cancelled" | "unavailable" | "failed";
 
 type ClipboardLike = {
@@ -171,5 +172,6 @@ export function shareContent(
   data: ShareData,
   environment: IdentitySharingEnvironment | null = getBrowserEnvironment(),
 ): Promise<NativeShareOutcome> {
-  return startNativeShare(data, environment);
+  const native = arguments.length < 2 ? getDeviceCapabilities() : null;
+  return native ? native.share(data) : startNativeShare(data, environment);
 }

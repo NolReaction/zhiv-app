@@ -134,6 +134,11 @@ export function createNativeEarthLocationEnvironment({ geolocation, app, documen
   }
   return {
     secure: true,
+    errorMessages: {
+      denied: "Разрешите геопозицию для Мохлика в настройках телефона, затем нажмите «Найти меня».",
+      unavailable: "Телефон не смог получить геопозицию. Проверьте службы местоположения и нажмите «Найти меня».",
+      unsupported: "Геопозиция недоступна в этой сборке приложения.",
+    },
     visible,
     onVisibilityChange(listener) {
       visibilityListeners.add(listener);

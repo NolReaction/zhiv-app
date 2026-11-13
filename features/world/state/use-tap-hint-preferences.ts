@@ -1,12 +1,14 @@
 "use client";
 
+import { deviceSettingsStorage } from "@/lib/client-persistence";
+
 import { useCallback, useSyncExternalStore } from "react";
 import { readTapHintPreference, saveTapHintPreference, tapHintPreferenceKey } from "./tap-hint-preferences";
 
 const CHANGE_EVENT = "zhiv:world-tap-hints-changed";
 const serverSnapshot = () => true;
 function browserStorage() {
-  try { return typeof window === "undefined" ? undefined : window.localStorage; } catch { return undefined; }
+  return deviceSettingsStorage();
 }
 
 export function useTapHintPreference(owner: string) {

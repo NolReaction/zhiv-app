@@ -2,6 +2,7 @@
 import { useEffect, useRef } from "react";
 import { clearPreviousNotificationOwner, setActiveNotificationOwner, parseNotificationLink, type NotificationLink, type NotificationTarget } from "./notification-browser";
 import { reportNotificationPresence } from "./notification-api";
+import { getNativeNotifications, takeNativeNotificationLink } from "./native-notifications";
 
 /** Authenticated owner only. The server invalidates old session subscriptions on logout. */
 export function useNotificationPresence(ownerPublicId: string | null, isOnline: boolean) {
@@ -10,6 +11,8 @@ export function useNotificationPresence(ownerPublicId: string | null, isOnline: 
     // An unresolved initial session is not a logout.
     if (!ownerPublicId && !seenOwner.current) return;
     seenOwner.current = ownerPublicId;
+    const native = getNativeNotifications();
+    if (native) { void native.setOwner(ownerPublicId).catch(() => undefined); return; }
     setActiveNotificationOwner(ownerPublicId);
     void clearPreviousNotificationOwner(ownerPublicId).catch(() => undefined);
   }, [ownerPublicId]);
@@ -41,7 +44,7 @@ export function useNotificationNavigation({ ownerPublicId, ready, onNavigate }: 
     };
     if (!initialRead.current) {
       initialRead.current = true;
-      pending.current = parseNotificationLink(window.location.href, window.location.origin);
+      pending.current = takeNativeNotificationLink() ?? parseNotificationLink(window.location.href, window.location.origin);
       if (new URL(window.location.href).searchParams.has("notification")) {
         const url = new URL(window.location.href);
         ["notification", "section", "owner"].forEach(key => url.searchParams.delete(key));
@@ -53,8 +56,10 @@ export function useNotificationNavigation({ ownerPublicId, ready, onNavigate }: 
       pending.current = parseNotificationLink(event.data.url, window.location.origin);
       dispatch();
     };
+    const onNative = () => { pending.current = takeNativeNotificationLink(); dispatch(); };
     dispatch();
+    window.addEventListener("mochlik:notification-open", onNative);
     navigator.serviceWorker?.addEventListener("message", onMessage);
-    return () => navigator.serviceWorker?.removeEventListener("message", onMessage);
+    return () => { window.removeEventListener("mochlik:notification-open", onNative); navigator.serviceWorker?.removeEventListener("message", onMessage); };
   }, [ownerPublicId, ready]);
 }

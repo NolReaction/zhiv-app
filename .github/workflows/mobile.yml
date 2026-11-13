@@ -1,4 +1,4 @@
-name: Native mobile prototype
+name: Native mobile app
 
 on:
   push:
@@ -6,10 +6,15 @@ on:
   pull_request:
     paths:
       - 'apps/mobile/**'
-      - 'features/earth/native-location.ts'
-      - 'features/earth/location.ts'
+      - 'features/**'
+      - 'lib/**'
+      - 'components/**'
+      - 'app/globals.css'
+      - 'public/**'
+      - 'scripts/mobile-config.mjs'
       - 'tests/earth-native-location.test.mjs'
       - 'tests/mobile-*.test.mjs'
+      - 'tests/native/**'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/mobile.yml'
@@ -46,11 +51,11 @@ jobs:
       - run: npm run mobile:build
       - run: npx cap sync android
         working-directory: apps/mobile
-      - run: ./gradlew --no-daemon assembleDebug lintDebug
+      - run: ./gradlew --no-daemon assembleDebug lintDebug testDebugUnitTest
         working-directory: apps/mobile/android
       - uses: actions/upload-artifact@v4
         with:
-          name: mochlik-native-lab-android
+          name: mochlik-mobile-android
           path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
@@ -78,3 +83,7 @@ jobs:
           -derivedDataPath ios/DerivedData
           CODE_SIGNING_ALLOWED=NO build
         working-directory: apps/mobile
+      - name: Verify native iOS request policy
+        run: |
+          xcrun swiftc apps/mobile/ios/App/App/MobileRequestPolicy.swift tests/native/ios/MobileRequestPolicyTests.swift -o "$RUNNER_TEMP/mobile-request-policy-tests"
+          "$RUNNER_TEMP/mobile-request-policy-tests"

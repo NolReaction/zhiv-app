@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
 import { economyCatalog } from "@/features/economy/domain/model";
@@ -46,7 +47,7 @@ async function promoRequest<T>(actorPublicId: string, path: string, schema: z.Zo
   signal.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(() => controller.abort(), 15_000);
   try {
-    const response = await fetch(`/api/v1/admin/${path}`, { method: body ? "POST" : "GET", credentials: "same-origin",
+    const response = await apiFetch(`/api/v1/admin/${path}`, { method: body ? "POST" : "GET", credentials: "same-origin",
       cache: "no-store", signal: controller.signal,
       headers: { Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}) });

@@ -9,6 +9,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -76,9 +79,12 @@ class JdbcMobileAuthRepositoryIntegrationTest {
 
     @Test fun `expired proof cannot create a session`(): Unit = runBlocking {
         val browser = browser(); val code = authorize(browser); val native = newSession()
-        source.connection.use { c -> c.prepareStatement("UPDATE mobile_authorization_codes SET created_at=clock_timestamp()-interval '3 minutes',expires_at=clock_timestamp()-interval '1 minute' WHERE code_hash=?").use {
-            it.setBytes(1, code.codeHash); assertEquals(1, it.executeUpdate())
-        } }
+        source.connection.use { c ->
+            c.prepareStatement("UPDATE mobile_authorization_codes SET created_at=clock_timestamp()-interval '3 minutes',expires_at=clock_timestamp()-interval '1 minute' WHERE code_hash=?").use {
+                it.setBytes(1, code.codeHash); assertEquals(1, it.executeUpdate())
+            }
+            c.commit()
+        }
         assertFailsWith<AuthFailure> { mobile.exchange(code, native.hash, 365) }
         assertNull(identities.findSessionUserId(native.hash))
     }
@@ -107,11 +113,25 @@ class JdbcMobileAuthRepositoryIntegrationTest {
     }
 
     @Test fun `proof remains bound to original account even if source session owner changes`(): Unit = runBlocking {
-        val first = browser(); val second = browser(); val code = authorize(first); val native = newSession()
-        val otherUser = identities.findSessionUserId(second.hash)
-        source.connection.use { c -> c.prepareStatement("UPDATE app_sessions SET user_id=? WHERE token_hash=?").use {
-            it.setObject(1, otherUser); it.setBytes(2, first.hash); assertEquals(1, it.executeUpdate())
-        } }
+        val first = browser(); val second = browser(); val sourceSession = tokens.issue(); val native = newSession()
+        val originalUser = assertNotNull(identities.findSessionUserId(first.hash))
+        val otherUser = assertNotNull(identities.findSessionUserId(second.hash))
+        // Bootstrap sessions are bound to their original user by the bootstrap ledger.
+        // A later login session can move during an account merge, so use that shape here.
+        source.connection.use { c ->
+            c.prepareStatement("INSERT INTO app_sessions(user_id,token_hash,expires_at) VALUES (?,?,clock_timestamp()+interval '1 day')").use {
+                it.setObject(1, originalUser); it.setBytes(2, sourceSession.hash); assertEquals(1, it.executeUpdate())
+            }
+            c.commit()
+        }
+        val code = authorize(sourceSession)
+        source.connection.use { c ->
+            c.prepareStatement("UPDATE app_sessions SET user_id=? WHERE token_hash=?").use {
+                it.setObject(1, otherUser); it.setBytes(2, sourceSession.hash); assertEquals(1, it.executeUpdate())
+            }
+            c.commit()
+        }
+        assertEquals(otherUser, identities.findSessionUserId(sourceSession.hash))
         assertFailsWith<AuthFailure> { mobile.exchange(code, native.hash, 365) }
         assertNull(identities.findSessionUserId(native.hash))
     }
@@ -121,8 +141,16 @@ class JdbcMobileAuthRepositoryIntegrationTest {
         val grant = mobile.exchange(code, native.hash, 365)
         val config = AppConfig("", "", "", true, setOf("https://example.com"))
         application { installZhivApi(identities, identities, config, auth = auth, mobileAuth = mobile) }
+        val browserProfile = client.get("/api/v1/me") { header(HttpHeaders.Cookie, "${config.cookieName}=${browser.raw}") }
+        assertEquals(HttpStatusCode.OK, browserProfile.status)
         val profile = client.get("/api/v1/me") { bearerAuth(native.raw) }
-        assertEquals(HttpStatusCode.OK, profile.status); assertContains(profile.bodyAsText(), grant.userId.toString())
+        assertEquals(HttpStatusCode.OK, profile.status)
+        val nativeBody = profile.bodyAsText()
+        val browserPublicId = Json.parseToJsonElement(browserProfile.bodyAsText()).jsonObject.getValue("user").jsonObject.getValue("publicId").jsonPrimitive.content
+        val nativePublicId = Json.parseToJsonElement(nativeBody).jsonObject.getValue("user").jsonObject.getValue("publicId").jsonPrimitive.content
+        assertEquals(browserPublicId, nativePublicId)
+        assertEquals(grant.userId, identities.findSessionUserId(browser.hash))
+        assertFalse(nativeBody.contains(grant.userId.toString()), "The public profile must not expose the internal user ID")
         assertEquals(HttpStatusCode.Unauthorized, client.get("/api/v1/me") { header(HttpHeaders.Cookie, "${config.cookieName}=${native.raw}") }.status)
         assertEquals(HttpStatusCode.Forbidden, client.post("/api/v1/auth/logout") { header(HttpHeaders.Cookie, "${config.cookieName}=${browser.raw}") }.status)
         assertEquals(HttpStatusCode.OK, client.post("/api/v1/auth/logout") { bearerAuth(native.raw) }.status)
