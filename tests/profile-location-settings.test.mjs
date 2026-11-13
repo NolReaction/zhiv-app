@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
-import { Children, isValidElement } from "react";
+import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 
@@ -19,10 +19,18 @@ function view(overrides = {}) {
   const calls = [];
   const props = { enabled: true, onEnabledChange: enabled => calls.push(["enabled", enabled]), location: idle,
     onLocate: () => calls.push(["locate"]), onStop: () => calls.push(["stop"]), ...overrides };
-  const tree = ProfileLocationSettingsContent(props), elements = [];
+  const elements = [];
   function walk(node) { if (!isValidElement(node)) return; elements.push(node); Children.forEach(node.props.children, walk); }
-  walk(tree);
-  return { calls, props, elements, markup: renderToStaticMarkup(tree),
+  // Capture callbacks while React owns the render, including external-store
+  // hooks. Keep the inspected tree equivalent to rendering the component normally.
+  function CaptureContent() {
+    const tree = ProfileLocationSettingsContent(props);
+    walk(tree);
+    return tree;
+  }
+  const markup = renderToStaticMarkup(createElement(ProfileLocationSettingsContent, props));
+  assert.equal(renderToStaticMarkup(createElement(CaptureContent)), markup);
+  return { calls, props, elements, markup,
     button: label => elements.find(node => node.type === "button" && text(node) === label),
     toggle: elements.find(node => node.type === SharingSwitch) };
 }
