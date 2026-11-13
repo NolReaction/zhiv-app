@@ -6,6 +6,7 @@ import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.Hook
 import io.ktor.server.application.call
 import io.ktor.server.application.createApplicationPlugin
+import io.ktor.server.application.isHandled
 import io.ktor.server.request.path
 import io.ktor.util.AttributeKey
 import io.ktor.util.pipeline.PipelinePhase
