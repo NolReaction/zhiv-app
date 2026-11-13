@@ -59,18 +59,19 @@ export function DeviceLab() {
   return <main className="mobile-device-lab">
     <header>
       <div className="brand" aria-hidden="true">м</div>
-      <div><p className="eyebrow">Мохлик · Лаборатория</p><h1>Проверка устройства</h1></div>
+      <div><p className="eyebrow">Мохлик · Диагностика</p><h1>Проверка устройства</h1></div>
     </header>
-    <p className="intro">Первый шаг к мобильному приложению: геопозиция и настройки на вашем телефоне.</p>
-    <div className="platform"><span className={available ? "dot" : "dot muted"} />{platform === "ios" ? "iPhone / iPad" : platform === "android" ? "Android" : "Предпросмотр в браузере"}<span>Этап 1</span></div>
+    <p className="intro">Проверка системного доступа к геопозиции и сохранения настройки на вашем телефоне.</p>
+    <div className="platform"><span className={available ? "dot" : "dot muted"} />{platform === "ios" ? "iPhone / iPad" : platform === "android" ? "Android" : "Предпросмотр в браузере"}<span>Проверка GPS</span></div>
     {!available && <aside role="status">{native ? "Нативные плагины не подключены. Выполните mobile:sync и пересоберите приложение." :
       "Это предпросмотр экрана. Для проверки системного доступа установите сборку из Xcode или Android Studio."}</aside>}
 
     <section aria-labelledby="location-title">
       <div className="section-heading"><h2 id="location-title">Моя геопозиция</h2><span className="badge">Только на экране</span></div>
-      <p>Поиск работает, пока приложение открыто. Координаты остаются в памяти и не отправляются на сервер.</p>
+      <p>Поиск на этом экране работает, пока приложение открыто. Точка проверки остаётся в памяти и не отправляется на сервер.</p>
+      <p>Если в профиле включён обмен геопозицией, он продолжает работать по своим настройкам. Остановка проверки его не выключает.</p>
       <label className="setting">
-        <span>Разрешить поиск в приложении<small>Этот выбор сохранится после перезапуска</small></span>
+        <span>Разрешить поиск в диагностике<small>Этот выбор сохранится после перезапуска</small></span>
         <input type="checkbox" checked={setting.enabled} disabled={!available || !setting.ready}
           onChange={event => {
             const enabled = event.target.checked;
@@ -94,7 +95,7 @@ export function DeviceLab() {
       {["unavailable", "timeout"].includes(location.status) && <p role="alert">Проверьте службы геолокации и повторите поиск. Помещение может ухудшать приём сигнала.</p>}
       <div className="actions">
         <button disabled={!canLocate} onClick={() => controller.locate({ fresh: true })}>Найти меня</button>
-        <button className="secondary" disabled={!available} onClick={() => controller.stop()}>Остановить и очистить</button>
+        <button className="secondary" disabled={!available} onClick={() => controller.stop()}>Остановить проверку</button>
       </div>
     </section>
 

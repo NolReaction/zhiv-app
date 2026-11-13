@@ -117,7 +117,8 @@ class JdbcMobileAuthRepositoryIntegrationTest {
         val originalUser = assertNotNull(identities.findSessionUserId(first.hash))
         val otherUser = assertNotNull(identities.findSessionUserId(second.hash))
         // Bootstrap sessions are bound to their original user by the bootstrap ledger.
-        // A later login session can move during an account merge, so use that shape here.
+        // Use an unbound fixture to simulate an out-of-band owner change. Production
+        // merges revoke source sessions instead of reassigning their owner.
         source.connection.use { c ->
             c.prepareStatement("INSERT INTO app_sessions(user_id,token_hash,expires_at) VALUES (?,?,clock_timestamp()+interval '1 day')").use {
                 it.setObject(1, originalUser); it.setBytes(2, sourceSession.hash); assertEquals(1, it.executeUpdate())
