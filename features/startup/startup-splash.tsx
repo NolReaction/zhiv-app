@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { BRAND_LOGO_SRC } from "@/lib/brand-assets";
+import { getClientPlatform } from "@/lib/client-platform";
 import styles from "./startup-splash.module.css";
 
 export const SPLASH_ENTER_MS = 900;
@@ -37,6 +38,7 @@ function Leaf() {
 /** Presentation only: asset retries and the one-shot app-entry lifecycle live in the startup gate. */
 export function StartupSplash({ phase, progress, message, detail, retryAvailable, onRetry, onLogoReady,
   revealReady = true }: StartupSplashProps) {
+  const platform = getClientPlatform();
   const [logoState, setLogoState] = useState<"loading" | "ready" | "failed">("loading");
   const logoSettled = useRef(false);
   const logoDecoding = useRef(false);
@@ -146,7 +148,9 @@ export function StartupSplash({ phase, progress, message, detail, retryAvailable
           </svg>
           Попробовать сейчас
         </button>}
-        {retryAvailable && <a className={styles.recover} href="/recover.html">Восстановить запуск</a>}
+        {retryAvailable && (platform
+          ? <button className={styles.recover} type="button" onClick={platform.openDiagnostics}>Проверить устройство</button>
+          : <a className={styles.recover} href="/recover.html">Восстановить запуск</a>)}
       </div>
     </div>
   </section>;

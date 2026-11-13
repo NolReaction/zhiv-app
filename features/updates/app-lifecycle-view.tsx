@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { RefreshCw, Sprout, Wrench } from "lucide-react";
+import { getClientPlatform } from "@/lib/client-platform";
 import { AppLifecycleController, browserAppLifecycleEnvironment, INITIAL_APP_LIFECYCLE, type AppLifecycleState } from "./app-lifecycle";
 import styles from "./app-lifecycle.module.css";
 
@@ -30,6 +31,11 @@ export function AppReloadDeferred({ onRetry }: { onRetry: () => void }) {
 }
 
 export function AppLifecycle() {
+  // A web deployment cannot replace the JavaScript installed with a native app.
+  return getClientPlatform() ? null : <BrowserAppLifecycle />;
+}
+
+function BrowserAppLifecycle() {
   const [controller] = useState(() => new AppLifecycleController(process.env.NEXT_PUBLIC_APP_BUILD_ID ?? "development", browserAppLifecycleEnvironment()));
   const state = useSyncExternalStore(controller.subscribe, controller.snapshot, () => INITIAL_APP_LIFECYCLE);
   const dialog = useRef<HTMLDialogElement>(null);
