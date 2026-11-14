@@ -3,9 +3,10 @@
 import { useEffect, useRef } from "react";
 import { useEarthLocation } from "./use-earth-location";
 import type { useEarthSharing } from "./use-earth-sharing";
+import { getClientPlatform } from "@/lib/client-platform";
 
-/** One account-owned GPS watch. Consented sharing outlives map navigation, but
- * never document backgrounding; without a publisher GPS is private and map-only. */
+/** The private watch belongs to the visible map. Consented native publication
+ * has its own lifecycle and an explicit background setting. */
 export function useEarthPresence({ ownerPublicId, enabled, mapVisible, sharing, temporarilyPaused = false }: {
   ownerPublicId: string | null; enabled: boolean; mapVisible: boolean; temporarilyPaused?: boolean;
   sharing: ReturnType<typeof useEarthSharing>;
@@ -13,7 +14,8 @@ export function useEarthPresence({ ownerPublicId, enabled, mapVisible, sharing, 
   const { setPosition, stopPublishing, pendingGhost, pendingPrivacyMode, publishing, publicationGeneration } = sharing;
   const locationEnabled = enabled && !temporarilyPaused && (mapVisible || publishing && !sharing.nativePublishing);
   const autoStart = pendingGhost || sharing.settings?.mode === "GHOST" ? false
-    : sharing.settings && locationEnabled ? true : null;
+    : getClientPlatform() ? mapVisible && locationEnabled && sharing.settings ? "granted" : null
+      : sharing.settings && locationEnabled ? true : null;
   const location = useEarthLocation({ ownerPublicId, enabled: locationEnabled, autoStart });
   const { stop, freeze, locateForPublication } = location;
   const requestedFix = useRef({ owner: ownerPublicId, generation: 0 });

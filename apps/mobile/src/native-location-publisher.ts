@@ -32,31 +32,50 @@ export function installNativeLocationPublisher(): Promise<void> {
 
 async function initialize(): Promise<void> {
   if (!Capacitor.isPluginAvailable("MochlikLocation")) throw new Error("Пересоберите приложение: модуль передачи геопозиции не подключён");
-  let snapshot: Snapshot = { active: false, backgroundEnabled: false, ownerPublicId: null, epoch: null, lastPublishedAt: null, error: null };
+  const empty: Snapshot = { active: false, backgroundEnabled: false, ownerPublicId: null, epoch: null, lastPublishedAt: null, error: null };
+  let snapshot = empty, sessionRevision = 0, stateRevision = 0, choiceRequest = 0;
+  let choiceBusy = false, choiceError: string | null = null;
   const listeners = new Set<(state: Snapshot) => void>();
+  const publishChoice = () => updateBackgroundLocationChoice({ available: true, enabled: snapshot.backgroundEnabled, busy: choiceBusy, error: choiceError });
   const apply = (value: Snapshot) => {
     snapshot = snapshotSchema.parse(value);
-    updateBackgroundLocationChoice({ available: true, enabled: snapshot.backgroundEnabled, busy: false, error: null });
+    stateRevision++;
+    publishChoice();
     for (const listener of listeners) listener(snapshot);
+  };
+  const readState = async () => {
+    const session = sessionRevision, revision = stateRevision;
+    const value = await Location.getState();
+    if (session === sessionRevision && revision === stateRevision) apply(value);
   };
   const handles: PluginListenerHandle[] = [];
   try {
     handles.push(await Location.addListener("stateChange", apply));
-    handles.push(await NativeBridge.addListener("sessionChange", () => { void Location.getState().then(apply).catch(() => {
-      apply({ active: false, backgroundEnabled: false, ownerPublicId: null, epoch: null, lastPublishedAt: null, error: null });
-    }); }));
-    apply(await Location.getState());
+    handles.push(await NativeBridge.addListener("sessionChange", () => {
+      sessionRevision++; choiceRequest++; choiceBusy = false; choiceError = null;
+      apply(empty);
+      void readState().catch(() => {});
+    }));
+    await readState();
   } catch (error) {
     await Promise.allSettled(handles.map(handle => handle.remove()));
     throw error;
   }
   installBackgroundLocationChoice(async enabled => {
-    updateBackgroundLocationChoice({ available: true, enabled: snapshot.backgroundEnabled, busy: true, error: null });
-    try { apply(await Location.setBackgroundEnabled({ enabled })); }
-    catch {
-      updateBackgroundLocationChoice({ available: true, enabled: snapshot.backgroundEnabled, busy: false,
-        error: "Сначала разрешите геопозицию и проверьте поиск. Затем повторите включение фоновой передачи." });
+    if (choiceBusy) return;
+    const request = ++choiceRequest, session = sessionRevision;
+    const current = () => request === choiceRequest && session === sessionRevision;
+    choiceBusy = true; choiceError = null; publishChoice();
+    try {
+      const value = await Location.setBackgroundEnabled({ enabled });
+      if (current()) apply(value);
     }
+    catch {
+      if (current()) choiceError = enabled
+        ? "Сначала разрешите геопозицию и проверьте поиск. Затем повторите включение фоновой передачи."
+        : "Не удалось отключить фоновую передачу. Повторите попытку.";
+    }
+    finally { if (current()) { choiceBusy = false; publishChoice(); } }
   });
   installNativeEarthPublisherFactory(owner => {
     let epoch: string | null = null;

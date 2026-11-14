@@ -1,37 +1,28 @@
-# Мохлик · мобильный клиент 0.3.1
+# Мохлик · мобильный клиент 0.3.2
 
-Ветка `experiment/native-mobile`, draft [PR №41](https://github.com/NolReaction/zhiv-app/pull/41), база `master` `493d399`. Версия 0.3.1/build 4, app ID `ru.zhiv.mochlik.lab`. Master, production, реальные аккаунты и ключи провайдеров не менялись.
+Ветка `experiment/native-mobile`, draft [PR №41](https://github.com/NolReaction/zhiv-app/pull/41), база `master` `493d399`. Версия 0.3.2/build 5, app ID `ru.zhiv.mochlik.lab`. Master и production в рамках этого этапа не менялись. Пользователь прислал работающие экраны полного приложения на iPhone; основная установка и поиск координат работают, но это не полная приёмка новой версии.
 
-## Текущий этап: Android на Kotlin
+## Текущий этап: края экрана, поиск на карте и фон
 
-По просьбе пользователя все 12 собственных Android-классов и два прежних JUnit-набора переведены с Java на Kotlin. Код — `apps/mobile/android/app/src/main/kotlin/ru/zhiv/mochlik/lab`, тесты — `src/test/kotlin/ru/zhiv/mochlik/lab`. Новые собственные Android-модули пишутся на Kotlin; готовые зависимости Capacitor/Android не переписываются.
+- Удалена непрозрачная подложка над статусной областью. На мобильных экранах прокручиваемое содержимое доходит до нижнего края; нижняя панель и последние элементы учитывают home indicator. Системные значки светлые.
+- CSS-интеграция отдаёт приоритет insets Capacitor, чтобы старые Android WebView не добавляли отступ повторно. iOS сохраняет `env()`/нативный fallback. Build ID теперь берётся из актуальной версии пакета.
+- Открытие карты с уже выданным разрешением запускает новый частный поиск после записи настройки SQLite. Автопоиск не открывает системный запрос, не выбирает друзей и не обходит OFF/призрак; уход, остановка и смена аккаунта отменяют незавершённый запуск. При загрузке меню старый watch по-прежнему не восстанавливается.
+- Общий переключатель «Обновлять в фоне» доступен в геопозиции на карте и в профиле. Он не продлевает срок доступа и не добавляет получателей. Выключение доступно и при основном OFF.
+- События публикации больше не скрывают ошибку переключателя и не разблокируют незавершённую запись. Смена сеанса отсеивает запоздалые результаты настройки и чтения состояния.
+- Собственный Android-код остаётся Kotlin, iOS — Swift, интерфейс — общий React/Canvas/WebGL. Экономика, API, миграции и формат SQLite на этом этапе не менялись. Лаборатория и web/PWA-контур сохраняются как используемые точки входа.
 
-- Kotlin 2.3.21, AGP 8.13.2, Gradle 8.14.3, JDK/JVM target 21. Сгенерированные Capacitor Gradle-файлы остаются управляемыми `cap sync`.
-- Сохранены имена плагинов/методов и классов Android, callback разрешения, SQLite schema v2/имя базы/SQL, Preferences и Keystore alias/AES-GCM AAD. Перевод языка не требует удаления приложения или сброса данных; обновление требует прежней подписи.
-- Сохранены очереди и глобальные блокировки, ссылочные проверки запросов/Task, session/generation/epoch/launch-ticket fences, пределы HTTP, отмена и timeout, foreground service, условия приватности и push opt-in.
-- Исправлена существовавшая в Java ошибка push-поколения: Capacitor `getLong` не принимает обычный JSON Integer. Три операции теперь используют строгий `NativePushGeneration` для Int/Long в безопасном диапазоне JavaScript; неверные типы/дроби/отрицательные значения отклоняются. Добавлены тесты реального JSObject/PluginCall JSON roundtrip.
-- `NativeBridgeContractTest` проверяет публичные JVM-имена/сигнатуры, конструкторы компонентов и reflection callback после перевода. Дополнена проверка null Intent extras. Предыдущие assertions сохранены.
-- Независимая проверка исправила nullable `onNewIntent`/LocationManager и явное Float→Double для прежнего JSON-представления точности. Интерфейс игры остаётся общим React/TypeScript; iOS-код остаётся Swift.
+## Проверки этого этапа
 
-## Проверки текущих изменений
+- Mobile JS: **195/195**. Профильные location/presence/preferences/sharing-panel тесты также прошли; новые сценарии проверяют автопоиск, отзыв разрешения, OFF/ghost, смену экранов, подтверждение записи и смену аккаунта.
+- TypeScript, ESLint, architecture (**1335 modules**), mobile build и `cap sync` iOS/Android прошли. Secret scan: 0 находок.
+- Добавлен `npm run test:mobile-layout`: реальный CSS pipeline, навигация и настройки, пять сочетаний viewport/insets (два экрана в каждом). Проверка включает край прокрутки, вырезы, dock и последний элемент. Локальный Chromium не запускается из-за ограничения Unix sockets среды; выполнение перенесено в отдельный CI job со снимками экрана. Результат ещё ожидается.
+- Android APK/lint/JUnit и CI текущего кода ещё выполняются; результаты будут записаны после завершения. Проверки предыдущей 0.3.1: [native](https://github.com/NolReaction/zhiv-app/actions/runs/43616319573), [общий CI](https://github.com/NolReaction/zhiv-app/actions/runs/43616319605). Они не заменяют проверки 0.3.2.
 
-- Локально: **186/186** mobile JS tests, TypeScript, ESLint, architecture **1334 modules**, mobile build и cap sync обеих платформ — success.
-- Android: полный Gradle `assembleDebug lintDebug testDebugUnitTest` прошёл, после последних nullable-правок повторно прошли app APK/lint/JUnit; **16/16** собственных Kotlin-тестов, без ошибок/пропусков. Проверен фактический merged manifest push-службы.
-- Secret scan: 0 находок. Проверка свежести экономического отчёта: 68 сценариев.
-- Код `c38e554` прошёл [native CI](https://github.com/NolReaction/zhiv-app/actions/runs/43616319573): Android Kotlin main/test compilation, APK/lint/JUnit, 186/186 mobile JS и merged manifest; iOS Simulator/unsigned iPhone и 49 Swift policy assertions. Число 16/16 Kotlin-тестов подтверждено локальными XML, CI подтверждает успешное выполнение JUnit task. [APK этого коммита](https://github.com/NolReaction/zhiv-app/actions/runs/43616319573/artifacts/14122736800).
-- Код `c38e554` прошёл [общий CI](https://github.com/NolReaction/zhiv-app/actions/runs/43616319605): Web **8756/8756** (2787 + 3064 + 2905), Ktor/PostgreSQL **1401/1401**, migration/gifts **79/79**, markets **172/172**; все без ошибок/пропусков. Итоговый Web job, engine/editor, secret scan и isolated Compose upgrade/reset rehearsal — success.
-- Собственный Java-код удалён из Android main/test; новые Kotlin-файлы проверены сравнением с предыдущим коммитом `f08f710`.
-- Финальный коммит отчёта поверх `c38e554` меняет только этот файл и ссылки совместимости в мобильной инструкции; исходники, тесты и конфигурация сборки совпадают с проверенным кодом.
+## Следующий шаг и ограничения
 
-## Основа мобильного клиента
+1. Дождаться CI, исправить замечания браузерной проверки и зафиксировать итоговые результаты/ссылки.
+2. Пользователю обновить ветку, выполнить `npm ci`, `npm run mobile:sync`, `npm run mobile:ios` и Run в Xcode с прежней подписью. Удаление приложения не требуется. Серверной миграции для этого этапа нет; полный клиент требует уже совместимый web/API с V83/V84.
+3. На iPhone и Android проверить реальные safe areas/поворот/клавиатуру, автопоиск и отказ, фон при блокировке, OFF/призрак, потерю сети, память и батарею. Принудительное закрытие и ограничения ОС могут остановить геопередачу.
+4. APNs/FCM требуют Apple/Firebase credentials и проверки доставки; реальные провайдеры не подключались. TestFlight/Google Play не настроены. Draft PR не означает готовность магазинного релиза.
 
-Основа включает общий AppShell, PKCE/native HTTP и защищённый мобильный сеанс, SQLite receipts/journals, GPS/добровольный фон, локальные таймеры и APNs/FCM для mail/checkin, память/lifecycle/safe-area/sharing. [Точное покрытие и установка](docs/development/native-mobile.md), [push](docs/operations/native-push.md), [privacy](docs/development/native-mobile-privacy.md).
-
-Экономические правила на этом этапе не менялись. Канонический расчёт: 68 сценариев, 1 468 155 команд, 138 исходников; [свидетельство](docs/game/economy-v15-final-simulation.md). Повторный расчёт из-за смены языка Android не требуется.
-
-## Внешние условия и ручная приёмка
-
-1. Для полного входа нужны совместимые web/API из ветки с V83/V84, развёртывание выполняется отдельно. Затем `npm ci`, `npm run mobile:sync`, `npm run mobile:ios` или `npm run mobile:android`.
-2. Реальные APNs/FCM требуют Apple/Firebase credentials и соответствующей сборки. Старому мобильному сеансу до V84 нужен новый вход. Реальные push не отправлялись, TestFlight/Google Play не настроены.
-3. На физических iPhone/Android проверить обновление без удаления, вход/смену аккаунта, SQLite-восстановление, GPS/фон/отзыв/призрак, уведомления, память и батарею по матрице. Первую лабораторию пользователь проверял на iPhone; это не приёмка полной версии.
-4. После принудительного закрытия непрерывная геопередача не обещается. Offline logout удаляет локальный доступ, но серверный отзыв может не завершиться. UI-кэши могут оставаться в WebView; неподтверждённые действия Safari/Chrome автоматически не импортируются.
+Инструкции: [мобильный клиент](docs/development/native-mobile.md), [push](docs/operations/native-push.md), [privacy](docs/development/native-mobile-privacy.md).

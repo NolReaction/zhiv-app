@@ -5,6 +5,7 @@ import "./style.css";
 const element = document.getElementById("root");
 if (!element) throw new Error("Missing mobile root element");
 const root = createRoot(element);
+if (Capacitor.isNativePlatform()) document.documentElement.dataset.nativeApp = Capacitor.getPlatform();
 let starting = false;
 let dispose: (() => void) | undefined;
 
@@ -30,7 +31,7 @@ async function start() {
     await initializeMobileTransport(() => session.getSnapshot());
     const platform = Capacitor.getPlatform();
     configureClientPlatform({
-      kind: platform === "ios" ? "ios" : "android", appVersion: "0.3.1",
+      kind: platform === "ios" ? "ios" : "android", appVersion: "0.3.2",
       login: () => session.login(), logout: () => NativeBridge.logout(), openAccount: () => NativeBridge.openWebsite({ path: "/?auth=account-proof" }),
       openDiagnostics: () => window.dispatchEvent(new Event("mochlik:open-diagnostics")),
     });

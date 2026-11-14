@@ -173,9 +173,12 @@ export function createNativeEarthLocationEnvironment({ geolocation, app, documen
           // Do not fall through into the plugin's settings-resolution flow
           // after this required preflight fails. Observer-only queries above
           // remain advisory and never manufacture a permission revocation.
+          const { requireGrantedPermission, ...positionOptions } = options;
           let permissions = await geolocation.checkPermissions();
           if (watch.cancelled || !visible()) return;
           if (permissionState(permissions) !== "granted") {
+            // A revoked grant must not turn automatic map entry into a prompt.
+            if (requireGrantedPermission) { fail({ code: "OS-PLUG-GLOC-0003" }); return; }
             // Ask before registering a watch: clearWatch cannot cancel the
             // plugin's pending permission callback on every native platform.
             permissions = await geolocation.requestPermissions({ permissions: ["location"] });
@@ -183,7 +186,7 @@ export function createNativeEarthLocationEnvironment({ geolocation, app, documen
             if (permissionState(permissions) !== "granted") { fail({ code: "OS-PLUG-GLOC-0003" }); return; }
           }
           const nativeOptions = permissions.coarseLocation === "granted" && permissions.location !== "granted"
-            ? { ...options, enableHighAccuracy: false } : options;
+            ? { ...positionOptions, enableHighAccuracy: false } : positionOptions;
           const nativeId = await geolocation.watchPosition(nativeOptions, (position, error) => {
             if (watch.cancelled || !visible()) return;
             if (error !== undefined && error !== null) fail(error);

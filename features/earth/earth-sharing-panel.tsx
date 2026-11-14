@@ -8,6 +8,8 @@ import type { PeopleResponse } from "@/lib/check-in-contract";
 import type { EarthSharingDuration, EarthSharingPrecision, EarthSharingSettings } from "@/lib/earth-sharing-contract";
 import type { useEarthSharing } from "./use-earth-sharing";
 import { confirmedEarthChoices } from "./earth-friend-sharing";
+import { getClientPlatform } from "@/lib/client-platform";
+import { BackgroundLocationControl } from "./background-location-control";
 import styles from "./earth-sharing-panel.module.css";
 
 export { EarthSharingToggle } from "./earth-friend-sharing";
@@ -118,9 +120,12 @@ export function EarthSharingPanelContent({ sharing, online, onShare, onResume, o
         : saved.durationMinutes === null ? "пока не выключу" : saved.durationMinutes === 480 ? "на 8 часов" : "на 1 час"}</p>
       {published && <p className={styles.lastUpdate}>Друзьям отправлено: <time dateTime={sharing.lastPublishedAt!}>{published}</time></p>}
       {accuracy && <p className={styles.lastUpdate}>Точность GPS: ±{accuracy}</p>}
-      <p className={styles.sharingHint}>Обновляется, пока приложение открыто на экране, в том числе во время игры. В фоне остаётся последнее место.</p>
+      <p className={styles.sharingHint}>{getClientPlatform()
+        ? "Обновляется при включённом обмене, в том числе во время игры. Для продолжения при сворачивании включите фоновый режим ниже."
+        : "Обновляется, пока приложение открыто на экране, в том числе во время игры. В фоне остаётся последнее место."}</p>
     </section>
     <p className={styles.consentHint}>Своё место вы показываете только выбранным друзьям в «Людях». Чтобы видеть друга, он тоже должен открыть вам доступ.</p>
+    <BackgroundLocationControl canEnable={locationAllowed && !sharing.pendingGhost} />
 
     {sharing.pendingGhost && <p className={styles.pending} role="status">{sharing.pendingPrivacyMode === "OFF"
       ? "Удаление доступа ещё не подтверждено сервером."
@@ -146,7 +151,7 @@ export function EarthSharingPanelContent({ sharing, online, onShare, onResume, o
           }}>
           <option value="60">На 1 час</option><option value="480">На 8 часов</option><option value="forever">Пока не выключу</option>
         </select></label>
-        <p className={styles.quiet}>Примерно — район около 1,5 км. В фоне обновлений нет.</p>
+        <p className={styles.quiet}>Примерно — район около 1,5 км.</p>
         {until && <p className={styles.quiet}>Текущий доступ до {until}. Сохранение заново отсчитает выбранный срок.</p>}
         <button className={styles.applyButton} type="submit" data-audio-cue="ui.click" disabled={!canChange || !locationAllowed || ghost || selected.size === 0 || !dirty}><MapPin size={16} aria-hidden="true" />Сохранить настройки</button>
       </form>

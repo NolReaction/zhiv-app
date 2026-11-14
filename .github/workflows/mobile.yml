@@ -13,6 +13,7 @@ on:
       - 'public/**'
       - 'scripts/mobile-config.mjs'
       - 'scripts/check-mobile-version.mjs'
+      - 'scripts/check-mobile-layout.mjs'
       - 'scripts/check-mobile-push-manifest.py'
       - 'tests/earth-native-location.test.mjs'
       - 'tests/mobile-*.test.mjs'
@@ -30,6 +31,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  layout:
+    name: Mobile safe-area layout
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Install browser test runtime
+        run: |
+          npm install --prefix "$RUNNER_TEMP/mobile-browser" --no-save --package-lock=false playwright@1.62.1
+          "$RUNNER_TEMP/mobile-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Check insets, scroll and navigation
+        run: |
+          export PLAYWRIGHT_NODE_MODULES="$RUNNER_TEMP/mobile-browser/node_modules"
+          export MOBILE_LAYOUT_SCREENSHOT_DIR="$RUNNER_TEMP/mobile-layout"
+          npm run test:mobile-layout
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mochlik-mobile-layout
+          path: ${{ runner.temp }}/mobile-layout
+          if-no-files-found: ignore
+
   android:
     name: Android debug APK
     runs-on: ubuntu-latest

@@ -339,14 +339,14 @@
 				CODE_SIGN_ENTITLEMENTS = "App/App.entitlements";
 				MOCHLIK_PUSH_ENABLED = NO;
 				MOCHLIK_APNS_ENVIRONMENT = development;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.3.1;
+				MARKETING_VERSION = 0.3.2;
 				OTHER_LDFLAGS = "$(inherited) -lsqlite3";
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = ru.zhiv.mochlik.lab;
@@ -365,14 +365,14 @@
 				CODE_SIGN_ENTITLEMENTS = "App/App.entitlements";
 				MOCHLIK_PUSH_ENABLED = NO;
 				MOCHLIK_APNS_ENVIRONMENT = production;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.3.1;
+				MARKETING_VERSION = 0.3.2;
 				OTHER_LDFLAGS = "$(inherited) -lsqlite3";
 				PRODUCT_BUNDLE_IDENTIFIER = ru.zhiv.mochlik.lab;
 				PRODUCT_NAME = "$(TARGET_NAME)";

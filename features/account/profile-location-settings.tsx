@@ -1,14 +1,13 @@
 "use client";
 
 import { LocateFixed, MapPin, Square } from "lucide-react";
-import { useSyncExternalStore } from "react";
 import { SharingSwitch } from "@/components/sharing-switch";
 import { useEarthLocation } from "@/features/earth/use-earth-location";
 import { useEarthLocationPreference } from "@/features/earth/use-location-preferences";
 import type { EarthLocationState } from "@/features/earth/location";
 import type { EarthSharingHandle } from "@/features/earth/earth-sharing-panel";
 import { getClientPlatform } from "@/lib/client-platform";
-import { backgroundLocationChoice } from "@/features/earth/native-publisher";
+import { BackgroundLocationControl } from "@/features/earth/background-location-control";
 import type { EarthLocationPreferencePersistence } from "@/features/earth/location-preferences";
 import styles from "./profile-location-settings.module.css";
 
@@ -20,7 +19,6 @@ export function ProfileLocationSettingsContent({ enabled, onEnabledChange, locat
   persistence?: EarthLocationPreferencePersistence; onRestart?: () => void;
 }) {
   const native = getClientPlatform();
-  const background = useSyncExternalStore(backgroundLocationChoice.subscribe, backgroundLocationChoice.getSnapshot, backgroundLocationChoice.getServerSnapshot);
   const watching = location.status === "active" || location.status === "requesting";
   const accuracy = location.position ? location.position.accuracy >= 1_000
     ? `${(location.position.accuracy / 1_000).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} км`
@@ -59,20 +57,11 @@ export function ProfileLocationSettingsContent({ enabled, onEnabledChange, locat
         {location.error && <p className={styles.error}>{location.error.replaceAll("«Найти меня»", "«Проверить геопозицию»")}</p>}
       </div>
     </>}
-    {background.available && <>
-      <div className={styles.setting}>
-        <label htmlFor="profile-location-background"><strong>Передавать при свёрнутом приложении</strong>
-          <span>Продолжать уже включённый обмен с выбранными близкими, в том числе при заблокированном экране.</span></label>
-        <SharingSwitch id="profile-location-background" checked={background.enabled} disabled={background.busy || !enabled}
-          onCheckedChange={value => { void backgroundLocationChoice.setEnabled(value); }} data-audio-cue="ui.click" />
-      </div>
-      <p className={styles.hint}>Этот выбор не добавляет получателей и не продлевает доступ. Телефон показывает индикатор или уведомление. Принудительное закрытие и ограничения системы могут остановить передачу.</p>
-      {background.error && <p className={styles.error} role="alert">{background.error}</p>}
-    </>}
+    <BackgroundLocationControl canEnable={enabled && !persistence?.pending && !persistence?.error} />
     <details className={styles.details}>
       <summary>Как работает определение места</summary>
       {native ? <>
-        <p>Первый поиск начинается по нажатию «Найти меня» или «Проверить геопозицию». Разрешение запрашивает и хранит система телефона.</p>
+        <p>При первом поиске нажмите «Найти меня» или «Проверить геопозицию» и разрешите доступ. Затем открытая карта определяет место автоматически, если геопозиция включена и призрак выключен.</p>
         <p>Частный поиск работает в открытом приложении. Передача друзьям включается отдельно; продолжение при сворачивании разрешается переключателем выше.</p>
         <p>Точность зависит от условий приёма и выбранного системного разрешения. Изменить доступ можно в настройках этого приложения на телефоне.</p>
       </> : <>

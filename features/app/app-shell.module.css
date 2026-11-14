@@ -1090,6 +1090,13 @@
     touch-action: pan-y;
   }
 
+  /* Scroll content reaches the screen edge. Its own trailing space keeps the
+     last control above the floating dock and home indicator. */
+  :global(html[data-native-app]) .shell {
+    padding-bottom: 0;
+    --floating-nav-clearance: calc(110px + env(safe-area-inset-bottom));
+  }
+
   .shell[data-active-view="check-in"] {
     position: fixed;
     inset: 0;

@@ -97,6 +97,34 @@ test("a native location hook waits for durable consent and master OFF defeats it
   } finally { mount.destroy(); installClientJournalStorage(undefined); device.restore(); }
 });
 
+test("native map entry with an OS grant commits a fresh lookup while OFF and ghost keep it private and stopped", async () => {
+  for (const mode of ["map", "off", "ghost", "failed-write"]) {
+    const device = locationDevice("granted"), owner = `native-auto-${mode}`, key = earthLocationPreferenceKey(owner);
+    const committed = new Map(mode === "off" ? [[key, "off"]] : []), writes = [];
+    installClientJournalStorage(() => ({
+      getItem: name => committed.get(name) ?? null, getKeys: () => [...committed.keys()],
+      async setItem(name, value) { writes.push(value); if (mode === "failed-write") throw new Error("disk full"); committed.set(name, value); },
+      async removeItem(name) { committed.delete(name); },
+    }));
+    const props = { ownerPublicId: owner, enabled: true, autoStart: mode === "ghost" ? false : "granted" };
+    const mount = mountLocation(props);
+    try {
+      mount.render(); await settle(); await settle(); mount.render();
+      assert.equal(device.watches.length, mode === "map" ? 1 : 0, mode);
+      if (mode === "map") {
+        assert.deepEqual(writes, ["active"]);
+        device.watches[0].success(locationFix());
+        assert.equal(mount.render().position.latitude, 55);
+        props.enabled = false; props.autoStart = null; mount.render();
+        assert.deepEqual(device.cleared, [0]);
+        props.enabled = true; props.autoStart = "granted"; mount.render(); await settle();
+        assert.equal(device.watches.length, 2);
+      }
+      if (mode === "off" || mode === "ghost") assert.deepEqual(writes, [], "rendering never overrides a privacy restriction");
+    } finally { mount.destroy(); installClientJournalStorage(undefined); device.restore(); }
+  }
+});
+
 test("cold map mounts and remounts show private GPS despite stale or unavailable Permissions", async () => {
   for (const mode of ["prompt", "denied", "missing", "reject", "pending"]) {
     const device = locationDevice(mode), props = { ownerPublicId: `cold-map-${mode}`, enabled: true, autoStart: true };

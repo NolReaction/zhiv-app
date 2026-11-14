@@ -6,7 +6,10 @@ const config: CapacitorConfig = {
   webDir: "dist",
   // Only bundled assets may call native plugins. No remote server.url or wildcard navigation.
   ios: { contentInset: "never" },
-  plugins: { PushNotifications: { presentationOptions: [] } },
+  plugins: {
+    PushNotifications: { presentationOptions: [] },
+    SystemBars: { insetsHandling: "css", initialViewportFitValueHint: "cover", style: "DARK" },
+  },
   android: { allowMixedContent: false },
 };
 

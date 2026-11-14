@@ -6,8 +6,8 @@ const READY: EarthLocationPreference = { enabled: true, automaticStartAllowed: f
 const OFF: EarthLocationPreference = { enabled: false, automaticStartAllowed: false };
 const IDLE: EarthLocationPreferencePersistence = { pending: false, error: null };
 const encode = (value: EarthLocationPreference) => !value.enabled ? "off" : value.automaticStartAllowed ? "active" : "ready";
-// A new native session always requires a deliberate lookup, even with a saved
-// OS grant. In particular, an uncertain OFF cannot revive a former ACTIVE watch.
+// Boot never resumes a saved watch. A new lookup (button or entering the map
+// with an OS grant) must pass the controller's privacy gates and commit ACTIVE.
 const decode = (value: string | null) => value === null || value === "ready" || value === "active" ? READY : OFF;
 
 /** Uses a hydrated, owner/session-fenced SQLite port. No coordinate or OS grant is stored. */
@@ -79,7 +79,7 @@ export function createDurableEarthLocationPreferenceStore(
 
   if (saved === null && legacyValue !== null) {
     // A legacy ACTIVE belongs to the old WebView contract. Transfer only READY;
-    // the first deliberate native lookup can grant this session's automatic use.
+    // a new native lookup can grant this session's automatic use.
     void write(state, true);
   }
 

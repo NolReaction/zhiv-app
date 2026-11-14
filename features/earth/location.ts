@@ -15,6 +15,9 @@ export type EarthLocationState = {
   error: string | null;
 };
 
+export type EarthAutomaticLocationPolicy = boolean | "granted" | null;
+export type EarthWatchOptions = PositionOptions & { requireGrantedPermission?: boolean };
+
 type LocationPermission = {
   readonly state: PermissionState;
   subscribe: (listener: () => void) => () => void;
@@ -22,7 +25,10 @@ type LocationPermission = {
 
 export type EarthLocationEnvironment = {
   secure: boolean;
-  geolocation: Pick<Geolocation, "watchPosition" | "clearWatch"> | null;
+  geolocation: {
+    watchPosition(success: PositionCallback, failure?: PositionErrorCallback | null, options?: EarthWatchOptions): number;
+    clearWatch(id: number): void;
+  } | null;
   visible: () => boolean;
   onVisibilityChange: (listener: () => void) => () => void;
   schedule(callback: () => void, delay: number): unknown;
@@ -100,6 +106,7 @@ export function createEarthLocationController(
   ownerPublicId: string,
   getEnvironment: () => EarthLocationEnvironment = defaultEarthLocationEnvironment,
   onPermissionDenied: () => void = () => {},
+  authorizeAutomaticStart: () => boolean | Promise<boolean> = () => true,
 ) {
   let state = IDLE;
   const listeners = new Set<() => void>();
@@ -108,7 +115,8 @@ export function createEarthLocationController(
   let enabled = false;
   let allowed = true;
   let requested = false;
-  let automaticPolicy: boolean | null = false;
+  let automaticPolicy: EarthAutomaticLocationPolicy = false;
+  let automaticCheck: object | null = null;
   let automaticAttempted = false;
   let automaticSuppressed = false;
   let automaticLookup = false;
@@ -246,7 +254,8 @@ export function createEarthLocationController(
           return;
         }
         fail(error.code === 1 ? "denied" : error.code === 3 ? "timeout" : "unavailable");
-      }, { enableHighAccuracy: !fallbackAttempted, maximumAge: freshLookup ? 0 : 15_000, timeout: fallbackAttempted ? 20_000 : 30_000 });
+      }, { enableHighAccuracy: !fallbackAttempted, maximumAge: freshLookup ? 0 : 15_000, timeout: fallbackAttempted ? 20_000 : 30_000,
+        ...(automaticLookup && automaticPolicy === "granted" ? { requireGrantedPermission: true } : {}) });
       // Also handles implementations that invoke their callback synchronously.
       if (epoch !== watchEpoch || !mounted || !requested) geolocation.clearWatch(id);
       else watchId = id;
@@ -256,6 +265,7 @@ export function createEarthLocationController(
   }
 
   function halt(keepPosition: boolean) {
+    automaticCheck = null;
     automaticAttempted = true;
     requested = false;
     automaticLookup = false;
@@ -271,9 +281,23 @@ export function createEarthLocationController(
   // WebKit can report prompt until Geolocation has run in this page. Native
   // Geolocation owns grant/denial; Permissions only observes later revocation.
   function maybeStartAutomatically() {
-    if (automaticPolicy !== true || automaticAttempted || !mounted || !allowed || !enabled || requested
+    if ((automaticPolicy !== true && automaticPolicy !== "granted") || automaticAttempted || !mounted || !allowed || !enabled || requested
       || !ownerPublicId || !environment?.visible()) return;
     automaticAttempted = true;
+    if (automaticPolicy === "granted") {
+      const query = environment.queryPermission;
+      if (!query) return;
+      const token = automaticCheck = {};
+      const current = () => automaticCheck === token && mounted && allowed && enabled && !requested
+        && automaticPolicy === "granted" && environment?.visible();
+      // Opening the native map is a new private lookup. Read OS permission and
+      // commit its device choice first; never resurrect a persisted GPS watch.
+      void query().then(async permission => {
+        if (!current() || permission.state !== "granted") return;
+        if (await authorizeAutomaticStart() && current() && permission.state === "granted") startLookup(true);
+      }).catch(() => {}).finally(() => { if (automaticCheck === token) automaticCheck = null; });
+      return;
+    }
     startLookup(true);
   }
   function startLookup(automatically: boolean, fresh = false) {
@@ -286,11 +310,12 @@ export function createEarthLocationController(
     reconcile();
     if (requested) observePermission();
   }
-  function start() { startLookup(false); }
+  function start() { automaticCheck = null; startLookup(false); }
   // A deliberate lookup refreshes a stale watch without changing any sharing
   // permission. Keep the old private marker until a fresh fix arrives.
   function locate({ fresh = false }: { fresh?: boolean } = {}) {
     if (!mounted || !allowed || !ownerPublicId) return;
+    automaticCheck = null;
     automaticLookup = false;
     if (!requested) { startLookup(false, fresh); return; }
     // The initial lookup is already uncached. Reuse it while pending instead
@@ -303,6 +328,10 @@ export function createEarthLocationController(
     reconcile();
   }
   function visibilityChanged() {
+    if (!environment?.visible() && automaticCheck) {
+      automaticCheck = null;
+      automaticAttempted = false;
+    }
     reconcile();
     maybeStartAutomatically();
   }
@@ -329,6 +358,7 @@ export function createEarthLocationController(
       };
     },
     setEnabled(value: boolean) {
+      if (!value) automaticCheck = null;
       enabled = value;
       reconcile();
       maybeStartAutomatically();
@@ -343,9 +373,14 @@ export function createEarthLocationController(
       else automaticAttempted = true;
     },
     /** null waits for privacy metadata; false permanently suppresses this mount's auto attempt. */
-    setAutomaticStartPolicy(value: boolean | null) {
+    setAutomaticStartPolicy(value: EarthAutomaticLocationPolicy) {
+      if (value === "granted" && automaticPolicy !== "granted") {
+        automaticSuppressed = false;
+        automaticAttempted = false;
+      }
       automaticPolicy = value;
       if (value === false) {
+        automaticCheck = null;
         automaticSuppressed = true;
         automaticAttempted = true;
         if (requested && automaticLookup) freeze();

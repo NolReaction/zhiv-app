@@ -62,15 +62,89 @@ function native({ pendingState = false, pendingListener = false } = {}) {
   };
 }
 
-async function session(options) {
+async function session(options, authorizeAutomaticStart) {
   const platform = native(options);
   let denials = 0;
-  const controller = createEarthLocationController("owner-a", () => platform.environment, () => { denials += 1; });
+  const controller = createEarthLocationController("owner-a", () => platform.environment, () => { denials += 1; }, authorizeAutomaticStart);
   const deactivate = controller.activate();
   controller.setEnabled(true);
   await settle();
   return { ...platform, controller, deactivate, get denials() { return denials; } };
 }
+
+test("native map entry starts one private watch only after a saved grant and durable acknowledgement", async () => {
+  const commit = deferred(); let writes = 0, prompts = 0;
+  const s = await session({}, () => { writes++; return commit.promise; });
+  s.geolocation.requestPermissions = async () => { prompts++; throw new Error("Unexpected prompt"); };
+  try {
+    s.controller.setAutomaticStartPolicy("granted"); await settle();
+    assert.equal(writes, 1); assert.equal(s.watches.length, 0);
+    commit.resolve(true); await settle();
+    assert.equal(s.watches.length, 1); assert.equal(prompts, 0);
+    assert.equal(s.watches[0].options.requireGrantedPermission, undefined, "bridge-only option does not leak to the plugin");
+    s.watches[0].callback(fix());
+    assert.equal(s.controller.getSnapshot().status, "active");
+    s.controller.setEnabled(false); s.controller.setAutomaticStartPolicy(null);
+    s.controller.setAutomaticStartPolicy("granted"); s.controller.setEnabled(true); await settle();
+    assert.equal(s.watches.length, 2, "returning to the map resumes a single watch");
+    assert.equal(writes, 1, "an existing private request does not duplicate the commit");
+  } finally { s.deactivate(); }
+});
+
+test("automatic native lookup never opens the permission dialog or bypasses a failed choice write", async () => {
+  for (const state of ["prompt", "denied", "granted"]) {
+    let writes = 0, prompts = 0;
+    const s = await session({}, () => { writes++; return false; });
+    s.setPermission({ location: state, coarseLocation: state });
+    s.geolocation.requestPermissions = async () => { prompts++; return { location: "granted", coarseLocation: "granted" }; };
+    try {
+      s.controller.setAutomaticStartPolicy("granted"); await settle();
+      assert.equal(writes, state === "granted" ? 1 : 0);
+      assert.equal(prompts, 0); assert.equal(s.watches.length, 0);
+    } finally { s.deactivate(); }
+  }
+});
+
+test("pending map autostart cannot outlive OFF, ghost, leaving the map, stop, or account teardown", async () => {
+  for (const cancel of [s => s.controller.setAllowed(false), s => s.controller.setAutomaticStartPolicy(false),
+    s => s.controller.setEnabled(false), s => s.controller.stop(), s => s.deactivate()]) {
+    const commit = deferred();
+    const s = await session({}, () => commit.promise);
+    try {
+      s.controller.setAutomaticStartPolicy("granted"); await settle();
+      cancel(s); commit.resolve(true); await settle();
+      assert.equal(s.watches.length, 0); assert.equal(s.controller.getSnapshot().position, null);
+    } finally { s.deactivate(); }
+  }
+});
+
+test("native grant revoked between automatic lookup and watch preflight never triggers a new OS prompt", async () => {
+  let prompts = 0;
+  const s = await session({}, () => {
+    s.setPermission({ location: "prompt", coarseLocation: "prompt" });
+    return true;
+  });
+  s.geolocation.requestPermissions = async () => { prompts++; throw new Error("Unexpected prompt"); };
+  try {
+    s.controller.setAutomaticStartPolicy("granted"); await settle(); await settle();
+    assert.equal(s.watches.length, 0); assert.equal(prompts, 0);
+    assert.equal(s.controller.getSnapshot().status, "denied");
+  } finally { s.deactivate(); }
+});
+
+test("backgrounding a pending automatic start waits for foreground and ignores its old acknowledgement", async () => {
+  const commits = [];
+  const s = await session({}, () => { const commit = deferred(); commits.push(commit); return commit.promise; });
+  try {
+    s.controller.setAutomaticStartPolicy("granted"); await settle();
+    s.setActive(false); commits[0].resolve(true); await settle();
+    assert.equal(s.watches.length, 0);
+    s.setActive(true); await settle();
+    assert.equal(commits.length, 2);
+    commits[1].resolve(true); await settle();
+    assert.equal(s.watches.length, 1);
+  } finally { s.deactivate(); }
+});
 
 test("native registration accepts an early callback and clears its eventual ID after stop", async () => {
   const s = await session();

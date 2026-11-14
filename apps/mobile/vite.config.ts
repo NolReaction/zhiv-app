@@ -1,10 +1,12 @@
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/postcss";
 import { bundledGameAssets } from "./bundled-assets.ts";
 
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
+const mobileVersion = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version as string;
 const compat = (name: string) => fileURLToPath(new URL(`./src/compat/${name}.tsx`, import.meta.url));
 
 export default defineConfig(({ mode }) => {
@@ -25,17 +27,20 @@ export default defineConfig(({ mode }) => {
       "import.meta.env.VITE_MOBILE_API_ORIGIN": JSON.stringify(origin.origin),
       "process.env.NEXT_PUBLIC_APP_ORIGIN": JSON.stringify(origin.origin),
       "process.env.NEXT_PUBLIC_MAPTILER_KEY": JSON.stringify(env.NEXT_PUBLIC_MAPTILER_KEY ?? ""),
-      "process.env.NEXT_PUBLIC_APP_BUILD_ID": JSON.stringify(env.APP_BUILD_ID ?? "mobile-0.2.0"),
+      "process.env.NEXT_PUBLIC_APP_BUILD_ID": JSON.stringify(env.APP_BUILD_ID ?? `mobile-${mobileVersion}`),
     },
     css: { postcss: { plugins: [tailwindcss({ base: projectRoot }),
-      // The bridge reports real native insets in CSS pixels. Existing game CSS
-      // remains shared with the web and benefits from the fallback only here.
+      // Capacitor's Android CSS values account for padding already applied by
+      // older WebViews. Prefer them to raw device insets to avoid double spacing.
       {
         postcssPlugin: "mochlik-native-safe-area",
         Declaration(declaration: { value: string }) {
           if (declaration.value.includes("--native-safe-area-")) return;
           declaration.value = declaration.value.replace(/env\(safe-area-inset-(top|right|bottom|left)(?:\s*,\s*[^)]+)?\)/g,
-            value => `max(${value}, var(--native-safe-area-${/inset-(top|right|bottom|left)/.exec(value)![1]}, 0px))`);
+            value => {
+              const side = /inset-(top|right|bottom|left)/.exec(value)![1];
+              return `max(${value}, var(--safe-area-inset-${side}, var(--native-safe-area-${side}, 0px)))`;
+            });
         },
       },
     ] } },
