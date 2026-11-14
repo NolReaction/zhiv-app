@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => {
           declaration.value = declaration.value.replace(/env\(safe-area-inset-(top|right|bottom|left)(?:\s*,\s*[^)]+)?\)/g,
             value => {
               const side = /inset-(top|right|bottom|left)/.exec(value)![1];
-              return `max(${value}, var(--safe-area-inset-${side}, var(--native-safe-area-${side}, 0px)))`;
+              return `var(--safe-area-inset-${side}, max(${value}, var(--native-safe-area-${side}, 0px)))`;
             });
         },
       },

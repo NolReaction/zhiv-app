@@ -52,14 +52,14 @@ window.mountMobile = (view) => {
       h("div", { "data-last-card": true }, h(ProfileLocationSettingsContent, { enabled: true, onEnabledChange() {}, location: { position: null, status: "idle", error: null }, onLocate() {}, onStop() {} }))));
   mount.render(h("main", { className: shell.shell, "data-active-view": view },
     h("header", { className: shell.header, "data-shell-header": true }, h("p", { className: shell.wordmark }, "Я ЖИВОЙ"), h("strong", null, "Дима 🐘")),
-    h("div", { className: shell.viewTransition }, view === "earth" ? map : content),
+    h("div", { className: shell.viewTransition, key: view }, view === "earth" ? map : content),
     h("footer", { className: shell.footer }, h(AppNavigation, { active: view, onSelect: window.mountMobile, invitations: 0 }))));
 };
 window.mountMobile(location.hash.slice(1) || "profile");
 window.mobileLayoutReady = true;
 `;
 const cacheDir = await mkdtemp(join(tmpdir(), "mochlik-mobile-layout-"));
-let server, browser, page, cases = 0;
+let server, browser, page, lastGeometry, cases = 0;
 const errors = [];
 try {
   const loaded = await loadConfigFromFile({ command: "serve", mode: "test" }, join(root, "apps/mobile/vite.config.ts"));
@@ -80,6 +80,7 @@ try {
   browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
   const context = await browser.newContext({ isMobile: true, hasTouch: true, reducedMotion: "reduce" });
   page = await context.newPage();
+  const cdp = await context.newCDPSession(page);
   page.on("pageerror", error => errors.push(error.message));
   await page.goto(server.resolvedUrls.local[0]); await page.waitForFunction(() => window.mobileLayoutReady);
   const devices = [
@@ -91,6 +92,12 @@ try {
   ];
   for (const device of devices) {
     await page.setViewportSize({ width: device.width, height: device.height });
+    // The core CSS value may intentionally be zero despite a stale raw inset,
+    // for example when the native view already applies padding or an IME opens.
+    await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: {
+      top: device.name === "android-inset" ? 28 : device.top,
+      bottom: device.name === "android-inset" ? 24 : device.bottom, left: device.side, right: device.side,
+    } });
     await page.evaluate(device => {
       document.documentElement.dataset.nativeApp = device.core ? "android" : "ios";
       for (const [side, value] of Object.entries({ top: device.top, bottom: device.bottom, left: device.side, right: device.side })) {
@@ -101,13 +108,15 @@ try {
     }, device);
     for (const view of ["profile", "earth"]) {
       await page.evaluate(view => window.mountMobile(view), view);
-      await page.locator(`[data-active-view="${view}"]`).first().waitFor();
+      await page.locator(`main[data-active-view="${view}"]`).waitFor();
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const geometry = await page.evaluate(view => {
         const box = selector => { const { x, y, right, bottom, width, height } = document.querySelector(selector).getBoundingClientRect(); return { x, y, right, bottom, width, height }; };
         return { content: box(view === "earth" ? "[data-map]" : "[data-profile]"), header: box(view === "earth" ? "[data-map-header]" : "[data-shell-header]"),
           nav: box("nav"), bodyWidth: document.documentElement.scrollWidth, mask: getComputedStyle(document.body, "::before").content };
       }, view);
       const label = `${device.name}/${view}`;
+      lastGeometry = { label, ...geometry };
       assert.ok(["none", "normal"].includes(geometry.mask), `${label}: opaque system-bar cover remains`);
       assert.ok(Math.abs(geometry.content.bottom - device.height) <= 1, `${label}: content is clipped before bottom safe area: ${JSON.stringify(geometry)}`);
       assert.ok(geometry.header.y >= device.top && geometry.header.x >= device.side && geometry.header.right <= device.width - device.side + 1, `${label}: controls enter a cutout`);
@@ -131,7 +140,7 @@ try {
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ browser: await browser.version(), geometryCases: cases, baselineRef: baselineRef ?? null, browserErrors: errors.length }));
 } catch (error) {
-  console.error(JSON.stringify({ completedCases: cases, browserErrors: errors }));
+  console.error(JSON.stringify({ completedCases: cases, browserErrors: errors, lastGeometry }));
   if (page && process.env.MOBILE_LAYOUT_SCREENSHOT_DIR) {
     await mkdir(process.env.MOBILE_LAYOUT_SCREENSHOT_DIR, { recursive: true });
     await page.screenshot({ path: join(process.env.MOBILE_LAYOUT_SCREENSHOT_DIR, "failure.png") }).catch(() => {});
