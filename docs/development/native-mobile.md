@@ -37,7 +37,7 @@
 
 Нужны Node.js 22.13+ (CI: 24); для iOS — Mac и Xcode 26+, для Android — JDK 21 и SDK 36. Проекты рассчитаны на iOS 15+ и Android API 24+. Существующий Ktor API собирается JDK 25.
 
-Android-сборка закрепляет Kotlin 2.3.21, AGP 8.13.2 и Gradle 8.14.3. Цель Kotlin JVM 21 совпадает с Java-целью подключённых модулей Capacitor. AGP обновлён в пределах 8.13 для поддержки Kotlin 2.3; сгенерированные `capacitor.*.gradle` не редактируются вручную.
+Android-сборка закрепляет Kotlin 2.3.21, AGP 8.13.2 и Gradle 8.14.3. Цель Kotlin JVM 21 совпадает с Java-целью подключённых модулей Capacitor. AGP обновлён в пределах 8.13 для поддержки Kotlin 2.3; сгенерированные `capacitor.*.gradle` не редактируются вручную. При обновлении версий сверять [матрицу Kotlin/Gradle/AGP](https://kotlinlang.org/docs/gradle-configure-project.html) и [поддержку Kotlin 2.3 в AGP 8.13.2](https://developer.android.com/build/releases/agp-8-13-0-release-notes).
 
 Из корня репозитория:
 

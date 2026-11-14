@@ -17,12 +17,13 @@
 
 - Локально: **186/186** mobile JS tests, TypeScript, ESLint, architecture **1334 modules**, mobile build и cap sync обеих платформ — success.
 - Android: полный Gradle `assembleDebug lintDebug testDebugUnitTest` прошёл, после последних nullable-правок повторно прошли app APK/lint/JUnit; **16/16** собственных Kotlin-тестов, без ошибок/пропусков. Проверен фактический merged manifest push-службы.
-- Secret scan: 0 находок. Проверка свежести экономического отчёта: 68 сценариев. Финальные проверки GitHub Actions начнутся после публикации; прошлые результаты ниже не подменяют проверку Kotlin-версии.
+- Secret scan: 0 находок. Проверка свежести экономического отчёта: 68 сценариев.
+- Код `c38e554` прошёл [native CI](https://github.com/NolReaction/zhiv-app/actions/runs/43616319573): Android Kotlin main/test compilation, APK/lint/JUnit, 186/186 mobile JS и merged manifest; iOS Simulator/unsigned iPhone и 49 Swift policy assertions. Число 16/16 Kotlin-тестов подтверждено локальными XML, CI подтверждает успешное выполнение JUnit task. [APK этого коммита](https://github.com/NolReaction/zhiv-app/actions/runs/43616319573/artifacts/14122736800).
+- Код `c38e554` прошёл [общий CI](https://github.com/NolReaction/zhiv-app/actions/runs/43616319605): Web **8756/8756** (2787 + 3064 + 2905), Ktor/PostgreSQL **1401/1401**, migration/gifts **79/79**, markets **172/172**; все без ошибок/пропусков. Итоговый Web job, engine/editor, secret scan и isolated Compose upgrade/reset rehearsal — success.
 - Собственный Java-код удалён из Android main/test; новые Kotlin-файлы проверены сравнением с предыдущим коммитом `f08f710`.
+- Финальный коммит отчёта поверх `c38e554` меняет только этот файл и ссылки совместимости в мобильной инструкции; исходники, тесты и конфигурация сборки совпадают с проверенным кодом.
 
-## Ранее проверенная основа
-
-Мобильный перенос 0.3.0: код `0e89c11`, [общий CI](https://github.com/NolReaction/zhiv-app/actions/runs/43601654526) и [native CI](https://github.com/NolReaction/zhiv-app/actions/runs/43601654519) — success. Web 8756/8756, Ktor/PostgreSQL 1401/1401, migration/gifts79/79, markets172/172, mobile186/186, iOS Simulator/unsigned device, Android APK/lint/JUnit и isolated Compose upgrade/reset rehearsal. Подробная история — в коммитах.
+## Основа мобильного клиента
 
 Основа включает общий AppShell, PKCE/native HTTP и защищённый мобильный сеанс, SQLite receipts/journals, GPS/добровольный фон, локальные таймеры и APNs/FCM для mail/checkin, память/lifecycle/safe-area/sharing. [Точное покрытие и установка](docs/development/native-mobile.md), [push](docs/operations/native-push.md), [privacy](docs/development/native-mobile-privacy.md).
 
