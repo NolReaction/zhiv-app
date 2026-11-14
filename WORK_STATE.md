@@ -2,16 +2,25 @@
 
 Ветка `experiment/native-mobile` от `master` `493d399`, draft [PR №41](https://github.com/NolReaction/zhiv-app/pull/41). Мобильная версия 0.3.0/build 3 «Мохлик · Тест», ID прежний `ru.zhiv.mochlik.lab`. `master`/production не менялись, развёртывание не выполнялось. [Инструкция и точное покрытие](docs/development/native-mobile.md).
 
-## Этап 0.3.0: реализация и локальная проверка
+## Этап 0.3.0: реализация и проверки
 
 - SQLite schema v2 сохраняет прежние receipts и добавляет mutable journals: непереданное производство, подготовленную и завершённую рыбалку, активный fishing checkpoint, тап/input-журнал, действия мира, награды и отметки. Чтения идут из подтверждённого кэша, записи реально ожидаются до UI/сети. CAS, FIFO, лимиты и owner/session/gameplay-generation fences предотвращают перезапись и поздние подтверждения чужого сеанса.
 - Перенесены private location preference и ожидающий OFF/GHOST. Выключение немедленно ограничивает поиск/передачу, включение ждёт записи. Ошибка диска не мешает попытке серверного отзыва, но блокирует последующее расширение согласия до перезапуска. При новом запуске ACTIVE становится READY; системное разрешение не сбрасывается.
 - APNs HTTP/2 и FCM HTTP v1 доставляют mail/checkin через общую серверную очередь, настройки, quiet hours и бюджеты. Добавлены привязанные к сеансу устройства, ротация, revoke/ban/source recheck, timeout/uncertain и V84. Локальные игровые таймеры остаются отдельными.
 - Нативный opt-in, доступность сборки/сервера, безопасные tap-переходы и Android data-only показ с проверкой владельца. Реальные push не отправлялись: credentials не подключены. Подробности — [native-push.md](docs/operations/native-push.md).
 - Новая auth-generation повторно гидратирует хранилище даже при входе в тот же UUID. Исправлены поздние save/delete ACK после закрытия экрана. Android FCM registration/delete сериализованы нативным барьером.
-- Версии/app ID проверяются `mobile:check`. CI дополнен unsigned iPhone-device build наряду с simulator. Privacy manifest учитывает адрес push-доставки.
+- Версии/app ID проверяются `mobile:check`. CI дополнен unsigned iPhone-device build наряду с simulator и проверкой фактического merged manifest Android push-службы. Privacy manifest учитывает адрес push-доставки.
 
-Локально прошли TypeScript, ESLint, архитектура, mobile build/cap sync, Next/VPS build и профильные регрессии. Ktor: 813 тестов прошли, 588 PostgreSQL-тестов пропущены без Docker/БД; все main/test исходники компилируются, provider transport 20/20. Точные итоги общего web/native/PostgreSQL/Compose CI будут добавлены после запуска на Git.
+Код `0e89c11` прошёл полный [общий CI](https://github.com/NolReaction/zhiv-app/actions/runs/43601654526) и [native CI](https://github.com/NolReaction/zhiv-app/actions/runs/43601654519); оба workflow и все их jobs завершены успешно:
+
+- Native CI завершён успешно: **186/186** профильных JS-тестов; Android assembleDebug/lintDebug/testDebugUnitTest и проверка слитого manifest; iOS Simulator, unsigned iPhone target и исполняемые Swift policy-проверки. [Android APK этой версии](https://github.com/NolReaction/zhiv-app/actions/runs/43601654519/artifacts/14115449992).
+- Ktor/PostgreSQL: **1401/1401**, без пропусков, ошибок и падений; в том числе 12 native PostgreSQL и 20 provider transport тестов. Миграции/подарки **79/79**, рынки/коллекции **172/172**. Engine/editor и secret scan прошли.
+- Production Compose прошёл: сборка, API/edge, обновление восстановленной БД, проверка сохранности существующих аккаунтов и штатных reset-инструментов. Использовалась изолированная CI-база, рабочий сервер не менялся.
+- Общий web-набор: **8756/8756** (2787 + 3064 + 2905), без ошибок, пропусков, отмен и TODO; итоговый `Web checks` — success. Next/VPS, Sites, TypeScript, ESLint, architecture/world/audio и проверка свежести экономического отчёта прошли во всех трёх частях.
+
+Завершающий коммит поверх `0e89c11` меняет только этот отчёт и две инструкции: уточняет границу отзыва после offline logout и перечисляет проверку iPhone target/Android manifest. Код, конфигурация сборок и тесты совпадают с проверенным коммитом.
+
+Локально также прошли TypeScript, ESLint, архитектура, mobile build/cap sync, Next/VPS build и профильные регрессии. Исправлена задержка browser journal из-за лишнего async-перехода: браузер сохраняет синхронное поведение, native по-прежнему ждёт SQLite commit. Существующие тесты offline/audio сохранены; профильные повторные проверки **128/128 + 13/13** прошли. Миграционные assertions обновлены под V84; проверка Android manifest имеет положительные и отрицательные сценарии.
 
 Входные 138 файлов экономического отчёта не изменились; штатный `build-progression-report --check` подтверждает существующие 68 сценариев. Нового полного пересчёта и изменения игровых цен на этом этапе нет.
 
@@ -20,7 +29,7 @@
 - Настоящий общий AppShell вместо лаборатории: лес, экономика, рыбалка, карта, профиль. Отдельная Vite-сборка, общие компоненты и ресурсы, без PWA installation/service-worker слоя. Лаборатория доступна отдельно.
 - PKCE/state + явное браузерное подтверждение аккаунта, `/mobile/connect`, одноразовые двухминутные коды, мобильный bearer и V83. Нативные HTTP, Keychain/Keystore, cookie/redirect isolation, контроль origin/path/размера/таймаутов. Токены не выдаются JS. Веб-CSRF сохранён.
 - UI немедленно скрывается при смене аккаунта; гидратация сериализована. Запросы проверяют владельца и поколение до/после ожиданий, включая SQLite acknowledgement.
-- SQLite подтверждает запись перед отправкой идемпотентных экономических команд и восстанавливает исходные requestId через существующую reconciliation. Preferences подключены к выбранным настройкам. Непереданные производственные/рыболовные/тап-журналы пока сохраняют старый синхронный контракт WebView.
+- SQLite подтверждала запись перед отправкой идемпотентных экономических команд и восстанавливала исходные requestId через существующую reconciliation. Preferences были подключены к выбранным настройкам. На этапе 0.2.0 непереданные производственные/рыболовные/тап-журналы ещё использовали WebView; в 0.3.0 они перенесены в SQLite.
 - Нативные foreground GPS и отдельная фоновая передача с явным account-scoped opt-in: iOS Core Location, Android location foreground service. Один publisher в обоих режимах, server consent/epoch/TTL/precision/freshness, остановка по privacy/session changes, без истории маршрута/автостарта после смерти процесса.
 - Локальные игровые напоминания, quiet hours/лимиты/владелец, сеть, lifecycle, safe-area, вибрация, системное sharing, внешние ссылки. Пауза звука/рендера и очистка неиспользуемых audio/mip-кэшей по memory warning.
 - В V83 обновлены строгие migration inventories, backup/reset проверки: игровое обнуление сохраняет mobile proof, полный сброс пользователей удаляет. Никаких реальных сбросов не выполнялось. Docker web-build теперь копирует manifest мобильного workspace до npm ci.
