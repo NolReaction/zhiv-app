@@ -112,9 +112,9 @@ function NotificationSettingsForOwner({ ownerPublicId, isOnline, onSessionLost, 
   }
   return <section className={styles.card} aria-labelledby={`${id}-title`} data-notification-settings>
     <header className={styles.heading}><Bell size={21} aria-hidden="true" /><div><h2 ref={headingRef} tabIndex={-1} id={`${id}-title`}>Уведомления</h2><p>Только нужные события, в удобное время</p></div></header>
+    <NativeRemoteDeviceCard ownerPublicId={ownerPublicId} isOnline={isOnline} disabled={saving} />
     {!snapshot || snapshot.ownerPublicId !== ownerPublicId || !draft ? <div className={styles.loading} role="status">{device.loadError || "Загружаем настройки…"}{device.loadError && <button type="button" disabled={!isOnline} onClick={() => void device.refresh(true)}>Попробовать снова</button>}</div> : <>
       <NotificationDeviceCard id={id} state={{ ...device.state, disabled: saving }} onToggle={device.toggle} onRetry={() => void device.refresh(true)} />
-      <NativeRemoteDeviceCard ownerPublicId={ownerPublicId} isOnline={isOnline} disabled={saving} />
       <fieldset className={styles.topics} disabled={busy}>
         <legend>О чём сообщать</legend>
         {topics.map(([key, label, hint]) => <div className={styles.topic} key={key}>

@@ -13,6 +13,7 @@ on:
       - 'public/**'
       - 'scripts/mobile-config.mjs'
       - 'scripts/check-mobile-version.mjs'
+      - 'scripts/check-mobile-push-manifest.py'
       - 'tests/earth-native-location.test.mjs'
       - 'tests/mobile-*.test.mjs'
       - 'tests/native/**'
@@ -54,6 +55,8 @@ jobs:
         working-directory: apps/mobile
       - run: ./gradlew --no-daemon assembleDebug lintDebug testDebugUnitTest
         working-directory: apps/mobile/android
+      - name: Verify merged push manifest
+        run: python3 scripts/check-mobile-push-manifest.py
       - uses: actions/upload-artifact@v4
         with:
           name: mochlik-mobile-android

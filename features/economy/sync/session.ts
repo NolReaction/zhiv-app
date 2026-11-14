@@ -212,7 +212,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
       // server-confirmed actions still work and the connection is not broken.
       if (!release) return;
       journalRelease = release;
-      await migrateLegacyJournals(generation);
+      if (journalOptions.legacyStorage) await migrateLegacyJournals(generation);
       if (!active || generation !== lifetime || signal.aborted) return;
       const key = productionJournalKey(owner), raw = journalOptions.storage.getItem(key);
       const restored = parseProductionJournal(raw, owner);
@@ -250,14 +250,17 @@ export function createEconomySession(owner: string | null, transport: Transport,
       if (!head.command) {
         if (!reserveProduction(before, head)) {
           const remaining = productionEntries.slice(1);
-          if (!await persistProduction(remaining) || !valid(generation)) return;
+          const saved = persistProduction(remaining);
+          if (!(isStoragePromise(saved) ? await saved : saved) || !valid(generation)) return;
           productionEntries = remaining;
           publish({ notice: "Производство не запущено: изменились материалы или свободные места." });
           continue;
         }
         head.command = { requestId: head.requestId, ownerPublicId: owner, expectedRevision: before.revision,
           action: "start_production", targetId: head.targetId, quantity: 1, totalPrice: 0 };
-        if (!await persistProduction() || !valid(generation)) return;
+        const saved = persistProduction();
+        // Keep the synchronous browser handoff; only native storage needs a commit wait.
+        if (!(isStoragePromise(saved) ? await saved : saved) || !valid(generation)) return;
       }
       const command = head.command, request = controller();
       ++readSequence; reading = null;
@@ -268,7 +271,8 @@ export function createEconomySession(owner: string | null, transport: Transport,
         const remaining = productionEntries.slice(1);
         // ACK and remaining intents are committed atomically before the next send.
         const snapshot = view.snapshotConfirmed && view.snapshot && view.snapshot.revision > result.state.revision ? view.snapshot : result.state;
-        const saved = await persistProduction(remaining, snapshot);
+        const persisted = persistProduction(remaining, snapshot);
+        const saved = isStoragePromise(persisted) ? await persisted : persisted;
         if (!valid(generation)) return;
         productionEntries = remaining;
         adopt(result.state);
@@ -281,7 +285,8 @@ export function createEconomySession(owner: string | null, transport: Transport,
           && ![401, 408, 425, 429].includes(error.status) && error.body?.code !== "GAME_SESSION_INACTIVE";
         if (definitive) {
           const remaining = productionEntries.slice(1);
-          if (!await persistProduction(remaining) || !valid(generation)) return;
+          const saved = persistProduction(remaining);
+          if (!(isStoragePromise(saved) ? await saved : saved) || !valid(generation)) return;
           productionEntries = remaining;
           publish({ error: error.message, syncError: null, rateLimited: false });
           const snapshot = await transport.get(request.signal).catch(() => null);

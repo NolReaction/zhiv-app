@@ -176,7 +176,7 @@ class JdbcNativeNotificationRepositoryIntegrationTest {
                 if(++clockCalls==2) when(change) {
                     "revoke" -> execute("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE id=?",p.session)
                     "read" -> execute("UPDATE player_mail_messages SET read_at=clock_timestamp() WHERE id=?",id)
-                    else -> execute("UPDATE app_users SET banned_at=clock_timestamp() WHERE id=?",p.id)
+                    else -> execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Native push race test' WHERE id=?",p.id)
                 }
                 at
             },NativePushSender { _,_ -> sends++;PushResult.DELIVERED })

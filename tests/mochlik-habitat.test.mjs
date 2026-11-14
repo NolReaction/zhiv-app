@@ -140,7 +140,10 @@ test("2D rendering and pet controls never write to accounts or record game taps"
   assert.ok(handler.indexOf("data-pet-interaction") < handler.indexOf("registerTap("));
   assert.match(handler, /data-pet-interaction/);
   assert.equal((app.match(/setMochlikWakeSignal\(value => value \+ 1\)/g) ?? []).length, 1);
-  const sink = app.slice(app.indexOf("const registerTap ="), app.indexOf("const registerTap =") + 170);
+  const sinkStart = app.indexOf("const registerTap =");
+  const sinkEnd = app.indexOf("\n    },\n    [", sinkStart);
+  assert.ok(sinkStart >= 0 && sinkEnd > sinkStart, "registerTap callback boundaries exist");
+  const sink = app.slice(sinkStart, sinkEnd);
   assert.match(sink, /setMochlikWakeSignal/);
 });
 

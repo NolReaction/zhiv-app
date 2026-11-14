@@ -93,7 +93,10 @@ export function createPreparedBoatQueue(owner: string | null, deps: Dependencies
     if (error instanceof ApiError && error.status === 401) deps.sessionLost();
   }
   async function deliver(signal: AbortSignal) {
-    if (failedStorage && !await save(entries)) return;
+    if (failedStorage) {
+      const saved = save(entries);
+      if (!(isStoragePromise(saved) ? await saved : saved)) return;
+    }
     while (!signal.aborted && deps.canSend() && owner && entries[0]?.reel && performance.now() >= blockedUntil) {
       const head = entries[0];
       let command = head.command;
@@ -107,16 +110,19 @@ export function createPreparedBoatQueue(owner: string | null, deps: Dependencies
           if (!snapshot) return;
           if (voyage?.id !== head.voyageId || voyage.castsUsed + 1 !== head.castNumber || voyage.challenge || voyage.returnStartedAt
             || !voyage.preparedCasts?.some(ticket => ticket.castNumber === head.castNumber && ticket.id === head.challenge.id)) {
-            if (await save([])) deps.changed({ error: "Рейс успел измениться на другом устройстве. Обновили улов по данным сервера." });
+            const saved = save([]);
+            if (isStoragePromise(saved) ? await saved : saved) deps.changed({ error: "Рейс успел измениться на другом устройстве. Обновили улов по данным сервера." });
             return;
           }
           command = { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: snapshot.revision,
             targetId: head.voyageId, action: "submit_boat_cast", quantity: 1, totalPrice: 0, reel: head.reel };
-          if (!await save([{ ...head, command }, ...entries.slice(1)])) return;
+          const saved = save([{ ...head, command }, ...entries.slice(1)]);
+          if (!(isStoragePromise(saved) ? await saved : saved)) return;
         }
         const result = await deps.send(command, signal);
         if (signal.aborted || !deps.adopt(result.state)) return;
-        if (!await save(entries.slice(1))) return;
+        const saved = save(entries.slice(1));
+        if (!(isStoragePromise(saved) ? await saved : saved)) return;
         blockedUntil = 0; failures = 0;
         deps.changed({ notice: result.message, syncError: null });
       } catch (error) {
@@ -132,10 +138,12 @@ export function createPreparedBoatQueue(owner: string | null, deps: Dependencies
         if (error.body?.code === "ECONOMY_REVISION_CONFLICT" && command && fresh.revision > command.expectedRevision
           && fresh.boat?.voyage?.id === head.voyageId && !fresh.boat.voyage.challenge && fresh.boat.voyage.castsUsed + 1 === head.castNumber
           && fresh.boat.voyage.preparedCasts?.some(slot => slot.id === head.challenge.id && slot.castNumber === head.castNumber)) {
-          if (!await save([{ ...head, command: undefined }, ...entries.slice(1)])) return;
+          const saved = save([{ ...head, command: undefined }, ...entries.slice(1)]);
+          if (!(isStoragePromise(saved) ? await saved : saved)) return;
           continue;
         }
-        if (await save([])) deps.changed({ error: error.message, syncError: null });
+        const saved = save([]);
+        if (isStoragePromise(saved) ? await saved : saved) deps.changed({ error: error.message, syncError: null });
         return;
       }
     }

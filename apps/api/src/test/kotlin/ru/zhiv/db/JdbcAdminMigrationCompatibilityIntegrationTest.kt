@@ -210,7 +210,7 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
         DatabaseFactory.create(config()).use { source ->
             migrateWithLegacyAdminHistory(source)
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
-            assertEquals("35", scalar(source, "SELECT count(*) FROM flyway_schema_history"))
+            assertEquals("36", scalar(source, "SELECT count(*) FROM flyway_schema_history"))
             assertEquals("B49__current_schema.sql", scalar(source,
                 "SELECT script FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
             val before = history(source)
