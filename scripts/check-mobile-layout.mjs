@@ -40,6 +40,7 @@ const h = React.createElement, mount = createRoot(document.getElementById("root"
 configureClientPlatform({ kind: "ios", appVersion: "layout" });
 updateBackgroundLocationChoice({ available: true, enabled: false, busy: false, error: null });
 window.mountMobile = (view) => {
+  history.replaceState(null, "", "#" + view);
   const map = h("section", { className: earth.view, "data-map": true },
     h("div", { className: earth.stage, style: { background: "radial-gradient(circle at 55% 40%, #618c6a, #0b252d 65%)" } }),
     h("header", { className: earth.header, "data-map-header": true }, h("strong", { className: earth.brand }, "Я живой · Земля"), h("button", { className: earth.worldButton }, "Моя полянка")),
@@ -54,14 +55,16 @@ window.mountMobile = (view) => {
     h("div", { className: shell.viewTransition }, view === "earth" ? map : content),
     h("footer", { className: shell.footer }, h(AppNavigation, { active: view, onSelect: window.mountMobile, invitations: 0 }))));
 };
+window.mountMobile(location.hash.slice(1) || "profile");
 window.mobileLayoutReady = true;
 `;
 const cacheDir = await mkdtemp(join(tmpdir(), "mochlik-mobile-layout-"));
-let server, browser, cases = 0;
+let server, browser, page, cases = 0;
 const errors = [];
 try {
   const loaded = await loadConfigFromFile({ command: "serve", mode: "test" }, join(root, "apps/mobile/vite.config.ts"));
   server = await createServer({ ...loaded.config, configFile: false, appType: "custom", root, cacheDir,
+    optimizeDeps: { noDiscovery: true, include: ["react", "react-dom/client", "react/jsx-dev-runtime", "radix-ui", "lucide-react", "zod", "clsx", "tailwind-merge", "class-variance-authority"] },
     plugins: [{ name: "mobile-layout-fixture", enforce: "pre",
       resolveId(id) { if (id === entry) return `\0${id}`; },
       load(id) { if (id === `\0${entry}`) return source; return baseline.get(id); },
@@ -76,7 +79,7 @@ try {
   await server.listen();
   browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
   const context = await browser.newContext({ isMobile: true, hasTouch: true, reducedMotion: "reduce" });
-  const page = await context.newPage();
+  page = await context.newPage();
   page.on("pageerror", error => errors.push(error.message));
   await page.goto(server.resolvedUrls.local[0]); await page.waitForFunction(() => window.mobileLayoutReady);
   const devices = [
@@ -127,4 +130,11 @@ try {
   }
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ browser: await browser.version(), geometryCases: cases, baselineRef: baselineRef ?? null, browserErrors: errors.length }));
+} catch (error) {
+  console.error(JSON.stringify({ completedCases: cases, browserErrors: errors }));
+  if (page && process.env.MOBILE_LAYOUT_SCREENSHOT_DIR) {
+    await mkdir(process.env.MOBILE_LAYOUT_SCREENSHOT_DIR, { recursive: true });
+    await page.screenshot({ path: join(process.env.MOBILE_LAYOUT_SCREENSHOT_DIR, "failure.png") }).catch(() => {});
+  }
+  throw error;
 } finally { await browser?.close(); await server?.close(); await rm(cacheDir, { recursive: true, force: true }); }

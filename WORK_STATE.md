@@ -16,7 +16,7 @@
 - Mobile JS: **195/195**. Профильные location/presence/preferences/sharing-panel тесты также прошли; новые сценарии проверяют автопоиск, отзыв разрешения, OFF/ghost, смену экранов, подтверждение записи и смену аккаунта.
 - TypeScript, ESLint, architecture (**1335 modules**), mobile build и `cap sync` iOS/Android прошли. Secret scan: 0 находок.
 - Добавлен `npm run test:mobile-layout`: реальный CSS pipeline, навигация и настройки, пять сочетаний viewport/insets (два экрана в каждом). Проверка включает край прокрутки, вырезы, dock и последний элемент. Локальный Chromium не запускается из-за ограничения Unix sockets среды; выполнение перенесено в отдельный CI job со снимками экрана. Результат ещё ожидается.
-- Android APK/lint/JUnit и CI текущего кода ещё выполняются; результаты будут записаны после завершения. Проверки предыдущей 0.3.1: [native](https://github.com/NolReaction/zhiv-app/actions/runs/43616319573), [общий CI](https://github.com/NolReaction/zhiv-app/actions/runs/43616319605). Они не заменяют проверки 0.3.2.
+- Android APK/lint/JUnit прошли локально: **16/16** Kotlin-тестов и проверка merged push manifest. CI текущего кода ещё выполняется. Первый браузерный прогон выявил перезагрузку Vite при поиске зависимостей в тестовом стенде; зависимости заданы явно, добавлен снимок при ошибке. Проверки предыдущей 0.3.1: [native](https://github.com/NolReaction/zhiv-app/actions/runs/43616319573), [общий CI](https://github.com/NolReaction/zhiv-app/actions/runs/43616319605). Они не заменяют проверки 0.3.2.
 
 ## Следующий шаг и ограничения
 
