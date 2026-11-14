@@ -123,7 +123,7 @@ try {
       assert.ok(geometry.nav.bottom <= device.height - device.bottom - 5 && geometry.nav.x >= device.side && geometry.nav.right <= device.width - device.side, `${label}: dock enters a safe area`);
       assert.ok(geometry.bodyWidth <= device.width, `${label}: horizontal overflow`);
       if (view === "earth") assert.equal(geometry.content.y, 0, `${label}: map must paint under status bar`);
-      if (device.name === "android-inset") assert.equal(geometry.header.y, view === "earth" ? 10 : 24, `${label}: native padding was counted twice`);
+      if (device.name === "android-inset") assert.equal(geometry.header.y, view === "earth" ? 16 : 24, `${label}: native padding was counted twice`);
       if (view === "profile") {
         await page.locator("[data-profile]").evaluate(element => { element.scrollTop = element.scrollHeight; });
         const last = await page.locator("[data-last-card]").boundingBox();
