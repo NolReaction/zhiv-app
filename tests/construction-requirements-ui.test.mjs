@@ -38,7 +38,7 @@ test("building prerequisites have separate named rows, current and target levels
   assert.match(text(html), /Дом Мохлика Сейчас ур\. 1 Нужен ур\. 2/);
   assert.match(text(html), /Мастерская Не построено Нужен ур\. 1/);
   assert.match(html, /data-building-art="home"[^>]*background-image:url\(\/world\/prototype\/home-level-2\.png\)/);
-  assert.match(html, /data-building-art="workshop"[^>]*background-image:url\(\/world\/prototype\/forest-workshop-level-1\.png\)/);
+  assert.match(html, /data-building-art="workshop"[^>]*background-image:url\(\/world\/prototype\/forest-workshop-vector-1\.webp\)/);
   const links = elements(tree).filter(element => element.type === "button");
   assert.equal(links.length, 1, "unavailable destinations remain readable without dead controls");
   links[0].props.onClick();
@@ -81,6 +81,14 @@ test("mine construction artwork follows every authored level including the aband
     const html = renderToStaticMarkup(createElement(ConstructionBuildingArt, { stationId: "quarry", level }));
     assert.match(html, new RegExp(`background-image:url\\(/world/buildings/quarry/quarry-lvl-${Math.min(5, level)}\\.png\\)`));
     assert.match(html, new RegExp(`data-building-level="${level}"`));
+  }
+});
+
+test("workshop construction art keeps the ruin and follows all five restored levels", () => {
+  for (const level of [0, 1, 2, 3, 4, 5, 6]) {
+    const html = renderToStaticMarkup(createElement(ConstructionBuildingArt, { stationId: "workshop", level }));
+    const file = level === 0 ? "forest-workshop-level-0.png" : `forest-workshop-vector-${Math.min(level, 5)}.webp`;
+    assert.ok(html.includes(`background-image:url(/world/prototype/${file})`));
   }
 });
 

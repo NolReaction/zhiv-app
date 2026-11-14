@@ -17,6 +17,25 @@ type ArtworkLamp = {
   contour?: readonly (readonly [number, number])[];
 };
 
+// The five workshop cutouts share the same 480 × 360 artboard. Coordinates below
+// are taken from the painted glass, forge opening and central dormer pane.
+const workshopWindow: ArtworkLamp = {
+  id: "workshop-window", u: 284.5 / 480, v: 223 / 360, width: 13 / 480, height: 16 / 360, radius: .22, intensity: .5,
+  contour: [[278 / 480, 217 / 360], [291 / 480, 214.5 / 360], [291 / 480, 229 / 360], [278 / 480, 231.5 / 360]],
+};
+const workshopLantern: ArtworkLamp = {
+  id: "workshop-lantern", u: 257 / 480, v: 255 / 360, width: 6 / 480, height: 7 / 360, radius: .31, intensity: 1.1,
+};
+const workshopForge: ArtworkLamp = {
+  id: "workshop-forge", u: 92 / 480, v: 252 / 360, width: 18 / 480, height: 13 / 360, radius: .23, intensity: .7, color: "#ffac57",
+};
+const workshopLoft: ArtworkLamp = {
+  id: "workshop-loft-window", u: 170.5 / 480, v: 151 / 360, width: 8 / 480, height: 21 / 360, radius: .12, intensity: .45,
+  contour: [[167 / 480, 142 / 360], [171 / 480, 140 / 360], [174 / 480, 145 / 360],
+    [174 / 480, 163 / 360], [167 / 480, 161 / 360]],
+};
+const workshopWithLoft = [workshopWindow, workshopLantern, workshopForge, workshopLoft];
+
 // Normalized positions belong to these exact cutouts, never to a map location.
 // Moving, resizing or rotating the active Tiled visual therefore moves its lamp too.
 const artworkLamps: Record<string, readonly ArtworkLamp[]> = {
@@ -30,11 +49,11 @@ const artworkLamps: Record<string, readonly ArtworkLamp[]> = {
   "quarry-lvl-3.png": [{ id: "quarry-lantern", u: .895, v: .546, width: .035, height: .041, radius: .46, intensity: 1.18 }],
   "quarry-lvl-4.png": [{ id: "quarry-lantern", u: .896, v: .543, width: .035, height: .041, radius: .46, intensity: 1.18 }],
   "quarry-lvl-5.png": [{ id: "quarry-lantern", u: .898, v: .543, width: .035, height: .041, radius: .46, intensity: 1.18 }],
-  "forest-workshop-level-2.png": [
-    { id: "workshop-lantern", u: .518, v: .657, width: .023, height: .031, radius: .4, intensity: 1.15 },
-    { id: "workshop-window", u: .233, v: .58, width: .04, height: .072, radius: .25, intensity: .58,
-      contour: [[.214, .544], [.249, .552], [.249, .618], [.214, .604]] },
-  ],
+  "forest-workshop-vector-1.webp": [workshopWindow],
+  "forest-workshop-vector-2.webp": [workshopWindow, workshopLantern],
+  "forest-workshop-vector-3.webp": [workshopWindow, workshopLantern, workshopForge],
+  "forest-workshop-vector-4.webp": workshopWithLoft,
+  "forest-workshop-vector-5.webp": workshopWithLoft,
   "market-lvl-1.png": [
     { id: "market-lantern-west", u: .449, v: .255, width: .018, height: .028,
       radius: .4, intensity: 1.08, color: "#ffd395" },

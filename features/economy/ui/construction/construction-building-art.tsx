@@ -7,7 +7,7 @@ import styles from "./construction-requirements.module.css";
 export function ConstructionBuildingArt({ stationId, level = 1 }: { stationId: string; level?: number }) {
   const sources: Record<string, string> = {
     home: `home-level-${Math.min(5, Math.max(1, level))}.png`,
-    workshop: `forest-workshop-level-${Math.min(2, Math.max(1, level))}.png`,
+    workshop: level <= 0 ? "forest-workshop-level-0.png" : `forest-workshop-vector-${Math.min(5, level)}.webp`,
     quarry: `/world/buildings/quarry/quarry-lvl-${Math.min(5, Math.max(0, level))}.png`, garden: "bushv1.png",
     woodlot: `lopukh-house-lvl-${level >= 3 ? 2 : 1}.png`,
     bridge: "bridge-level-1.png", lighthouse: "lighthouse-level-1.png",

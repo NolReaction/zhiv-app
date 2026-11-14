@@ -35,7 +35,7 @@ test("real garden, workshop, orders board and market fit between HUD and coach o
     { width: 844, height: 390, top: 72, bottom: 130 },
     { width: 1280, height: 900, top: 100, bottom: 250 },
   ];
-  for (const level of [0, 1, 2]) {
+  for (const { level } of authored.sites.find(site => site.id === "workshop").states) {
     const scene = previewWorldScene(authored, { ...initialPreviewLevels(authored), workshop: level });
     for (const place of ["garden", "workshop", "bulletin-board", "market"]) {
       const object = interactiveMapObjects(scene).find(object => object.place === place);

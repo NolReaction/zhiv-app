@@ -51,7 +51,7 @@
 | `siteId` | Доступные уровни | Рисунки |
 |---|---|---|
 | `home` | 1–5 | `home-level-1.png` … `home-level-5.png` |
-| `workshop` | 0–2 | `forest-workshop-level-0.png` … `forest-workshop-level-2.png` |
+| `workshop` | 0–5 | Руины `forest-workshop-level-0.png`, затем `forest-workshop-vector-1.webp` … `forest-workshop-vector-5.webp` из векторных исходников |
 | `quarry` | 0–5 | Шесть вариантов `quarry-lvl-0.png` … `quarry-lvl-5.png`, каждый со своими контурами и входом |
 | `woodlot` | Нет рисунка | Старый навес снят; экономика сохранена, анимируемое рабочее место отложено |
 | `market` | 0–1 | Закрытый `market-lvl-0.png` до получения моста; открытый `market-lvl-1.png` вместе с мостом 1 |

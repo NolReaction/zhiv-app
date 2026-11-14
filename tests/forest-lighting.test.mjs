@@ -115,11 +115,36 @@ test("actual map uses one aligned home lamp at every level plus the working mine
     }
   }
   assert.equal(new Set(positions).size, 5, "home lamp follows every distinct cutout");
-  const sources = forestLightSources(map, { levels: { quarry: 0, workshop: 1, lighthouse: 0 } });
+  const sources = forestLightSources(map, { levels: { quarry: 0, workshop: 0, lighthouse: 0 } });
   assert.equal(sources.some(light => ["quarry", "workshop", "lighthouse"].includes(light.siteId)), false);
   map.lights.find(light => light.id === "home-lantern").intensity = 0;
   assert.equal(forestLightSources(map).find(light => light.id === "home-lantern").intensity, 0,
     "Tiled intensity=0 still disables a lamp that follows its building");
+});
+
+test("workshop emits light only from details painted on the active level", async () => {
+  const map = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
+  const workshop = map.sites.find(site => site.id === "workshop");
+  const ids = ["workshop-window", "workshop-lantern", "workshop-forge", "workshop-loft-window"];
+  for (const level of [0, 1, 2, 3, 4, 5]) {
+    const visual = workshop.states.find(state => state.level === level);
+    assert.ok(visual, `workshop level ${level} has its own visual`);
+    const lights = forestLightSources(map, { levels: { workshop: level } }).filter(light => light.siteId === "workshop");
+    assert.deepEqual(lights.map(light => light.id).sort(), ids.slice(0, level).sort());
+    if (!level) continue;
+    const file = fileURLToPath(new URL(`../public${visual.image}`, import.meta.url));
+    const { data, info } = await sharp(file).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const bounds = { x: 0, y: 0, width: info.width, height: info.height };
+    const pixelMap = { ...map, lights: [], sites: [{ ...workshop, bounds, states: [{ ...visual, geometry: { bounds } }] }] };
+    for (const lamp of forestLightSources(pixelMap, { levels: { workshop: level } })) {
+      const x = Math.round(lamp.position.x), y = Math.round(lamp.position.y);
+      const index = (y * info.width + x) * 4;
+      assert.ok(data[index + 3] > 240, `${lamp.id} falls inside the active cutout`);
+      if (lamp.id === "workshop-lantern" || lamp.id === "workshop-forge") {
+        assert.ok(data[index] > 185 && data[index] > data[index + 2] + 70, `${lamp.id} follows the painted warm core`);
+      }
+    }
+  }
 });
 
 test("market and fishing shop light their painted glass while the ruined market stays dark", async () => {
