@@ -5,6 +5,7 @@ import { createEconomySession } from "./session";
 import { getEconomyBarter, sendBarterCommand } from "./barter-api";
 import { browserJournalCoordinator } from "./production-journal";
 import { clientReceiptStorage } from "@/lib/client-persistence";
+import { acquireClientJournalLock, clientJournalStorage } from "@/lib/client-journal-storage";
 import { projectEconomyTapBoost } from "../domain/tap-boost";
 
 function journalStorage() {
@@ -20,6 +21,8 @@ export function useEconomy(owner: string | null, onSessionLost: () => void, enab
     dev: process.env.NODE_ENV === "development" ? sendEconomyDevCommand : undefined,
   }, () => {}, clientReceiptStorage(), (() => {
     const storage = journalStorage();
+    const native = owner ? clientJournalStorage(owner) : undefined;
+    if (native) return { native: true, storage: native, coordinate: (_owner: string, signal: AbortSignal) => acquireClientJournalLock(native, signal), legacyStorage: storage };
     return storage ? { storage, coordinate: browserJournalCoordinator } : undefined;
   })()), [owner]);
   useEffect(() => { session.setSessionLost(onSessionLost); }, [session, onSessionLost]);

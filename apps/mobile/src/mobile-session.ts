@@ -26,12 +26,17 @@ export function createMobileSession(port: SessionPort) {
   let stop: (() => void) | undefined;
   let alive = true;
   let loginBusy = false;
+  let lastNativeGeneration = -1;
   const publish = (next: Partial<MobileSessionSnapshot>) => {
     snapshot = { ...snapshot, ...next };
     for (const listener of listeners) listener();
   };
   function accept(state: NativeSessionState): Promise<void> {
-    const key = state.configured ? state.authenticated && state.userId ? state.userId : "signed-out" : "unconfigured";
+    const nativeGeneration = Number.isSafeInteger(state.generation) && state.generation! >= 0 ? state.generation : undefined;
+    if (nativeGeneration !== undefined && nativeGeneration < lastNativeGeneration) return pending ?? Promise.resolve();
+    if (nativeGeneration !== undefined) lastNativeGeneration = nativeGeneration;
+    const identity = state.configured ? state.authenticated && state.userId ? state.userId : "signed-out" : "unconfigured";
+    const key = `${identity}:${nativeGeneration ?? "legacy"}`;
     if (key === desired && (pending || snapshot.phase !== "error")) return pending ?? Promise.resolve();
     desired = key;
     const version = ++epoch;

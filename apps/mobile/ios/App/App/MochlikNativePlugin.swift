@@ -4,6 +4,7 @@ import AuthenticationServices
 import CryptoKit
 import Security
 import Capacitor
+import UserNotifications
 
 @objc(MochlikNativePlugin)
 public final class MochlikNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationPresentationContextProviding {
@@ -17,7 +18,10 @@ public final class MochlikNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthen
         CAPPluginMethod(name: "request", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "cancelRequest", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openWebsite", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getSafeArea", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "getSafeArea", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getPushConfiguration", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "activateRemotePush", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "stopRemotePush", returnType: CAPPluginReturnPromise)
     ]
 
     private let sessionStore = MobileSessionStore()
@@ -70,7 +74,7 @@ public final class MochlikNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthen
     }
 
     private func snapshot() -> JSObject {
-        var value: JSObject = ["configured": origin != nil, "authenticated": sessionRecord != nil]
+        var value: JSObject = ["configured": origin != nil, "authenticated": sessionRecord != nil, "generation": generation]
         if let record = sessionRecord { value["userId"] = record.userId; value["expiresAt"] = record.expiresAt }
         return value
     }
@@ -83,12 +87,65 @@ public final class MochlikNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthen
     private func invalidateSession() throws {
         NotificationCenter.default.post(name: Notification.Name("mochlikNativeSessionWillChange"), object: nil)
         generation += 1
+        clearRemotePushDelivery()
         sessionRecord = nil
         let pending = Array(requests.values)
         requests.removeAll()
         pending.forEach { $0.cancel(.sessionChanged) }
         notifyListeners("sessionChange", data: snapshot())
         try sessionStore.clear()
+    }
+
+    @objc func getPushConfiguration(_ call: CAPPluginCall) {
+        #if targetEnvironment(simulator)
+        call.resolve(["platform": "ios", "configured": false, "reason": "Сообщения сервера проверяются на настоящем iPhone."])
+        #else
+        // This is the explicit signed-build capability, not a claim that APNs accepted registration.
+        // Only didRegisterForRemoteNotifications followed by the server acknowledgement confirms connection.
+        let enabled = Bundle.main.object(forInfoDictionaryKey: "MochlikPushEnabled") as? String == "YES"
+        var value: JSObject = ["platform": "ios", "configured": enabled, "reason": NSNull()]
+        if !enabled { value["reason"] = "Сообщения сервера пока недоступны в этой сборке." }
+        call.resolve(value)
+        #endif
+    }
+
+    @objc func activateRemotePush(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            do {
+                try self.prepareSession()
+                guard let record = self.sessionRecord,
+                      call.getInt("expectedSessionGeneration") == self.generation,
+                      call.getString("expectedUserId") == record.userId,
+                      let owner = call.getString("ownerPublicId"),
+                      owner.range(of: "^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$", options: .regularExpression) != nil,
+                      UIApplication.shared.isRegisteredForRemoteNotifications else { throw MobileBridgeError.sessionChanged }
+                UserDefaults.standard.set(owner, forKey: "mochlik.remote-push.active-owner.v1")
+                call.resolve()
+            } catch { self.reject(call, error) }
+        }
+    }
+
+    @objc func stopRemotePush(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard call.getInt("expectedSessionGeneration") == self.generation,
+                  call.getString("expectedUserId") == self.sessionRecord?.userId else { call.resolve(); return }
+            self.clearRemotePushDelivery()
+            call.resolve()
+        }
+    }
+
+    private func clearRemotePushDelivery() {
+        UserDefaults.standard.removeObject(forKey: "mochlik.remote-push.active-owner.v1")
+        UIApplication.shared.unregisterForRemoteNotifications()
+        UNUserNotificationCenter.current().getDeliveredNotifications { notifications in
+            // A delayed cleanup must preserve notifications for an account activated meanwhile.
+            let activeOwner = UserDefaults.standard.string(forKey: "mochlik.remote-push.active-owner.v1")
+            let ids = notifications.filter {
+                let info = $0.request.content.userInfo
+                return info["source"] as? String == "mochlik-remote" && (info["ownerPublicId"] as? String != activeOwner || activeOwner == nil)
+            }.map { $0.request.identifier }
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ids)
+        }
     }
 
     @objc func getState(_ call: CAPPluginCall) {
@@ -249,6 +306,7 @@ public final class MochlikNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthen
                 let record = MobileSessionRecord(token: token, userId: userId, expiresAt: expiresAt, origin: origin.absoluteString)
                 NotificationCenter.default.post(name: Notification.Name("mochlikNativeSessionWillChange"), object: nil)
                 try self.sessionStore.save(record)
+                self.clearRemotePushDelivery()
                 self.sessionRecord = record
                 self.generation += 1
                 self.notifyListeners("sessionChange", data: self.snapshot())

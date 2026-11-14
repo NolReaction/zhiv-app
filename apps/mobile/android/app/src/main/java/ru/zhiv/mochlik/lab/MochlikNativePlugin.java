@@ -31,7 +31,10 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.json.JSONObject;
+import com.google.firebase.messaging.FirebaseMessaging;
+import com.google.android.gms.tasks.Task;
 
 @CapacitorPlugin(name = "MochlikNative")
 public final class MochlikNativePlugin extends Plugin implements ComponentCallbacks2 {
@@ -44,6 +47,9 @@ public final class MochlikNativePlugin extends Plugin implements ComponentCallba
     private NativeSessionStore.Session session;
     private boolean loaded;
     private long generation;
+    private Task<Void> pushDeletion;
+    private Task<String> pushRegistration;
+    private boolean pushStopped;
     private Login login;
     private View.OnLayoutChangeListener safeAreaListener;
     private String lastSafeArea = "";
@@ -97,7 +103,7 @@ public final class MochlikNativePlugin extends Plugin implements ComponentCallba
     }
 
     private JSObject state() {
-        JSObject value = new JSObject().put("configured", policy != null).put("authenticated", session != null);
+        JSObject value = new JSObject().put("configured", policy != null).put("authenticated", session != null).put("generation", generation);
         if (session != null) value.put("userId", session.userId).put("expiresAt", session.expiresAt);
         return value;
     }
@@ -252,6 +258,7 @@ public final class MochlikNativePlugin extends Plugin implements ComponentCallba
                     synchronized (lock) {
                         if (login != attempt || attempt.generation != generation) return;
                         NativeSessionEvents.changed();
+                        try { NativePushPolicy.clear(getContext()); } catch (RuntimeException ignored) { /* New session fencing remains authoritative. */ }
                         store.write(authenticated);
                         session = authenticated;
                         generation++;
@@ -303,6 +310,7 @@ public final class MochlikNativePlugin extends Plugin implements ComponentCallba
 
     private void clearSession() {
         NativeSessionEvents.changed();
+        try { NativePushPolicy.clear(getContext()); } catch (RuntimeException ignored) { /* Native session revocation must still complete. */ }
         session = null;
         generation++;
         if (login != null) finishLogin(login, "AUTH_CANCELLED");
@@ -324,6 +332,92 @@ public final class MochlikNativePlugin extends Plugin implements ComponentCallba
             try { getActivity().startActivity(new Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)); call.resolve(); }
             catch (Exception ignored) { call.reject("Не удалось открыть браузер", "MOBILE_REQUEST_FAILED"); }
         });
+    }
+
+    @PluginMethod public void getPushConfiguration(PluginCall call) {
+        boolean configured = NativePushPolicy.configured(getContext());
+        call.resolve(new JSObject().put("platform", "android").put("configured", configured)
+            .put("reason", configured ? JSONObject.NULL : "Сообщения сервера пока недоступны в этой сборке."));
+    }
+
+    @PluginMethod public void registerRemotePush(PluginCall call) {
+        synchronized (lock) {
+            try {
+                loadSession();
+                Long expected = call.getLong("expectedSessionGeneration");
+                String expectedUser = call.getString("expectedUserId");
+                if (session == null || expected == null || expected.longValue() != generation || !session.userId.equals(expectedUser)) {
+                    call.reject("Профиль изменился", "SESSION_CHANGED"); return;
+                }
+                if (!NativePushPolicy.configured(getContext())) {
+                    call.reject("Сообщения сервера пока недоступны в этой сборке", "PUSH_NOT_CONFIGURED"); return;
+                }
+                if ((pushDeletion != null && !pushDeletion.isComplete()) || (pushRegistration != null && !pushRegistration.isComplete())) {
+                    call.reject("Предыдущее подключение ещё закрывается. Повторите при подключении к интернету.", "PUSH_REGISTRATION_BUSY"); return;
+                }
+                final long expectedGeneration = generation;
+                FirebaseMessaging messaging = FirebaseMessaging.getInstance();
+                messaging.setAutoInitEnabled(true);
+                pushStopped = false;
+                Task<String> pending = messaging.getToken();
+                pushRegistration = pending;
+                AtomicBoolean answered = new AtomicBoolean();
+                ScheduledFuture<?> deadline = timer.schedule(() -> {
+                    if (answered.compareAndSet(false, true)) call.reject("Телефон не подтвердил подключение. Проверьте сеть и повторите.", "PUSH_REGISTRATION_TIMEOUT");
+                }, 20, TimeUnit.SECONDS);
+                pending.addOnCompleteListener(task -> {
+                    synchronized (lock) {
+                        if (pushRegistration == pending) pushRegistration = null;
+                        deadline.cancel(false);
+                        if (!answered.compareAndSet(false, true)) return;
+                        if (generation != expectedGeneration || session == null || !session.userId.equals(expectedUser) || pushStopped) {
+                            call.reject("Профиль изменился", "SESSION_CHANGED"); return;
+                        }
+                        if (!task.isSuccessful()) {
+                            call.reject("Телефон не подключил сообщения сервера. Проверьте сеть и повторите.", "PUSH_REGISTRATION_FAILED"); return;
+                        }
+                        call.resolve(new JSObject().put("token", task.getResult()));
+                    }
+                });
+            } catch (Exception ignored) { call.reject("Не удалось подключить сообщения сервера", "PUSH_REGISTRATION_FAILED"); }
+        }
+    }
+
+    @PluginMethod public void activateRemotePush(PluginCall call) {
+        synchronized (lock) {
+            try {
+                loadSession();
+                Long expected = call.getLong("expectedSessionGeneration");
+                if (session == null || expected == null || expected.longValue() != generation || !session.userId.equals(call.getString("expectedUserId"))) {
+                    call.reject("Профиль изменился", "SESSION_CHANGED"); return;
+                }
+                if (pushStopped || (pushDeletion != null && !pushDeletion.isComplete())) {
+                    call.reject("Подключение ещё закрывается. Повторите позже.", "PUSH_REGISTRATION_BUSY"); return;
+                }
+                NativePushPolicy.activate(getContext(), session, call.getString("ownerPublicId"));
+                call.resolve();
+            } catch (Exception ignored) { call.reject("Не удалось сохранить подключение уведомлений", "STORAGE_UNAVAILABLE"); }
+        }
+    }
+
+    @PluginMethod public void stopRemotePush(PluginCall call) {
+        synchronized (lock) {
+            Long expected = call.getLong("expectedSessionGeneration");
+            String expectedUserId = call.getString("expectedUserId");
+            if (expected == null || expected.longValue() != generation || !java.util.Objects.equals(expectedUserId, session == null ? null : session.userId)) {
+                call.resolve(); return; // A delayed old cleanup cannot disable the new session.
+            }
+            try { NativePushPolicy.clear(getContext()); }
+            catch (Exception ignored) { call.reject("Не удалось сохранить отключение уведомлений", "STORAGE_UNAVAILABLE"); return; }
+            // Local consent is already cleared. Firebase deletion may need the network: do not
+            // block logout/UI, but never create or activate a token until the old operation ends.
+            boolean alreadyStopped = pushStopped;
+            pushStopped = true;
+            if (NativePushPolicy.configured(getContext()) && !alreadyStopped && (pushDeletion == null || pushDeletion.isComplete())) {
+                pushDeletion = FirebaseMessaging.getInstance().deleteToken();
+            }
+            call.resolve();
+        }
     }
 
     @PluginMethod public void getSafeArea(PluginCall call) {

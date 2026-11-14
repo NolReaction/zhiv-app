@@ -46,7 +46,7 @@ DECLARE
         'direct_person_favorites', 'direct_requests', 'earth_sharing_settings', 'earth_sharing_recipients',
         'game_tap_collection_metadata', 'identity_bootstrap_keys', 'managed_promo_codes',
         'neighbor_settings',
-        'notification_preferences', 'notification_subscriptions', 'player_feedback',
+        'notification_preferences', 'notification_subscriptions', 'native_notification_subscriptions', 'player_feedback',
         'player_feedback_actions', 'player_security_observations', 'private_person_nicknames', 'promo_redemptions',
         'recipient_sharing_preferences', 'user_incidents', 'user_status_write_keys', 'user_timezone_write_keys'
     ];
@@ -89,15 +89,16 @@ BEGIN
     -- Every later migration still requires an explicit inventory/policy review.
     -- V82 indexes all confirmed fish records. They are removed with the economy during a reset.
     -- V83 mobile login proofs are authentication data and survive gameplay resets with sessions.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 83
+    -- V84 native push consent and platform-bound sessions survive gameplay resets.
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 84
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,83) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,84) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL','71:SQL','72:SQL','73:SQL','74:SQL','75:SQL','76:SQL','77:SQL','78:SQL','79:SQL','80:SQL','81:SQL','82:SQL','83:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL','71:SQL','72:SQL','73:SQL','74:SQL','75:SQL','76:SQL','77:SQL','78:SQL','79:SQL','80:SQL','81:SQL','82:SQL','83:SQL','84:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V83. Game reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V84. Game reset cancelled.';
     END IF;
 
     IF apply_mode THEN

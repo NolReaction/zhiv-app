@@ -42,7 +42,7 @@ test("game reset reviews every table and the latest migration without clearing i
   }
   for (const name of ["app_sessions", "account_login_identities", "account_recovery_codes",
     "circles", "circle_memberships", "direct_requests", "admin_actions", "promo_redemptions", "managed_promo_codes",
-    "notification_subscriptions", "notification_preferences", "admin_mail_broadcasts", "player_security_observations",
+    "notification_subscriptions", "native_notification_subscriptions", "notification_preferences", "admin_mail_broadcasts", "player_security_observations",
     "earth_sharing_settings", "earth_sharing_recipients", "neighbor_settings", "app_users",
     "earth_latest_locations", "earth_frozen_locations", "check_ins", "check_in_audiences"]) assert.ok(preserved.includes(name), name);
   for (const table of ["economy_market_listings", "economy_market_receipts", "neighbor_identity", "neighbor_shop_cycles",

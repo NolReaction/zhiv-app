@@ -10,7 +10,9 @@ public final class MochlikStoragePlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "list", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "put", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "listJournals", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "writeJournal", returnType: CAPPluginReturnPromise)
     ]
     private let worker = DispatchQueue(label: "ru.zhiv.mochlik.storage", qos: .userInitiated)
     private var database: OpaquePointer?
@@ -45,9 +47,10 @@ public final class MochlikStoragePlugin: CAPPlugin, CAPBridgedPlugin {
                 guard sqlite3_step(statement) == SQLITE_ROW else { throw StorageFailure() }
                 return sqlite3_column_int(statement, 0)
             }
-            guard version <= 1 else { throw StorageFailure() }
+            guard version <= 2 else { throw StorageFailure() }
             try execute(handle, "CREATE TABLE IF NOT EXISTS receipts (owner TEXT NOT NULL, receipt_key TEXT NOT NULL, value TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(owner, receipt_key))")
-            try execute(handle, "PRAGMA user_version=1")
+            try execute(handle, "CREATE TABLE IF NOT EXISTS journals (owner TEXT NOT NULL, journal_key TEXT NOT NULL, value TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(owner, journal_key))")
+            try execute(handle, "PRAGMA user_version=2")
             database = handle
             return handle
         } catch { sqlite3_close(handle); throw error }
@@ -140,4 +143,69 @@ public final class MochlikStoragePlugin: CAPPlugin, CAPBridgedPlugin {
             return [:]
         }
     }
+    @objc public func listJournals(_ call: CAPPluginCall) {
+        perform(call) { database in
+            let (owner, _, _) = try self.validate(call)
+            let records = try self.statement(database, "SELECT journal_key, value FROM journals WHERE owner=? ORDER BY journal_key") { statement -> [JSObject] in
+                try self.bind(statement, 1, owner)
+                var rows: [JSObject] = []
+                var bytes = 0
+                while true {
+                    let result = sqlite3_step(statement)
+                    if result == SQLITE_DONE { break }
+                    guard result == SQLITE_ROW, rows.count < 256,
+                          let key = sqlite3_column_text(statement, 0), let value = sqlite3_column_text(statement, 1) else { throw StorageFailure() }
+                    let text = String(cString: value)
+                    bytes += text.utf8.count
+                    guard text.utf8.count <= 6_000_000, bytes <= 32_000_000 else { throw StorageFailure() }
+                    rows.append(["key": String(cString: key), "value": text])
+                }
+                return rows
+            }
+            return ["records": records]
+        }
+    }
+    @objc public func writeJournal(_ call: CAPPluginCall) {
+        perform(call) { database in
+            guard let owner = call.getString("owner"), UUID(uuidString: owner) != nil,
+                  let key = call.getString("key"), !key.isEmpty, key.utf8.count <= 768,
+                  key.range(of: "^[A-Za-z0-9:._-]+$", options: .regularExpression) != nil,
+                  (call.options["expectedValue"] is String || call.options["expectedValue"] is NSNull),
+                  (call.options["value"] is String || call.options["value"] is NSNull) else { throw StorageFailure() }
+            let expected = call.getString("expectedValue"), value = call.getString("value")
+            guard (expected?.utf8.count ?? 0) <= 6_000_000, (value?.utf8.count ?? 0) <= 6_000_000 else { throw StorageFailure() }
+            try self.execute(database, "BEGIN IMMEDIATE")
+            do {
+                let previous = try self.statement(database, "SELECT value FROM journals WHERE owner=? AND journal_key=?") { statement -> String? in
+                    try self.bind(statement, 1, owner); try self.bind(statement, 2, key)
+                    let result = sqlite3_step(statement)
+                    if result == SQLITE_DONE { return nil }
+                    guard result == SQLITE_ROW, let text = sqlite3_column_text(statement, 0) else { throw StorageFailure() }
+                    return String(cString: text)
+                }
+                guard previous == expected else { throw StorageFailure() }
+                if let value {
+                    let limits = try self.statement(database, "SELECT count(*), COALESCE(sum(length(CAST(value AS BLOB))),0) FROM journals") { statement -> (Int64, Int64) in
+                        guard sqlite3_step(statement) == SQLITE_ROW else { throw StorageFailure() }
+                        return (sqlite3_column_int64(statement, 0), sqlite3_column_int64(statement, 1))
+                    }
+                    guard previous != nil || limits.0 < 256,
+                          limits.1 - Int64(previous?.utf8.count ?? 0) + Int64(value.utf8.count) <= 32_000_000 else { throw StorageFailure() }
+                    try self.statement(database, "INSERT OR REPLACE INTO journals(owner,journal_key,value,updated_at) VALUES(?,?,?,?)") { statement in
+                        try self.bind(statement, 1, owner); try self.bind(statement, 2, key); try self.bind(statement, 3, value)
+                        sqlite3_bind_int64(statement, 4, Int64(Date().timeIntervalSince1970 * 1000))
+                        guard sqlite3_step(statement) == SQLITE_DONE else { throw StorageFailure() }
+                    }
+                } else {
+                    try self.statement(database, "DELETE FROM journals WHERE owner=? AND journal_key=?") { statement in
+                        try self.bind(statement, 1, owner); try self.bind(statement, 2, key)
+                        guard sqlite3_step(statement) == SQLITE_DONE else { throw StorageFailure() }
+                    }
+                }
+                try self.execute(database, "COMMIT")
+                return [:]
+            } catch { try? self.execute(database, "ROLLBACK"); throw error }
+        }
+    }
+
 }

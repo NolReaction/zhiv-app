@@ -9,13 +9,15 @@ import type { EarthLocationState } from "@/features/earth/location";
 import type { EarthSharingHandle } from "@/features/earth/earth-sharing-panel";
 import { getClientPlatform } from "@/lib/client-platform";
 import { backgroundLocationChoice } from "@/features/earth/native-publisher";
+import type { EarthLocationPreferencePersistence } from "@/features/earth/location-preferences";
 import styles from "./profile-location-settings.module.css";
 
 export type LocationPrivacyState = Pick<EarthSharingHandle, "settings" | "pendingGhost" | "pendingPrivacyMode" | "error" | "off">;
 
-export function ProfileLocationSettingsContent({ enabled, onEnabledChange, location, onLocate, onStop, privacy }: {
+export function ProfileLocationSettingsContent({ enabled, onEnabledChange, location, onLocate, onStop, privacy, persistence, onRestart }: {
   enabled: boolean; onEnabledChange: (enabled: boolean) => void; location: EarthLocationState;
   onLocate: () => void; onStop: () => void; privacy?: LocationPrivacyState;
+  persistence?: EarthLocationPreferencePersistence; onRestart?: () => void;
 }) {
   const native = getClientPlatform();
   const background = useSyncExternalStore(backgroundLocationChoice.subscribe, backgroundLocationChoice.getSnapshot, backgroundLocationChoice.getServerSnapshot);
@@ -31,6 +33,11 @@ export function ProfileLocationSettingsContent({ enabled, onEnabledChange, locat
         <span>Разрешить приложению определять моё место на этом устройстве.</span></label>
       <SharingSwitch id="profile-location-enabled" checked={enabled} onCheckedChange={onEnabledChange} data-audio-cue="ui.click" />
     </div>
+    {persistence?.pending && <p className={styles.hint} role="status">Сохраняем выбор на устройстве…</p>}
+    {persistence?.error && <div className={styles.notice} role="alert">
+      <p className={styles.error}>{persistence.error}</p>
+      {onRestart && <button type="button" onClick={onRestart} disabled={persistence.pending} data-audio-cue="ui.click">Перезапустить приложение</button>}
+    </div>}
     {!enabled ? <div role="status" className={styles.notice}>
       <strong>Геопозиция выключена</strong>
       <p>Поиск и обновления остановлены. Частная точка на устройстве очищена.</p>
@@ -40,7 +47,7 @@ export function ProfileLocationSettingsContent({ enabled, onEnabledChange, locat
     </div> : <>
       <p className={styles.hint}>Включение этого переключателя не передаёт координаты друзьям. Доступ каждому выбирается отдельно в «Людях» или на карте.</p>
       <div className={styles.actions}>
-        <button type="button" onClick={onLocate} disabled={location.status === "requesting"} data-audio-cue="ui.click">
+        <button type="button" onClick={onLocate} disabled={location.status === "requesting" || persistence?.pending} data-audio-cue="ui.click">
           <LocateFixed size={17} aria-hidden="true" />{location.status === "requesting" ? "Определяем…" : "Проверить геопозицию"}
         </button>
         {watching && <button type="button" onClick={onStop} data-audio-cue="ui.click"><Square size={14} aria-hidden="true" />Остановить</button>}
@@ -84,5 +91,6 @@ export function ProfileLocationSettings({ ownerPublicId, visible, privacy }: {
   const preference = useEarthLocationPreference(ownerPublicId);
   const location = useEarthLocation({ ownerPublicId, enabled: visible, autoStart: false });
   return <ProfileLocationSettingsContent enabled={preference.enabled} onEnabledChange={preference.setEnabled}
-    location={location} onLocate={location.locate} onStop={location.stop} privacy={privacy} />;
+    location={location} onLocate={location.locate} onStop={location.stop} privacy={privacy}
+    persistence={preference.persistence} onRestart={() => window.location.reload()} />;
 }

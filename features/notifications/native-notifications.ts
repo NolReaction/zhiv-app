@@ -1,3 +1,4 @@
+import type { NotificationTarget } from "./notification-browser";
 import type { EconomyView } from "@/features/economy/domain/model";
 import type { NotificationSnapshot } from "./notification-contract";
 import { planNativeGameReminders, type LocalGameReminder } from "./native-notification-plan";
@@ -164,12 +165,24 @@ export type NativeNotifications = ReturnType<typeof createNativeNotifications>;
 let installed: NativeNotifications | null = null;
 export function configureNativeNotifications(value: NativeNotifications | null) { installed = value; }
 export function getNativeNotifications() { return installed; }
-let pendingLink: { ownerPublicId: string; target: LocalGameReminder["extra"]["target"] } | null = null;
+let pendingLink: { ownerPublicId: string; target: NotificationTarget } | null = null;
+const seenRemoteTaps = new Set<string>();
 export function queueNativeNotificationLink(value: unknown) {
-  if (!value || typeof value !== "object" || !("source" in value) || value.source !== "mochlik-game"
+  if (!value || typeof value !== "object" || !("source" in value)
     || !("ownerPublicId" in value) || typeof value.ownerPublicId !== "string" || value.ownerPublicId.length > 40
-    || !("target" in value) || !["activities", "mine", "production", "construction"].includes(String(value.target))) return;
-  pendingLink = { ownerPublicId: value.ownerPublicId, target: value.target as LocalGameReminder["extra"]["target"] };
+    || !("target" in value)) return;
+  const local = value.source === "mochlik-game" && ["activities", "mine", "production", "construction"].includes(String(value.target));
+  const remote = value.source === "mochlik-remote" && ["mailbox", "checkin"].includes(String(value.target))
+    && "eventId" in value && typeof value.eventId === "string" && /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(value.eventId);
+  if (!local && !remote) return;
+  if (remote) {
+    if (!/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/.test(value.ownerPublicId)) return;
+    const event = `${value.ownerPublicId}:${(value as { eventId: string }).eventId}`;
+    if (seenRemoteTaps.has(event)) return;
+    seenRemoteTaps.add(event);
+    if (seenRemoteTaps.size > 64) seenRemoteTaps.delete(seenRemoteTaps.values().next().value!);
+  }
+  pendingLink = { ownerPublicId: value.ownerPublicId, target: value.target as NotificationTarget };
   if (typeof window !== "undefined") window.dispatchEvent(new Event("mochlik:notification-open"));
 }
 export function takeNativeNotificationLink() { const value = pendingLink; pendingLink = null; return value; }

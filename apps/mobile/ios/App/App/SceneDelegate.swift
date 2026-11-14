@@ -8,7 +8,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         window = UIWindow(windowScene: windowScene)
-        window?.rootViewController = MainViewController()
+        let controller = MainViewController()
+        if let response = connectionOptions.notificationResponse,
+           response.notification.request.content.userInfo["source"] as? String == "mochlik-remote" {
+            controller.launchRemoteNotification = response
+        }
+        window?.rootViewController = controller
         window?.makeKeyAndVisible()
 
         // Authentication callbacks belong to ASWebAuthenticationSession, never the JS app-url bridge.

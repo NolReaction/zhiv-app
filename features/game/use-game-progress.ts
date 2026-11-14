@@ -8,14 +8,19 @@ import { createUuidV4 } from "@/lib/browser-uuid";
 import { flushIncidents, reportIncident } from "@/lib/client-incidents";
 import type { GameProgress } from "@/features/game/game-api";
 import { GameSyncClient, type GameSyncSnapshot } from "@/features/game/game-sync";
+import { clientJournalStorage } from "@/lib/client-journal-storage";
+import type { NativeGameSync } from "./native-game-sync";
 
 type GameProgressOptions = { ownerPublicId: string | null; isOnline: boolean; enabled?: boolean; onSessionLost: () => void };
 const initialSnapshot: GameSyncSnapshot = { progress: null, status: "loading", pendingTaps: 0, rejectedTaps: 0, run: null };
+// A native WebView has one tap writer. Account/visibility transitions wait for
+// its outstanding commits before a new controller reads the journal.
+let nativeOpening: Promise<NativeGameSync | null> = Promise.resolve(null);
 
 export function useGameProgress({ ownerPublicId, isOnline, enabled = true, onSessionLost }: GameProgressOptions) {
   const [state, setState] = useState<GameSyncSnapshot & { ownerPublicId: string | null }>({ ...initialSnapshot, ownerPublicId: null });
-  const client = useRef<GameSyncClient | null>(null);
-  const inputWriter = useRef<(steps: number, runId: string) => number>(() => 0);
+  const client = useRef<GameSyncClient | NativeGameSync | null>(null);
+  const inputWriter = useRef<(steps: number, runId: string, capturedAt?: number) => number | Promise<number>>(() => 0);
   const owner = useRef(ownerPublicId);
   const sessionLost = useRef(onSessionLost);
   const online = useRef(isOnline);
@@ -26,6 +31,67 @@ export function useGameProgress({ ownerPublicId, isOnline, enabled = true, onSes
   useEffect(() => {
     owner.current = ownerPublicId;
     if (!ownerPublicId || !enabled) { client.current = null; inputWriter.current = () => 0; return; }
+    let nativeStorage;
+    try { nativeStorage = clientJournalStorage(ownerPublicId); }
+    catch {
+      let active = true;
+      inputWriter.current = () => 0;
+      queueMicrotask(() => {
+        if (active) setState({ ...initialSnapshot, ownerPublicId, status: "error", durable: false, errorCode: "STORAGE_FAILED" });
+      });
+      return () => { active = false; };
+    }
+    if (nativeStorage) {
+      const storage = nativeStorage;
+      let stopped = false;
+      let current: NativeGameSync | undefined;
+      inputWriter.current = () => 0;
+      const changed = (snapshot: GameSyncSnapshot) => {
+        if (!stopped && owner.current === ownerPublicId) setState({ ...snapshot, ownerPublicId });
+      };
+      const opening = nativeOpening.catch(() => null).then(async previous => {
+        await previous?.dispose();
+        if (stopped) return null;
+        const { createNativeGameSync } = await import("./native-game-sync");
+        if (stopped) return null;
+        let legacy: Storage | undefined;
+        try { legacy = window.localStorage; } catch { /* A fresh native installation has no WebView journal to import. */ }
+        const next = await createNativeGameSync(ownerPublicId, storage, {
+          online: online.current, changed, legacy,
+          sessionLost: () => { if (!stopped && owner.current === ownerPublicId) sessionLost.current(); },
+        });
+        if (stopped) { await next.dispose(); return null; }
+        current = next;
+        client.current = next;
+        inputWriter.current = async (steps, runId, capturedAt) => {
+          if (stopped || document.hidden || owner.current !== ownerPublicId) return 0;
+          const accepted = await next.recordTap(steps, runId, capturedAt);
+          return stopped || owner.current !== ownerPublicId ? 0 : accepted;
+        };
+        void next.refresh(); void next.flush();
+        return next;
+      });
+      nativeOpening = opening;
+      void opening.catch(() => changed({ ...initialSnapshot, status: "error", durable: false, errorCode: "STORAGE_FAILED" }));
+      const synchronize = () => {
+        if (stopped || document.hidden) return;
+        current?.setOnline(online.current);
+        void current?.flush(); void current?.refresh();
+      };
+      const interval = window.setInterval(synchronize, 2000);
+      const visibility = () => { if (document.hidden) current?.setOnline(false); else synchronize(); };
+      document.addEventListener("visibilitychange", visibility);
+      window.addEventListener("focus", synchronize);
+      return () => {
+        stopped = true;
+        inputWriter.current = () => 0;
+        if (client.current === current) client.current = null;
+        void current?.dispose();
+        window.clearInterval(interval);
+        document.removeEventListener("visibilitychange", visibility);
+        window.removeEventListener("focus", synchronize);
+      };
+    }
     let current: GameSyncClient | null = null;
     let stopped = false, claiming = false, selectedRun: string | undefined;
     let unlock: (() => void) | undefined;
@@ -119,11 +185,11 @@ export function useGameProgress({ ownerPublicId, isOnline, enabled = true, onSes
         }).catch(() => { release(); storageFailure(); });
       } else claim();
     };
-    inputWriter.current = (steps, runId) => {
+    inputWriter.current = (steps, runId, capturedAt) => {
       if (stopped || document.hidden) return 0;
       selectedRun = runId;
       try {
-        const recorded = inbox.record(steps, runId);
+        const recorded = inbox.record(steps, runId, capturedAt);
         if (!recorded) {
           setState(previous => ({ ...previous, ownerPublicId, errorCode: "QUEUE_FULL" }));
           return 0;
@@ -177,9 +243,9 @@ export function useGameProgress({ ownerPublicId, isOnline, enabled = true, onSes
     client.current?.setOnline(isOnline);
     if (isOnline) { void client.current?.flush(); void client.current?.refresh(); }
   }, [isOnline]);
-  const recordTap = useCallback((steps: number, runId: string) => {
+  const recordTap = useCallback((steps: number, runId: string, capturedAt?: number) => {
     if (!enabled || owner.current !== ownerPublicId) return 0;
-    return inputWriter.current(steps, runId);
+    return inputWriter.current(steps, runId, capturedAt);
   }, [ownerPublicId, enabled]);
   const flush = useCallback(async () => { await client.current?.flush(); }, []);
   const refresh = useCallback(async () => { await client.current?.flush(); await client.current?.refresh(); }, []);

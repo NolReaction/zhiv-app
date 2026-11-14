@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { clearPreviousNotificationOwner, setActiveNotificationOwner, parseNotificationLink, type NotificationLink, type NotificationTarget } from "./notification-browser";
 import { reportNotificationPresence } from "./notification-api";
 import { getNativeNotifications, takeNativeNotificationLink } from "./native-notifications";
+import { getNativeRemotePush } from "./native-remote-push";
 
 /** Authenticated owner only. The server invalidates old session subscriptions on logout. */
 export function useNotificationPresence(ownerPublicId: string | null, isOnline: boolean) {
@@ -12,7 +13,11 @@ export function useNotificationPresence(ownerPublicId: string | null, isOnline: 
     if (!ownerPublicId && !seenOwner.current) return;
     seenOwner.current = ownerPublicId;
     const native = getNativeNotifications();
-    if (native) { void native.setOwner(ownerPublicId).catch(() => undefined); return; }
+    if (native) {
+      void native.setOwner(ownerPublicId).catch(() => undefined);
+      void getNativeRemotePush()?.setOwner(ownerPublicId).catch(() => undefined);
+      return;
+    }
     setActiveNotificationOwner(ownerPublicId);
     void clearPreviousNotificationOwner(ownerPublicId).catch(() => undefined);
   }, [ownerPublicId]);

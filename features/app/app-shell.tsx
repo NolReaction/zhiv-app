@@ -100,6 +100,8 @@ import { RecoveryStarter } from "@/features/account/recovery-starter";
 import { AccountEntry, AuthReturnNotice } from "@/features/account/account-entry";
 import { StatusEditor } from "@/features/check-in/status-editor";
 import { CheckInReceipt } from "@/features/check-in/check-in-receipt";
+import { createCheckInJournal, CHECK_IN_STORAGE_ERROR, type CheckInJournal, type PendingCheckIn } from "@/features/check-in/check-in-journal";
+import { clientJournalStorage, isStoragePromise } from "@/lib/client-journal-storage";
 import { useSimpleView } from "@/features/app/use-simple-view";
 import { useWorldPortal } from "@/features/world/use-world-portal";
 import { useNotificationNavigation, useNotificationPresence } from "@/features/notifications/use-notification-presence";
@@ -151,18 +153,7 @@ type PendingBootstrap = {
   expiresAt: number;
 };
 
-type PendingCheckIn = {
-  version: 2;
-  kind: "check-in";
-  idempotencyKey: string;
-  ownerPublicId: string;
-  previousLastCheckInAt: string | null;
-  createdAt: number;
-  expiresAt: number;
-};
-
 const PENDING_BOOTSTRAP_STORAGE_KEY = "zhiv.pending-bootstrap.v1";
-const PENDING_CHECK_IN_STORAGE_KEY = "zhiv.pending-check-in.v2";
 const LEGACY_PENDING_CHECK_IN_STORAGE_KEY = "zhiv.pending-check-in.v1";
 const CLICKER_PROGRESS_STORAGE_PREFIX = "zhiv.clicker-progress.v3";
 const LEGACY_V2_CLICKER_PROGRESS_STORAGE_PREFIX = "zhiv.clicker-progress.v2";
@@ -171,7 +162,6 @@ const PENDING_BOOTSTRAP_TTL_MS = 10 * 60_000;
 const PENDING_CHECK_IN_TTL_MS = 24 * 60 * 60_000;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PUBLIC_ID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/;
 
 const CONFETTI = [
   { x: -118, y: -118, r: -100, color: "#f5e85b" },
@@ -234,18 +224,6 @@ function isPendingBootstrap(value: unknown): value is PendingBootstrap {
   );
 }
 
-function isPendingCheckIn(value: unknown): value is PendingCheckIn {
-  return (
-    isRecord(value) &&
-    hasValidPendingEnvelope(value, 2) &&
-    value.kind === "check-in" &&
-    typeof value.ownerPublicId === "string" &&
-    PUBLIC_ID_PATTERN.test(value.ownerPublicId) &&
-    (value.previousLastCheckInAt === null ||
-      typeof value.previousLastCheckInAt === "string")
-  );
-}
-
 function removePending(storageKey: string) {
   if (typeof window === "undefined") return;
   try {
@@ -276,7 +254,7 @@ function readPending<T>(
   }
 }
 
-function persistPending(storageKey: string, value: PendingBootstrap | PendingCheckIn) {
+function persistPending(storageKey: string, value: PendingBootstrap) {
   if (typeof window === "undefined") return;
   try {
     window.sessionStorage.setItem(storageKey, JSON.stringify(value));
@@ -412,6 +390,7 @@ function CheckInContent() {
   const [clientNowMs, setClientNowMs] = useState(() => Date.now());
   const [isSending, setIsSending] = useState(false);
   const [checkInUnconfirmed, setCheckInUnconfirmed] = useState(false);
+  const [checkInStorageError, setCheckInStorageError] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(() =>
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
@@ -508,6 +487,7 @@ function CheckInContent() {
   const seriesBreakSequence = useRef(0);
   const lastGameTouchAt = useRef(Number.NEGATIVE_INFINITY);
   const pendingCheckIn = useRef<PendingCheckIn | null>(null);
+  const checkInJournal = useRef<CheckInJournal | null>(null);
   const pendingBootstrap = useRef<PendingBootstrap | null>(null);
   const homeHeading = useRef<HTMLHeadingElement | null>(null);
   const mainButton = useRef<HTMLButtonElement | null>(null);
@@ -610,11 +590,22 @@ function CheckInContent() {
     removePending(PENDING_BOOTSTRAP_STORAGE_KEY);
   }, []);
 
-  const clearPendingCheckIn = useCallback(() => {
+  const clearPendingCheckIn = useCallback((preserveReceipt = false) => {
+    const journal = checkInJournal.current;
     pendingCheckIn.current = null;
     setCheckInUnconfirmed(false);
-    removePending(gameplayStorageKey(PENDING_CHECK_IN_STORAGE_KEY));
     removePending(gameplayStorageKey(LEGACY_PENDING_CHECK_IN_STORAGE_KEY));
+    if (preserveReceipt) {
+      // An interrupted account session must not erase its durable recovery receipt.
+      checkInJournal.current = null;
+      setCheckInStorageError(null);
+      return;
+    }
+    const cleared = journal?.clear();
+    if (isStoragePromise(cleared)) void cleared.catch(() => {
+      if (checkInJournal.current === journal) setCheckInStorageError(CHECK_IN_STORAGE_ERROR);
+    });
+    return cleared;
   }, []);
 
   const resetTransientCheckIn = useCallback(() => {
@@ -646,6 +637,8 @@ function CheckInContent() {
     setCalendarOpen(false);
     setGameOpen(false);
     identityEpoch.current += 1;
+    checkInSending.current = false;
+    setIsSending(false);
     setPeopleUpdatedAt(null);
     setGroupsUpdatedAt(null);
     if (clickerPersistTimer.current) {
@@ -653,7 +646,9 @@ function CheckInContent() {
       clickerPersistTimer.current = null;
     }
     persistClickerRun(clickerRunRef.current);
-    clearPendingCheckIn();
+    clearPendingCheckIn(true);
+    checkInSending.current = false;
+    setIsSending(false);
     clearPendingBootstrap();
     clickerOwnerPublicId.current = null;
     resetTransientCheckIn();
@@ -930,13 +925,23 @@ function CheckInContent() {
     // No gameplay hook, local journal or onboarding store gets an owner before
     // the authoritative /me generation has selected its storage namespace.
     if (!acceptGameplayGeneration(identity)) return;
-    // A storage failure may leave an exact receipt only in this document.
-    pendingCheckIn.current ??= readPending(gameplayStorageKey(PENDING_CHECK_IN_STORAGE_KEY), isPendingCheckIn);
+    const nativeJournal = clientJournalStorage(identity.user.publicId);
+    if (checkInJournal.current?.owner !== identity.user.publicId || checkInJournal.current.native !== nativeJournal) {
+      let legacyStorage: Storage | undefined;
+      try { legacyStorage = window.sessionStorage; } catch { /* Browser storage is optional. */ }
+      const journal = createCheckInJournal(identity.user.publicId, nativeJournal, legacyStorage);
+      checkInJournal.current = journal;
+      pendingCheckIn.current = null;
+      try { pendingCheckIn.current = journal.read(); } catch { /* Keep the journal blocked until rehydration. */ }
+      setCheckInStorageError(journal.error());
+    }
     setSceneLoad({ owner: undefined, entry: -1, state: "loading" });
     setSceneEntry(previous => previous + 1);
     identityRecovery.current?.dispose();
     void resolveStartupIncidents(identity.user.publicId);
     identityEpoch.current += 1;
+    checkInSending.current = false;
+    setIsSending(false);
     setPeopleUpdatedAt(null);
     setGroupsUpdatedAt(null);
     setPeopleError(null);
@@ -947,7 +952,6 @@ function CheckInContent() {
       clickerOwnerPublicId.current !== identity.user.publicId,
     );
     if (
-      isAccountSwitch ||
       (
         unresolvedCheckIn &&
         (
@@ -1035,7 +1039,7 @@ function CheckInContent() {
         else {
           void resolveStartupIncidents(null);
           if (pendingBootstrap.current) setName(pendingBootstrap.current.displayName);
-          clearPendingCheckIn();
+          clearPendingCheckIn(true);
           resetTransientCheckIn();
           setScreen("onboarding");
         }
@@ -1080,6 +1084,7 @@ function CheckInContent() {
     const clock = window.setInterval(() => setClientNowMs(Date.now()), 15_000);
 
     return () => {
+      identityEpoch.current += 1;
       recovery.dispose();
       if (identityRecovery.current === recovery) identityRecovery.current = null;
       window.removeEventListener("online", resumeIdentity);
@@ -1169,6 +1174,8 @@ function CheckInContent() {
     }, STORY_EFFECT_DURATION_MS[type]);
   }, []);
 
+  const tapCommitTail = useRef<Promise<boolean> | null>(null);
+  const tapCommitCount = useRef(0);
   const resetClickerLater = useCallback(() => {
     if (burstTimer.current) clearTimeout(burstTimer.current);
     const active = clickerRunRef.current.activeSeries;
@@ -1181,6 +1188,10 @@ function CheckInContent() {
       active.lastTapAtMs + CLICKER_IDLE_RESET_MS - Date.now(),
     );
     const finishWhenIdle = () => {
+      if (tapCommitCount.current > 0) {
+        burstTimer.current = setTimeout(finishWhenIdle, 50);
+        return;
+      }
       const expired = expireClickerSeries(clickerRunRef.current, Date.now());
       if (!expired.finishedSeries) {
         const currentActive = clickerRunRef.current.activeSeries;
@@ -1212,31 +1223,52 @@ function CheckInContent() {
 
   const registerTap = useCallback(
     (steps = 1, tappedAtMs = Date.now()) => {
+      if (tapCommitCount.current >= 128) {
+        setNotice("Устройство ещё сохраняет нажатия. Подождите немного.");
+        return false;
+      }
       setMochlikWakeSignal(value => value + 1);
       triggerTapFeedback();
-      const current = clickerRunRef.current;
-      const transition = advanceClickerRun(current, tappedAtMs, steps, createUuidV4());
-      const runId = transition.progress.activeSeries?.eventId;
-      if (runId && runId !== recordAtRunStart.current.runId) {
-        recordAtRunStart.current = { runId, bestSeries: game.progress?.bestSeries ?? null };
-      }
-      const recorded = runId ? recordGameTap(steps, runId) : 0;
-      if (recorded === 0) { setNotice("Не удалось сохранить нажатие на устройстве. Откройте значок сервера для проверки."); return false; }
-      // Both touch and keyboard/mouse pass through the existing tap deduplication first.
-      playTapFeedback(getAudioRuntime(), economy.snapshot ? tapBoostView(economy.snapshot, economy.now).powerPercent : 0, tappedAtMs);
-      if (transition.finishedSeries) {
-        reportFinishedSeries(transition.finishedSeries, transition.progress);
-        triggerSeriesBreakEffect();
-      }
-      commitClickerRun(transition.progress);
-      setSeriesSummary(null);
-      if (
-        transition.crossedMilestones.length > 0 ||
-        transition.levelAfter.level > transition.levelBefore.level
-      ) persistClickerRun(transition.progress);
-      if (transition.effect) triggerStoryEffect(transition.effect);
-      resetClickerLater();
-      return true;
+      const epoch = identityEpoch.current;
+      const accept = (): boolean | Promise<boolean> => {
+        if (epoch !== identityEpoch.current) return false;
+        // Native commits are serialized before calculating the next visual run.
+        // Several rapid taps must not each derive a transition from the old run.
+        const current = clickerRunRef.current;
+        const transition = advanceClickerRun(current, tappedAtMs, steps, createUuidV4());
+        const runId = transition.progress.activeSeries?.eventId;
+        const finish = (recorded: number) => {
+          if (epoch !== identityEpoch.current) return false;
+          if (recorded !== steps) { setNotice("Не удалось сохранить нажатие на устройстве. Откройте значок сервера для проверки."); return false; }
+          if (runId && runId !== recordAtRunStart.current.runId) {
+            recordAtRunStart.current = { runId, bestSeries: game.progress?.bestSeries ?? null };
+          }
+          // Both touch and keyboard/mouse pass through the existing tap deduplication first.
+          playTapFeedback(getAudioRuntime(), economy.snapshot ? tapBoostView(economy.snapshot, economy.now).powerPercent : 0, tappedAtMs);
+          if (transition.finishedSeries) {
+            reportFinishedSeries(transition.finishedSeries, transition.progress);
+            triggerSeriesBreakEffect();
+          }
+          commitClickerRun(transition.progress);
+          setSeriesSummary(null);
+          if (transition.crossedMilestones.length > 0 || transition.levelAfter.level > transition.levelBefore.level) persistClickerRun(transition.progress);
+          if (transition.effect) triggerStoryEffect(transition.effect);
+          resetClickerLater();
+          return true;
+        };
+        const recorded = runId ? recordGameTap(steps, runId, tappedAtMs) : 0;
+        return typeof recorded === "number" ? finish(recorded) : recorded.then(finish, () => finish(0));
+      };
+      const result = tapCommitTail.current ? tapCommitTail.current.then(accept, accept) : accept();
+      if (typeof result === "boolean") return result;
+      tapCommitCount.current += 1;
+      tapCommitTail.current = result;
+      const release = () => {
+        tapCommitCount.current -= 1;
+        if (tapCommitTail.current === result) tapCommitTail.current = null;
+      };
+      void result.then(release, release);
+      return result;
     },
     [
       recordGameTap,
@@ -1347,11 +1379,13 @@ function CheckInContent() {
   }
 
   async function handleCheckIn() {
+    const inputEpoch = identityEpoch.current;
     const tappedAtMs = Date.now();
     if (pendingCheckIn.current?.expiresAt && pendingCheckIn.current.expiresAt <= tappedAtMs) {
       clearPendingCheckIn();
     }
-    const expired = expireClickerSeries(clickerRunRef.current, tappedAtMs);
+    const expired = tapCommitCount.current > 0 ? { progress: clickerRunRef.current, finishedSeries: null }
+      : expireClickerSeries(clickerRunRef.current, tappedAtMs);
     const currentRun = expired.progress;
     if (expired.finishedSeries) {
       if (burstTimer.current) {
@@ -1371,7 +1405,8 @@ function CheckInContent() {
       tappedAtMs,
       Boolean(pendingCheckIn.current),
     );
-    const recorded = registerTap(1, tappedAtMs);
+    const recorded = await registerTap(1, tappedAtMs);
+    if (inputEpoch !== identityEpoch.current) return;
     if (tapPlan !== "REQUEST_SERVER") {
       if (tapPlan === "START_LOCAL" && recorded) setNotice(null);
       return;
@@ -1382,84 +1417,83 @@ function CheckInContent() {
   }
 
   async function sendCheckIn(retryOnly = false) {
-    if (checkInSending.current || !navigator.onLine) return;
-    if (retryOnly && (!pendingCheckIn.current || pendingCheckIn.current.expiresAt <= Date.now())) {
-      clearPendingCheckIn();
-      await refreshSelf();
-      setNotice("Время проверки истекло. Если нужна новая отметка, нажмите «Я ЖИВОЙ».");
-      return;
-    }
+    if (checkInSending.current || !navigator.onLine || !me) return;
     const epoch = identityEpoch.current;
-
+    const journal = checkInJournal.current;
+    if (!journal || journal.owner !== me.user.publicId) return;
+    const current = () => epoch === identityEpoch.current && checkInJournal.current === journal;
+    let phase: "save" | "send" | "cleanup" = "save";
     checkInSending.current = true;
     setIsSending(true);
     try {
-      if (!me) {
-        loseSession();
+      const settled = journal.settled(); if (isStoragePromise(settled)) await settled;
+      if (!current()) return;
+      if (retryOnly && (!pendingCheckIn.current || pendingCheckIn.current.expiresAt <= Date.now())) {
+        const cleared = clearPendingCheckIn(); if (isStoragePromise(cleared)) await cleared;
+        if (!current()) return;
+        await refreshSelf();
+        if (current()) setNotice("Время проверки истекло. Если нужна новая отметка, нажмите «Я ЖИВОЙ».");
         return;
       }
       if (!pendingCheckIn.current) {
         const createdAt = Date.now();
         pendingCheckIn.current = {
-          version: 2,
-          kind: "check-in",
-          idempotencyKey: createUuidV4(),
-          ownerPublicId: me.user.publicId,
-          previousLastCheckInAt: lastCheckInAt,
-          createdAt,
-          expiresAt: createdAt + PENDING_CHECK_IN_TTL_MS,
+          version: 2, kind: "check-in", idempotencyKey: createUuidV4(),
+          ownerPublicId: me.user.publicId, previousLastCheckInAt: lastCheckInAt,
+          createdAt, expiresAt: createdAt + PENDING_CHECK_IN_TTL_MS,
         };
-        persistPending(gameplayStorageKey(PENDING_CHECK_IN_STORAGE_KEY), pendingCheckIn.current);
       }
-
-      const response = await createCheckIn(pendingCheckIn.current.idempotencyKey);
-      if (epoch !== identityEpoch.current) return;
+      const pending = pendingCheckIn.current;
+      // Re-saving also migrates a recovered legacy receipt before its first native send.
+      const saved = journal.save(pending); if (isStoragePromise(saved)) await saved;
+      if (!current() || pendingCheckIn.current !== pending) return;
+      phase = "send";
+      const response = await createCheckIn(pending.idempotencyKey);
+      if (!current()) return;
       selfRequest.current += 1;
-      clearPendingCheckIn();
+      phase = "cleanup";
+      const cleared = clearPendingCheckIn(); if (isStoragePromise(cleared)) await cleared;
+      if (!current()) return;
       setLastCheckInAt(response.checkedAt);
       setNextAllowedAt(response.nextAllowedAt);
       setClockOffsetMs(serverOffset(response.serverTime));
       setClientNowMs(Date.now());
       setNotice(null);
       setStreak(response.streak);
-      setMe((current) => current ? {
-        ...current,
-        lastCheckInAt: response.checkedAt,
-        checkInCount: response.checkInCount,
-        streak: response.streak,
-        serverTime: response.serverTime,
-      } : current);
+      setMe((value) => value ? {
+        ...value, lastCheckInAt: response.checkedAt, checkInCount: response.checkInCount,
+        streak: response.streak, serverTime: response.serverTime,
+      } : value);
     } catch (error) {
-      if (epoch !== identityEpoch.current) return;
-      if (
-        error instanceof ApiError &&
-        error.status === 429 &&
-        isCheckInCooldownResponse(error.body)
-      ) {
+      if (!current()) return;
+      if (phase !== "send") {
+        setCheckInStorageError(phase === "cleanup"
+          ? "Отметка принята сервером, но не удалось закрыть её запись на устройстве. Перезапустите приложение."
+          : CHECK_IN_STORAGE_ERROR);
+        return;
+      }
+      if (error instanceof ApiError && error.status === 429 && isCheckInCooldownResponse(error.body)) {
         const cooldown = error.body;
         selfRequest.current += 1;
-        clearPendingCheckIn();
+        try { const cleared = clearPendingCheckIn(); if (isStoragePromise(cleared)) await cleared; }
+        catch { if (current()) setCheckInStorageError(CHECK_IN_STORAGE_ERROR); return; }
+        if (!current()) return;
         setLastCheckInAt(cooldown.checkedAt);
         setNextAllowedAt(cooldown.nextAllowedAt);
         setClockOffsetMs(serverOffset(cooldown.serverTime));
         setStreak(cooldown.streak);
-        setMe((current) => current ? {
-          ...current,
-          lastCheckInAt: cooldown.checkedAt,
-          streak: cooldown.streak,
-          serverTime: cooldown.serverTime,
-        } : current);
+        setMe((value) => value ? {
+          ...value, lastCheckInAt: cooldown.checkedAt, streak: cooldown.streak, serverTime: cooldown.serverTime,
+        } : value);
         setNotice(null);
-      } else if (error instanceof ApiError && error.status === 401) {
-        loseSession();
-      } else {
+      } else if (error instanceof ApiError && error.status === 401) loseSession();
+      else {
         setCheckInUnconfirmed(true);
         setNotice(null);
-        if (me) reportIncident(me.user.publicId, "check-in", incidentCode(error), 0, error);
+        reportIncident(me.user.publicId, "check-in", incidentCode(error), 0, error);
       }
     } finally {
-      checkInSending.current = false;
-      setIsSending(false);
+      if (current()) { checkInSending.current = false; setIsSending(false); }
     }
   }
 
@@ -1475,7 +1509,7 @@ function CheckInContent() {
       || tappedAtMs - active.lastTapAtMs >= CLICKER_IDLE_RESET_MS) return;
     event.preventDefault();
     lastGameTouchAt.current = performance.now();
-    registerTap(1, tappedAtMs);
+    void registerTap(1, tappedAtMs);
   }
 
   function handlePrimaryPointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
@@ -1688,6 +1722,7 @@ function CheckInContent() {
     <main className={styles.shell} data-active-view={activeView} inert={gameplay.showGate || activity.mode === "hidden" || undefined}>
       {!startupActive && <AuthReturnNotice />}
       <TransientNotice message={notice} />
+      {checkInStorageError && <p className={styles.error} role="alert">{checkInStorageError}</p>}
       <header className={styles.header}>
         <span className={styles.wordmark}>Я ЖИВОЙ</span>
         <div className={styles.identityWrap}>

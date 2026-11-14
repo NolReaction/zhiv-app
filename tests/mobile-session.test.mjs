@@ -80,3 +80,23 @@ test("logout unmounts the game before clearing account persistence", async () =>
   assert.equal(s.session.getSnapshot().phase, "signed-out");
   s.session.dispose();
 });
+
+test("a renewed native session for the same owner remounts only after fresh journal hydration", async () => {
+  let finish;
+  const reads = [];
+  const s = setup({ getState: async () => ({ ...member("A"), generation: 1 }), hydrate: async owner => {
+    reads.push(owner);
+    if (reads.length === 2) await new Promise(resolve => { finish = resolve; });
+  } });
+  await s.session.initialize();
+  const first = s.session.getSnapshot().generation;
+  s.event({ ...member("A"), generation: 2 });
+  assert.equal(s.session.getSnapshot().phase, "loading");
+  await tick();
+  s.event({ ...member("A"), generation: 1 });
+  finish(); await tick(); await tick();
+  assert.deepEqual(reads, ["A", "A"]);
+  assert.equal(s.session.getSnapshot().phase, "authenticated");
+  assert.ok(s.session.getSnapshot().generation > first);
+  s.session.dispose();
+});

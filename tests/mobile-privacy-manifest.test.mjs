@@ -14,7 +14,7 @@ test("authenticated game and opt-in location no longer ship the lab's empty coll
   const functionality = "NSPrivacyCollectedDataTypePurposeAppFunctionality";
   const analytics = "NSPrivacyCollectedDataTypePurposeAnalytics";
   assert.equal(types.size, manifest.NSPrivacyCollectedDataTypes.length, "categories must not repeat");
-  for (const name of ["Name", "EmailAddress", "UserID", "Contacts", "PreciseLocation", "CoarseLocation",
+  for (const name of ["Name", "EmailAddress", "UserID", "DeviceID", "Contacts", "PreciseLocation", "CoarseLocation",
     "GameplayContent", "OtherUserContent", "ProductInteraction", "CustomerSupport", "OtherDiagnosticData"]) {
     const declaration = types.get(`NSPrivacyCollectedDataType${name}`);
     assert.ok(declaration, name);
@@ -24,6 +24,7 @@ test("authenticated game and opt-in location no longer ship the lab's empty coll
   }
   for (const name of ["Name", "UserID", "GameplayContent", "ProductInteraction"])
     assert.ok(types.get(`NSPrivacyCollectedDataType${name}`).NSPrivacyCollectedDataTypePurposes.includes(analytics), `${name} has existing server analytics`);
+  assert.deepEqual(types.get("NSPrivacyCollectedDataTypeDeviceID").NSPrivacyCollectedDataTypePurposes, [functionality], "push address is for delivery only, not analytics");
   assert.equal(manifest.NSPrivacyTracking, false);
   assert.deepEqual(manifest.NSPrivacyTrackingDomains, []);
 });

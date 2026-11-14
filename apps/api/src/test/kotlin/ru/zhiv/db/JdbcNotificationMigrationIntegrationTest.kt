@@ -37,10 +37,18 @@ class JdbcNotificationMigrationIntegrationTest {
             val preferences = NotificationPreferences(quietHoursEnabled = false, rateLimitsEnabled = false)
             notifications.preferences(token.hash, user.publicId, preferences)
             val encoder = Base64.getUrlEncoder().withoutPadding()
-            notifications.subscribe(token.hash, user.publicId, BrowserPushSubscription(
+            val subscription=BrowserPushSubscription(
                 "https://fcm.googleapis.com/fcm/send/migration-${UUID.randomUUID()}",
                 PushKeys(encoder.encodeToString(ByteArray(65).also { it[0] = 4 }), encoder.encodeToString(ByteArray(16))),
-            ))
+            )
+            // This fixture is deliberately still V49: seed its historical web
+            // registration without calling the latest repository's V84 device budget.
+            source.connection.use { c ->
+                c.economyUpdate("""INSERT INTO notification_subscriptions(endpoint_hash,user_id,session_id,endpoint,p256dh,auth)
+                    SELECT ?,user_id,id,?,?,? FROM app_sessions WHERE token_hash=?""",
+                    notificationEndpointHash(subscription.endpoint),subscription.endpoint,subscription.keys.p256dh,subscription.keys.auth,token.hash)
+                c.commit()
+            }
             val now = Instant.now()
             fun job(id: String, target: String = "garden", rewards: Map<String, Long> = mapOf("berries" to 20)) = EconomyJob(
                 id, "production", target, startedAt = now.minusSeconds(600).toString(), finishesAt = now.minusSeconds(1).toString(), rewards = rewards,

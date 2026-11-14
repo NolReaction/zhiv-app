@@ -62,6 +62,10 @@ class JdbcMobileAuthRepositoryIntegrationTest {
         val user = identities.findSessionUserId(browser.hash)
         val grant = mobile.exchange(code, native.hash, 365)
         assertEquals(user, grant.userId); assertEquals(user, identities.findSessionUserId(native.hash))
+        source.connection.use { c ->
+            assertEquals("ios", c.economyRows("SELECT mobile_platform FROM app_sessions WHERE token_hash=?", native.hash) { it.getString(1) }.single())
+            assertNull(c.economyRows("SELECT mobile_platform FROM app_sessions WHERE token_hash=?", browser.hash) { it.getString(1) }.single())
+        }
         assertTrue(auth.access(native.hash).sessions.any { it.current && it.label == "Мохлик · iOS" })
         assertFailsWith<AuthFailure> { mobile.exchange(code, newSession().hash, 365) }
         auth.revoke(native.hash)

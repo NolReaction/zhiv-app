@@ -1,3 +1,4 @@
+import { isStoragePromise } from "@/lib/client-journal-storage";
 import { ApiError } from "@/lib/check-in-api";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { BOAT_CAST_CYCLE_MS } from "@/features/economy/domain/boat-cast-aim";
@@ -7,6 +8,7 @@ import { parsePreparedBoatEntries, preparedBoatJournalKey, preparedBoatOutcome, 
 import type { JournalStorage } from "./production-journal";
 
 type Dependencies = {
+  lifetime?: () => number;
   snapshot: () => EconomyView | null; confirmed: () => boolean; now: () => number;
   storage: () => JournalStorage | undefined; canSend: () => boolean; localAllowed: () => boolean; canReserve: () => boolean; preferPrepared: () => boolean;
   legacyLanding: () => BoatReelCommand | undefined;
@@ -21,38 +23,54 @@ type Dependencies = {
 export function createPreparedBoatQueue(owner: string | null, deps: Dependencies) {
   let entries: PreparedBoatEntry[] = [], blockedUntil = 0, failures = 0;
   let request: AbortController | null = null, sending: Promise<void> | null = null;
-  let failedStorage = false;
+  let failedStorage = false, saving = false, saveSequence = 0;
   const key = owner ? preparedBoatJournalKey(owner) : "";
-  const save = (next: PreparedBoatEntry[]) => {
+  const save = (next: PreparedBoatEntry[]): boolean | Promise<boolean> => {
     const storage = deps.storage();
-    if (!storage || !owner) return false;
-    try {
-      if (next.length) storage.setItem(key, JSON.stringify({ version: 1, owner, entries: next }));
-      else storage.removeItem(key);
+    if (!storage || !owner || saving) return false;
+    const generation = deps.lifetime?.(), sequence = ++saveSequence;
+    const current = () => sequence === saveSequence && generation === deps.lifetime?.();
+    const failed = () => {
+      if (current()) {
+        saving = false;
+        failedStorage = true;
+        deps.changed({ storageError: "Не удалось сохранить заброс на устройстве. Освободите место и перезапустите приложение." });
+      }
+      return false;
+    };
+    const committed = () => {
+      if (!current()) return false;
+      saving = false;
       entries = next;
       if (failedStorage) { failedStorage = false; deps.changed({ storageError: null }); }
       return true;
-    } catch {
-      failedStorage = true;
-      deps.changed({ storageError: "Не удалось сохранить заброс на устройстве. Освободите место в браузере." });
-      return false;
-    }
+    };
+    try {
+      const result = next.length ? storage.setItem(key, JSON.stringify({ version: 1, owner, entries: next })) : storage.removeItem(key);
+      if (isStoragePromise(result)) {
+        saving = true; deps.changed();
+        return result.then(committed, failed);
+      }
+      return committed();
+    } catch { return failed(); }
   };
+  function accepted(result: boolean | Promise<boolean>, callback: () => void): boolean | Promise<boolean> {
+    const complete = (saved: boolean) => { if (saved) callback(); return saved; };
+    return isStoragePromise(result) ? result.then(complete) : complete(result);
+  }
   const project = () => {
     const voyage = deps.snapshot()?.boat?.voyage, legacy = deps.legacyLanding();
     const legacyChallenge = voyage?.challenge;
     const legacyCaught = !!legacyChallenge && !!legacy && preparedBoatOutcome(legacyChallenge, legacy) === "caught";
     return projectPreparedBoat(voyage, entries, deps.now(), legacy?.challengeId, legacyCaught);
   };
-  const available = (projected: ReturnType<typeof project>) => !!projected.next && !!deps.storage() && !failedStorage
+  const available = (projected: ReturnType<typeof project>) => !!projected.next && !!deps.storage() && !failedStorage && !saving
     && deps.localAllowed() && deps.canReserve() && (entries.length > 0 || deps.preferPrepared());
   function begin(voyageId: string, heldMs: number) {
     const projected = project(), { next, template } = projected;
     if (!next || !template || deps.snapshot()?.boat?.voyage?.id !== voyageId || !available(projected)
       || !Number.isSafeInteger(heldMs) || heldMs < 0 || heldMs > BOAT_CAST_CYCLE_MS) return false;
-    if (!save([...entries, { voyageId, castNumber: template.castNumber, castHeldMs: heldMs, challenge: next }])) return false;
-    deps.changed();
-    return true;
+    return accepted(save([...entries, { voyageId, castNumber: template.castNumber, castHeldMs: heldMs, challenge: next }]), () => deps.changed());
   }
   function finish(voyageId: string, reel: BoatReelCommand) {
     const entry = entries.at(-1);
@@ -60,10 +78,7 @@ export function createPreparedBoatQueue(owner: string | null, deps: Dependencies
       || preparedBoatOutcome(entry.challenge, reel) === null) return false;
     const trace: BoatReelCommand = { ...reel, inputs: reel.inputs.map(input => ({ ...input })), deferred: true,
       prepared: { castNumber: entry.castNumber, startedAt: entry.challenge.startedAt, castHeldMs: entry.castHeldMs } };
-    if (!save([...entries.slice(0, -1), { ...entry, reel: trace }])) return false;
-    deps.changed();
-    void drain();
-    return true;
+    return accepted(save([...entries.slice(0, -1), { ...entry, reel: trace }]), () => { deps.changed(); void drain(); });
   }
   function expireDraft() {
     const draft = entries.at(-1);
@@ -78,7 +93,7 @@ export function createPreparedBoatQueue(owner: string | null, deps: Dependencies
     if (error instanceof ApiError && error.status === 401) deps.sessionLost();
   }
   async function deliver(signal: AbortSignal) {
-    if (failedStorage && !save(entries)) return;
+    if (failedStorage && !await save(entries)) return;
     while (!signal.aborted && deps.canSend() && owner && entries[0]?.reel && performance.now() >= blockedUntil) {
       const head = entries[0];
       let command = head.command;
@@ -92,16 +107,16 @@ export function createPreparedBoatQueue(owner: string | null, deps: Dependencies
           if (!snapshot) return;
           if (voyage?.id !== head.voyageId || voyage.castsUsed + 1 !== head.castNumber || voyage.challenge || voyage.returnStartedAt
             || !voyage.preparedCasts?.some(ticket => ticket.castNumber === head.castNumber && ticket.id === head.challenge.id)) {
-            if (save([])) deps.changed({ error: "Рейс успел измениться на другом устройстве. Обновили улов по данным сервера." });
+            if (await save([])) deps.changed({ error: "Рейс успел измениться на другом устройстве. Обновили улов по данным сервера." });
             return;
           }
           command = { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: snapshot.revision,
             targetId: head.voyageId, action: "submit_boat_cast", quantity: 1, totalPrice: 0, reel: head.reel };
-          if (!save([{ ...head, command }, ...entries.slice(1)])) return;
+          if (!await save([{ ...head, command }, ...entries.slice(1)])) return;
         }
         const result = await deps.send(command, signal);
         if (signal.aborted || !deps.adopt(result.state)) return;
-        if (!save(entries.slice(1))) return;
+        if (!await save(entries.slice(1))) return;
         blockedUntil = 0; failures = 0;
         deps.changed({ notice: result.message, syncError: null });
       } catch (error) {
@@ -117,17 +132,17 @@ export function createPreparedBoatQueue(owner: string | null, deps: Dependencies
         if (error.body?.code === "ECONOMY_REVISION_CONFLICT" && command && fresh.revision > command.expectedRevision
           && fresh.boat?.voyage?.id === head.voyageId && !fresh.boat.voyage.challenge && fresh.boat.voyage.castsUsed + 1 === head.castNumber
           && fresh.boat.voyage.preparedCasts?.some(slot => slot.id === head.challenge.id && slot.castNumber === head.castNumber)) {
-          if (!save([{ ...head, command: undefined }, ...entries.slice(1)])) return;
+          if (!await save([{ ...head, command: undefined }, ...entries.slice(1)])) return;
           continue;
         }
-        if (save([])) deps.changed({ error: error.message, syncError: null });
+        if (await save([])) deps.changed({ error: error.message, syncError: null });
         return;
       }
     }
   }
   function drain() {
     if (sending) return sending;
-    if (!entries[0]?.reel || !deps.canSend() || performance.now() < blockedUntil) return Promise.resolve();
+    if (saving || !entries[0]?.reel || !deps.canSend() || performance.now() < blockedUntil) return Promise.resolve();
     const current = new AbortController();
     request = current;
     const task = Promise.resolve().then(() => deliver(current.signal));
@@ -143,22 +158,23 @@ export function createPreparedBoatQueue(owner: string | null, deps: Dependencies
       // definitively supersedes this reservation. An unknown ACK must still replay.
       const head = entries[0], voyage = snapshot.boat?.voyage;
       if (head && !head.command && (voyage?.id !== head.voyageId || voyage.returnStartedAt || voyage.castsUsed >= head.castNumber)) {
-        if (save([])) deps.changed({ notice: "Рейс изменился на другом устройстве. Загружен актуальный улов." });
+        void accepted(save([]), () => deps.changed({ notice: "Рейс изменился на другом устройстве. Загружен актуальный улов." }));
       }
     },
     hasEntries: () => entries.length > 0,
     hasTerminal: () => !!entries[0]?.reel,
     isDraft: (id: string) => entries.some(entry => !entry.reel && entry.challenge.id === id),
-    isSending: () => request !== null,
+    isSending: () => request !== null || saving,
+    isSaving: () => saving,
     restore() {
       try { entries = owner ? parsePreparedBoatEntries(deps.storage()?.getItem(key) ?? null, owner) : []; }
       catch { failedStorage = true; }
     },
-    pause() { request?.abort(); request = null; sending = null; },
+    pause() { saveSequence++; saving = false; request?.abort(); request = null; sending = null; },
     view() {
       const projection = project();
       return { localBoatVoyage: projection.localBoatVoyage, localBoatCatches: projection.localBoatCatches,
-        preparedBoatChallengeId: projection.preparedBoatChallengeId, preparedBoatCastAvailable: available(projection), preparedBoatPending: !!entries.length, preparedBoatSending: request !== null };
+        preparedBoatChallengeId: projection.preparedBoatChallengeId, preparedBoatCastAvailable: available(projection), preparedBoatPending: !!entries.length, preparedBoatSending: request !== null || saving };
     },
   };
 }

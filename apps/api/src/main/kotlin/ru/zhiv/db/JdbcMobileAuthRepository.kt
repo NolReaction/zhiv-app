@@ -79,9 +79,9 @@ class JdbcMobileAuthRepository(private val source: DataSource) : MobileAuthRepos
         if (sessions >= 100) throw AuthFailure("AUTH_SESSION_LIMIT", "Закройте ненужные сеансы в разделе «Устройства»", 409)
         val label = if (authorization.platform == "ios") "Мохлик · iOS" else "Мохлик · Android"
         val expires = c.query("""
-            INSERT INTO app_sessions(user_id,token_hash,device_label,expires_at)
-            VALUES (?,?,?,clock_timestamp()+(?*interval '1 day')) RETURNING expires_at
-        """.trimIndent(), user, newSessionHash, label, sessionDays) { it.getObject(1, OffsetDateTime::class.java).toInstant().toString() }
+            INSERT INTO app_sessions(user_id,token_hash,device_label,mobile_platform,expires_at)
+            VALUES (?,?,?,?,clock_timestamp()+(?*interval '1 day')) RETURNING expires_at
+        """.trimIndent(), user, newSessionHash, label, authorization.platform, sessionDays) { it.getObject(1, OffsetDateTime::class.java).toInstant().toString() }
             ?: error("Mobile session insert failed")
         c.update("UPDATE mobile_authorization_codes SET consumed_at=clock_timestamp() WHERE code_hash=?", authorization.codeHash)
         MobileSessionGrant(user, expires)

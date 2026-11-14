@@ -30,7 +30,7 @@ async function start() {
     await initializeMobileTransport(() => session.getSnapshot());
     const platform = Capacitor.getPlatform();
     configureClientPlatform({
-      kind: platform === "ios" ? "ios" : "android", appVersion: "0.2.0",
+      kind: platform === "ios" ? "ios" : "android", appVersion: "0.3.0",
       login: () => session.login(), logout: () => NativeBridge.logout(), openAccount: () => NativeBridge.openWebsite({ path: "/?auth=account-proof" }),
       openDiagnostics: () => window.dispatchEvent(new Event("mochlik:open-diagnostics")),
     });
@@ -44,6 +44,8 @@ async function start() {
     // Import runtime/game modules only after account-specific journals and settings are restored.
     const { installNativeHardware } = await import("./native-hardware");
     cleanup.push(await installNativeHardware());
+    const { installNativeRemotePush } = await import("./native-remote-push");
+    cleanup.push(await installNativeRemotePush());
     const { installNativeLocationPublisher } = await import("./native-location-publisher");
     await installNativeLocationPublisher();
     const { MobileApplication } = await import("./mobile-app");

@@ -44,6 +44,7 @@ next-env.d.ts
 /apps/engine/node_modules/
 /apps/mobile/dist/
 /apps/mobile/node_modules/
+/apps/mobile/.sites-runtime/
 /packages/engine/dist/
 /packages/engine/node_modules/
 /.wrangler/
@@ -69,3 +70,10 @@ deploy/runtime/*
 
 # Git handoff archives are imported locally, not committed into the project.
 *.bundle
+
+# Mobile provider configuration and signing material stay local.
+/apps/mobile/android/app/google-services.json
+/apps/mobile/ios/App/App/GoogleService-Info.plist
+*.p8
+*.p12
+*.mobileprovision

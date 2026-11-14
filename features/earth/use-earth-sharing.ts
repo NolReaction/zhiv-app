@@ -4,7 +4,7 @@ import { useCallback, useLayoutEffect, useMemo, useSyncExternalStore } from "rea
 import { createEarthSharingController } from "./sharing";
 import type { EarthShareOptions } from "./sharing";
 import type { EarthPosition } from "./location";
-import { getEarthLocationPreferenceStore } from "./location-preferences";
+import { getEarthLocationPreferenceStore, withEarthLocationPreference } from "./location-preferences";
 import * as transport from "./sharing-api";
 import { createNativeEarthPublisher } from "./native-publisher";
 
@@ -40,10 +40,10 @@ export function useEarthSharing({ ownerPublicId, visible, publicationVisible = v
     controller.setContext({ visible, publicationVisible: publicationVisible && choice.enabled, isOnline, automaticResumeAllowed: choice.automaticStartAllowed });
   }, [controller, preference, visible, publicationVisible, isOnline, locationChoice.enabled, locationChoice.automaticStartAllowed]);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getServerSnapshot);
-  const share = useCallback((options: EarthShareOptions) => preference.allowAutomaticStart() ? controller.share(options) : Promise.resolve(false), [controller, preference]);
-  const resume = useCallback((resumeGhost = false) => preference.allowAutomaticStart() ? controller.resume(resumeGhost) : Promise.resolve(false), [controller, preference]);
-  const setFrozen = useCallback((circleId: string, frozen: boolean) => frozen || preference.allowAutomaticStart()
-    ? controller.setFrozen(circleId, frozen) : Promise.resolve(false), [controller, preference]);
+  const share = useCallback((options: EarthShareOptions) => Promise.resolve(withEarthLocationPreference(preference, () => controller.share(options))), [controller, preference]);
+  const resume = useCallback((resumeGhost = false) => Promise.resolve(withEarthLocationPreference(preference, () => controller.resume(resumeGhost))), [controller, preference]);
+  const setFrozen = useCallback((circleId: string, frozen: boolean) => frozen ? controller.setFrozen(circleId, true)
+    : Promise.resolve(withEarthLocationPreference(preference, () => controller.setFrozen(circleId, false))), [controller, preference]);
   const ghost = useCallback(() => { if (preference.getSnapshot().enabled) controller.ghost(); }, [controller, preference]);
   const setPosition = useCallback((position: EarthPosition | null) => controller.setPosition(preference.getSnapshot().enabled ? position : null), [controller, preference]);
   return { ...state, nativePublishing: !!nativePublisher, share, resume, ghost, off: controller.off,

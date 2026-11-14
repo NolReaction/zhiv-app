@@ -68,7 +68,12 @@ class JdbcNotificationRepository(private val source: DataSource, private val pus
             // invalidates the old subscription before a new account can bind it.
             val previous=c.economyRows("SELECT user_id FROM notification_subscriptions WHERE endpoint_hash=? FOR UPDATE",endpointHash) { it.getObject(1,UUID::class.java) }.singleOrNull()
             if(previous!=null && previous!=a.user) throw AuthFailure("PUSH_SUBSCRIPTION_CONFLICT","Отключите прежнюю подписку этого браузера и подключите снова",409)
-            val count=c.economyRows("SELECT count(*) FROM notification_subscriptions WHERE user_id=? AND session_id<>?",a.user,a.session) { it.getInt(1) }.single()
+            val count=c.economyRows("""SELECT count(*) FROM (
+                SELECT n.session_id FROM notification_subscriptions n JOIN app_sessions s ON s.id=n.session_id
+                    WHERE n.user_id=? AND n.session_id<>? AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
+                UNION SELECT n.session_id FROM native_notification_subscriptions n JOIN app_sessions s ON s.id=n.session_id
+                    WHERE n.user_id=? AND n.session_id<>? AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
+            ) devices""",a.user,a.session,a.user,a.session) { it.getInt(1) }.single()
             if(count>=5) throw AuthFailure("PUSH_DEVICE_LIMIT","Уведомления уже подключены на пяти устройствах",409)
             c.economyUpdate("DELETE FROM notification_subscriptions WHERE user_id=? AND session_id=? AND endpoint_hash<>?",a.user,a.session,endpointHash)
             val changed=c.economyUpdate("""INSERT INTO notification_subscriptions(endpoint_hash,user_id,session_id,endpoint,p256dh,auth)

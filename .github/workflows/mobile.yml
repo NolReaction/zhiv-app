@@ -12,6 +12,7 @@ on:
       - 'app/globals.css'
       - 'public/**'
       - 'scripts/mobile-config.mjs'
+      - 'scripts/check-mobile-version.mjs'
       - 'tests/earth-native-location.test.mjs'
       - 'tests/mobile-*.test.mjs'
       - 'tests/native/**'
@@ -60,9 +61,9 @@ jobs:
           if-no-files-found: error
 
   ios:
-    name: iOS simulator build
+    name: iOS simulator and device builds
     runs-on: macos-15
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -87,3 +88,10 @@ jobs:
         run: |
           xcrun swiftc apps/mobile/ios/App/App/MobileRequestPolicy.swift tests/native/ios/MobileRequestPolicyTests.swift -o "$RUNNER_TEMP/mobile-request-policy-tests"
           "$RUNNER_TEMP/mobile-request-policy-tests"
+      - name: Compile iPhone target without signing
+        run: >-
+          xcodebuild -project ios/App/App.xcodeproj -scheme App
+          -destination 'generic/platform=iOS'
+          -derivedDataPath ios/DeviceDerivedData
+          CODE_SIGNING_ALLOWED=NO build
+        working-directory: apps/mobile

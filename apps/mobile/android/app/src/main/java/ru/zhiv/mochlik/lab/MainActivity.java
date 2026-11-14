@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     @Override public void onCreate(Bundle savedInstanceState) {
         // A cold start has no in-memory PKCE verifier. Do not expose the old proof to WebView.
         if (isNativeAuthIntent(getIntent())) setIntent(sanitized(getIntent()));
+        setIntent(NativePushPolicy.cleanIntent(this, getIntent()));
         registerPlugin(MochlikNativePlugin.class);
         registerPlugin(MochlikStoragePlugin.class);
         registerPlugin(MochlikLocationPlugin.class);
@@ -26,7 +27,9 @@ public class MainActivity extends BridgeActivity {
             super.onNewIntent(clean);
             return;
         }
-        super.onNewIntent(intent);
+        Intent cleanPush = NativePushPolicy.cleanIntent(this, intent);
+        setIntent(cleanPush);
+        super.onNewIntent(cleanPush);
     }
 
     private static boolean isNativeAuthIntent(Intent intent) {

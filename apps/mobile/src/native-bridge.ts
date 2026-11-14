@@ -5,6 +5,8 @@ export interface NativeSessionState {
   configured: boolean;
   userId?: string;
   expiresAt?: string;
+  /** In-process session epoch; contains no credential. */
+  generation?: number;
 }
 
 export interface NativeRequest {
@@ -32,6 +34,10 @@ export interface MochlikNativePlugin {
   cancelRequest(options: { id: string }): Promise<void>;
   openWebsite(options: { path: string }): Promise<void>;
   getSafeArea(): Promise<NativeSafeArea>;
+  registerRemotePush(options: { expectedUserId: string; expectedSessionGeneration: number }): Promise<{ token: string }>;
+  getPushConfiguration(): Promise<{ configured: boolean; reason: string | null; platform: "ios" | "android" }>;
+  activateRemotePush(options: { expectedUserId: string; expectedSessionGeneration: number; ownerPublicId: string }): Promise<void>;
+  stopRemotePush(options: { expectedUserId: string | null; expectedSessionGeneration: number }): Promise<void>;
   addListener(event: "sessionChange", listener: (state: NativeSessionState) => void): Promise<PluginListenerHandle>;
   addListener(event: "memoryWarning", listener: (event: { level?: string }) => void): Promise<PluginListenerHandle>;
   addListener(event: "safeAreaChange", listener: (insets: NativeSafeArea) => void): Promise<PluginListenerHandle>;

@@ -30,7 +30,7 @@ export type GameSyncSnapshot = {
 };
 type QueuedTaps = { runId: string; count: number; times?: number[]; deferred?: boolean };
 export type GameTapInput = { id: string; runId: string; count: number; capturedAt: number };
-type GameTransport = {
+export type GameTransport = {
   progress(signal: AbortSignal): Promise<GameProgress>;
   session(body: GameSessionRequest, signal: AbortSignal): Promise<GameSession>;
   batch(body: GameBatchRequest, signal: AbortSignal): Promise<GameBatchResponse>;

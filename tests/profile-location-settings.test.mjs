@@ -85,3 +85,19 @@ test("requesting state cannot launch a second check but can be stopped", () => {
   assert.ok(result.button("Остановить"));
   assert.match(result.markup, /Ждём координаты от браузера/);
 });
+
+test("native persistence blocks lookup while pending, retains OFF control and offers explicit restart on failure", () => {
+  const pending = view({ persistence: { pending: true, error: null } });
+  assert.equal(pending.button("Проверить геопозицию").props.disabled, true);
+  assert.match(pending.markup, /Сохраняем выбор на устройстве/);
+  assert.doesNotMatch(pending.markup, /Поиск начнётся после сохранения/);
+  pending.toggle.props.onCheckedChange(false);
+  assert.deepEqual(pending.calls, [["enabled", false]], "pending persistence never blocks a privacy restriction");
+  let restarted = 0;
+  const failed = view({ enabled: false, persistence: { pending: false, error: "Перезапустите приложение и проверьте настройку." }, onRestart: () => restarted++ });
+  assert.equal(failed.button("Проверить геопозицию"), undefined);
+  assert.match(failed.markup, /Геопозиция выключена/);
+  assert.equal(restarted, 0, "rendering a storage error never reloads automatically");
+  failed.button("Перезапустить приложение").props.onClick();
+  assert.equal(restarted, 1);
+});
