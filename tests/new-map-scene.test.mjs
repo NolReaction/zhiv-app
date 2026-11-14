@@ -1388,7 +1388,7 @@ test("authored shadow lighting integrates ground and night masks with the scene 
 test("authored shadow lighting keeps building lamps when DEV disables only building shadows", async () => {
   const site = { id: "home", label: "Дом", bounds: { x: 600, y: 600, width: 120, height: 120 },
     anchor: { x: 660, y: 720 }, entry: { x: 660, y: 730 }, hitArea: [], collision: [], initialLevel: 1,
-    states: [{ level: 1, label: "Дом", image: "/test/home-level-1.png" }] };
+    states: [{ level: 1, label: "Дом", image: "/test/home-vector-1.webp" }] };
   const receiver = { id: "light-test-ground", height: 0,
     points: [{ x: 480, y: 500 }, { x: 880, y: 500 }, { x: 880, y: 860 }, { x: 480, y: 860 }] };
   const caster = { id: "home-volume", height: 65, baseHeight: 0, opacity: 1, softness: 1,

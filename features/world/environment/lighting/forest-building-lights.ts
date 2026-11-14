@@ -17,6 +17,15 @@ type ArtworkLamp = {
   contour?: readonly (readonly [number, number])[];
 };
 
+// The cabin grows around its doorstep. The lantern glass stays in the same
+// place on the 480 × 400 artboard at every upgrade.
+const homeLamps: readonly ArtworkLamp[] = [{
+  id: "home-lantern", u: 257 / 480, v: 255 / 400, width: 6 / 480, height: 9.5 / 400,
+  radius: .7, intensity: 1.1,
+  contour: [[254 / 480, 250.5 / 400], [260 / 480, 251.5 / 400],
+    [259.3 / 480, 260 / 400], [254.5 / 480, 259 / 400]],
+}];
+
 // The five workshop cutouts share the same 480 × 360 artboard. Coordinates below
 // are taken from the painted glass, forge opening and central dormer pane.
 const workshopWindow: ArtworkLamp = {
@@ -39,11 +48,11 @@ const workshopWithLoft = [workshopWindow, workshopLantern, workshopForge, worksh
 // Normalized positions belong to these exact cutouts, never to a map location.
 // Moving, resizing or rotating the active Tiled visual therefore moves its lamp too.
 const artworkLamps: Record<string, readonly ArtworkLamp[]> = {
-  "home-level-1.png": [{ id: "home-lantern", u: .529, v: .638, width: .035, height: .041, radius: .67, intensity: 1.1 }],
-  "home-level-2.png": [{ id: "home-lantern", u: .534, v: .665, width: .034, height: .04, radius: .7, intensity: 1.1 }],
-  "home-level-3.png": [{ id: "home-lantern", u: .537, v: .673, width: .034, height: .04, radius: .7, intensity: 1.1 }],
-  "home-level-4.png": [{ id: "home-lantern", u: .546, v: .666, width: .034, height: .04, radius: .7, intensity: 1.1 }],
-  "home-level-5.png": [{ id: "home-lantern", u: .56, v: .65, width: .034, height: .04, radius: .7, intensity: 1.1 }],
+  "home-vector-1.webp": homeLamps,
+  "home-vector-2.webp": homeLamps,
+  "home-vector-3.webp": homeLamps,
+  "home-vector-4.webp": homeLamps,
+  "home-vector-5.webp": homeLamps,
   "quarry-lvl-1.png": [{ id: "quarry-lantern", u: .895, v: .549, width: .035, height: .041, radius: .46, intensity: 1.18 }],
   "quarry-lvl-2.png": [{ id: "quarry-lantern", u: .895, v: .548, width: .035, height: .041, radius: .46, intensity: 1.18 }],
   "quarry-lvl-3.png": [{ id: "quarry-lantern", u: .895, v: .546, width: .035, height: .041, radius: .46, intensity: 1.18 }],

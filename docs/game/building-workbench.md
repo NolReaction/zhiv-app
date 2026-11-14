@@ -50,7 +50,7 @@
 
 | `siteId` | Доступные уровни | Рисунки |
 |---|---|---|
-| `home` | 1–5 | `home-level-1.png` … `home-level-5.png` |
+| `home` | 1–5 | Дом-пень, `home-vector-1.webp` … `home-vector-5.webp`. [Редактируемые рисунки](../../art/world/home-vector/index.html) |
 | `workshop` | 0–5 | Руины `forest-workshop-level-0.png`, затем `forest-workshop-vector-1.webp` … `forest-workshop-vector-5.webp` из векторных исходников |
 | `quarry` | 0–5 | Шесть вариантов `quarry-lvl-0.png` … `quarry-lvl-5.png`, каждый со своими контурами и входом |
 | `woodlot` | Нет рисунка | Старый навес снят; экономика сохранена, анимируемое рабочее место отложено |

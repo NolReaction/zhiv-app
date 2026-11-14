@@ -1,11 +1,11 @@
 # Изображения, загружаемые игрой
 
-Мастера фона и куста находятся в `art/world/prototype/`; пять уровней дома пока хранятся только как PNG в `public/world/prototype/`. Полный порядок экспорта: **[art/README.md](../../art/README.md)**.
+Мастера фона и куста находятся в `art/world/prototype/`; векторные исходники дома находятся в `art/world/home-vector/`. Полный порядок экспорта: **[art/README.md](../../art/README.md)**.
 
 | Файл | Назначение |
 | --- | --- |
 | `prototype/forest-ground.webp` | Единая новая карта для основной игры, круглой камеры и `/prototype/tiled-world`; 2560 × 2560, WebP без потерь |
-| `prototype/home-level-1.png` … `home-level-5.png` | Пять вариантов дома; рисунок, рамка, точки и коллизия выбираются вместе из Tiled |
+| `prototype/home-vector-1.webp` … `home-vector-5.webp` | Пять вариантов дома; рисунок, рамка, точки и коллизия выбираются вместе из Tiled |
 | `buildings/quarry/quarry-lvl-0.png` … `quarry-lvl-5.png` | Шесть уровней шахты с раздельной геометрией в Tiled |
 | `buildings/market/market-lvl-0.png`, `market-lvl-1.png` | Закрытый и открытый рынок; переключается по полученному мосту |
 | `buildings/leaftail-caravan/leaftail-caravan-lvl-0.png`, `leaftail-caravan-lvl-1.png` | Палатка до прибытия и лавка после знакомства с Листохвостом |

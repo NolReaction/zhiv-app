@@ -37,7 +37,7 @@ test("building prerequisites have separate named rows, current and target levels
   assert.doesNotMatch(html, /data-building-requirement="garden"/);
   assert.match(text(html), /Дом Мохлика Сейчас ур\. 1 Нужен ур\. 2/);
   assert.match(text(html), /Мастерская Не построено Нужен ур\. 1/);
-  assert.match(html, /data-building-art="home"[^>]*background-image:url\(\/world\/prototype\/home-level-2\.png\)/);
+  assert.match(html, /data-building-art="home"[^>]*background-image:url\(\/world\/prototype\/home-vector-2\.webp\)/);
   assert.match(html, /data-building-art="workshop"[^>]*background-image:url\(\/world\/prototype\/forest-workshop-vector-1\.webp\)/);
   const links = elements(tree).filter(element => element.type === "button");
   assert.equal(links.length, 1, "unavailable destinations remain readable without dead controls");

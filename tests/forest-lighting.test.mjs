@@ -103,18 +103,26 @@ test("every new mine illustration lights its painted lantern while level zero st
 
 test("actual map uses one aligned home lamp at every level plus the working mine/workshop/lighthouse", async () => {
   const map = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
-  const positions = [];
+  const homeSite = map.sites.find(site => site.id === "home");
+  const { siteImagePoint } = await vite.ssrLoadModule("/features/world/tiled/site-image.ts");
   for (let level = 1; level <= 5; level++) {
     const sources = forestLightSources(map, { levels: { home: level, quarry: 1, workshop: 2, lighthouse: 1 } });
     assert.equal(new Set(sources.map(light => light.id)).size, sources.length);
     const home = sources.filter(light => light.id === "home-lantern");
     assert.equal(home.length, 1); assert.ok(home[0].glass);
-    positions.push(JSON.stringify(home[0].position));
+    const visual = homeSite.states.find(state => state.level === level);
+    assert.deepEqual(home[0].position, siteImagePoint(visual.geometry, 257 / 480, 255 / 400));
+    assert.equal(home[0].glass.contour.length, 4);
+    const file = fileURLToPath(new URL(`../public${visual.image}`, import.meta.url));
+    const pixels = sharp(file);
+    const { width, height } = await pixels.metadata();
+    const { data } = await pixels.extract({ left: Math.round(width * 257 / 480),
+      top: Math.round(height * 255 / 400), width: 1, height: 1 }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    assert.ok(data[3] > 240 && data[0] > 185 && data[0] - data[2] > 50, `home ${level} lights the painted amber glass`);
     for (const id of ["quarry-lantern", "workshop-lantern", "workshop-window", "lighthouse-lens"]) {
       assert.ok(sources.find(light => light.id === id)?.glass, id);
     }
   }
-  assert.equal(new Set(positions).size, 5, "home lamp follows every distinct cutout");
   const sources = forestLightSources(map, { levels: { quarry: 0, workshop: 0, lighthouse: 0 } });
   assert.equal(sources.some(light => ["quarry", "workshop", "lighthouse"].includes(light.siteId)), false);
   map.lights.find(light => light.id === "home-lantern").intensity = 0;

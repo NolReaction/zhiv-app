@@ -1,6 +1,6 @@
 # Fixed-site home art edits
 
-> Historical artwork record for the first Tiled prototype. The patches and commands below belong to that prototype and are not the current five houses. Current images are `public/world/prototype/home-level-1.png` through `home-level-5.png`, with separate geometry in Tiled. Use the [building workbench](building-workbench.md) and [artwork guide](../../art/README.md) for new edits; old source plates remain in Git history.
+> Historical artwork record for the first Tiled prototype. The patches and commands below belong to that prototype and are not the current five houses. Current playable images are `public/world/prototype/home-vector-1.webp` through `home-vector-5.webp`, with separate geometry in Tiled. Use the [building workbench](building-workbench.md) and [artwork guide](../../art/README.md) for new edits; old source plates remain in Git history.
 
 ## Editable files at the time of the prototype
 
