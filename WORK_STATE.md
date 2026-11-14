@@ -1,59 +1,36 @@
-# Мобильный перенос · продолжение 14 ноября 2026
+# Мохлик · мобильный клиент 0.3.1
 
-Ветка `experiment/native-mobile` от `master` `493d399`, draft [PR №41](https://github.com/NolReaction/zhiv-app/pull/41). Мобильная версия 0.3.0/build 3 «Мохлик · Тест», ID прежний `ru.zhiv.mochlik.lab`. `master`/production не менялись, развёртывание не выполнялось. [Инструкция и точное покрытие](docs/development/native-mobile.md).
+Ветка `experiment/native-mobile`, draft [PR №41](https://github.com/NolReaction/zhiv-app/pull/41), база `master` `493d399`. Версия 0.3.1/build 4, app ID `ru.zhiv.mochlik.lab`. Master, production, реальные аккаунты и ключи провайдеров не менялись.
 
-## Этап 0.3.0: реализация и проверки
+## Текущий этап: Android на Kotlin
 
-- SQLite schema v2 сохраняет прежние receipts и добавляет mutable journals: непереданное производство, подготовленную и завершённую рыбалку, активный fishing checkpoint, тап/input-журнал, действия мира, награды и отметки. Чтения идут из подтверждённого кэша, записи реально ожидаются до UI/сети. CAS, FIFO, лимиты и owner/session/gameplay-generation fences предотвращают перезапись и поздние подтверждения чужого сеанса.
-- Перенесены private location preference и ожидающий OFF/GHOST. Выключение немедленно ограничивает поиск/передачу, включение ждёт записи. Ошибка диска не мешает попытке серверного отзыва, но блокирует последующее расширение согласия до перезапуска. При новом запуске ACTIVE становится READY; системное разрешение не сбрасывается.
-- APNs HTTP/2 и FCM HTTP v1 доставляют mail/checkin через общую серверную очередь, настройки, quiet hours и бюджеты. Добавлены привязанные к сеансу устройства, ротация, revoke/ban/source recheck, timeout/uncertain и V84. Локальные игровые таймеры остаются отдельными.
-- Нативный opt-in, доступность сборки/сервера, безопасные tap-переходы и Android data-only показ с проверкой владельца. Реальные push не отправлялись: credentials не подключены. Подробности — [native-push.md](docs/operations/native-push.md).
-- Новая auth-generation повторно гидратирует хранилище даже при входе в тот же UUID. Исправлены поздние save/delete ACK после закрытия экрана. Android FCM registration/delete сериализованы нативным барьером.
-- Версии/app ID проверяются `mobile:check`. CI дополнен unsigned iPhone-device build наряду с simulator и проверкой фактического merged manifest Android push-службы. Privacy manifest учитывает адрес push-доставки.
+По просьбе пользователя все 12 собственных Android-классов и два прежних JUnit-набора переведены с Java на Kotlin. Код — `apps/mobile/android/app/src/main/kotlin/ru/zhiv/mochlik/lab`, тесты — `src/test/kotlin/ru/zhiv/mochlik/lab`. Новые собственные Android-модули пишутся на Kotlin; готовые зависимости Capacitor/Android не переписываются.
 
-Код `0e89c11` прошёл полный [общий CI](https://github.com/NolReaction/zhiv-app/actions/runs/43601654526) и [native CI](https://github.com/NolReaction/zhiv-app/actions/runs/43601654519); оба workflow и все их jobs завершены успешно:
+- Kotlin 2.3.21, AGP 8.13.2, Gradle 8.14.3, JDK/JVM target 21. Сгенерированные Capacitor Gradle-файлы остаются управляемыми `cap sync`.
+- Сохранены имена плагинов/методов и классов Android, callback разрешения, SQLite schema v2/имя базы/SQL, Preferences и Keystore alias/AES-GCM AAD. Перевод языка не требует удаления приложения или сброса данных; обновление требует прежней подписи.
+- Сохранены очереди и глобальные блокировки, ссылочные проверки запросов/Task, session/generation/epoch/launch-ticket fences, пределы HTTP, отмена и timeout, foreground service, условия приватности и push opt-in.
+- Исправлена существовавшая в Java ошибка push-поколения: Capacitor `getLong` не принимает обычный JSON Integer. Три операции теперь используют строгий `NativePushGeneration` для Int/Long в безопасном диапазоне JavaScript; неверные типы/дроби/отрицательные значения отклоняются. Добавлены тесты реального JSObject/PluginCall JSON roundtrip.
+- `NativeBridgeContractTest` проверяет публичные JVM-имена/сигнатуры, конструкторы компонентов и reflection callback после перевода. Дополнена проверка null Intent extras. Предыдущие assertions сохранены.
+- Независимая проверка исправила nullable `onNewIntent`/LocationManager и явное Float→Double для прежнего JSON-представления точности. Интерфейс игры остаётся общим React/TypeScript; iOS-код остаётся Swift.
 
-- Native CI завершён успешно: **186/186** профильных JS-тестов; Android assembleDebug/lintDebug/testDebugUnitTest и проверка слитого manifest; iOS Simulator, unsigned iPhone target и исполняемые Swift policy-проверки. [Android APK этой версии](https://github.com/NolReaction/zhiv-app/actions/runs/43601654519/artifacts/14115449992).
-- Ktor/PostgreSQL: **1401/1401**, без пропусков, ошибок и падений; в том числе 12 native PostgreSQL и 20 provider transport тестов. Миграции/подарки **79/79**, рынки/коллекции **172/172**. Engine/editor и secret scan прошли.
-- Production Compose прошёл: сборка, API/edge, обновление восстановленной БД, проверка сохранности существующих аккаунтов и штатных reset-инструментов. Использовалась изолированная CI-база, рабочий сервер не менялся.
-- Общий web-набор: **8756/8756** (2787 + 3064 + 2905), без ошибок, пропусков, отмен и TODO; итоговый `Web checks` — success. Next/VPS, Sites, TypeScript, ESLint, architecture/world/audio и проверка свежести экономического отчёта прошли во всех трёх частях.
+## Проверки текущих изменений
 
-Завершающий коммит поверх `0e89c11` меняет только этот отчёт и две инструкции: уточняет границу отзыва после offline logout и перечисляет проверку iPhone target/Android manifest. Код, конфигурация сборок и тесты совпадают с проверенным коммитом.
+- Локально: **186/186** mobile JS tests, TypeScript, ESLint, architecture **1334 modules**, mobile build и cap sync обеих платформ — success.
+- Android: полный Gradle `assembleDebug lintDebug testDebugUnitTest` прошёл, после последних nullable-правок повторно прошли app APK/lint/JUnit; **16/16** собственных Kotlin-тестов, без ошибок/пропусков. Проверен фактический merged manifest push-службы.
+- Secret scan: 0 находок. Проверка свежести экономического отчёта: 68 сценариев. Финальные проверки GitHub Actions начнутся после публикации; прошлые результаты ниже не подменяют проверку Kotlin-версии.
+- Собственный Java-код удалён из Android main/test; новые Kotlin-файлы проверены сравнением с предыдущим коммитом `f08f710`.
 
-Локально также прошли TypeScript, ESLint, архитектура, mobile build/cap sync, Next/VPS build и профильные регрессии. Исправлена задержка browser journal из-за лишнего async-перехода: браузер сохраняет синхронное поведение, native по-прежнему ждёт SQLite commit. Существующие тесты offline/audio сохранены; профильные повторные проверки **128/128 + 13/13** прошли. Миграционные assertions обновлены под V84; проверка Android manifest имеет положительные и отрицательные сценарии.
+## Ранее проверенная основа
 
-Входные 138 файлов экономического отчёта не изменились; штатный `build-progression-report --check` подтверждает существующие 68 сценариев. Нового полного пересчёта и изменения игровых цен на этом этапе нет.
+Мобильный перенос 0.3.0: код `0e89c11`, [общий CI](https://github.com/NolReaction/zhiv-app/actions/runs/43601654526) и [native CI](https://github.com/NolReaction/zhiv-app/actions/runs/43601654519) — success. Web 8756/8756, Ktor/PostgreSQL 1401/1401, migration/gifts79/79, markets172/172, mobile186/186, iOS Simulator/unsigned device, Android APK/lint/JUnit и isolated Compose upgrade/reset rehearsal. Подробная история — в коммитах.
 
-## Основа предыдущего этапа 0.2.0
+Основа включает общий AppShell, PKCE/native HTTP и защищённый мобильный сеанс, SQLite receipts/journals, GPS/добровольный фон, локальные таймеры и APNs/FCM для mail/checkin, память/lifecycle/safe-area/sharing. [Точное покрытие и установка](docs/development/native-mobile.md), [push](docs/operations/native-push.md), [privacy](docs/development/native-mobile-privacy.md).
 
-- Настоящий общий AppShell вместо лаборатории: лес, экономика, рыбалка, карта, профиль. Отдельная Vite-сборка, общие компоненты и ресурсы, без PWA installation/service-worker слоя. Лаборатория доступна отдельно.
-- PKCE/state + явное браузерное подтверждение аккаунта, `/mobile/connect`, одноразовые двухминутные коды, мобильный bearer и V83. Нативные HTTP, Keychain/Keystore, cookie/redirect isolation, контроль origin/path/размера/таймаутов. Токены не выдаются JS. Веб-CSRF сохранён.
-- UI немедленно скрывается при смене аккаунта; гидратация сериализована. Запросы проверяют владельца и поколение до/после ожиданий, включая SQLite acknowledgement.
-- SQLite подтверждала запись перед отправкой идемпотентных экономических команд и восстанавливала исходные requestId через существующую reconciliation. Preferences были подключены к выбранным настройкам. На этапе 0.2.0 непереданные производственные/рыболовные/тап-журналы ещё использовали WebView; в 0.3.0 они перенесены в SQLite.
-- Нативные foreground GPS и отдельная фоновая передача с явным account-scoped opt-in: iOS Core Location, Android location foreground service. Один publisher в обоих режимах, server consent/epoch/TTL/precision/freshness, остановка по privacy/session changes, без истории маршрута/автостарта после смерти процесса.
-- Локальные игровые напоминания, quiet hours/лимиты/владелец, сеть, lifecycle, safe-area, вибрация, системное sharing, внешние ссылки. Пауза звука/рендера и очистка неиспользуемых audio/mip-кэшей по memory warning.
-- В V83 обновлены строгие migration inventories, backup/reset проверки: игровое обнуление сохраняет mobile proof, полный сброс пользователей удаляет. Никаких реальных сбросов не выполнялось. Docker web-build теперь копирует manifest мобильного workspace до npm ci.
+Экономические правила на этом этапе не менялись. Канонический расчёт: 68 сценариев, 1 468 155 команд, 138 исходников; [свидетельство](docs/game/economy-v15-final-simulation.md). Повторный расчёт из-за смены языка Android не требуется.
 
-## Проверки предыдущего этапа
+## Внешние условия и ручная приёмка
 
-Код коммита `84f5d13` прошёл полный [CI](https://github.com/NolReaction/zhiv-app/actions/runs/43446141163) и [native CI](https://github.com/NolReaction/zhiv-app/actions/runs/43446141036):
-
-- Web: **8642/8642**, без ошибок, отмен и пропусков (shards 2931 + 2535 + 3176); сводный `Web checks` — success. Next/VPS и Sites build, TypeScript, ESLint, architecture/world/audio, свежесть отчёта прошли во всех shard.
-- iOS simulator build и исполняемые Swift policy проверки; Android assembleDebug/lintDebug/testDebugUnitTest; **83/83** профильных mobile-теста. [Тестовый Android APK](https://github.com/NolReaction/zhiv-app/actions/runs/43446141036/artifacts/14047134280).
-- Полный Ktor/PostgreSQL, миграции/подарки, рынки, движок/editor и secret scan рабочего дерева/всей истории — success.
-- Production Compose: сборка, API/edge, обновление восстановленной БД и все reset-проверки — success. Рабочий сервер не использовался.
-
-Исправлены два изолированных тестовых стенда: alias в weather harness и render через React в настройках геопозиции. Assertions сохранены, добавлено сравнение обычного SSR с capture-render; оба исправления входят в успешный полный прогон. На завершении того этапа `c0433a1` обновлял только итоговый документ поверх проверенного `84f5d13`. Эти результаты не подменяют проверки новых изменений 0.3.0.
-
-Локально также прошли mobile build + cap sync обеих платформ (8 официальных плагинов плюс Native/Storage/Location, ресурсы около 92 МБ), 149/149 соседних location/sharing проверок и штатные проверки отчёта. Старый прерванный локальный web-прогон не используется как свидетельство; итоговые числа взяты из свежего полного CI.
-
-Повторный расчёт экономики завершён: **68 сценариев, 1 468 155 команд, 138 исходников**; все поля сценариев и политика точно совпали с каноническими. GeneratedAt `2026-11-13T14:05:14.251Z`, SHA-256 полного JSON `54c2917c11a9a7e0ef36314e854cb50a8b51ce11adf3b325057cf653cc670b19`. Штатные adoption/--check и 19/19 тестов отчёта прошли; свежесть подтверждена в итоговом CI. Оба JSON обновлены; частичные попытки не засчитывались. Подробности и границы расчёта — `docs/game/economy-v15-final-simulation.md`. Проверки свежести не отключались.
-
-Первый диагностический стенд проверен пользователем на физическом iPhone: системное разрешение, координаты (заявленная погрешность 11–15 м), повторный запуск после закрытия. Это не приёмка полной версии, Android, background delivery или батареи.
-
-## Следующие проверки и внешние условия
-
-1. Для нового мобильного входа развернуть совместимые web/API из ветки штатным отдельным действием; старый production этого протокола не содержит. Затем `npm ci && npm run mobile:sync` и запуск через Xcode/Android Studio.
-2. Пройти физическую матрицу из инструкции: аккаунты/перезапуск/потерянные ответы, оба GPS-разрешения, OFF/призрак/отзыв, фон/экран, уведомления, батарея/память.
-
-Перед реальной push-доставкой нужны Apple/Firebase credentials и соответствующая подписанная сборка; для старого мобильного сеанса после V84 нужен один новый вход. TestFlight/Google Play не настроены. Косметические UI-черновики и кэши могут оставаться в WebView; перенос этих данных не нужен для подтверждённого журнала действий. После принудительного закрытия непрерывная геопередача не обещается.
+1. Для полного входа нужны совместимые web/API из ветки с V83/V84, развёртывание выполняется отдельно. Затем `npm ci`, `npm run mobile:sync`, `npm run mobile:ios` или `npm run mobile:android`.
+2. Реальные APNs/FCM требуют Apple/Firebase credentials и соответствующей сборки. Старому мобильному сеансу до V84 нужен новый вход. Реальные push не отправлялись, TestFlight/Google Play не настроены.
+3. На физических iPhone/Android проверить обновление без удаления, вход/смену аккаунта, SQLite-восстановление, GPS/фон/отзыв/призрак, уведомления, память и батарею по матрице. Первую лабораторию пользователь проверял на iPhone; это не приёмка полной версии.
+4. После принудительного закрытия непрерывная геопередача не обещается. Offline logout удаляет локальный доступ, но серверный отзыв может не завершиться. UI-кэши могут оставаться в WebView; неподтверждённые действия Safari/Chrome автоматически не импортируются.

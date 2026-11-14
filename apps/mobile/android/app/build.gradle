@@ -1,4 +1,12 @@
 apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+kotlin {
+    jvmToolchain(21)
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+    }
+}
 
 android {
     namespace = "ru.zhiv.mochlik.lab"
@@ -7,8 +15,8 @@ android {
         applicationId "ru.zhiv.mochlik.lab"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
-        versionName "0.3.0"
+        versionCode 4
+        versionName "0.3.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -39,6 +47,7 @@ dependencies {
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
     implementation "com.google.firebase:firebase-messaging:25.0.1"
     testImplementation "junit:junit:$junitVersion"
+    testImplementation 'org.json:json:20250517'
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')

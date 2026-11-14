@@ -30,7 +30,7 @@ async function start() {
     await initializeMobileTransport(() => session.getSnapshot());
     const platform = Capacitor.getPlatform();
     configureClientPlatform({
-      kind: platform === "ios" ? "ios" : "android", appVersion: "0.3.0",
+      kind: platform === "ios" ? "ios" : "android", appVersion: "0.3.1",
       login: () => session.login(), logout: () => NativeBridge.logout(), openAccount: () => NativeBridge.openWebsite({ path: "/?auth=account-proof" }),
       openDiagnostics: () => window.dispatchEvent(new Event("mochlik:open-diagnostics")),
     });
