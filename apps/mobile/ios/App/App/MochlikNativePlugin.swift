@@ -157,7 +157,7 @@ public final class MochlikNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthen
     }
 
     @objc func request(_ call: CAPPluginCall) {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [self] in
             do {
                 try self.prepareSession()
                 guard let origin = self.origin, let id = call.getString("id"),
@@ -210,7 +210,7 @@ public final class MochlikNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthen
     }
 
     @objc func logout(_ call: CAPPluginCall) {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [self] in
             var previous = self.sessionRecord
             do { try self.prepareSession(); previous = self.sessionRecord }
             catch { /* A failed read must not prevent a requested local logout. */ }
@@ -244,7 +244,7 @@ public final class MochlikNativePlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthen
     }
 
     @objc func login(_ call: CAPPluginCall) {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [self] in
             do {
                 try self.prepareSession()
                 guard self.authCall == nil else { call.reject("Вход уже открыт", "AUTH_BUSY"); return }
