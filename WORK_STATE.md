@@ -13,16 +13,17 @@
 
 ## Проверки этого этапа
 
-- Mobile JS: **195/195**. Профильные location/presence/preferences/sharing-panel тесты также прошли; новые сценарии проверяют автопоиск, отзыв разрешения, OFF/ghost, смену экранов, подтверждение записи и смену аккаунта.
-- TypeScript, ESLint, architecture (**1335 modules**), mobile build и `cap sync` iOS/Android прошли. Secret scan: 0 находок.
-- Добавлен `npm run test:mobile-layout`: реальный CSS pipeline, навигация и настройки, пять сочетаний viewport/insets (два экрана в каждом). Проверка включает край прокрутки, вырезы, dock и последний элемент. Локальный Chromium не запускается из-за ограничения Unix sockets среды; выполнение перенесено в отдельный CI job со снимками экрана. Результат ещё ожидается.
-- Android APK/lint/JUnit прошли локально: **16/16** Kotlin-тестов и проверка merged push manifest. CI текущего кода ещё выполняется. Браузерный стенд использует заданные зависимости, отдельный контейнер на экран как в AppShell и ожидание layout; добавлен снимок и геометрия при ошибке. CDP задаёт реальные CSS env()-insets, включая конфликт с нулевым значением Capacitor. Итоговый браузерный прогон ещё ожидается. Проверки предыдущей 0.3.1: [native](https://github.com/NolReaction/zhiv-app/actions/runs/43616319573), [общий CI](https://github.com/NolReaction/zhiv-app/actions/runs/43616319605). Они не заменяют проверки 0.3.2.
+- Проверяемый код: `98b55b19b8739fb2d9c9b99bcee61c3f2aa55739`. Последующее обновление отчёта/инструкции не меняет приложение, тесты или конфигурацию сборки.
+- [Native CI](https://github.com/NolReaction/zhiv-app/actions/runs/43654335153) полностью прошёл: **195/195 mobile JS**, Android APK/lint/JUnit/merged manifest; iOS Simulator и unsigned iPhone target; **49 Swift assertions**. Локальные JUnit XML подтверждают **16/16 Kotlin-тестов**, 0 ошибок/пропусков.
+- Браузерная геометрия: **10/10** сценариев, Chromium 151, 0 ошибок JavaScript. Проверены малый экран, iPhone, landscape, новые/старые Android WebView, реальные CSS env()-insets и конфликт со специально нулевым значением Capacitor. Снимки просмотрены: края фона, dock, отступы кнопок и доступность нижних настроек. Это проверка CSS-геометрии, не физическая iOS-эмуляция.
+- Локально также прошли профильные location/presence/preferences/sharing/profile тесты, TypeScript, ESLint, architecture (**1335 modules**), mobile build и `cap sync` iOS/Android. Secret scan: 0 находок.
+- [Общий CI](https://github.com/NolReaction/zhiv-app/actions/runs/43654335151) полностью прошёл: **8767/8767 веб-тестов** в трёх шардах, 0 ошибок/пропусков; Ktor/PostgreSQL, engine/editor, миграции/подарки, рынок/коллекции, Next/VPS и Sites, production Compose и репетиция обновления на изолированной БД. Пользовательский production при этом не менялся.
+- [Android APK проверенного кода](https://github.com/NolReaction/zhiv-app/actions/runs/43654335153/artifacts/14137447792), [снимки геометрии](https://github.com/NolReaction/zhiv-app/actions/runs/43654335153/artifacts/14136873411).
 
 ## Следующий шаг и ограничения
 
-1. Дождаться CI, исправить замечания браузерной проверки и зафиксировать итоговые результаты/ссылки.
-2. Пользователю обновить ветку, выполнить `npm ci`, `npm run mobile:sync`, `npm run mobile:ios` и Run в Xcode с прежней подписью. Удаление приложения не требуется. Серверной миграции для этого этапа нет; полный клиент требует уже совместимый web/API с V83/V84.
-3. На iPhone и Android проверить реальные safe areas/поворот/клавиатуру, автопоиск и отказ, фон при блокировке, OFF/призрак, потерю сети, память и батарею. Принудительное закрытие и ограничения ОС могут остановить геопередачу.
-4. APNs/FCM требуют Apple/Firebase credentials и проверки доставки; реальные провайдеры не подключались. TestFlight/Google Play не настроены. Draft PR не означает готовность магазинного релиза.
+1. Пользователю обновить ветку, выполнить `npm ci`, `npm run mobile:sync`, `npm run mobile:ios` и Run в Xcode с прежней подписью. Удаление приложения не требуется. Серверной миграции для этого этапа нет; полный клиент требует уже совместимый web/API с V83/V84.
+2. На iPhone и Android проверить реальные safe areas/поворот/клавиатуру, автопоиск и отказ, фон при блокировке, OFF/призрак, потерю сети, память и батарею. Принудительное закрытие и ограничения ОС могут остановить геопередачу.
+3. APNs/FCM требуют Apple/Firebase credentials и проверки доставки; реальные провайдеры не подключались. TestFlight/Google Play не настроены. Draft PR не означает готовность магазинного релиза.
 
 Инструкции: [мобильный клиент](docs/development/native-mobile.md), [push](docs/operations/native-push.md), [privacy](docs/development/native-mobile-privacy.md).
