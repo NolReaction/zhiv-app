@@ -33,6 +33,26 @@ function storable(response: Response) {
     && (type.startsWith("audio/") || type === "application/octet-stream");
 }
 
+/** Capacitor iOS serves bundled media as URLResponse, so WebKit exposes status
+ * zero despite a readable local file. Normalize it before cloning the stream;
+ * Response's constructor rejects status zero. Network/opaque errors stay errors. */
+function bundledAudioResponse(response: Response, key: string, baseUrl?: string): Response {
+  if (!baseUrl || response.status !== 0 || !response.body
+    || !["basic", "default"].includes(response.type)) return response;
+  try {
+    const base = new URL(baseUrl);
+    if (base.protocol !== "capacitor:" || base.hostname !== "localhost" || base.port || base.username || base.password) return response;
+    const requested = new URL(key, base);
+    const received = new URL(response.url);
+    // Custom schemes have the string origin "null". Compare their actual URL,
+    // not origin, so a different scheme/host/path cannot be accepted as local.
+    if (received.href !== requested.href) return response;
+    const type = response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
+    if (type && !type.startsWith("audio/") && type !== "application/octet-stream") return response;
+    return new Response(response.body, { status: 200, headers: response.headers });
+  } catch { return response; }
+}
+
 async function boundedBytes(response: Response, limit: number, signal: AbortSignal) {
   const reader = response.body?.getReader();
   if (!reader) return null;
@@ -60,6 +80,7 @@ async function boundedBytes(response: Response, limit: number, signal: AbortSign
 
 export function createAudioAssetTransport(options: {
   fetchAsset: typeof fetch; cacheStorage?: CacheStorage; maxStoredBytes?: number; maxEntries?: number;
+  bundledAudioBaseUrl?: string;
 }) {
   const budget = Math.max(0, options.maxStoredBytes ?? DEFAULT_AUDIO_STORAGE_BUDGET);
   const entryLimit = Math.min(MAX_ENTRY_BYTES, budget);
@@ -156,8 +177,9 @@ export function createAudioAssetTransport(options: {
     const cached = await optionalStorage(() => readStored(key), null);
     if (disposed || signal.aborted) throw abortError();
     if (cached) return cached;
-    const response = await options.fetchAsset(key, { ...init, signal });
+    const fetched = await options.fetchAsset(key, { ...init, signal });
     if (disposed || signal.aborted) throw abortError();
+    const response = bundledAudioResponse(fetched, key, options.bundledAudioBaseUrl);
     // Persistence is optional: audio may consume the network response immediately,
     // even if an IndexedDB-backed cache is slow or blocked in another tab.
     const declared = Number(response.headers.get("content-length"));

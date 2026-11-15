@@ -46,6 +46,7 @@ export type AudioRuntimeOptions = {
   random?: () => number;
   maxDecodedBytes?: number;
   cacheStorage?: CacheStorage;
+  bundledAudioBaseUrl?: string;
 };
 
 const finiteClamp = (value: number, low: number, high: number, fallback = low) => Number.isFinite(value) ? Math.max(low, Math.min(high, value)) : fallback;
@@ -109,7 +110,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   const parameterRamps = new WeakMap<AudioParam, ParameterRamp>();
   const loopParameters = createAudioParameterSmoother({ get currentTime() { return context?.currentTime ?? 0; } });
   const transport = createAudioAssetTransport({ fetchAsset: options.fetchAsset ?? ((...args) => fetch(...args)),
-    cacheStorage: options.cacheStorage });
+    cacheStorage: options.cacheStorage, bundledAudioBaseUrl: options.bundledAudioBaseUrl });
   const preparedMusic = new Map<string, { url: string; bytes: number }>();
   const pendingMusic = new Map<string, Promise<void>>();
   const preparationControllers = new Set<AbortController>();
