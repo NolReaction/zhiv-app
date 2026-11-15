@@ -17,14 +17,25 @@ type ArtworkLamp = {
   contour?: readonly (readonly [number, number])[];
 };
 
-// The cabin grows around its doorstep. The lantern glass stays in the same
-// place on the 480 × 400 artboard at every upgrade.
-const homeLamps: readonly ArtworkLamp[] = [{
-  id: "home-lantern", u: 257 / 480, v: 255 / 400, width: 6 / 480, height: 9.5 / 400,
+// Coordinates are relative to the top-left of the birch house SVG viewBox (19 30 239 149).
+// The authored dormer window and chimney are drawn from the active Tiled geometry.
+const homeLantern: ArtworkLamp = {
+  id: "home-lantern", u: 104 / 239, v: 105.8 / 149, width: 9 / 239, height: 10 / 149,
   radius: .7, intensity: 1.1,
-  contour: [[254 / 480, 250.5 / 400], [260 / 480, 251.5 / 400],
-    [259.3 / 480, 260 / 400], [254.5 / 480, 259 / 400]],
-}];
+  contour: [[99.65 / 239, 100.3 / 149], [108.47 / 239, 103.7 / 149], [107.93 / 239, 107.1 / 149],
+    [106.11 / 239, 109 / 149], [104.2 / 239, 110 / 149], [101.56 / 239, 106.85 / 149], [100.28 / 239, 104.38 / 149]],
+};
+const homeSideWindow: ArtworkLamp = {
+  id: "home-side-window", u: 148.5 / 239, v: 98.3 / 149, width: 6 / 239, height: 12.1 / 149,
+  radius: .15, intensity: .42,
+  contour: [[145.5 / 239, 96 / 149], [151.5 / 239, 92.2 / 149], [151.5 / 239, 100.5 / 149], [145.5 / 239, 104.3 / 149]],
+};
+const homePantryWindow: ArtworkLamp = {
+  id: "home-pantry-window", u: 35.05 / 239, v: 77 / 149, width: 5.5 / 239, height: 6.6 / 149,
+  radius: .13, intensity: .4,
+  contour: [[32.3 / 239, 73.7 / 149], [37.8 / 239, 75.8 / 149], [37.8 / 239, 80.3 / 149], [32.3 / 239, 78.2 / 149]],
+};
+const homeLamps = [homeLantern, homeSideWindow];
 
 // The five workshop cutouts share the same 480 × 360 artboard. Coordinates below
 // are taken from the painted glass, forge opening and central dormer pane.
@@ -51,8 +62,9 @@ const artworkLamps: Record<string, readonly ArtworkLamp[]> = {
   "home-vector-1.webp": homeLamps,
   "home-vector-2.webp": homeLamps,
   "home-vector-3.webp": homeLamps,
-  "home-vector-4.webp": homeLamps,
-  "home-vector-5.webp": homeLamps,
+  "home-vector-4.webp": [...homeLamps, homePantryWindow],
+  // The extended eave covers the side window on the open veranda.
+  "home-vector-5.webp": [homeLantern, homePantryWindow],
   "quarry-lvl-1.png": [{ id: "quarry-lantern", u: .895, v: .549, width: .035, height: .041, radius: .46, intensity: 1.18 }],
   "quarry-lvl-2.png": [{ id: "quarry-lantern", u: .895, v: .548, width: .035, height: .041, radius: .46, intensity: 1.18 }],
   "quarry-lvl-3.png": [{ id: "quarry-lantern", u: .895, v: .546, width: .035, height: .041, radius: .46, intensity: 1.18 }],

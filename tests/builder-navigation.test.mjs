@@ -195,25 +195,25 @@ test("woodlot construction visits the rabbit home and respects its upgraded exte
   }
 });
 
-test("an authored left-side home marker is not rejected by transparent bush image padding", () => {
-  const source = structuredClone(TILED_WORLD), marker = { x: 594, y: 642 };
-  source.destinations.find(destination => destination.id === "builder-work-home").position = marker;
-  const initial = initialPreviewLevels(source);
-  for (const level of [1, 2, 3, 4, 5]) {
-    const scene = previewWorldScene(source, { ...initial, home: level }), order = job("home", Math.min(5, level + 1));
-    const bounds = scene.terrain.find(terrain => terrain.id === scene.bushes[0].imageId).bounds;
-    assert.ok(marker.x + 20 > bounds.x && marker.x - 20 < bounds.x + bounds.width
-      && marker.y > bounds.y && marker.y - 37.5 < bounds.y + bounds.height, "body overlaps the conservative PNG rectangle");
-    assert.ok(marker.y - 37.5 > Math.max(...scene.bushes[0].points.map(point => point.y)), "body is below the authored leaves");
-    const { route } = checkedRoute(scene, order);
-    assert.deepEqual(route.target.position, marker, `level ${level} uses exactly the authored position`);
-    assert.deepEqual(builderWorkMarkerChecks(scene, order), [{ id: "builder-work-home", position: marker, issues: [] }]);
-    const automatic = structuredClone(scene);
-    automatic.destinations = automatic.destinations.filter(destination => destination.id !== "builder-work-home");
-    for (const stop of builderWorkStops(automatic, order)) assert.ok(stop.position.x + 20 <= bounds.x
-      || stop.position.x - 20 >= bounds.x + bounds.width || stop.position.y <= bounds.y
-      || stop.position.y - 37.5 >= bounds.y + bounds.height, "automatic placement still avoids drawing the worker under a bush");
-  }
+test("an authored work marker can overlap transparent bush padding while automatic placements avoid it", () => {
+  const scene = fixture(), marker = { x: 204, y: 193 }, order = job("home");
+  const bounds = { x: 158, y: 125, width: 50, height: 45 };
+  const bush = { id: "bush", imageId: "bush-art", points: rect(161, 129, 18, 19),
+    entry: { x: 155, y: 145 }, hide: { x: 169, y: 142 } };
+  scene.terrain.push({ id: bush.imageId, bounds });
+  scene.bushes = [bush];
+  scene.destinations.push({ id: "builder-work-home", siteId: "home", position: marker });
+
+  const overlapsImage = point => point.x + 20 > bounds.x && point.x - 20 < bounds.x + bounds.width
+    && point.y > bounds.y && point.y - 37.5 < bounds.y + bounds.height;
+  assert.ok(overlapsImage(marker), "the builder's body overlaps the bush image rectangle");
+  assert.ok(marker.y - 37.5 > Math.max(...bush.points.map(point => point.y)), "his body is below the leaves");
+  assert.deepEqual(checkedRoute(scene, order).route.target.position, marker);
+  assert.deepEqual(builderWorkMarkerChecks(scene, order), [{ id: "builder-work-home", position: marker, issues: [] }]);
+
+  const automatic = { ...scene, destinations: [] };
+  const { stops } = checkedRoute(automatic, order);
+  assert.ok(stops.every(stop => !overlapsImage(stop.position)), "automatic placement keeps the image clear");
 });
 
 test("the reported dryer marker keeps its exact feet without reserving an imaginary walk into the fire", () => {

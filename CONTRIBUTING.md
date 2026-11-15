@@ -26,7 +26,7 @@
 ## Карта и изображения
 
 - Координаты, здания, герой, вода и свет задаются в `world/tiled/forest.tmj`. После правки: `npm run world:export`, затем `npm run world:check`; [правила разметки](docs/game/tiled-editor.md).
-- Мастера изображений обычно лежат в `art/world/`, браузерные изображения — в `public/world/`. Пять уровней дома пока хранятся только как PNG в `public/`; точные пары файлов указаны в [каталоге изображений](art/README.md). Фон JPEG/PNG экспортирует `node scripts/prepare-world-assets.mjs`; затем выполните `world:export` и `world:check`. Эти команды не обновляют PNG домов и куста.
+- Мастера изображений обычно лежат в `art/world/`, браузерные изображения — в `public/world/`. Пять SVG дома находятся в `art/world/home-vector/`. Игровые WebP собирает `node scripts/prepare-home-assets.mjs`, фон леса — `node scripts/prepare-world-assets.mjs`. Затем выполните `npm run world:export` и `npm run world:check`. Привязки и порядок проверки описаны в [каталоге изображений](art/README.md).
 - Проверяйте точку опоры, вход, масштаб пикселя и соответствие масок после замены рисунка. Свет меняется через `Lights`/`forest-lighting.ts`; фон ради освещения перерисовывать не нужно.
 - Рисунок Мохлика — `features/mochlik/pixel-sprite.ts`. Медали — `public/achievements/`; серое состояние задаёт CSS.
 - Перед удалением проверяйте импорты, динамические пути, маршруты, CI и документацию. Отсутствие прямого импорта не означает, что файл не используется.

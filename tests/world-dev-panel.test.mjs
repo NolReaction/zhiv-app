@@ -366,22 +366,22 @@ test("object shortcuts use authored places and account menus without granting a 
     interactiveMapObjects(TILED_WORLD, { showBuildings: false }).map(object => object.place));
 });
 
-test("route diagnostics reject the obsolete authored approach while all selected house entrances remain ready", () => {
+test("route diagnostics accept the authored approach and entrance for every house level", () => {
   for (let home = 1; home <= 5; home++) {
     const { markup } = panel("routes", { state: { ...WORLD_DEV_DEFAULTS, levels: { ...WORLD_DEV_DEFAULTS.levels, home } } });
-    assert.match(markup, /<strong>home-approach<\/strong>: Последняя вершина должна совпадать с home-entry/);
+    assert.match(markup, /<strong>home-approach<\/strong>: Готов к прогулке/);
     assert.match(markup, /<strong>home<\/strong>: Точки перехода готовы/);
   }
   assert.match(panel("appearance").markup, /визуальный масштаб.*Actor.size/);
 });
 
 test("route diagnostics follow selected house geometry rather than a base or cached level", async () => {
-  // The authored legacy line no longer ends at any live home entrance. Give an
-  // isolated fixture one matching state so the UI's selected-level contract
-  // stays observable without modifying Tiled or making that unsafe line valid.
+  // Move one entrance off the route in the fixture so switching back to level
+  // one also checks that its diagnostics were not overwritten by level five.
   const fixture = structuredClone(TILED_WORLD), end = fixture.paths.find(path => path.id === "home-approach").points.at(-1);
-  const geometry = fixture.sites.find(site => site.id === "home").states.find(state => state.level === 1).geometry;
-  geometry.entry = { ...end }; geometry.doorway = { x: end.x, y: end.y - 12 };
+  const home = fixture.sites.find(site => site.id === "home");
+  home.states.find(state => state.level === 1).geometry.entry = { ...end };
+  home.states.find(state => state.level === 5).geometry.entry = { x: end.x + 8, y: end.y };
   const scoped = await createServer({ appType: "custom", configFile: false, root, optimizeDeps: { noDiscovery: true, include: [] },
     resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
     plugins: [{ name: "route-diagnostics-fixture", enforce: "pre",
