@@ -1,4 +1,6 @@
 import { createUuidV4 } from "@/lib/browser-uuid";
+import { clientJournalStorage, isStoragePromise } from "@/lib/client-journal-storage";
+import { getClientPlatform } from "@/lib/client-platform";
 import {
   EARTH_APPROXIMATE_ACCURACY_METERS, EARTH_PEOPLE_POLL_MS, EARTH_POSITION_FUTURE_MS,
   EARTH_POSITION_MAX_AGE_MS, EARTH_POSITION_PUBLISH_MS, EARTH_POSITION_TTL_MS, EARTH_SETTINGS_POLL_MS,
@@ -9,9 +11,11 @@ import {
   type EarthSharingPrecision, type EarthSharingResume, type EarthSharingSettings, type EarthSharingWrite,
 } from "@/lib/earth-sharing-contract";
 import type { EarthPosition } from "./location";
+import type { NativeEarthPublisher } from "./native-publisher";
+import { durableEarthPrivacyStorage, earthPendingPrivacyKey, parsePendingPrivacy, type EarthPendingPrivacy } from "./pending-privacy-storage";
+export type { EarthPendingPrivacy } from "./pending-privacy-storage";
 
 export type EarthShareOptions = { recipientCircleIds: string[]; frozenCircleIds?: string[]; precision: EarthSharingPrecision; durationMinutes: EarthSharingDuration; preserveSharingUntil?: boolean };
-export type EarthPendingPrivacy = { mode: "GHOST" | "OFF"; key: string };
 export type EarthSharingTransport = {
   getEarthSharing(signal?: AbortSignal): Promise<EarthSharingSettings>;
   updateEarthSharing(write: EarthSharingWrite, key: string, signal?: AbortSignal): Promise<EarthSharingSettings>;
@@ -32,31 +36,35 @@ export type EarthSharingEnvironment = {
   now(): number; monotonicNow(): number;
   schedule(callback: () => void, delay: number): unknown; cancel(timer: unknown): void;
   visible(): boolean; onVisibilityChange(callback: () => void): () => void;
-  loadPending(): EarthPendingPrivacy | null; savePending(intent: EarthPendingPrivacy): void;
-  clearPending(key: string): void; onPendingChange(callback: (intent: EarthPendingPrivacy | null) => void): () => void;
+  durablePending?: boolean;
+  loadPending(): EarthPendingPrivacy | null; savePending(intent: EarthPendingPrivacy): void | Promise<void>;
+  clearPending(key: string): void | Promise<void>; onPendingChange(callback: (intent: EarthPendingPrivacy | null) => void): () => void;
   createId(): string;
 };
 const EMPTY: EarthSharingState = { settings: null, people: [], loading: false, saving: false, error: null,
   pendingGhost: false, pendingPrivacyMode: null, publishing: false, lastPublishedAt: null, publicationError: null, publicationGeneration: 0 };
-const pendingKey = (owner: string) => `zhiv:earth:pending-privacy:v1:${owner}`;
-function parsePending(value: unknown): EarthPendingPrivacy | null {
-  if (!value || typeof value !== "object") return null;
-  const intent = value as Partial<EarthPendingPrivacy>;
-  return (intent.mode === "GHOST" || intent.mode === "OFF") && typeof intent.key === "string"
-    && /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i.test(intent.key)
-    ? { mode: intent.mode, key: intent.key } : null;
-}
 /** Storage and cross-tab notifications contain only an owner-scoped hide intent. */
 export function browserEarthSharingEnvironment(owner: string): EarthSharingEnvironment {
-  const storageKey = pendingKey(owner);
+  const runtime = {
+    now: Date.now, monotonicNow: () => performance.now(), schedule: (callback: () => void, delay: number) => setTimeout(callback, delay),
+    cancel: (timer: unknown) => clearTimeout(timer as ReturnType<typeof setTimeout>), visible: () => !document.hidden,
+    onVisibilityChange(callback: () => void) { document.addEventListener("visibilitychange", callback); return () => document.removeEventListener("visibilitychange", callback); },
+    createId: createUuidV4,
+  };
+  const native = clientJournalStorage(owner);
+  if (native) {
+    let legacy: Pick<Storage, "getItem" | "removeItem"> | undefined;
+    try { legacy = window.localStorage; } catch { /* SQLite remains authoritative. */ }
+    return { ...runtime, ...durableEarthPrivacyStorage(owner, native, legacy) };
+  }
+  if (getClientPlatform()) throw new Error("Хранилище геопозиции ещё не готово. Перезапустите приложение.");
+  const storageKey = earthPendingPrivacyKey(owner);
   const channel = typeof BroadcastChannel === "function" ? new BroadcastChannel(storageKey) : null;
   const read = () => {
-    try { return parsePending(JSON.parse(window.localStorage.getItem(storageKey) ?? "null")); } catch { return null; }
+    try { return parsePendingPrivacy(JSON.parse(window.localStorage.getItem(storageKey) ?? "null")); } catch { return null; }
   };
   return {
-    now: Date.now, monotonicNow: () => performance.now(), schedule: (callback, delay) => setTimeout(callback, delay),
-    cancel: timer => clearTimeout(timer as ReturnType<typeof setTimeout>), visible: () => !document.hidden,
-    onVisibilityChange(callback) { document.addEventListener("visibilitychange", callback); return () => document.removeEventListener("visibilitychange", callback); },
+    ...runtime,
     loadPending: read,
     savePending(intent) {
       try { window.localStorage.setItem(storageKey, JSON.stringify(intent)); }
@@ -65,11 +73,10 @@ export function browserEarthSharingEnvironment(owner: string): EarthSharingEnvir
     clearPending(key) { if (read()?.key === key) { window.localStorage.removeItem(storageKey); channel?.postMessage(null); } },
     onPendingChange(callback) {
       const storage = (event: StorageEvent) => { if (event.key === storageKey) callback(read()); };
-      const message = (event: MessageEvent) => { callback(event.data === null ? null : parsePending(event.data)); };
+      const message = (event: MessageEvent) => { callback(event.data === null ? null : parsePendingPrivacy(event.data)); };
       window.addEventListener("storage", storage); channel?.addEventListener("message", message);
       return () => { window.removeEventListener("storage", storage); channel?.removeEventListener("message", message); channel?.close(); };
     },
-    createId: createUuidV4,
   };
 }
 function statusOf(error: unknown): number | undefined {
@@ -82,9 +89,10 @@ function retryDelay(error: unknown, attempt: number): number {
 type Work = { abort: AbortController; generation: number; started: number };
 
 /** Account-owned sharing resumes only the confirmed audience on a visible map. GPS is separate. */
-export function createEarthSharingController({ ownerPublicId: owner, transport, getEnvironment = browserEarthSharingEnvironment, onSessionLost = () => {} }: {
+export function createEarthSharingController({ ownerPublicId: owner, transport, getEnvironment = browserEarthSharingEnvironment, onSessionLost = () => {}, nativePublisher = null }: {
   ownerPublicId: string | null; transport: EarthSharingTransport;
   getEnvironment?: (owner: string) => EarthSharingEnvironment; onSessionLost?: () => void;
+  nativePublisher?: NativeEarthPublisher | null;
 }) {
   let state = EMPTY, environment: EarthSharingEnvironment | null = null;
   let active = false, visible = false, publicationVisible = false, online = false, authLost = false, generation = 0, visibilityGeneration = 0;
@@ -92,6 +100,8 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
   let automaticResumeRetries = 0;
   let readNotBefore = -Infinity;
   let pending: EarthPendingPrivacy | null = null, privacyAttempts = 0;
+  let pendingSave: object | null = null, privacyStorageError: string | null = null, privacyReadable = true;
+  let privacyServerConfirmedKey: string | null = null;
   let metadata: Work | null = null, feed: Work | null = null, enabling: Work | null = null, resuming: Work | null = null, upload: Work | null = null, privacy: Work | null = null, preferences: Work | null = null;
   const stops = new Set<AbortController>(), listeners = new Set<() => void>();
   const timers: Record<"poll" | "settings" | "expiry" | "publish" | "privacy", unknown> = { poll: null, settings: null, expiry: null, publish: null, privacy: null };
@@ -100,7 +110,7 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
   const timerEpochs = { poll: 0, settings: 0, expiry: 0, publish: 0, privacy: 0 };
   let serverWall = -Infinity, serverMono = 0;
   const now = () => environment!.monotonicNow();
-  const foreground = () => active && !authLost && !!owner && visible && online && !!environment?.visible();
+  const foreground = () => active && !authLost && privacyReadable && !!owner && visible && online && !!environment?.visible();
   const publicationForeground = () => foreground() && publicationVisible;
   function publish(patch: Partial<EarthSharingState>) { state = { ...state, ...patch }; for (const listener of listeners) listener(); }
   function cancelTimer(name: keyof typeof timers) {
@@ -165,6 +175,7 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
       .finally(() => stops.delete(controller));
   }
   function stopPublishing(reason?: string) {
+    nativePublisher?.stop();
     resumeAttempted = true;
     if (enabling) { enabling.abort.abort(); enabling = null; publish({ saving: privacy !== null || preferences !== null }); }
     if (resuming) { resuming.abort.abort(); resuming = null; publish({ saving: privacy !== null || preferences !== null }); }
@@ -226,12 +237,13 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
     }
   }
   function refresh() { if (pending) void flushPrivacy(); else { void readMetadata(); void readPeople(); } }
-  function abortForeground() {
+  function abortForeground(preserveNative = false) {
     visibilityGeneration += 1;
     for (const request of [metadata, feed, enabling, resuming, upload]) request?.abort.abort();
     metadata = feed = enabling = resuming = upload = null;
     for (const name of ["poll", "settings", "expiry", "publish"] as const) cancelTimer(name);
-    stopPublishing(); publish({ people: [], loading: false, saving: privacy !== null || preferences !== null });
+    if (!preserveNative) stopPublishing();
+    publish({ people: [], loading: false, saving: privacy !== null || preferences !== null });
   }
   function receivePending(intent: EarthPendingPrivacy | null) {
     if (intent?.key === pending?.key) return;
@@ -245,14 +257,39 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
       if (intent.mode === "OFF") publishedDeadline = Infinity;
       publish({ settings, pendingGhost: true, pendingPrivacyMode: intent.mode,
         ...(intent.mode === "OFF" ? { lastPublishedAt: null, publicationError: null } : {}) });
-      void flushPrivacy();
+      privacyServerConfirmedKey = null;
+      if (environment?.durablePending) persistPrivacy(intent); else void flushPrivacy();
     } else {
       publish({ pendingGhost: false, pendingPrivacyMode: null });
       if (foreground()) refresh();
     }
   }
+  function storageFailed() {
+    privacyStorageError = "Не удалось сохранить скрытие геопозиции на устройстве. Передача остановлена; перезапустите приложение для восстановления сохранения.";
+    publish({ error: privacyStorageError });
+  }
+  function persistPrivacy(intent: EarthPendingPrivacy) {
+    const epoch = generation, token = {};
+    pendingSave = token; publish({ saving: true });
+    const currentSave = () => active && epoch === generation && pendingSave === token && pending?.key === intent.key;
+    const complete = (failed: boolean) => {
+      if (!currentSave()) return;
+      pendingSave = null;
+      if (failed) storageFailed();
+      publish({ saving: privacy !== null });
+      // Emergency server revocation still runs if disk fails, but expansion stays
+      // blocked and the durable error cannot be dismissed by a network success.
+      void flushPrivacy();
+    };
+    try {
+      const result = environment!.savePending(intent);
+      if (isStoragePromise(result)) void result.then(() => complete(false), () => complete(true));
+      else complete(false);
+    } catch { complete(true); }
+  }
   async function flushPrivacy() {
-    if (!active || authLost || !online || !pending || privacy || !owner) return;
+    if (!active || authLost || !online || !pending || pendingSave || privacy || !owner
+      || privacyStorageError && privacyServerConfirmedKey === pending.key) return;
     cancelTimer("privacy");
     const intent = pending, request = work(); privacy = request; publish({ saving: true });
     // A persisted intent can be replayed by another tab or after F5. Keep its
@@ -265,17 +302,34 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
       if (!current(request, false) || privacy !== request) return;
       if (value.mode !== intent.mode) throw new Error("Сервер не подтвердил скрытие геопозиции");
       if (pending?.key === intent.key) {
-        environment!.clearPending(intent.key); pending = null; privacyAttempts = 0;
+        privacyServerConfirmedKey = intent.key;
+        if (privacyStorageError) {
+          applySettings(value, request.started);
+          publish({ error: `${privacyStorageError} Сервер подтвердил скрытие.` });
+          return;
+        }
+        try {
+          const cleared = environment!.clearPending(intent.key);
+          if (isStoragePromise(cleared)) await cleared;
+        } catch (error) {
+          if (!environment?.durablePending) throw error;
+          if (current(request, false) && privacy === request && pending?.key === intent.key) storageFailed();
+          return;
+        }
+        // A newer OFF can arrive while SQLite is clearing an older GHOST.
+        if (!current(request, false) || privacy !== request || pending && pending.key !== intent.key) return;
+        pending = null; privacyAttempts = 0;
         applySettings(value, request.started); publish({ pendingGhost: false, pendingPrivacyMode: null, error: null });
       }
     } catch (error) {
       if (current(request, false) && privacy === request) {
         failed(error, "Скрытие пока не подтверждено сервером");
+        if (privacyStorageError) publish({ error: privacyStorageError });
         if (statusOf(error) !== 401 && pending && online) schedule("privacy", retryDelay(error, privacyAttempts++), () => { void flushPrivacy(); });
       }
     } finally {
       if (privacy === request) {
-        privacy = null; if (active) publish({ saving: false });
+        privacy = null; if (active) publish({ saving: pendingSave !== null });
         if (active && !authLost && pending && timers.privacy === null && online) void flushPrivacy();
         else if (active && !pending && foreground()) refresh();
       }
@@ -284,7 +338,9 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
   function hide(mode: "GHOST" | "OFF") {
     if (!active || !owner) return;
     const intent = { mode, key: environment!.createId() };
-    try { environment!.savePending(intent); } catch { publish({ error: "Не удалось сохранить команду скрытия в браузере; дождитесь подтверждения сервера" }); }
+    if (!environment!.durablePending) {
+      try { environment!.savePending(intent); } catch { publish({ error: "Не удалось сохранить команду скрытия в браузере; дождитесь подтверждения сервера" }); }
+    }
     receivePending(intent);
   }
   const sameIds = (first: string[], second: string[]) => first.length === second.length && first.every(id => second.includes(id));
@@ -294,10 +350,16 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
   function consentUnexpired(settings: EarthSharingSettings) {
     return !settings.sharingUntil || deadline(settings.sharingUntil) > now();
   }
-  function adoptPublisher(value: EarthSharingSettings) {
+  function adoptPublisher(value: EarthSharingSettings, requestPermission = true) {
     publisher = value.publicationEpoch;
     sequence = 0; usedFixTime = -Infinity; minimumFixTime = environment!.now(); lastPublishAt = -Infinity; queuedFix = null;
     publish({ publishing: true, publicationError: null, publicationGeneration: state.publicationGeneration + 1 });
+    if (nativePublisher) {
+      const adopted = publisher;
+      void nativePublisher.adopt(value, { requestPermission }).catch(() => {
+        if (active && publisher === adopted) stopPublishing("Не удалось запустить передачу геопозиции на устройстве");
+      });
+    }
     expirePeople();
   }
   function maybeResumeAutomatically() {
@@ -331,7 +393,7 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
       sharingDeadline = Infinity;
       applySettings(value, request.started);
       if (!consentUnexpired(value)) { if (value.publicationEpoch) sendStop(value.publicationEpoch); throw new Error("Время обмена геопозицией истекло"); }
-      if (publicationForeground() && value.publicationEpoch) adoptPublisher(value);
+      if (publicationForeground() && value.publicationEpoch) adoptPublisher(value, !automatically);
       else if (value.publicationEpoch) sendStop(value.publicationEpoch);
       void readPeople();
       return true;
@@ -475,6 +537,7 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
     } finally { if (upload === request) { upload = null; if (queuedFix) void sendPosition(); } }
   }
   function setPosition(position: EarthPosition | null) {
+    if (nativePublisher) return;
     queuedFix = null;
     if (!position || !publicationForeground() || !publisher || pending || preferences || !validFix(position)) return;
     queuedFix = { ...position }; void sendPosition();
@@ -485,7 +548,9 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
       publicationCycleActive = nextPublicationCycle;
       if (nextPublicationCycle) { resumeAttempted = false; automaticResumeRetries = 0; }
     }
-    if (!foreground()) abortForeground();
+    const preserveNative = !!nativePublisher?.canContinueInBackground() && !!publisher && active && !authLost
+      && online && publicationVisible && automaticResumeAllowed && !pending;
+    if (!foreground()) abortForeground(preserveNative);
     else if (pending) void flushPrivacy(); else refresh();
   }
   return {
@@ -502,7 +567,21 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
       if (!owner) return () => {};
       active = true; authLost = false; generation += 1; environment = getEnvironment(owner);
       const removeVisibility = environment.onVisibilityChange(synchronize), removePending = environment.onPendingChange(receivePending);
-      const saved = environment.loadPending(); if (saved) receivePending(saved); else synchronize();
+      const removeNative = nativePublisher?.subscribe(value => {
+        if (!active) return;
+        if (publisher && value.epoch === publisher) {
+          publish({ publishing: value.active, lastPublishedAt: value.lastPublishedAt ?? state.lastPublishedAt, publicationError: value.error });
+          if (!value.active) publisher = null;
+          if (value.sessionLost) { authLost = true; abortForeground(); onSessionLost(); }
+        }
+        if (!foreground()) synchronize();
+      });
+      try {
+        const saved = environment.loadPending(); if (saved) receivePending(saved); else synchronize();
+      } catch {
+        // An unreadable privacy journal cannot be treated as an empty one.
+        privacyReadable = false; stopPublishing(); storageFailed();
+      }
       const epoch = generation;
       return () => {
         if (epoch !== generation) return;
@@ -511,7 +590,8 @@ export function createEarthSharingController({ ownerPublicId: owner, transport, 
         for (const controller of stops) controller.abort(); stops.clear();
         metadata = feed = enabling = resuming = upload = privacy = preferences = null;
         for (const name of ["poll", "settings", "expiry", "publish", "privacy"] as const) cancelTimer(name);
-        removeVisibility(); removePending(); environment = null; publisher = null; queuedFix = null; pending = null;
+        removeVisibility(); removePending(); removeNative?.(); environment = null; publisher = null; queuedFix = null; pending = null;
+        pendingSave = null; privacyStorageError = null; privacyServerConfirmedKey = null; privacyReadable = true;
         serverWall = -Infinity; sharingDeadline = publishedDeadline = Infinity; publicationCycleActive = false; state = EMPTY;
       };
     },

@@ -31,5 +31,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "apps/engine/dist", "apps/engine/.cache", "packages/engine/dist"]
+  "exclude": ["node_modules", "apps/engine/dist", "apps/engine/.cache", "packages/engine/dist", "apps/mobile/dist", "apps/mobile/android", "apps/mobile/ios"]
 }

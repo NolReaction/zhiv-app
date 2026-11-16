@@ -1,6 +1,6 @@
 # Архитектура приложения
 
-Текущее устройство приложения и Tiled-мира рабочей версии **0.7.1**. Публичный сайт и установка PWA используют общие маршруты входа; интерактивная вода, отклик деревьев, разговоры, прототип света и уведомления перечислены в [описании выпуска](releases/release-0.7.0.md). После выпуска в `master` добавлены [оперативные административные выдачи и управление промокодами](operations/admin-panel.md). Web/API используют одну версию, PostgreSQL — миграции **V1–V67** либо **B49 → V50–V67**, каталог экономики — **v12**. Текущий этап и выполненные проверки — [WORK_STATE.md](../WORK_STATE.md), поиск файла — [путеводитель](repository-guide.md), запуск — [локальная разработка](development/local-development.md). Публикация в `master` и развёртывание на сервере выполняются отдельно.
+Текущее устройство общей кодовой базы: веб/API **0.7.2**, мобильный пакет **0.3.2/build 5**, PostgreSQL с миграциями **V1–V84** либо **B49 → V50–V84**. Общие React/Canvas/WebGL-компоненты работают в вебе/PWA и в Capacitor; Swift/Kotlin-модули предоставляют возможности телефона. Обзор функций и подтверждённых инженерных решений — [проект](project-overview.md), текущий этап — [WORK_STATE.md](../WORK_STATE.md), поиск файла — [путеводитель](repository-guide.md), запуск — [локальная разработка](development/local-development.md). Публикация кода, обновление сервера и распространение мобильного пакета — отдельные этапы.
 
 ## Контуры запуска
 
@@ -9,6 +9,7 @@
 | Локальная разработка | Next.js, `npm run dev:local` | `app/api/v1/` → `lib/dev/`, память процесса | [next.config.ts](../next.config.ts), `.env.example` |
 | Sites | Vite/Vinext, `npm run dev` | Те же route handlers; это не PostgreSQL-сервер | [vite.config.ts](../vite.config.ts), [worker/index.ts](../worker/index.ts), `build/` |
 | VPS | Caddy → Next.js | Caddy направляет `/api/*` в Ktor → PostgreSQL | `deploy/compose.yml`, `deploy/Caddyfile` |
+| iOS / Android | Встроенный Vite bundle общего AppShell в Capacitor | Swift/Kotlin HTTP → тот же Ktor; SQLite хранит неподтверждённые действия, Keychain/Keystore — сеанс | [Мобильный клиент](development/native-mobile.md), `apps/mobile/` |
 
 В production локальный API всегда заблокирован: переменная `ENABLE_DEV_API` больше не открывает имитацию. Локальная имитация API в памяти процесса работает только в режимах `development`/`test`; реальные запросы `/api` обслуживает Ktor. [db/schema.ts](../db/schema.ts) — пустая заготовка Sites/D1; схема настоящего приложения находится в Flyway-миграциях `apps/api/`.
 
@@ -32,7 +33,7 @@
 | `features/admin/` | Закрытые инструменты поддержки и модерации | [Админка](operations/admin-panel.md) |
 | `features/audio/` | Аудиодвижок, каталог и локальные настройки звука | [Звуковая система](game/audio-system.md) |
 | `features/onboarding/`, `features/app/onboarding/` | Подсказки, курсы и локальная память обучения | [Обучение](game/onboarding.md) |
-| `features/notifications/` | Настройки PWA-уведомлений и явное подключение устройства | [Web Push](operations/web-push.md) |
+| `features/notifications/` | Настройки Web Push, локальных мобильных таймеров и удалённых APNs/FCM с явным согласием | [Web Push](operations/web-push.md) · [Native push](operations/native-push.md) |
 | `features/promo/` | Ввод промокодов и отображение подтверждённой сервером награды | [Промокоды](game/promo-codes.md) |
 | `features/startup/` | Заставка, этапы готовности данных и сцены, повтор загрузки | [Запуск и фирменная графика](development/startup-and-brand.md) |
 | `components/`, `lib/` | Общий UI, API-клиенты, контракты и чистые функции | [Функции приложения](development/app-features.md) |

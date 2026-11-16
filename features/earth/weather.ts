@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import type { EarthWeatherCondition, EarthWeatherResponse } from "@/lib/earth-weather-contract";
 export type { EarthWeatherCondition } from "@/lib/earth-weather-contract";
 
@@ -102,7 +103,7 @@ class WeatherRequestError extends Error {
 }
 
 /** Only this same-origin public proxy contacts the meteorological provider. */
-export function createEarthWeatherProvider({ fetch: fetcher = fetch, now = Date.now }: { fetch?: typeof fetch; now?: () => number } = {}): EarthWeatherProvider {
+export function createEarthWeatherProvider({ fetch: fetcher = apiFetch, now = Date.now }: { fetch?: typeof fetch; now?: () => number } = {}): EarthWeatherProvider {
   return {
     id: "met-norway",
     minimumIntervalMs: EARTH_WEATHER_MIN_INTERVAL_MS,

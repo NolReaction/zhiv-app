@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { ApiError } from "@/lib/check-in-api";
 import { withRequestDeadline } from "@/lib/request-deadline";
 import { gamePresenceHeaders, reportInactivePresence } from "@/features/activity/transport-state";
@@ -8,7 +9,7 @@ const endpoint = "/api/v1/dev/bots";
 async function request(command: DevBotCommand | undefined, signal?: AbortSignal) {
   return withRequestDeadline(10_000, signal, async requestSignal => {
     const presence = command ? gamePresenceHeaders() : {};
-    const response = await fetch(endpoint, {
+    const response = await apiFetch(endpoint, {
       method: command ? "POST" : "GET", cache: "no-store", credentials: "same-origin", signal: requestSignal,
       headers: { Accept: "application/json", ...(command ? { "Content-Type": "application/json", ...presence } : {}) },
       ...(command ? { body: JSON.stringify(command) } : {}),

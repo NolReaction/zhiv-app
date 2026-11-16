@@ -17,7 +17,7 @@ async function readSources(directory) {
     else if (/\.[cm]?[jt]sx?$/.test(file)) sources.set(file, await readFile(path.join(root, file), "utf8"));
   }
 }
-for (const directory of ["app", "features", "components", "lib", "hooks", "packages/engine/src", "apps/engine/src", "apps/engine/examples", "examples"]) await readSources(directory);
+for (const directory of ["app", "features", "components", "lib", "hooks", "packages/engine/src", "apps/engine/src", "apps/engine/examples", "apps/mobile/src", "examples"]) await readSources(directory);
 if (!sources.size) {
   console.error(`Architecture check found no application sources in ${root}.`);
   process.exitCode = 1;

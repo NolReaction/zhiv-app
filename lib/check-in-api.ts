@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { z } from "zod";
 import { gameplayGenerationHeaders, reportGameplayReset } from "./gameplay-generation";
 import { isCalendarMonth } from "./check-in-calendar";
@@ -269,7 +270,7 @@ async function request<T>(
 ): Promise<T> {
   return withRequestDeadline(8_000, init?.signal, async signal => {
     const generation = gameplayGenerationHeaders();
-    const response = await fetch(path, {
+    const response = await apiFetch(path, {
       ...init,
       cache: "no-store",
       credentials: "same-origin",
@@ -365,7 +366,7 @@ export function createCheckIn(idempotencyKey: string): Promise<CheckInResponse> 
 export async function reportClickerSeries(event: ClickerSeriesEvent): Promise<void> {
   return withRequestDeadline(4_000, undefined, async signal => {
     const generation = gameplayGenerationHeaders();
-    const response = await fetch("/api/v1/game-events", {
+    const response = await apiFetch("/api/v1/game-events", {
       method: "POST",
       cache: "no-store",
       credentials: "same-origin",

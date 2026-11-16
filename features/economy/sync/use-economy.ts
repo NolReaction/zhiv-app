@@ -4,13 +4,12 @@ import { getEconomy, getEconomyMarket, getEconomyNeighbor, sendEconomyCommand, s
 import { createEconomySession } from "./session";
 import { getEconomyBarter, sendBarterCommand } from "./barter-api";
 import { browserJournalCoordinator } from "./production-journal";
+import { clientReceiptStorage } from "@/lib/client-persistence";
+import { acquireClientJournalLock, clientJournalStorage } from "@/lib/client-journal-storage";
 import { projectEconomyTapBoost } from "../domain/tap-boost";
 
 function journalStorage() {
   try { return typeof window === "undefined" ? undefined : window.localStorage; } catch { return undefined; }
-}
-function receiptStorage() {
-  try { return typeof window === "undefined" ? undefined : window.sessionStorage; } catch { return undefined; }
 }
 
 export function useEconomy(owner: string | null, onSessionLost: () => void, enabled = true) {
@@ -20,8 +19,10 @@ export function useEconomy(owner: string | null, onSessionLost: () => void, enab
     neighbor: signal => owner ? getEconomyNeighbor(owner, signal) : Promise.reject(new Error("Войдите в профиль")), neighborTrade: sendNeighborCommand,
     barter: signal => owner ? getEconomyBarter(owner, signal) : Promise.reject(new Error("Войдите в профиль")), barterTrade: sendBarterCommand,
     dev: process.env.NODE_ENV === "development" ? sendEconomyDevCommand : undefined,
-  }, () => {}, receiptStorage(), (() => {
+  }, () => {}, clientReceiptStorage(), (() => {
     const storage = journalStorage();
+    const native = owner ? clientJournalStorage(owner) : undefined;
+    if (native) return { native: true, storage: native, coordinate: (_owner: string, signal: AbortSignal) => acquireClientJournalLock(native, signal), legacyStorage: storage };
     return storage ? { storage, coordinate: browserJournalCoordinator } : undefined;
   })()), [owner]);
   useEffect(() => { session.setSessionLost(onSessionLost); }, [session, onSessionLost]);

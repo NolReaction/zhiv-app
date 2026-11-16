@@ -6,14 +6,19 @@ import { useEarthLocation } from "@/features/earth/use-earth-location";
 import { useEarthLocationPreference } from "@/features/earth/use-location-preferences";
 import type { EarthLocationState } from "@/features/earth/location";
 import type { EarthSharingHandle } from "@/features/earth/earth-sharing-panel";
+import { getClientPlatform } from "@/lib/client-platform";
+import { BackgroundLocationControl } from "@/features/earth/background-location-control";
+import type { EarthLocationPreferencePersistence } from "@/features/earth/location-preferences";
 import styles from "./profile-location-settings.module.css";
 
 export type LocationPrivacyState = Pick<EarthSharingHandle, "settings" | "pendingGhost" | "pendingPrivacyMode" | "error" | "off">;
 
-export function ProfileLocationSettingsContent({ enabled, onEnabledChange, location, onLocate, onStop, privacy }: {
+export function ProfileLocationSettingsContent({ enabled, onEnabledChange, location, onLocate, onStop, privacy, persistence, onRestart }: {
   enabled: boolean; onEnabledChange: (enabled: boolean) => void; location: EarthLocationState;
   onLocate: () => void; onStop: () => void; privacy?: LocationPrivacyState;
+  persistence?: EarthLocationPreferencePersistence; onRestart?: () => void;
 }) {
+  const native = getClientPlatform();
   const watching = location.status === "active" || location.status === "requesting";
   const accuracy = location.position ? location.position.accuracy >= 1_000
     ? `${(location.position.accuracy / 1_000).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} км`
@@ -26,6 +31,11 @@ export function ProfileLocationSettingsContent({ enabled, onEnabledChange, locat
         <span>Разрешить приложению определять моё место на этом устройстве.</span></label>
       <SharingSwitch id="profile-location-enabled" checked={enabled} onCheckedChange={onEnabledChange} data-audio-cue="ui.click" />
     </div>
+    {persistence?.pending && <p className={styles.hint} role="status">Сохраняем выбор на устройстве…</p>}
+    {persistence?.error && <div className={styles.notice} role="alert">
+      <p className={styles.error}>{persistence.error}</p>
+      {onRestart && <button type="button" onClick={onRestart} disabled={persistence.pending} data-audio-cue="ui.click">Перезапустить приложение</button>}
+    </div>}
     {!enabled ? <div role="status" className={styles.notice}>
       <strong>Геопозиция выключена</strong>
       <p>Поиск и обновления остановлены. Частная точка на устройстве очищена.</p>
@@ -35,24 +45,31 @@ export function ProfileLocationSettingsContent({ enabled, onEnabledChange, locat
     </div> : <>
       <p className={styles.hint}>Включение этого переключателя не передаёт координаты друзьям. Доступ каждому выбирается отдельно в «Людях» или на карте.</p>
       <div className={styles.actions}>
-        <button type="button" onClick={onLocate} disabled={location.status === "requesting"} data-audio-cue="ui.click">
+        <button type="button" onClick={onLocate} disabled={location.status === "requesting" || persistence?.pending} data-audio-cue="ui.click">
           <LocateFixed size={17} aria-hidden="true" />{location.status === "requesting" ? "Определяем…" : "Проверить геопозицию"}
         </button>
         {watching && <button type="button" onClick={onStop} data-audio-cue="ui.click"><Square size={14} aria-hidden="true" />Остановить</button>}
       </div>
       <div role="status" className={styles.result}>
-        {location.status === "requesting" ? "Ждём координаты от браузера…" : location.status === "active" && accuracy
+        {location.status === "requesting" ? native ? "Ждём координаты от телефона…" : "Ждём координаты от браузера…" : location.status === "active" && accuracy
           ? `${location.position!.accuracy > 1_000 ? "Примерное место" : "Место определено"} · точность ±${accuracy}`
           : location.error ? "Не удалось определить место." : "Проверка начнётся только после нажатия кнопки."}
         {location.error && <p className={styles.error}>{location.error.replaceAll("«Найти меня»", "«Проверить геопозицию»")}</p>}
       </div>
     </>}
+    <BackgroundLocationControl canEnable={enabled && !persistence?.pending && !persistence?.error} />
     <details className={styles.details}>
       <summary>Как работает определение места</summary>
+      {native ? <>
+        <p>При первом поиске нажмите «Найти меня» или «Проверить геопозицию» и разрешите доступ. Затем открытая карта определяет место автоматически, если геопозиция включена и призрак выключен.</p>
+        <p>Частный поиск работает в открытом приложении. Передача друзьям включается отдельно; продолжение при сворачивании разрешается переключателем выше.</p>
+        <p>Точность зависит от условий приёма и выбранного системного разрешения. Изменить доступ можно в настройках этого приложения на телефоне.</p>
+      </> : <>
       <p>Открытая карта сама определяет ваше место, если геопозиция включена и призрак выключен. При первом запросе браузер спрашивает разрешение. В скрытой вкладке обновления останавливаются.</p>
       <p>Разрешение хранит браузер. Если доступ выдан только на один сеанс или в настройках выбрано «Спрашивать», при следующем входе запрос может появиться снова.</p>
       <p>Круг на карте показывает погрешность, которую сообщил браузер. Большой круг означает примерное место: его точность зависит от устройства, Wi-Fi и службы геолокации браузера.</p>
       <p>Если разрешение есть, а поиск не работает, проверьте доступ браузера в системных настройках местоположения. На Mac: «Конфиденциальность и безопасность» → «Службы геолокации».</p>
+      </>}
     </details>
   </section>;
 }
@@ -63,5 +80,6 @@ export function ProfileLocationSettings({ ownerPublicId, visible, privacy }: {
   const preference = useEarthLocationPreference(ownerPublicId);
   const location = useEarthLocation({ ownerPublicId, enabled: visible, autoStart: false });
   return <ProfileLocationSettingsContent enabled={preference.enabled} onEnabledChange={preference.setEnabled}
-    location={location} onLocate={location.locate} onStop={location.stop} privacy={privacy} />;
+    location={location} onLocate={location.locate} onStop={location.stop} privacy={privacy}
+    persistence={preference.persistence} onRestart={() => window.location.reload()} />;
 }

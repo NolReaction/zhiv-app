@@ -3,6 +3,7 @@ import { ServiceWorkerRegistration } from "@/components/service-worker-registrat
 import { AppNotifications } from "@/components/app-notifications";
 import { PwaInstallProvider } from "@/features/pwa/install-provider";
 import { AuxiliaryAppRuntime } from "@/features/app/auxiliary-app-runtime";
+import { MobileConnectReturn } from "@/features/account/mobile-connect-return";
 import { BRAND_APPLE_ICON_SRC, BRAND_FAVICON_SRC, BRAND_ICON_32_SRC, BRAND_ICON_192_SRC, BRAND_LOGO_SRC } from "@/lib/brand-assets";
 import "./globals.css";
 
@@ -52,6 +53,7 @@ export default function RootLayout({
         <link rel="preload" as="image" href={BRAND_LOGO_SRC} fetchPriority="high" />
       </head>
       <body>
+        <MobileConnectReturn />
         <PwaInstallProvider>{children}</PwaInstallProvider>
         <AppNotifications />
         <ServiceWorkerRegistration />

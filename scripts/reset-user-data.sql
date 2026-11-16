@@ -10,7 +10,7 @@ DECLARE
         'account_login_flows', 'account_login_identities', 'account_merge_previews',
         'account_merge_sources', 'account_operation_receipts', 'account_recovery_attempts',
         'account_recovery_codes', 'account_recovery_contact_removals', 'account_recovery_contacts',
-        'account_registration_tickets', 'admin_mail_broadcasts', 'admin_actions', 'app_sessions', 'app_users', 'check_in_audiences',
+        'account_registration_tickets', 'mobile_authorization_codes', 'admin_mail_broadcasts', 'admin_actions', 'app_sessions', 'app_users', 'check_in_audiences',
         'check_ins', 'circle_invites', 'circle_memberships', 'circle_sharing_preferences',
         'circles', 'direct_invite_links', 'direct_invite_redemptions', 'direct_person_favorites', 'direct_requests',
         'earth_sharing_settings', 'earth_sharing_recipients', 'earth_latest_locations', 'earth_frozen_locations',
@@ -21,7 +21,7 @@ DECLARE
         'game_presence_clients', 'game_presence_daily', 'game_presence_accounts',
         'game_daily_rewards', 'game_reward_claims', 'game_achievement_reward_claims', 'onboarding_progress',
         'forest_memory', 'forest_memory_receipts',
-        'notification_preferences', 'notification_subscriptions', 'notification_events', 'notification_batches',
+        'notification_preferences', 'notification_subscriptions', 'native_notification_subscriptions', 'notification_events', 'notification_batches',
         'promo_redemptions',
         'game_achievements', 'game_achievement_tiers', 'game_fishing_records', 'game_items', 'game_monthly_scores', 'game_profiles', 'game_sessions', 'game_tap_activity_minutes', 'game_tap_activity_seconds',
         'identity_bootstrap_keys', 'player_mail_messages', 'player_feedback', 'player_feedback_actions', 'player_security_observations', 'private_person_nicknames', 'recipient_sharing_preferences',
@@ -63,15 +63,17 @@ BEGIN
     -- A known admin-history upgrade can install V50 after V51/V52.
     -- Verify either complete history by version, independently of install order.
     -- V82 indexes all confirmed fish records. They are removed with the economy during a reset.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 82
+    -- V83 mobile login proofs are account data and are cleared with their sessions.
+    -- V84 native push registrations are cleared with their account sessions.
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 84
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,82) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,84) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL','71:SQL','72:SQL','73:SQL','74:SQL','75:SQL','76:SQL','77:SQL','78:SQL','79:SQL','80:SQL','81:SQL','82:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL','63:SQL','64:SQL','65:SQL','66:SQL','67:SQL','68:SQL','69:SQL','70:SQL','71:SQL','72:SQL','73:SQL','74:SQL','75:SQL','76:SQL','77:SQL','78:SQL','79:SQL','80:SQL','81:SQL','82:SQL','83:SQL','84:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V82. Reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V84. Reset cancelled.';
     END IF;
     SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank) INTO migration_history
     FROM public.flyway_schema_history h;

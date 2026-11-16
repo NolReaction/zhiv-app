@@ -34,6 +34,8 @@ const { createEarthSharingController } = await vite.ssrLoadModule("/features/ear
 const identity = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const store = await vite.ssrLoadModule("/lib/dev/earth-sharing-store.ts");
 const { earthLocationPreferenceKey } = await vite.ssrLoadModule("/features/earth/location-preferences.ts");
+const { configureClientPlatform } = await vite.ssrLoadModule("/lib/client-platform.ts");
+const { installClientJournalStorage } = await vite.ssrLoadModule("/lib/client-journal-storage.ts");
 beforeEach(() => identity.resetDevStoreForTests());
 after(async () => { identity.resetDevStoreForTests(); await vite.close(); });
 const unwrap = result => {
@@ -148,6 +150,26 @@ test("without friend consent GPS stays private and starts only on the visible ma
     assert.equal(s.calls.resumes.length, 0); assert.equal(s.controller.getSnapshot().settings.mode, "OFF");
     m.props.mapVisible = true; m.render(); assert.equal(d.watches.length, 2);
   } finally { m.destroy(); s.stop(); d.restore(); }
+});
+
+test("native map entry automatically locates after a saved OS grant without granting friends or starting a lease", async () => {
+  const d = device(), a = account("Мобильная карта"), s = sharing(a, d), committed = new Map();
+  const permission = new EventTarget(); permission.state = "granted";
+  globalThis.navigator.permissions = { query: async () => permission };
+  configureClientPlatform({ kind: "ios", appVersion: "test" });
+  installClientJournalStorage(() => ({ getItem: key => committed.get(key) ?? null, getKeys: () => [...committed.keys()],
+    async setItem(key, value) { committed.set(key, value); }, async removeItem(key) { committed.delete(key); } }));
+  const m = mountPresence(a, s);
+  try {
+    m.render(); await tick(); m.render(); assert.equal(d.watches.length, 0, "the menu never starts a private watch");
+    m.props.mapVisible = true; m.render(); await tick(); m.render();
+    assert.equal(d.watches.length, 1, "no Find me tap is needed after an OS grant");
+    d.fix(0); assert.equal(m.render().position.latitude, 55.75); await tick();
+    assert.equal(s.calls.uploads.length, 0); assert.equal(s.calls.resumes.length, 0);
+    assert.equal(s.controller.getSnapshot().settings.mode, "OFF");
+    m.props.mapVisible = false; m.render(); assert.ok(d.cleared.includes(0));
+    m.props.mapVisible = true; m.render(); await tick(); assert.equal(d.watches.length, 2);
+  } finally { m.destroy(); s.stop(); installClientJournalStorage(undefined); configureClientPlatform(null); d.restore(); }
 });
 
 test("native GPS failure does not immediately cancel a new explicit resume before its fresh lookup", async () => {

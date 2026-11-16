@@ -1,4 +1,6 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { z } from "zod";
+import { getClientPlatform } from "./client-platform";
 import { ApiError, getMe } from "./check-in-api";
 import { deviceTimeZone } from "./time-zone";
 import { retryAfterMs, withRequestDeadline } from "./request-deadline";
@@ -14,7 +16,7 @@ export type AuthIntent = "login" | "link";
 
 export async function authRequest<T extends z.ZodTypeAny>(path: string, schema: T, body?: unknown, method?: string): Promise<z.output<T>> {
   return withRequestDeadline(30_000, undefined, async signal => {
-    const response = await fetch(`/api/v1/auth/${path}`, {
+    const response = await apiFetch(`/api/v1/auth/${path}`, {
       method: method ?? (body === undefined ? "GET" : "POST"),
       credentials: "same-origin", cache: "no-store", signal,
       headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
@@ -64,7 +66,12 @@ export async function completeRegistration(displayName: string): Promise<{ statu
 export const cancelRegistration = () => authRequest("registration", z.object({ status: z.literal("ok") }), undefined, "DELETE");
 export const revokeSession = (id: string) => authRequest(`sessions/${encodeURIComponent(id)}`, z.object({ status: z.literal("ok") }), undefined, "DELETE");
 export const revokeOtherSessions = () => authRequest("sessions/revoke-others", z.object({ status: z.literal("ok") }), {});
-export const logout = () => authRequest("logout", z.object({ status: z.literal("ok") }), {});
+export const logout = async () => {
+  const native = getClientPlatform();
+  if (!native) return authRequest("logout", z.object({ status: z.literal("ok") }), {});
+  await native.logout();
+  return { status: "ok" as const };
+};
 
 export function authReturnMessage(code: string): string {
   const messages: Record<string, string> = {

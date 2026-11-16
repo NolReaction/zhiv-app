@@ -28,7 +28,7 @@ export function BoatReelGame(props: Props) {
 
 function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachObservation, ...props }: Props) {
   const { reel, challenge, playing, held, ready, expired, waitingForConfirmation, retryNeeded, changeHeld, submit,
-    status, castStage, missedBite, missedElsewhere, confirmMiss, hookFish } = useBoatReelController({ ...props, suspended });
+    status, storageError, castStage, missedBite, missedElsewhere, confirmMiss, hookFish } = useBoatReelController({ ...props, suspended });
   const holdButton = useRef<HTMLButtonElement>(null);
   const input = useRef<string | number | null>(null);
   const blocked = !ready || suspended || waitingForConfirmation || expired || missedBite || missedElsewhere || reel.status !== "active";
@@ -82,6 +82,7 @@ function BoatReelSession({ onVisualState, suspended = false, coachView, onCoachO
   return <section className={gameStyles.attempt} data-boat-reel={challenge.id} data-reel-status={stage}
     data-reel-tick={reel.tick} data-reel-progress={reel.progress} aria-label="Вываживание рыбы">
     <span className={gameStyles.srOnly} role="status">{status}</span>
+    {storageError && <p className={styles.error} role="alert">{storageError}</p>}
     {waterActive && <button type="button" ref={holdButton} className={waterStyles.surface} data-boat-water-control
       data-fishing-action={playing ? "hold" : "line"} aria-pressed={playing ? held : undefined}
       aria-label={!playing ? "Вода. Подсечка и вываживание" : held ? "Ослабить снасть. Отпустите для спуска" : "Тянуть снасть. Удерживайте для подъёма"}

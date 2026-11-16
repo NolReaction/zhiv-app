@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
 import { withRequestDeadline } from "@/lib/request-deadline";
@@ -5,7 +6,7 @@ import { notificationSnapshotSchema, type NotificationPreferences } from "./noti
 
 async function request<T>(path: string, schema: z.ZodType<T, unknown>, body?: unknown, method = body === undefined ? "GET" : "POST", signal?: AbortSignal): Promise<T> {
   return withRequestDeadline(15_000, signal, async requestSignal => {
-    const response = await fetch(`/api/v1/notifications${path}`, { method, credentials: "same-origin", cache: "no-store", signal: requestSignal,
+    const response = await apiFetch(`/api/v1/notifications${path}`, { method, credentials: "same-origin", cache: "no-store", signal: requestSignal,
       headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
       body: body === undefined ? undefined : JSON.stringify(body) });
     const value: unknown = await response.json().catch(() => null);

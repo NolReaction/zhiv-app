@@ -58,7 +58,11 @@ class JdbcSchemaBaselineIntegrationTest {
             WHERE schemaname='public' AND tablename<>'flyway_schema_history' ORDER BY tablename""")
         return tables.mapValues { (table, _) ->
             require(table.matches(Regex("[a-z_]+")))
-            val row = if (table == "app_users") "(to_jsonb(t)-'security_signal_at')" else "to_jsonb(t)"
+            val row = when (table) {
+                "app_users" -> "(to_jsonb(t)-'security_signal_at')"
+                "app_sessions" -> "(to_jsonb(t)-'mobile_platform')"
+                else -> "to_jsonb(t)"
+            }
             scalar(source, "SELECT COALESCE(jsonb_agg($row ORDER BY ($row)::text),'[]'::jsonb)::text FROM public.\"$table\" t")
         }
     }
@@ -117,7 +121,7 @@ class JdbcSchemaBaselineIntegrationTest {
         }
     }
 
-    @Test fun `fresh database executes baseline and V50 through V82 equivalent to the upgraded historical chain`() {
+    @Test fun `fresh database executes baseline and V50 through V84 equivalent to the upgraded historical chain`() {
         DatabaseFactory.create(config()).use { legacy ->
             // Deliberately excludes the parent location: Flyway 12.8 applies the newest B
             // even when target is lower, so historical builds must resolve only V files.
@@ -127,7 +131,7 @@ class JdbcSchemaBaselineIntegrationTest {
             assertEquals("49", scalar(legacy, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(legacy, "SELECT count(*) FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
             DatabaseFactory.migrate(legacy)
-            assertEquals("82", scalar(legacy, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("84", scalar(legacy, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
 
             val database = "baseline_${UUID.randomUUID().toString().replace("-", "")}"
             legacy.connection.use { c ->
@@ -139,7 +143,7 @@ class JdbcSchemaBaselineIntegrationTest {
                     val started = databaseTime(fresh)
                     DatabaseFactory.migrate(fresh)
                     val finished = databaseTime(fresh)
-                    assertEquals("34", scalar(fresh, "SELECT count(*) FROM flyway_schema_history"))
+                    assertEquals("36", scalar(fresh, "SELECT count(*) FROM flyway_schema_history"))
                     assertEquals("49:SQL_BASELINE:true", scalar(fresh,
                         "SELECT version || ':' || type || ':' || success::text FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
                     val metadata = fresh.connection.use { c -> c.createStatement().use { statement ->
@@ -161,7 +165,7 @@ class JdbcSchemaBaselineIntegrationTest {
                     for ((category, definitions) in expected) {
                         assertEquals(definitions.keys, actual.getValue(category).keys, "$category object names differ")
                         for ((name, definition) in definitions)
-                            assertEquals(definition, actual.getValue(category).getValue(name), "$category: $name differs from V1–V82")
+                            assertEquals(definition, actual.getValue(category).getValue(name), "$category: $name differs from V1–V84")
                     }
                     val freshHistory = history(fresh)
                     val freshMetadata = scalar(fresh, "SELECT row_to_json(m)::text FROM game_tap_collection_metadata m")
@@ -207,6 +211,7 @@ class JdbcSchemaBaselineIntegrationTest {
             val earlierHistory = history(source)
             DatabaseFactory.migrate(source)
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_sessions WHERE mobile_platform IS NOT NULL"), "V84 must not infer a native platform for existing sessions")
             assertEquals(unchangedData, tableData(source).filterKeys { it in unchangedData }, "Adding a baseline must not rewrite existing records")
             assertEquals("2", scalar(source, "SELECT count(*) FROM game_daily_rewards"))
             for (account in listOf(first, second)) assertEquals("1:false:7:6:true:true:true", scalar(source,
@@ -221,14 +226,14 @@ class JdbcSchemaBaselineIntegrationTest {
                 "gameplay_reset_runs" to "[]", "onboarding_progress" to "[]",
                 "neighbor_settings" to "[]", "neighbor_shop_cycles" to "[]", "neighbor_identity" to "[]",
                 "neighbor_daily_usage" to "[]", "neighbor_global_usage" to "[]", "neighbor_receipts" to "[]",
-                "neighbor_purchases" to "[]", "game_fishing_records" to "[]"), tableData(source).filterKeys { it !in data && it != "gameplay_generations" },
+                "neighbor_purchases" to "[]", "game_fishing_records" to "[]", "mobile_authorization_codes" to "[]", "native_notification_subscriptions" to "[]"), tableData(source).filterKeys { it !in data && it != "gameplay_generations" },
                 "New public fishing records, campaign configuration, security observations, mail and uncompleted onboarding start empty on the historical schema")
             assertEquals("0:true", scalar(source,
                 "SELECT generation::text || ':' || (reset_at IS NULL)::text FROM gameplay_generations WHERE singleton"),
                 "Schema upgrade only prepares the reset mechanism; it does not start a new game")
             assertEquals(earlierHistory, scalar(source,
                 "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=48"))
-            assertEquals("82", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE success AND type='SQL'"))
+            assertEquals("84", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE success AND type='SQL'"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
             assertEquals(first.id, identities.findBySession(firstSession)?.id)
             assertEquals(second.id, identities.findBySession(secondSession)?.id)
@@ -237,6 +242,7 @@ class JdbcSchemaBaselineIntegrationTest {
             val upgradedHistory = history(source)
             DatabaseFactory.migrate(source)
             assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_sessions WHERE mobile_platform IS NOT NULL"), "V84 must not infer a native platform for existing sessions")
             assertEquals(upgradedHistory, history(source))
             assertEquals(unchangedData, tableData(source).filterKeys { it in unchangedData })
             assertEquals(migratedDaily, tableData(source).getValue("game_daily_rewards"), "Restart does not recreate or advance reward courses")

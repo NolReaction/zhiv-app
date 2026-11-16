@@ -1,5 +1,7 @@
 "use client";
 
+import { mapStorageResult } from "@/lib/client-journal-storage";
+
 import { useEffect, useId, useRef, useState } from "react";
 import { Dialog } from "radix-ui";
 import { Anchor, BookOpen, Coins, Sailboat, Trophy, X } from "lucide-react";
@@ -29,7 +31,11 @@ import styles from "./boat-fishing.module.css";
 const tabs = [{ id: "boat", label: "Лодка", icon: Sailboat }, { id: "records", label: "Рекорды", icon: Trophy }, { id: "album", label: "Альбом", icon: BookOpen }] as const;
 type Tab = typeof tabs[number]["id"];
 type Props = { sharedRecordsAvailable?: boolean; economy: ReadyEconomy; onClose: () => void; onOpenPantry?: () => void; suspended?: boolean; timeZone?: string; appearance?: { palette: string; head: string | null; neck: string | null } };
-export type BoatSend = (action: EconomyCommand["action"], targetId: string, input?: BoatCommandInput, saleQuote?: number) => boolean;
+type BoatSendArguments = [targetId: string, input?: BoatCommandInput, saleQuote?: number];
+export type BoatSend = {
+  (action: Exclude<EconomyCommand["action"], "start_production" | "begin_boat_cast" | "submit_boat_cast">, ...args: BoatSendArguments): boolean;
+  (action: EconomyCommand["action"], ...args: BoatSendArguments): boolean | Promise<boolean>;
+};
 
 export function WorldBoatFishingDialog(props: Props) {
   if (boatAccess(props.economy.snapshot) === "recover") return <BoatRecoveryDialog {...props} />;
@@ -93,13 +99,13 @@ function BoatDialogSession({ sharedRecordsAvailable, economy, onClose, onOpenPan
     content.current?.scrollTo({ top: 0 });
     if (document.activeElement === document.body) content.current?.focus({ preventScroll: true });
   }, [deliveredTrip]);
-  const send: BoatSend = (action, targetId, input, saleQuote = 0) => {
+  const send = ((action: EconomyCommand["action"], targetId: string, input?: BoatCommandInput, saleQuote = 0) => {
     const localLanding = action === "submit_boat_cast" && input && "deferred" in input && input.deferred === true;
-    // Prepared casts are reserved synchronously by the journal. Its exact
+    // Prepared casts are accepted after their journal commit. The exact
     // ticket may be played while the previous server command is still in flight.
     if ((action === "begin_boat_cast" && economy.preparedBoatCastAvailable
       || localLanding && "challengeId" in input && input.challengeId === economy.preparedBoatChallengeId) && !suspended && !leaving && !arrival)
-      return economy.act(action, targetId, 1, 0, undefined, undefined, input) !== false;
+      return mapStorageResult(economy.act(action, targetId, 1, 0, undefined, undefined, input), accepted => accepted !== false);
     if ((!localLanding && disabled) || sent.current || economy.preparedBoatPending && !localLanding) return false;
     sent.current = true;
     const receipt = (action === "claim_boat" || action === "sell_boat_catch") && boat.voyage?.id === targetId
@@ -107,10 +113,12 @@ function BoatDialogSession({ sharedRecordsAvailable, economy, onClose, onOpenPan
     let accepted;
     try { accepted = economy.act(action, targetId, 1, action === "buy_boat_fuel" ? config.fuel.refillPricePearls : saleQuote, undefined, undefined, input); }
     catch (error) { sent.current = false; throw error; }
-    if (accepted !== false && receipt) setClaimedTrip(receipt);
-    if (accepted === false) sent.current = false;
-    return accepted !== false;
-  };
+    return mapStorageResult(accepted, saved => {
+      if (saved !== false && receipt) setClaimedTrip(receipt);
+      if (saved === false) sent.current = false;
+      return saved !== false;
+    });
+  }) as BoatSend;
   const upgrade = (upgradeId: BoatUpgradeId) => { send("start_boat_upgrade", upgradeId); };
   const phaseName = { broken: "Нужен ремонт корпуса", repairing: "Работа в мастерской", docked: "У причала · готовимся к выходу", outbound: "Курс на речной плёс", fishing: "На рыбалке", returning: "Возвращение к причалу", ready: "Лодка вернулась" }[phase];
   return <Dialog.Root open onOpenChange={open => { if (!open) requestClose(); }}>

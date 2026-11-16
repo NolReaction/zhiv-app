@@ -1,3 +1,5 @@
+import { deviceIsActive, subscribeDeviceEnvironment, subscribeMemoryPressure } from "@/lib/device-runtime";
+import { worldArtworkMipCache } from "./artwork-mip-cache";
 import { drawForestSpeech } from "@/features/world/characters/social/forest-speech-painter";
 import { mountHabitat, type SceneOptions } from "@/features/mochlik/scene";
 import type { WorldResidentId } from "@/features/world/characters/world-characters-model";
@@ -111,7 +113,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   let objectAnchorsEnabled = interactions.objectAnchorsEnabled ?? true;
   let readyResolve!: () => void, readyReject!: (error: unknown) => void;
   const habitatReady = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
-  let habitat = mountHabitat(home, { ...initial, view: "world", backgrounded: Boolean(initial.backgrounded || document.hidden) }, {
+  let habitat = mountHabitat(home, { ...initial, view: "world", backgrounded: Boolean(initial.backgrounded || !deviceIsActive()) }, {
     activity() {}, ready: readyResolve, failure: error => readyReject(new MapLoadError("character", error)),
     rendered: () => { if (motionReduced() || paused()) { if (pointers.size) requestDraw(); else draw(); } else updateSelection(); },
   });
@@ -202,17 +204,17 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       if (disposed) return;
       if (image.naturalWidth !== MAP_SIZE || image.naturalHeight !== MAP_SIZE) throw new Error("Map dimensions do not match its manifest");
       ground = image; fullGround = true;
-      if (!document.hidden && !options.backgrounded && inView && !options.paused) draw();
+      if (deviceIsActive() && !options.backgrounded && inView && !options.paused) draw();
     } catch { /* Reconnect retries; the complete overview remains usable. */ }
     finally { upgradingGround = false; }
   }
-  const retryGround = () => { if (!document.hidden && !options.backgrounded) void upgradeGround(); };
+  const retryGround = () => { if (deviceIsActive() && !options.backgrounded) void upgradeGround(); };
   window.addEventListener?.("online", retryGround); window.addEventListener?.("focus", retryGround);
   void upgradeGround();
   if (!rebuilding) void loadHabitatImage(WORLD_ART.boatWreck).then(image => {
     if (disposed) return;
     boatArt = prepareBoatWreck(image);
-    if (!document.hidden && !options.backgrounded && inView && !options.paused) draw();
+    if (deviceIsActive() && !options.backgrounded && inView && !options.paused) draw();
   }).catch(() => { /* An unavailable prop must not prevent visiting the forest. */ });
   function projectedSelection(objectId: string, objects = habitat.mapObjects?.() ?? []): MapObjectSelection | null {
     const object = objects.find(object => object.id === objectId);
@@ -323,14 +325,14 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   function draw(allowPan = false, rasterClock = performance.now()) {
     if (disposed || !ctx) return;
     const ship = habitat.tradeShipFrame?.();
-    if (!options.readOnly && options.tradeShipArrivalEnabled && !options.backgrounded && !document.hidden && inView && !paused()
+    if (!options.readOnly && options.tradeShipArrivalEnabled && !options.backgrounded && deviceIsActive() && inView && !paused()
       && !guidePlace && !editingLight() && ship?.kind === "arrival" && ship.pending && queuedShipArrival !== ship.voyageId) {
       const id = ship.voyageId; queuedShipArrival = id;
       queueMicrotask(() => {
         if (disposed || queuedShipArrival !== id) return;
         queuedShipArrival = null;
         const current = habitat.tradeShipFrame?.();
-        if (options.readOnly || !options.tradeShipArrivalEnabled || options.backgrounded || document.hidden || !inView || paused()
+        if (options.readOnly || !options.tradeShipArrivalEnabled || options.backgrounded || !deviceIsActive() || !inView || paused()
           || guidePlace || editingLight() || current?.voyageId !== id || !current.pending) return;
         if (!habitat.startTradeShipArrival?.()) return;
         if (focusedShipArrival !== id) {
@@ -449,13 +451,13 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     updateObjectAnchors(objects);
   }
   function requestDraw() {
-    if (disposed || document.hidden || !inView || options.backgrounded) return;
+    if (disposed || !deviceIsActive() || !inView || options.backgrounded) return;
     redrawPending = true;
     if (!raf) raf = requestAnimationFrame(tick);
   }
   function tick(time: number) {
     raf = 0;
-    if (disposed || document.hidden || !inView || options.backgrounded) return;
+    if (disposed || !deviceIsActive() || !inView || options.backgrounded) return;
     if (pendingEditorMove) {
       const point = pendingEditorMove; pendingEditorMove = null;
       lightingEditor.move(point);
@@ -469,7 +471,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   }
   function visibility() {
     const wasPanning = panSurface.active;
-    const backgrounded = Boolean(options.backgrounded || document.hidden || !inView);
+    const backgrounded = Boolean(options.backgrounded || !deviceIsActive() || !inView);
     panSurface.reset(); rasterCamera = null;
     if (backgrounded) {
       pendingEditorMove = null;
@@ -482,7 +484,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     rehearsal.configure(options, dev?.scenePreview, backgrounded);
     // Suspension can leave the portal visible during its exit animation. Resetting
     // an expanded backing clears its pixels, so finish that visible frame first.
-    if (!disposed && wasPanning && backgrounded && !document.hidden && inView) draw();
+    if (!disposed && wasPanning && backgrounded && deviceIsActive() && inView) draw();
     if (!disposed && !backgrounded) { draw(); if (!motionReduced() && !paused() && !raf) raf = requestAnimationFrame(tick); }
   }
   function resize() {
@@ -728,7 +730,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   });
   // Controls may have changed while the scene's selected artwork was loading.
   if (WORLD_DEV_ENABLED && !initial.readOnly) dev = worldDevStore.getSnapshot();
-  document.addEventListener("visibilitychange", visibility); visibility();
+  document.addEventListener("visibilitychange", visibility);
+  const unsubscribeDevice = subscribeDeviceEnvironment(visibility);
+  const unsubscribeMemory = subscribeMemoryPressure(() => worldArtworkMipCache.clear());
+  visibility();
   const pendingLightingFocus = WORLD_DEV_ENABLED && !initial.readOnly ? takeWorldLightingEditorFocus() : null;
   const pendingLightingTarget = pendingLightingFocus === "selection" ? lightingEditor.focus() : pendingLightingFocus;
   if (pendingLightingTarget) focusLighting(pendingLightingTarget);
@@ -741,7 +746,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     const previousCamera = dev?.cameraEvent?.id;
     dev = worldDevStore.getSnapshot();
     cancelAnimationFrame(raf); raf = 0;
-    if (!document.hidden && !options.backgrounded && inView) {
+    if (deviceIsActive() && !options.backgrounded && inView) {
       if (dev.cameraEvent && dev.cameraEvent.id !== previousCamera) control(dev.cameraEvent.action);
       else visibility();
       if (!motionReduced() && !paused() && !raf) raf = requestAnimationFrame(tick);
@@ -759,7 +764,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     setSelectedObject,
     setGuidePlace,
     refreshObjectAnchors() {
-      if (!document.hidden && !options.backgrounded && inView) updateObjectAnchors(habitat.mapObjects?.() ?? []);
+      if (deviceIsActive() && !options.backgrounded && inView) updateObjectAnchors(habitat.mapObjects?.() ?? []);
     },
     setObjectAnchorsEnabled(enabled: boolean) {
       if (disposed || enabled === objectAnchorsEnabled) return;
@@ -782,6 +787,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       if (studioWasActive) studioViewports?.set(canvas, { camera: { ...camera }, framing });
       else studioViewports?.delete(canvas);
       panSurface.dispose(); rasterCamera = null;
+      unsubscribeDevice(); unsubscribeMemory();
       disposed = true; pendingEditorMove = null; lightingEditor.blur(); cancelAnimationFrame(raf); unsubscribeDev(); unsubscribeLightingEditor(); rehearsal.dispose(); resizeObserver.disconnect(); observer.disconnect();
       if (speechCanvas && speechContext !== ctx) {
         speechContext.setTransform(1, 0, 0, 1, 0, 0); speechContext.clearRect(0, 0, speechCanvas.width, speechCanvas.height);

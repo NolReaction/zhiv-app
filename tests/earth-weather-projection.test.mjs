@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import Point from '@mapbox/point-geometry';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const vite = await createServer({ appType: 'custom', configFile: false, root,
-  server: { middlewareMode: true, hmr: false, ws: false } });
+  resolve: { alias: { '@': root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { earthWeatherFootprint, earthWeatherFrame } = await vite.ssrLoadModule('/features/earth/weather-field.ts');
 const { createGlobeTransform } = await vite.ssrLoadModule('/node_modules/maplibre-gl/src/geo/projection/globe_transform.ts');

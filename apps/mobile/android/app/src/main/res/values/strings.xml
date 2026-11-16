@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Мохлик · Тест</string>
+    <string name="title_activity_main">Мохлик · Тест</string>
+    <string name="package_name">ru.zhiv.mochlik.lab</string>
+    <string name="custom_url_scheme">ru.zhiv.mochlik.lab</string>
+</resources>

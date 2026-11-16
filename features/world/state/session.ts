@@ -3,6 +3,7 @@ import { reportIncident, incidentCode } from "@/lib/client-incidents";
 import { ApiError } from "@/lib/check-in-api";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { createReceiptRetry } from "@/lib/receipt-retry";
+import { isStoragePromise, type ClientJournalStorage } from "@/lib/client-journal-storage";
 import { worldCommandSchema, type WorldCommand, type WorldSnapshot } from "@/features/world/domain/model";
 
 type Transport = {
@@ -12,7 +13,8 @@ type Transport = {
 type View = { snapshot: WorldSnapshot | null; error: string | null; syncError: string | null; notice: string; busy: boolean; uncertain: boolean; feedbackAt: number; directActionsAvailable: boolean };
 
 /** One account session survives opening/closing the map; receipts never belong to a renderer. */
-export function createWorldSession(owner: string | null, transport: Transport, onSessionLost: () => void, storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">) {
+export function createWorldSession(owner: string | null, transport: Transport, onSessionLost: () => void,
+  storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">, journal?: ClientJournalStorage) {
   let view: View = { snapshot: null, error: null, syncError: null, notice: "", busy: false, uncertain: false, feedbackAt: 0, directActionsAvailable: true };
   let pending: WorldCommand | null = null;
   const receiptRetry = createReceiptRetry();
@@ -20,8 +22,21 @@ export function createWorldSession(owner: string | null, transport: Transport, o
   let rateLimitedUntil = 0;
   let reading: Promise<void> | null = null, lastReadAt = -Infinity, blockedUntil = 0, failures = 0;
   let serverClock = Date.now(), localClock = performance.now();
+  let storageBlocked = false;
+  let nativeMutation: Promise<void> | null = null;
   const storageKey = gameplayStorageKey(`zhiv:world:pending:v1:${owner}`);
   function remember(value: WorldCommand | null) {
+    if (journal) {
+      if (value) pending = value;
+      const raw = value ? JSON.stringify(value) : null;
+      const mutation = (raw === null ? journal.removeItem(storageKey) : journal.setItem(storageKey, raw)).then(() => {
+        if (!value) { pending = null; receiptRetry.reset(); publish({ uncertain: false }); }
+        // The native commit owns recovery now. A failed legacy cleanup cannot lose it.
+        try { if (!value || storage?.getItem(storageKey) === raw) storage?.removeItem(storageKey); } catch { /* Native journal is authoritative. */ }
+      }).finally(() => { if (nativeMutation === mutation) nativeMutation = null; });
+      nativeMutation = mutation;
+      return mutation;
+    }
     if (!value) receiptRetry.reset();
     pending = value;
     try { if (value) storage?.setItem(storageKey, JSON.stringify(value)); else storage?.removeItem(storageKey); } catch { /* Memory remains available. */ }
@@ -29,14 +44,22 @@ export function createWorldSession(owner: string | null, transport: Transport, o
   function restore() {
     if (!owner || pending) return;
     try {
-      const raw = storage?.getItem(storageKey); if (!raw) return;
+      let legacyRaw: string | null | undefined;
+      try { legacyRaw = storage?.getItem(storageKey); } catch { /* Optional legacy cache. */ }
+      const raw = journal?.getItem(storageKey) ?? legacyRaw; if (!raw) return;
       const parsed = worldCommandSchema.safeParse(JSON.parse(raw));
       if (parsed.success && parsed.data.ownerPublicId === owner) {
         pending = parsed.data;
         const message = "Остался неподтверждённый запрос. Проверим его перед продолжением.";
         publish({ uncertain: true, error: message, syncError: message });
-      } else storage?.removeItem(storageKey);
-    } catch { /* Invalid cache is never executed. */ }
+      } else if (journal) throw new Error("Invalid native world receipt");
+      else storage?.removeItem(storageKey);
+    } catch {
+      if (journal) {
+        storageBlocked = true;
+        publish({ error: "Не удалось прочитать сохранённое действие. Перезапустите приложение.", syncError: "Хранилище устройства недоступно." });
+      }
+    }
   }
   const listeners = new Set<() => void>(), requests = new Set<AbortController>();
   const publish = (patch: Partial<View>) => {
@@ -66,7 +89,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
       const snapshot = await transport.get(request.signal);
       if (valid(generation) && sequence === readSequence && adopt(snapshot)) {
         failures = 0; blockedUntil = 0;
-        if (!pending) publish({ error: null, syncError: null });
+        if (!pending && !storageBlocked) publish({ error: null, syncError: null });
       }
     } catch (error) {
       if (!valid(generation) || sequence !== readSequence) return;
@@ -76,7 +99,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
       if (error instanceof ApiError && error.status === 429) rateLimitedUntil = blockedUntil;
       if (owner) reportIncident(owner, "world", incidentCode(error), 0, error);
       if (error instanceof ApiError && error.status === 401) onSessionLost();
-      else if (!pending) {
+      else if (!pending && !storageBlocked) {
         const message = error instanceof ApiError ? error.message : "Нет связи. Сохранённый мир появится после подключения.";
         const transportFailure = !(error instanceof ApiError) || error.status >= 500 || [408, 425, 429].includes(error.status)
           || error.body?.code === "GAME_SESSION_INACTIVE";
@@ -85,23 +108,45 @@ export function createWorldSession(owner: string | null, transport: Transport, o
     } finally { requests.delete(request); }
   }
   async function execute(command: WorldCommand) {
-    if (!active || !available || view.busy || performance.now() < blockedUntil || command.ownerPublicId !== owner) return;
+    if (!active || !available || view.busy || storageBlocked || nativeMutation || performance.now() < blockedUntil || command.ownerPublicId !== owner) return;
     const generation = epoch, request = controller();
+    let phase: "save" | "send" | "cleanup" = "save";
     receiptRetry.sending();
     ++readSequence;
-    reading = null; remember(command); publish({ busy: true, error: null, notice: "" });
+    reading = null; publish({ busy: true, error: null, notice: "" });
     try {
+      const saved = remember(command); if (isStoragePromise(saved)) await saved;
+      if (!valid(generation)) return;
+      phase = "send";
       const result = await transport.send(command, request.signal);
       if (!valid(generation)) return;
-      if (adopt(result.snapshot)) { remember(null); publish({ notice: result.message, uncertain: false, syncError: null }); }
+      if (adopt(result.snapshot)) {
+        phase = "cleanup";
+        const cleared = remember(null); if (isStoragePromise(cleared)) await cleared;
+        if (valid(generation)) publish({ notice: result.message, uncertain: false, syncError: null });
+      }
     } catch (error) {
       if (!valid(generation)) return;
+      if (phase !== "send") {
+        storageBlocked = true;
+        const message = phase === "save" ? "Не удалось сохранить действие на устройстве. Запрос не отправлен. Перезапустите приложение."
+          : "Действие выполнено, но не удалось закрыть его запись на устройстве. Перезапустите приложение.";
+        publish({ uncertain: true, error: message, syncError: message });
+        return;
+      }
       if (owner) reportIncident(owner, "world", incidentCode(error), 0, error);
       const throttled = error instanceof ApiError && error.status === 429;
       const definitive = error instanceof ApiError && error.status >= 400 && error.status < 500
         && ![401, 408, 425, 429].includes(error.status) && error.body?.code !== "GAME_SESSION_INACTIVE";
       if (throttled) blockedUntil = rateLimitedUntil = performance.now() + Math.max(1000, error.retryAfterMs ?? 60_000);
-      if (definitive) remember(null);
+      if (definitive) {
+        try { const cleared = remember(null); if (isStoragePromise(cleared)) await cleared; }
+        catch {
+          if (valid(generation)) { storageBlocked = true; publish({ uncertain: true, error: "Не удалось закрыть запись отклонённого действия. Перезапустите приложение.", syncError: "Хранилище устройства недоступно." }); }
+          return;
+        }
+        if (!valid(generation)) return;
+      }
       else receiptRetry.failed(error);
       const message = error instanceof ApiError ? error.message : "Ответ не пришёл. Проверьте результат тем же запросом.";
       publish({ uncertain: !definitive, error: message, syncError: definitive ? null : message });
@@ -126,7 +171,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
   }
   async function reconcile() {
     setAvailable(true);
-    if (!active || !owner || performance.now() < blockedUntil) return false;
+    if (!active || !owner || storageBlocked || performance.now() < blockedUntil) return false;
     if (pending) await execute(pending);
     if (pending || !active || !available) return false;
     await refresh();
@@ -152,7 +197,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
     refresh,
     refreshSoft: () => refresh(false),
     act(action: WorldCommand["action"], target = "") {
-      if (!owner || !view.snapshot || !view.directActionsAvailable || pending || !active || !available) return;
+      if (!owner || !view.snapshot || !view.directActionsAvailable || pending || storageBlocked || !active || !available) return;
       void execute({ requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, target });
     },
     retry: () => pending ? execute(pending) : refresh(),

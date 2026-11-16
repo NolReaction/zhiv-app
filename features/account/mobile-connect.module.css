@@ -1,0 +1,12 @@
+.page { min-height: 100svh; display: grid; place-items: center; padding: max(1.5rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1.5rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); background: #10180f; color: #eef3e8; }
+.card { width: min(100%, 28rem); display: grid; gap: 1.25rem; padding: clamp(1.25rem, 4vw, 2rem); border: 1px solid #35432d; border-radius: 1.5rem; background: #182214; overflow-wrap: anywhere; }
+.card h1 { margin: 0; font-size: clamp(1.65rem, 6vw, 2rem); line-height: 1.2; font-weight: 700; }
+.card p { margin: 0; line-height: 1.6; }
+.eyebrow, .hint { color: #b6c5ac; }
+.eyebrow { font-size: .85rem; }
+.primary, .secondary { display: flex; align-items: center; justify-content: center; min-height: 3rem; border-radius: .85rem; padding: .8rem 1rem; font: inherit; font-weight: 650; cursor: pointer; text-align: center; text-decoration: none; }
+.primary { background: #c4df9e; color: #17240d; border: 1px solid #c4df9e; }
+.secondary { background: transparent; color: #e3edd9; border: 1px solid #53644a; }
+.primary:disabled, .secondary:disabled { opacity: .55; cursor: wait; }
+.primary:focus-visible, .secondary:focus-visible { outline: 2px solid #e4efc8; outline-offset: 4px; }
+.error { color: #ffb4aa; }

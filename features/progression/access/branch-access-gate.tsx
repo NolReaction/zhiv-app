@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
+
 import { lazy, Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ShieldCheck } from "lucide-react";
@@ -22,7 +24,7 @@ export function BranchAccessGate({ initial }: { initial: AdminPageAccess }) {
       busy = true;
       try {
         const next = await withRequestDeadline(8000, controller.signal, async signal => {
-          const response = await fetch("/api/v1/admin/access", { credentials: "same-origin", cache: "no-store", signal });
+          const response = await apiFetch("/api/v1/admin/access", { credentials: "same-origin", cache: "no-store", signal });
           if (response.status === 401) return { status: "signed-out" } as const;
           if (response.status === 403) return { status: "forbidden" } as const;
           if (!response.ok) return { status: "unavailable" } as const;

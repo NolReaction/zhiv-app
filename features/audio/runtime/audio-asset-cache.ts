@@ -180,6 +180,13 @@ export function createAudioAssetCache(options: {
     decodingCount: () => Number(decoding),
     queuedDecodeCount: () => queue.length + decodeQueue.length,
     failedIds: () => [...failures.keys()],
+    trimUnused() {
+      for (const [id, entry] of loaded) {
+        if (options.isInUse(id)) continue;
+        loaded.delete(id); bytes -= entry.bytes;
+      }
+      options.changed();
+    },
     dispose() {
       disposed = true;
       for (const { controller, timer, resolve } of pending.values()) { clearTimeout(timer); controller.abort(); resolve(null); }

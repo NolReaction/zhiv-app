@@ -9,8 +9,10 @@ const engineEditorPath = /^apps\/engine\/src\//;
 const engineExamplePath = /^(?:apps\/engine\/examples|examples)\//;
 const engineUiPackage = /^(?:react|react-dom|next|lucide-react)(?:\/|$)|^@radix-ui\//;
 const editorExternalPackage = /^(?:react|react-dom|lucide-react)(?:\/|$)/;
+const mobilePath = file => file.startsWith("apps/mobile/src/");
+const mobileCompositionEntries = new Set(["apps/mobile/src/mobile-app.tsx"]);
 const enginePath = file => engineCorePath.test(file) || engineEditorPath.test(file) || engineExamplePath.test(file);
-const runtimePath = file => file.startsWith("features/") || file.startsWith("app/") || enginePath(file);
+const runtimePath = file => file.startsWith("features/") || file.startsWith("app/") || enginePath(file) || mobilePath(file);
 
 /** Parse actual module references; callers can distinguish type dependencies from runtime edges. */
 export function moduleReferences(file, text) {
@@ -126,10 +128,14 @@ export function inspectArchitecture(sources, { hasFile = file => sources.has(fil
         && /^features\/(?:world|economy|app)\//.test(target)) {
         report(file, reference, "audio-dependency", "Audio modules cannot import world, economy or app state. Pass audio frames and semantic events through an integration adapter.");
       }
-      if (target?.startsWith("app/") && !file.startsWith("app/")) {
+      if (target && mobilePath(target) && !mobilePath(file)) {
+        report(file, reference, "mobile-app-dependency", "Shared code cannot load a native app implementation. Install a capability or pass a platform adapter from the mobile entry.");
+      }
+      const mobileComposition = mobileCompositionEntries.has(file);
+      if (target?.startsWith("app/") && !file.startsWith("app/") && !(mobileComposition && target === "app/globals.css")) {
         report(file, reference, "route-orchestration", `Only route composition may load ${reference.specifier}. Reusable modules belong outside app/.`);
       }
-      if (target === "features/app/app-shell.tsx" && !file.startsWith("app/") && !file.startsWith("features/app/")) {
+      if (target === "features/app/app-shell.tsx" && !file.startsWith("app/") && !file.startsWith("features/app/") && !mobileComposition) {
         report(file, reference, "app-orchestration", `Feature modules cannot load the app shell. Pass data or callbacks from the shell instead.`);
       }
     }

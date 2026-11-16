@@ -1,6 +1,7 @@
 import { gameplayStorageKey } from "@/lib/gameplay-generation";
 import { ApiError } from "@/lib/check-in-api";
 import { createUuidV4 } from "@/lib/browser-uuid";
+import { isStoragePromise, type ClientJournalStorage } from "@/lib/client-journal-storage";
 import { gameRewardClaimSchema, type GameRewardClaim, type GameRewardResult, type GameRewards } from "./game-rewards-api";
 import type { GameAchievementId } from "./game-api";
 
@@ -10,10 +11,12 @@ type View = { data: GameRewards | null; loading: boolean; busy: boolean; uncerta
   error: string; result: GameRewardResult | null; retryAt: number; readVersion: number };
 
 /** One pending receipt per account is shared by daily and achievement claim controls. */
-export function createGameRewardsSession(owner: string | null, transport: Transport, storage?: StoragePort) {
+export function createGameRewardsSession(owner: string | null, transport: Transport, storage?: StoragePort, journal?: ClientJournalStorage) {
   let view: View = { data: null, loading: false, busy: false, uncertain: false, pending: null, error: "", result: null, retryAt: 0, readVersion: 0 };
   let subscribers = 0, epoch = 0, sequence = 0, read: Promise<void> | null = null;
   let serverClock = Date.now(), localClock = performance.now();
+  let storageBlocked = false;
+  let nativeMutation: Promise<void> | null = null;
   const key = gameplayStorageKey(`zhiv:game-rewards:pending:v1:${owner}`);
   const listeners = new Set<() => void>(), authListeners = new Map<() => void, number>(), requests = new Set<AbortController>();
   const publish = (patch: Partial<View>) => { view = { ...view, ...patch }; listeners.forEach(listener => listener()); };
@@ -21,19 +24,34 @@ export function createGameRewardsSession(owner: string | null, transport: Transp
   const now = () => serverClock + performance.now() - localClock;
   const lost = () => authListeners.forEach((_, listener) => listener());
   function remember(pending: GameRewardClaim | null) {
+    if (journal) {
+      if (pending) publish({ pending });
+      const raw = pending ? JSON.stringify(pending) : null;
+      const mutation = (raw === null ? journal.removeItem(key) : journal.setItem(key, raw)).then(() => {
+        if (!pending) publish({ pending: null, uncertain: false });
+        try { if (!pending || storage?.getItem(key) === raw) storage?.removeItem(key); } catch { /* Native receipt is authoritative. */ }
+      }).finally(() => { if (nativeMutation === mutation) nativeMutation = null; });
+      nativeMutation = mutation;
+      return mutation;
+    }
     try { if (pending) storage?.setItem(key, JSON.stringify(pending)); else storage?.removeItem(key); } catch { /* The exact receipt remains in memory. */ }
     publish({ pending });
   }
   function restore() {
     if (!owner || view.pending) return;
     try {
-      const raw = storage?.getItem(key);
+      let legacyRaw: string | null | undefined;
+      try { legacyRaw = storage?.getItem(key); } catch { /* Optional legacy cache. */ }
+      const raw = journal?.getItem(key) ?? legacyRaw;
       if (!raw) return;
       const parsed = gameRewardClaimSchema.safeParse(JSON.parse(raw));
       if (parsed.success && parsed.data.ownerPublicId === owner) publish({ pending: parsed.data, uncertain: true,
         error: "Остался неподтверждённый запрос. Проверьте получение награды." });
+      else if (journal) throw new Error("Invalid native reward receipt");
       else storage?.removeItem(key);
-    } catch { /* Invalid local data cannot manufacture a claim. */ }
+    } catch {
+      if (journal) { storageBlocked = true; publish({ error: "Не удалось прочитать запись награды. Перезапустите приложение." }); }
+    }
   }
   function adopt(data: GameRewards) {
     if (data.ownerPublicId !== owner) { lost(); throw new ApiError("Сеанс аккаунта изменился", 502); }
@@ -52,11 +70,11 @@ export function createGameRewardsSession(owner: string | null, transport: Transp
       try {
         if (!valid(generation) || stamp !== sequence || controller.signal.aborted) return;
         const data = await transport.get(controller.signal);
-        if (valid(generation) && stamp === sequence) { adopt(data); if (!view.pending) publish({ error: "", retryAt: 0 }); }
+        if (valid(generation) && stamp === sequence) { adopt(data); if (!view.pending && !storageBlocked) publish({ error: "", retryAt: 0 }); }
       } catch (cause) {
         if (valid(generation) && stamp === sequence) {
           if (cause instanceof ApiError && cause.status === 401) lost();
-          if (!view.pending) publish({ error: cause instanceof ApiError ? cause.message : "Не удалось обновить награды. Проверьте подключение.",
+          if (!view.pending && !storageBlocked) publish({ error: cause instanceof ApiError ? cause.message : "Не удалось обновить награды. Проверьте подключение.",
             ...(cause instanceof ApiError && cause.status === 429 ? { retryAt: now() + Math.max(1000, cause.retryAfterMs ?? 60_000) } : {}) });
         }
       } finally {
@@ -68,23 +86,44 @@ export function createGameRewardsSession(owner: string | null, transport: Transp
     publish({ loading: true }); return task;
   }
   async function execute(body: GameRewardClaim): Promise<GameRewardResult | undefined> {
-    if (!subscribers || view.busy || body.ownerPublicId !== owner || now() < view.retryAt) return;
+    if (!subscribers || view.busy || storageBlocked || nativeMutation || body.ownerPublicId !== owner || now() < view.retryAt) return;
     const generation = epoch, controller = new AbortController();
+    let phase: "save" | "send" | "cleanup" = "save";
     requests.add(controller); ++sequence; read = null;
-    publish({ loading: false, busy: true, error: "", result: null }); remember(body);
+    publish({ loading: false, busy: true, error: "", result: null });
     try {
+      const saved = remember(body); if (isStoragePromise(saved)) await saved;
+      if (!valid(generation)) return;
+      phase = "send";
       const result = await transport.send(body, controller.signal);
       if (!valid(generation)) return;
       const matching = result.requestId === body.requestId && result.rewards.ownerPublicId === owner && result.economy.ownerPublicId === owner
         && result.claim.kind === body.kind && (body.kind !== "achievement" || result.claim.kind === "achievement"
           && result.claim.achievementId === body.achievementId && result.claim.level === body.level);
       if (!matching) throw new ApiError("Ответ о награде не совпал с запросом. Проверьте его ещё раз.", 502);
-      adopt(result.rewards); remember(null); publish({ uncertain: false, result, retryAt: 0 }); return result;
+      adopt(result.rewards); phase = "cleanup";
+      const cleared = remember(null); if (isStoragePromise(cleared)) await cleared;
+      if (!valid(generation)) return;
+      publish({ uncertain: false, result, retryAt: 0 }); return result;
     } catch (cause) {
       if (!valid(generation)) return;
+      if (phase !== "send") {
+        storageBlocked = true;
+        publish({ uncertain: true, error: phase === "save"
+          ? "Не удалось сохранить запрос награды. Он не отправлен. Перезапустите приложение."
+          : "Награда получена, но не удалось закрыть её запись. Перезапустите приложение." });
+        return;
+      }
       const definitive = cause instanceof ApiError && cause.status >= 400 && cause.status < 500
         && ![401, 408, 425, 429].includes(cause.status) && cause.body?.code !== "GAME_SESSION_INACTIVE";
-      if (definitive) remember(null);
+      if (definitive) {
+        try { const cleared = remember(null); if (isStoragePromise(cleared)) await cleared; }
+        catch {
+          if (valid(generation)) { storageBlocked = true; publish({ uncertain: true, error: "Не удалось закрыть запись отклонённой награды. Перезапустите приложение." }); }
+          return;
+        }
+        if (!valid(generation)) return;
+      }
       publish({ uncertain: !definitive, error: cause instanceof ApiError ? cause.message : "Ответ не пришёл. Проверка повторит тот же запрос без повторной выдачи.",
         ...(cause instanceof ApiError && cause.status === 429 ? { retryAt: now() + Math.max(1000, cause.retryAfterMs ?? 60_000) } : {}) });
       if (cause instanceof ApiError && cause.status === 401) lost();
