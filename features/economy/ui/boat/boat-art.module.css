@@ -1,0 +1,7 @@
+.art { display: block; width: 100%; height: auto; overflow: visible; }
+.part { transition: opacity .2s ease, filter .2s ease; }
+.part[data-selected] { filter: drop-shadow(0 0 6px #edc47b80); }
+.part[data-preview] { opacity: .8; filter: drop-shadow(0 0 6px #8bcac399); }
+.art[data-travelling] .assembly { animation: boat-rock 4s ease-in-out infinite; transform-origin: 50% 76%; }
+@keyframes boat-rock { 0%,100% { transform: translateY(0) rotate(-.6deg); } 50% { transform: translateY(-5px) rotate(.6deg); } }
+@media (prefers-reduced-motion: reduce) { .part { transition: none; } .art[data-travelling] .assembly { animation: none; } }

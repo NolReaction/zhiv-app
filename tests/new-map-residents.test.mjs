@@ -441,7 +441,9 @@ test("DEV fishing rehearses the real trip, stops with a safe return and yields t
     worldDevStore.triggerScenario("fishing");
     assert.equal(probe.state.fishingPreview, undefined, "a local rehearsal cannot steal a server-owned actor");
     assert.equal(probe.state.explorationId, confirmed.id);
-    assert.equal(sampleHero(scene, env, pixelSprite).body, undefined);
+    assert.ok(sampleHero(scene, env, pixelSprite).body, "a confirmed distant trip starts with the real departure walk, not a disappearing actor");
+    assert.equal(probe.state.journeyTravel?.jobId, confirmed.id);
+    assert.equal(probe.state.journeyTravel?.phase, "leaving");
     scene.configure({ ...initial, economyJourney: confirmed, serverNow: 700_000 });
     assert.equal(probe.state.fishingPreview, undefined, "a rejected rehearsal is not queued behind a real job");
     assert.equal(probe.state.explorationId, null);
@@ -788,7 +790,7 @@ test("a camera with unbuilt quarry art keeps a saved mining job off map and repl
   const env=browser();let camera,probe;
   try {
     worldDevStore.patch({...quietClearing,autoLife:false});
-    const journey={id:"paid-before-quarry-gate",routeId:"cave",startedAt:new Date(100_000).toISOString(),
+    const journey={id:"paid-before-quarry-gate",routeId:"quarry_work",startedAt:new Date(100_000).toISOString(),
       finishesAt:new Date(700_000).toISOString(),rewards:{stone:8,ore:4}},original=structuredClone(journey);
     const initial={...options,reducedMotion:false,serverNow:160_000,presenceKey:"quarry-ruins-saved-trip",
       economyBuildings:{quarry:0},economyJourney:journey};

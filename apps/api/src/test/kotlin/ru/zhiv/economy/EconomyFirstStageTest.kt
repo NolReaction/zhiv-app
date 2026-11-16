@@ -26,20 +26,18 @@ class EconomyFirstStageTest {
         }
     }
 
-    @Test fun `compote unlock requires successful collection and strawberry harvest uses the saved collector`() {
-        val initial = EconomyRules.initial().copy(inventory = mapOf("berries" to 2L),
-            buildings = EconomyRules.initial().buildings + ("dryer" to 1))
+    @Test fun `strawberry requires a claimed compote and harvest still uses the saved collector`() {
+        val initial = EconomyRules.initial().let { it.copy(inventory = mapOf("berries" to 2L, "berry_compote" to 1L),
+            buildings = it.buildings + ("dryer" to 1)) }
+        assertTrue(initial.progression.recipes.isEmpty())
         assertFalse("strawberries" in EconomyFood.obtainableOrderItems(initial))
-        assertEquals("ECONOMY_RECIPE_REQUIRED", assertFailsWith<AuthFailure> {
-            apply(initial, "start_production", "grow_strawberries") }.code)
+        assertEquals("ECONOMY_RECIPE_REQUIRED", assertFailsWith<AuthFailure> { apply(initial, "start_production", "grow_strawberries") }.code)
         val cooking = apply(initial, "start_production", "cook_compote")
         val ready = Instant.parse(cooking.jobs.single().finishesAt)
-        assertEquals("ECONOMY_RECIPE_REQUIRED", assertFailsWith<AuthFailure> {
-            apply(cooking, "start_production", "grow_strawberries", ready) }.code)
-        val cooked = apply(cooking, "claim_job", cooking.jobs.single().id, ready)
-        assertEquals(1L, cooked.progression.recipes["cook_compote"])
-        assertTrue("strawberries" in EconomyFood.obtainableOrderItems(cooked))
-        val growing = apply(cooked, "start_production", "grow_strawberries", ready)
+        assertEquals("ECONOMY_RECIPE_REQUIRED", assertFailsWith<AuthFailure> { apply(cooking, "start_production", "grow_strawberries", ready) }.code)
+        val claimed = apply(cooking, "claim_job", cooking.jobs.single().id, ready)
+        assertTrue("strawberries" in EconomyFood.obtainableOrderItems(claimed))
+        val growing = apply(claimed, "start_production", "grow_strawberries", ready)
         val saved = economyJson.decodeFromString<EconomyState>(economyJson.encodeToString(growing))
         assertEquals(mapOf("strawberries" to 1L), saved.jobs.single().rewards)
         val ripe = Instant.parse(saved.jobs.single().finishesAt)

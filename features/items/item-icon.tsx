@@ -5,10 +5,13 @@ import { craftedItemArt } from "./art-crafted";
 import { collectionArt } from "./art-collection";
 import { equipmentArt } from "./art-equipment";
 import { hookArt } from "./art-hooks";
+import { cookingDiscoveryArt } from "./art-cooking-discoveries";
+import { cookingExperimentArt } from "./art-cooking-experiments";
 import { foodItemArt } from "./art-food";
 import { expeditionItemArt } from "./art-expeditions";
 import { berryTierArt } from "./art-berry-tiers";
 import { premiumCostumeArt } from "./art-premium-costumes";
+import { economyChainArt } from "./art-economy-chains";
 import { FishArt } from "@/features/world/activities/fishing/fish-icon";
 import { FISH_SPECIES_IDS, type FishSpeciesId } from "@/features/world/activities/fishing/fish-species";
 
@@ -87,7 +90,7 @@ const currencyArt: Record<string, ReactNode> = {
   pearls: collectionArt.river_pearl,
 };
 
-const itemArt: Record<string, ReactNode> = { ...naturalItemArt, ...craftedItemArt, ...relicItemArt, ...equipmentArt, ...currencyArt, ...fishingArt, ...hookArt, ...foodItemArt, ...expeditionItemArt, ...berryTierArt, ...premiumCostumeArt };
+const itemArt: Record<string, ReactNode> = { ...naturalItemArt, ...craftedItemArt, ...relicItemArt, ...equipmentArt, ...currencyArt, ...fishingArt, ...hookArt, ...foodItemArt, ...cookingDiscoveryArt, ...expeditionItemArt, ...berryTierArt, ...premiumCostumeArt, ...economyChainArt };
 export const itemIconIds: readonly string[] = Object.keys(itemArt);
 export const collectionIconIds: readonly string[] = Object.keys(collectionArt);
 
@@ -113,6 +116,11 @@ export function ItemIcon({ itemId, fishSpecies, ...props }: IconProps & { itemId
     ? fishClassArt(itemId as keyof typeof fishClassMarks, fishSpecies)
     : Object.hasOwn(itemArt, itemId) ? itemArt[itemId] : unknownArt;
   return <Illustration {...props} itemId={itemId} art={art} />;
+}
+
+/** Experiment illustrations deliberately carry no output item identity. */
+export function CookingExperimentIcon({ recipeId, ...props }: IconProps & { recipeId: string }) {
+  return <Illustration {...props} art={Object.hasOwn(cookingExperimentArt, recipeId) ? cookingExperimentArt[recipeId] : cookingExperimentArt.experiment_currant_fish} />;
 }
 
 /** Collection art is keyed by the find itself, never by its old shared symbol. */

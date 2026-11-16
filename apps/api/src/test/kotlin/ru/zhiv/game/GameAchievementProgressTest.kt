@@ -61,7 +61,7 @@ class GameAchievementProgressTest {
         val first="2026-01-01T00:00:00Z"
         val partial=achievementWithTiers("explorer",0,mapOf(1 to first))
         assertEquals(first,partial.unlockedAt); assertEquals(50L,partial.target); assertEquals(10L,partial.progress)
-        assertEquals(listOf(first,null,null),partial.tiers.map { it.unlockedAt })
+        assertEquals(listOf(first,null,null,null),partial.tiers.map { it.unlockedAt })
         val full=achievementWithTiers("home_builder",1,(1..4).associateWith { first })
         assertEquals(5L,full.progress); assertEquals(5L,full.target)
         assertTrue(full.tiers.all { it.progress==it.target })
@@ -84,7 +84,24 @@ class GameAchievementProgressTest {
             fishing = state.fishing.copy(catches = mapOf("fish" to Long.MAX_VALUE, "fish_silverfin" to Long.MAX_VALUE)),
             progression = state.progression.copy(recipes = mapOf("cook_grilled_fish" to Long.MAX_VALUE, "cook_compote" to Long.MAX_VALUE,
                 "grow_berries" to Long.MAX_VALUE, "grow_strawberries" to Long.MAX_VALUE))))
-        assertEquals(200L, huge["patient_angler"]); assertEquals(100L, huge["campfire_cook"]); assertEquals(200L, huge["generous_garden"])
+        assertEquals(1000L, huge["patient_angler"]); assertEquals(500L, huge["campfire_cook"]); assertEquals(1000L, huge["generous_garden"])
+    }
+
+    @Test fun `forest cuisine counts unique personally claimed current campfire recipes only`() {
+        val initial = EconomyRules.initial().copy(inventory = mapOf("grilled_fish" to 100L, "berry_compote" to 100L))
+        assertEquals(0L, economyAchievementProgress(initial).getValue("forest_cuisine"))
+        val repeated = initial.copy(progression = EconomyProgression(recipes = mapOf(
+            "cook_grilled_fish" to 500L, "grow_berries" to 500L, "made_up_dish" to 500L)))
+        assertEquals(1L, economyAchievementProgress(repeated).getValue("forest_cuisine"))
+        val recipes = EconomyRules.catalog.recipes.filter { !it.retired && it.buildingId == "dryer" }
+        for ((index, target) in listOf(3, 8, 16).withIndex()) {
+            val state = initial.copy(progression = EconomyProgression(recipes = recipes.take(target).associate { it.id to 1L }))
+            assertEquals(target.toLong(), economyAchievementProgress(state).getValue("forest_cuisine"))
+            val dates = (1..index + 1).associateWith { "2026-11-02T00:00:00Z" }
+            val award = achievementWithTiers("forest_cuisine", target.toLong(), dates)
+            assertEquals(index + 1, award.tiers.count { it.unlockedAt != null })
+        }
+        assertEquals(listOf(5L, 25L, 100L, 500L), GameRewards.tiers.getValue("campfire_cook"))
     }
 
 }

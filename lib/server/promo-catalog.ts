@@ -5,12 +5,12 @@ import { economyCatalog } from "@/features/economy/domain/model";
 import { normalizePromoCode } from "@/features/promo/model";
 const itemIds = new Set(economyCatalog.items.map(item => item.id));
 const date = z.string().datetime({ offset: true });
-const gift = z.object({ coins: z.number().int().min(0).max(1_000_000).default(0),
-  pearls: z.number().int().min(0).max(10_000).default(0),
-  items: z.record(z.number().int().min(1).max(10_000)).default({}), }).strict();
+const gift = z.object({ coins: z.number().int().min(0).max(1_000_000).prefault(0),
+  pearls: z.number().int().min(0).max(10_000).prefault(0),
+  items: z.record(z.string(), z.number().int().min(1).max(10_000)).prefault({}), }).strict();
 const entry = z.object({ id: z.string().regex(/^[a-z0-9][a-z0-9_-]{2,63}$/),
   code: z.string().regex(/^[A-Z0-9][A-Z0-9_-]{2,39}$/), enabled: z.boolean(),
-  title: z.string().trim().min(1).max(80), startsAt: date.nullable().default(null), endsAt: date.nullable().default(null),
+  title: z.string().trim().min(1).max(80), startsAt: date.nullable().prefault(null), endsAt: date.nullable().prefault(null),
   reward: gift, }).strict();
 const schema = z.object({ version: z.literal(1), codes: z.array(entry).max(1000) }).strict().superRefine((catalog, context) => {
   const ids = new Set<string>(), codes = new Set<string>();

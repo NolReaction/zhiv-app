@@ -1,5 +1,7 @@
 "use client";
 
+import { tradeRelationBonusBps } from "@/features/economy/domain/trade-relations";
+
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Check, Fish, Gem, Leaf, LockKeyhole, Minus, Package, Plus, RefreshCw, Shirt } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
@@ -16,6 +18,7 @@ import { FishingCatchOdds } from "@/features/economy/ui/fishing/fishing-catch-od
 import { FishRarityBadge } from "@/features/economy/ui/fishing/fish-rarity";
 import { MarketRefreshProgress } from "@/features/economy/ui/shared/market-refresh-progress";
 import { WardrobePreview } from "@/features/world/ui/wardrobe/world-wardrobe";
+import { LeaftailRelicExchange } from "./leaftail-relic-exchange";
 import styles from "./world-leaftail-market.module.css";
 
 type Offer = NonNullable<ReturnType<typeof leaftailShopView>>["offers"][number];
@@ -26,12 +29,11 @@ const sections: ReadonlyArray<{ id: ShopSection; label: string; hint: string; Ic
   { id: "wardrobe", label: "Одежда", Icon: Shirt, hint: "Примерьте на Мохлика." },
   { id: "tackle", label: "Снасти", Icon: Fish, hint: "Снасти и наживки из этой поставки. Выбор - перед рыбалкой." },
   { id: "supplies", label: "Припасы", Icon: Package, hint: "Выберите, сколько нужно. Запас ограничен до новой поставки." },
-  { id: "finds", label: "Реликвии", Icon: Gem, hint: "Для важных улучшений. Каждая реликвия - за жемчуг." },
+  { id: "finds", label: "Реликвии", Icon: Gem, hint: "Для важных улучшений. Обменяйте лишние находки или выберите покупку за жемчуг." },
 ];
 const number = (value: number) => value.toLocaleString("ru-RU");
 const money = (value: number, currency: Offer["currency"]) => currency === "pearls" ? formatPearls(value) : number(value);
 const currencyName = (currency: Offer["currency"]) => currency === "pearls" ? "жемчужин" : "монет";
-const walletName = (currency: Offer["currency"]) => currency === "pearls" ? "Жемчуг" : "Монеты";
 const descriptions: Record<string, string> = {
   ancient_core: "Для больших построек и расширения кладовой.",
   moon_crystal: "Для развития поселения и расширения кладовой.",
@@ -116,6 +118,7 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
   useLayoutEffect(() => { latest.current = { economy, quote, isOnline, introduced }; }, [economy, quote, isOnline, introduced]);
   const state = economy.snapshot;
   // Keep the accepted delivery on screen until the next server snapshot arrives.
+  const friendshipDiscount = state ? tradeRelationBonusBps(state, "leaftail", state.catalog, economy.now) / 100 : 0;
   const acceptedAt = Date.parse(state?.serverTime ?? "");
   const shop = state ? leaftailShopView(state, Number.isFinite(acceptedAt) ? acceptedAt : economy.now, state.catalog) : null;
   const deliveryExpired = Boolean(shop && economy.now >= shop.refreshAt);
@@ -179,6 +182,7 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
       : !state ? <>{recovery}<p role="status">Проверяем ваши запасы…</p></> : !shop ? <p>Листохвост готовит свой прилавок. Обновите игру немного позже.</p>
       : !shop.unlocked ? <p className={styles.locked} role="status" data-leaftail-away><LockKeyhole size={18} aria-hidden="true" /><span>{leaftailTravelMessage(shop.requiredHomeLevel)}</span></p> : <>
       <p className={styles.intro}><Leaf size={18} aria-hidden="true" /><span>«Товар занятный. Только узлы не развязывай.»</span></p>
+      {friendshipDiscount > 0 && <p className={styles.hint} data-trade-discount="leaftail">Скидка за отношения: {number(friendshipDiscount)}% на одежду, снасти и наживку.</p>}
       {recovery}
       <div className={styles.delivery}>
         <MarketRefreshProgress refreshAt={shop.refreshAt} refreshSeconds={state.catalog.leaftailShop?.refreshSeconds ?? 86400} now={economy.now} label="Новая поставка" pendingLabel="Проверяем новую поставку" />
@@ -188,7 +192,6 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
         <Check size={16} aria-hidden="true" /><div>{receipt ? <><p>{receipt.destination === "wardrobe" ? "В гардероб" : receipt.destination === "tackle" ? "В ваши снасти" : "В кладовую"}: {receipt.items.map(item => `${item.name} ×${number(item.quantity)}`).join(", ")}.</p>
           <p>Потрачено {money(receipt.currency === "pearls" ? receipt.pearls : receipt.coins, receipt.currency)} {currencyName(receipt.currency)}.</p>{receipt.destination !== "pantry" && <p>{receipt.destination === "wardrobe" ? "Надеть можно в «Ещё» → «Гардероб» → «Мои вещи»." : "Выберите снасть перед рыбалкой в «В путь»."}</p>}</> : <p>{fallback}</p>}</div>
       </div>}
-      <div className={styles.wallet} aria-label="Ваш кошелёк"><span><small>Монеты</small><strong><ItemIcon itemId="coins" size={18} />{number(state.wallet.coins)}</strong></span><span><small>Жемчуг</small><strong><ItemIcon itemId="pearls" size={18} />{formatPearls(state.wallet.pearls)}</strong></span></div>
       <div className={styles.tabs} role="tablist" aria-label="Товары Листохвоста">{sections.map((entry, index) => <button key={entry.id}
         type="button" role="tab" ref={node => { tabButtons.current[index] = node; }} id={`${tabsId}-${entry.id}`} aria-controls={`${tabsId}-offers`}
         aria-selected={section === entry.id} tabIndex={section === entry.id ? 0 : -1} onClick={() => changeSection(entry.id)} onKeyDown={event => {
@@ -202,14 +205,14 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
         {selected?.rarity && <FishRarityBadge rarity={selected.rarity} />}
         {selected && (quote.kind === "rod" || quote.kind === "hook" || quote.kind === "bait") && <p className={styles.hint}>{selected.description}</p>}
         {state.catalog.fishing && tackleOverride(quote.kind, quote.itemId) && <FishingCatchOdds state={state} catalog={state.catalog.fishing}
-          override={tackleOverride(quote.kind, quote.itemId)!} targetRarity={selected?.rarity} preview showLoadout />}
+          override={tackleOverride(quote.kind, quote.itemId)!} targetRarity={selected?.rarity} preview showLoadout collapsible />}
         {preview && <div className={styles.fitting}><WardrobePreview appearance={preview} /><div><strong>Примерка</strong><p>{selected?.description}</p><small>Покупка добавит вещь в гардероб. Образ можно поменять позже.</small></div></div>}
         <p>{quote.kind === "wardrobe" ? "Вещь навсегда в гардероб" : quote.kind === "rod" || quote.kind === "hook" ? "Снасть навсегда в вашу коллекцию" : `${number(quote.itemQuantity)} шт. в кладовую`} за <strong>{money(quote.price, quote.currency)} {currencyName(quote.currency)}</strong>.</p>
-        <p>{walletName(quote.currency)}: {money(state.wallet[quote.currency], quote.currency)} → {money(Math.max(0, state.wallet[quote.currency] - quote.price), quote.currency)}</p>
         {reason && <p className={styles.reason} role="status">{reason}</p>}
         <div className={styles.actions}><button type="button" onClick={() => setQuote(null)}>Назад</button><button className={styles.buy} type="button" disabled={Boolean(reason)} onClick={confirm}>Подтвердить<ItemIcon itemId={quote.currency} size={16} />{money(quote.price, quote.currency)}</button></div>
       </section> : <div role="tabpanel" id={`${tabsId}-offers`} aria-labelledby={`${tabsId}-${section}`} data-leaftail-section={section}>
         <p className={styles.hint}>{sections.find(entry => entry.id === section)?.hint}</p>
+        {section === "finds" && <LeaftailRelicExchange key={state.ownerPublicId} economy={economy} isOnline={isOnline} />}
         {shop.offers.filter(offer => offer.section === section).length === 0 && <p className={styles.empty} role="status" data-leaftail-empty>В этой поставке здесь пока пусто. Загляните после обновления.</p>}
         <div className={`${styles.offers} ${section === "wardrobe" ? styles.clothes : ""}`}>{shop.offers.filter(offer => offer.section === section).map(offer => {
           const limit = leaftailPurchaseLimit(state, offer), requested = quantities[offer.targetId] ?? 1;
@@ -219,8 +222,9 @@ export function WorldLeaftailMarket({ economy, isOnline, introduced = false, app
           const adjustable = !permanent(offer.kind) && offer.stock > 1;
           return <article className={styles.offer} key={offer.id} data-leaftail-item={offer.itemId} data-leaftail-kind={offer.kind} data-leaftail-currency={offer.currency} data-leaftail-quantity={nextQuote.itemQuantity}>
             <div className={styles.item}>{offer.kind === "rod" ? <FishingRodIcon rodId={offer.itemId} size={40} /> : <ItemIcon itemId={offer.itemId} size={section === "wardrobe" ? 40 : 36} />}<div><strong>{name}</strong>{rarity && <FishRarityBadge rarity={rarity} />}{section !== "wardrobe" && <small>{section === "tackle" ? shortDescription(description) : description}</small>}</div>{!permanent(offer.kind) && <span className={styles.stock}>Осталось {number(offer.remaining * offer.quantity)} шт.</span>}</div>
+            {offer.kind === "bait" && <p className={styles.hint}>1 порция на весь выход.</p>}
             {state.catalog.fishing && tackleOverride(offer.kind, offer.itemId) && <FishingCatchOdds state={state} catalog={state.catalog.fishing}
-              override={tackleOverride(offer.kind, offer.itemId)!} targetRarity={rarity} preview showLoadout />}
+              override={tackleOverride(offer.kind, offer.itemId)!} targetRarity={rarity} preview showLoadout collapsible />}
             {adjustable && <div className={styles.quantityRow}><span>{money(offer.unitPrice, offer.currency)} {currencyName(offer.currency)} / {offer.quantity === 1 ? "шт." : `${number(offer.quantity)} шт.`}</span><div className={styles.quantity} role="group" aria-label={`Количество: ${name}`}>
               <button type="button" aria-label={`Уменьшить количество: ${name}`} disabled={quantity <= 1 || Boolean(disabledReason)} onClick={() => setQuantities(previous => ({ ...previous, [offer.targetId]: quantity - 1 }))}><Minus size={14} aria-hidden="true" /></button>
               <output aria-label={`Выбрано: ${name}`} aria-live="polite">{number(nextQuote.itemQuantity)}</output>

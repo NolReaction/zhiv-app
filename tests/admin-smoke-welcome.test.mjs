@@ -9,9 +9,9 @@ assert.ok(start >= 0 && end > start, "The isolated production welcome smoke must
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const smokeWelcome = new AsyncFunction("assert", "fixtureInbox", "api", "mailTarget", "initialMailEconomy", source.slice(start, end));
 
-function fixture({ copies = 1, mintOnRead = false, claimedAt = null } = {}) {
+function fixture({ copies = 1, mintOnRead = false, claimedAt = null, pearls = 20 } = {}) {
   const letter = { id: "welcome-id", type: "event", notify: false, attachments: null,
-    gift: { pearls: 100, claimedAt }, readAt: null };
+    gift: { pearls, claimedAt }, readAt: null };
   const initial = { wallet: { coins: 150, pearls: 0 }, revision: 1 };
   const state = structuredClone(initial), calls = [];
   const inbox = async () => ({ messages: Array.from({ length: copies }, () => structuredClone(letter)),
@@ -22,7 +22,7 @@ function fixture({ copies = 1, mintOnRead = false, claimedAt = null } = {}) {
       assert.equal(options.cookie, "fixture-cookie");
       assert.deepEqual(options.body, { expectedOwnerPublicId: "fixture-owner" });
       letter.readAt = "2026-10-20T12:00:00Z";
-      if (mintOnRead) { state.wallet.pearls += 200; state.revision++; }
+      if (mintOnRead) { state.wallet.pearls += pearls * 2; state.revision++; }
       return { data: { unreadCount: 0, readAt: letter.readAt } };
     }
     assert.equal(method, "GET");
@@ -40,7 +40,7 @@ test("production admin smoke accepts one unclaimed welcome and explicitly reads 
 });
 
 test("production admin smoke rejects welcome duplication and implicit gift payment", async () => {
-  for (const options of [{ copies: 0 }, { copies: 2 }, { mintOnRead: true }, { claimedAt: "2026-10-20T11:00:00Z" }]) {
+  for (const options of [{ copies: 0 }, { copies: 2 }, { mintOnRead: true }, { pearls: 100 }, { claimedAt: "2026-10-20T11:00:00Z" }]) {
     await assert.rejects(fixture(options).run(), { name: "AssertionError" });
   }
 });

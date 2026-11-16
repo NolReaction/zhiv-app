@@ -138,8 +138,8 @@ test("deployment stops writers before backup, verifies restoration, then migrate
   } finally { await rm(run.directory, { recursive: true, force: true }); }
 });
 
-test("explicit 0.7.1 fresh start migrates and rehearses while writers remain stopped, then reopens", async () => {
-  const run = await simulateDeploy("", { args: ["--reset-game-progress-0.7.1"] });
+test("explicit 0.7.2 fresh start migrates and rehearses while writers remain stopped, then reopens", async () => {
+  const run = await simulateDeploy("", { args: ["--reset-game-progress-0.7.2"] });
   try {
     assert.equal(run.result.status, 0, run.result.stderr);
     const index = pattern => run.events.findIndex(event => pattern.test(event.command));
@@ -164,7 +164,7 @@ test("explicit 0.7.1 fresh start migrates and rehearses while writers remain sto
 
 test("a failed fresh-start migration, restore or rehearsal cannot apply live reset or reopen writers", async () => {
   for (const failure of ["run --rm --no-deps migrate", "--exit-on-error", "-d zhiv_game_reset_verify_"]) {
-    const run = await simulateDeploy(failure, { args: ["--reset-game-progress-0.7.1"] });
+    const run = await simulateDeploy(failure, { args: ["--reset-game-progress-0.7.2"] });
     try {
       assert.equal(run.result.status, 42, run.result.stderr);
       assert.ok(!run.events.some(event => /psql .* -d zhiv .*apply_reset=on/.test(event.command)));
@@ -175,8 +175,8 @@ test("a failed fresh-start migration, restore or rehearsal cannot apply live res
   }
 });
 
-test("unknown deployment options fail before Git, Docker or maintenance", async () => {
-  const run = await simulateDeploy("", { args: ["--reset-game-progress-0.7.2"] });
+test("old deployment reset flags fail instead of silently starting a new release reset", async () => {
+  const run = await simulateDeploy("", { args: ["--reset-game-progress-0.7.1"] });
   try {
     assert.equal(run.result.status, 2);
     assert.deepEqual(run.events, []);

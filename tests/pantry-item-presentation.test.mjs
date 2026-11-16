@@ -106,10 +106,25 @@ test("all provisions share the refrigerator, with compotes together and travel s
     assert.equal(cardFor(supplies, item.id), undefined, item.id);
     assert.ok(cardFor(fridge, item.id)?.includes(`aria-label="${item.name}: 2"`), item.id);
   }
-  for (const id of ["berry_compote", "strawberry_compote", "blueberry_compote"]) assert.equal(pantryItemGroup(economyCatalog.items.find(item => item.id === id), economyCatalog), "drinks");
-  for (const id of ["dried_berries", "smoked_fish", "trail_ration"]) assert.equal(pantryItemGroup(economyCatalog.items.find(item => item.id === id), economyCatalog), "travel");
+  for (const id of ["berry_compote", "strawberry_compote", "blueberry_compote", "bottled_compote"]) assert.equal(pantryItemGroup(economyCatalog.items.find(item => item.id === id), economyCatalog), "drinks");
+  for (const id of ["dried_berries", "smoked_fish", "trail_ration", "packed_berries"]) assert.equal(pantryItemGroup(economyCatalog.items.find(item => item.id === id), economyCatalog), "travel");
+  assert.equal(pantryItemGroup(economyCatalog.items.find(item => item.id === "berry_gift"), economyCatalog), "desserts");
   assert.ok(fridge.indexOf('data-pantry-fish-class="fish_common"') < fridge.indexOf('data-pantry-item-group="fish-dishes"'));
   assert.deepEqual(economy.snapshot, before, "tabs share one unchanged stock and storage capacity");
+});
+
+test("new kitchen dishes retain their food section and authored tier after discovery or a gift", () => {
+  const expected = { berry_tea: ["drinks", "uncommon"], forest_pan: ["fish-dishes", "common"],
+    currant_glazed_fish: ["fish-dishes", "common"], berry_pastila: ["desserts", "uncommon"],
+    trail_feast: ["travel", "epic"], river_aspic: ["fish-dishes", "common"] };
+  const economy = controller(Object.fromEntries(Object.keys(expected).map(id => [id, 1]))), fridge = render(economy, "fridge");
+  for (const [id, [group, rarity]] of Object.entries(expected)) {
+    const item = economyCatalog.items.find(item => item.id === id);
+    assert.equal(pantryItemGroup(item, economyCatalog), group, id);
+    assert.equal(pantryItemRarity(item, economyCatalog), rarity, id);
+    assert.ok(cardFor(fridge, id)?.includes(`data-item-rarity="${rarity}"`), id);
+  }
+  assert.doesNotMatch(fridge, /data-pantry-item-group="other"/);
 });
 
 test("rarity colors remain pale and readable through hover and selection, with symmetric relic styling", async () => {

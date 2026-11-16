@@ -1,3 +1,4 @@
+import type { BoatState } from "./boat-model";
 import { economyCatalog, type EconomyCatalog, type EconomyCommand, type EconomyJob } from "./model";
 
 export function explorationActorId(route: { activity?: string | null }): "miner" | "mochlik" {
@@ -23,14 +24,16 @@ export function isQuarryProduction(job: Pick<EconomyJob, "kind" | "targetId">) {
 /** Mining uses exploration commands; retired production is rejected by the domain. */
 export function economyCommandUsesActor(command: Pick<EconomyCommand, "action" | "targetId">, catalog: EconomyCatalog = economyCatalog) {
   if (command.action === "start_exploration" && catalog.explorations.some(route => route.id === command.targetId && route.activity === "mining")) return false;
-  return ["start_exploration", "start_fishing", "start_collection", "start_garden_collection", "eat_food"].includes(command.action);
+  return ["depart_boat", "start_exploration", "start_fishing", "start_collection", "start_garden_collection", "eat_food"].includes(command.action);
 }
 
-type ActorConflict = { code: "ECONOMY_EXPLORER_BUSY" | "ECONOMY_COLLECTOR_BUSY" | "ECONOMY_QUARRY_BUSY"; message: string; job: EconomyJob };
+type ActorConflict = { code: "ECONOMY_EXPLORER_BUSY" | "ECONOMY_COLLECTOR_BUSY" | "ECONOMY_QUARRY_BUSY"; message: string; job: EconomyJob }
+  | { code: "ECONOMY_BOAT_BUSY"; message: string; job?: never };
 
 /** Departures retain their slot until delivery. A returned hero may gather berries
  * while the earlier findings wait; an accepted harvest owns him until its claim. */
-export function economyActorConflict(jobs: readonly EconomyJob[], intent: "departure" | "collection", now: number): ActorConflict | null {
+export function economyActorConflict(jobs: readonly EconomyJob[], intent: "departure" | "collection", now: number, boat?: BoatState): ActorConflict | null {
+  if (boat?.voyage) return { code: "ECONOMY_BOAT_BUSY", message: "Сначала вернитесь на лодке и заберите улов" };
   const collection = jobs.find(job => job.collection?.startedAt);
   if (intent === "departure" && collection)
     return { code: "ECONOMY_COLLECTOR_BUSY", message: "Сначала завершите сбор припасов", job: collection };

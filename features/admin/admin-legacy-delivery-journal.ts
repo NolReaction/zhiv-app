@@ -5,7 +5,7 @@ import { playerMessageSchema } from "./admin-delivery-contract";
 import { readAdminAttempt, saveAdminAttempt } from "./admin-attempt-journal";
 import { validAdminReason } from "./admin-input";
 
-const common = { requestId: z.string().uuid(), confirmationPublicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/),
+const common = { requestId: z.guid(), confirmationPublicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/),
   reason: z.string().refine(validAdminReason), delivery: z.enum(["silent", "notify"]).optional(), playerMessage: playerMessageSchema.optional() };
 const compatible = (value: { delivery?: string; playerMessage?: object }) => value.delivery === "notify" || value.playerMessage === undefined;
 const manageSchema = z.object({ ...common, action: z.enum(["grant_world_item", "grant_find"]), target: z.string().min(1).max(80) }).strict().refine(compatible);

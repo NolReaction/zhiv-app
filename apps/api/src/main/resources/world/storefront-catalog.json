@@ -58,7 +58,7 @@
       "purchaseLimit": 1,
       "rewards": {
         "pearls": 300,
-        "coins": 250,
+        "coins": 150,
         "items": {
           "wood": 3,
           "stone": 2,
@@ -76,7 +76,7 @@
       "purchaseLimit": 1,
       "rewards": {
         "pearls": 700,
-        "coins": 800,
+        "coins": 300,
         "items": {
           "planks": 3,
           "rope": 2,
@@ -95,7 +95,7 @@
       "purchaseLimit": 1,
       "rewards": {
         "pearls": 1000,
-        "coins": 2000,
+        "coins": 500,
         "items": {
           "planks": 4,
           "rope": 3,
@@ -113,31 +113,30 @@
       "purchaseLimit": 1,
       "rewards": {
         "pearls": 1300,
-        "coins": 5000,
+        "coins": 750,
         "items": {
-          "beams": 2,
-          "cut_stone": 2,
-          "cloth": 2,
-          "metal_parts": 2,
-          "fish_soup": 2
+          "beams": 1,
+          "cut_stone": 1,
+          "cloth": 1,
+          "metal_parts": 1,
+          "fish_soup": 1
         }
       }
     },
     {
       "id": "starter_home_5_v1",
       "name": "Уютный мир",
-      "description": "Запас для последних улучшений хозяйства и два сытных ужина.",
+      "description": "Небольшой запас сложных материалов и сытный ужин для следующих улучшений.",
       "homeLevel": 5,
       "priceRub": 599,
       "purchaseLimit": 1,
       "rewards": {
         "pearls": 1600,
-        "coins": 8000,
+        "coins": 1000,
         "items": {
-          "reinforced_parts": 2,
-          "glass": 3,
-          "tools": 2,
-          "hearty_fish": 2
+          "reinforced_parts": 1,
+          "glass": 1,
+          "hearty_fish": 1
         }
       }
     }

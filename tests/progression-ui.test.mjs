@@ -8,8 +8,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { BranchPage } = await vite.ssrLoadModule("/features/progression/branch-page.tsx");
-const { progressionGraph: graph } = await vite.ssrLoadModule("/features/progression/graph.ts");
+const { WorldTree: BranchPage } = await vite.ssrLoadModule("/features/progression/ui/world/world-tree.tsx");
+const { progressionGraph: graph } = await vite.ssrLoadModule("/features/progression/domain/graph.ts");
 const html = renderToStaticMarkup(createElement(BranchPage));
 
 test("branch renders every location, level, recipe and exploration as an accessible selectable graph node", () => {
@@ -40,9 +40,9 @@ test("branch opens the free start while keeping places, equipment and future wor
   assert.match(detail, /Бесплатная лесная вылазка восстанавливает проданные материалы/);
   assert.match(detail, /Тапы не дают хозяйственную валюту/);
   assert.match(html, /data-node-id="start"[^>]*aria-pressed="true"/);
-  assert.match(html, /Схема правил и возможностей/);
+  assert.match(html, /Карта развития/);
   assert.match(html, /data-node-id="public_profiles"[^>]*data-status="active"/);
-  assert.match(html, /data-node-id="friend_glade"[^>]*data-status="plan"/);
+  assert.match(html, /data-node-id="friend_glade"[^>]*data-status="active"/);
   assert.match(html, /data-node-id="pleska_home"[^>]*data-status="plan"/);
   assert.match(html, /Внутри места/);
   assert.match(html, /data-node-id="mine_interior"[^>]*data-status="plan"/);
@@ -63,7 +63,7 @@ test("branch prerenders cooking's fish source and current food uses as active ac
   assert(sourceButton);
   assert.match(sourceButton, /data-kind="acquisition"/);
   assert.match(sourceButton, /data-status="active"/);
-  assert.match(sourceButton, /aria-label="Классы рыбы из улова"/);
+  assert.match(sourceButton, /aria-label="Виды и классы рыбы из улова"/);
   assert.match(html, /data-node-id="orders"[^>]*data-status="active"/);
   assert.match(html, /data-node-id="meals"[^>]*data-status="active"/);
   assert.match(html, /data-node-id="r:cook_berry_fish"/);

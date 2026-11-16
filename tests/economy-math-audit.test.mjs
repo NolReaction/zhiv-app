@@ -12,12 +12,12 @@ test("elementary materials retain recursive occupied-slot minutes without treati
   const brick = math.profile("bricks");
   near(brick.slotMinutes.kiln, 5); near(brick.slotMinutes.quarry, 3); near(brick.slotMinutes.woodlot, 3);
   near(brick.slotMinutes.miner, 3);
-  near(math.profile("tools").totalSlotMinutes, 216.5);
-  near(math.profile("reinforced_parts").totalSlotMinutes, 356.5);
+  near(math.profile("tools").totalSlotMinutes, 127.5);
+  near(math.profile("reinforced_parts").totalSlotMinutes, 248.5);
   assert.equal(math.profile("fiber").sourceHome, 1, "Forest output exists before the dedicated fiber station");
   assert.equal(math.profile("fiber").referenceHome, 3);
   const berry = math.profile("berries");
-  near(berry.slotMinutes.garden, (30 + 8) / 60);
+  near(berry.slotMinutes.garden, (60 + 8) / 60);
   near(berry.slotMinutes.mochlik, 8 / 60);
   const catalog = readEconomyCatalog();
   near(math.batch(catalog.recipes.find(r => r.id === "grow_berries")).slotMinutes.garden, (60 + 8) / 60);
@@ -27,8 +27,8 @@ test("elementary materials retain recursive occupied-slot minutes without treati
 
 test("focused mining reserves the independent miner and mine while hero occupancy stays separate", () => {
   const catalog = readEconomyCatalog(), math = economicMath(catalog);
-  const routes = catalog.explorations.filter(r => r.id.startsWith("quarry_"));
-  assert.equal(routes.length, 15);
+  const routes = catalog.explorations.filter(r => r.id.startsWith("quarry_") && !r.retired);
+  assert.equal(routes.length, 6);
   for (const recipe of routes) {
     const batch = math.batch(recipe);
     near(batch.slotMinutes.quarry, recipe.seconds / 60);
@@ -37,9 +37,9 @@ test("focused mining reserves the independent miner and mine while hero occupanc
     near(batch.processMinutes, recipe.seconds / 60);
   }
   near(math.profile("stone").slotMinutes.miner, 3);
-  near(math.profile("ore").slotMinutes.miner, 9);
-  near(math.profile("tools").slotMinutes.miner, 27);
-  near(math.profile("reinforced_parts").slotMinutes.miner, 54);
+  near(math.profile("ore").slotMinutes.miner, 10);
+  near(math.profile("tools").slotMinutes.miner, 30);
+  near(math.profile("reinforced_parts").slotMinutes.miner, 60);
   assert.equal(math.profile("wood").slotMinutes.mochlik, undefined, "Passive gathering remains independent");
 });
 
@@ -51,7 +51,7 @@ test("a saved legacy joint job is costed once and exposes its portfolio without 
     rewards: { beams: 2, cut_stone: 2, metal_parts: 2 }, maxBatch: 1 };
   const batch = math.batch(paidTerms);
   assert.deepEqual(batch.output, { beams: 2, cut_stone: 2, metal_parts: 2 });
-  near(batch.slotMinutes.workshop, 486); near(batch.elementaryOutputMinutes.workshop, 276);
+  near(batch.slotMinutes.workshop, 486); near(batch.elementaryOutputMinutes.workshop, 90);
   for (const id of ["woodlot", "quarry", "kiln", "miner"]) near(batch.slotMinutes[id], batch.elementaryOutputMinutes[id]);
   assert.equal(batch.coins, 0);
   const cycle = structuredClone(c); cycle.recipes.find(r => r.id === "make_planks").cost.items.planks = 1;
@@ -76,7 +76,7 @@ test("catch expectation accounts for every fish as class stock and separately pr
   near(charged.slotMinutes.woodlot, 6 / initial.output.fish_common);
 });
 
-test("first-stage fixed NPC prices are exact and strawberry profiles retain their recipe unlock", () => {
+test("fixed NPC prices are exact and mastery gates remain distinct from repeat-production work", () => {
   const catalog = readEconomyCatalog(), math = economicMath(catalog);
   for (const [id, price] of Object.entries(catalog.localBuyer.unitPrices)) {
     assert.equal(math.liquidation({ [id]: 1 }), price);
@@ -85,38 +85,38 @@ test("first-stage fixed NPC prices are exact and strawberry profiles retain thei
   const strawberry = math.profile("strawberries");
   assert.deepEqual(strawberry.unlockRecipes, { cook_compote: 1 });
   assert.equal(strawberry.producerLevels.dryer, 1);
-  near(strawberry.slotMinutes.garden, 128 / 60);
+  near(strawberry.slotMinutes.garden, 308 / 60);
   near(math.batch(catalog.recipes.find(recipe => recipe.id === "grow_strawberries")).slotMinutes.garden, 308 / 60);
-  const locked = structuredClone(catalog); locked.recipes.find(recipe => recipe.id === "cook_compote").requiredHomeLevel = 2;
-  assert.equal(economicMath(locked).sourceHome("strawberries"), 2);
-  locked.recipes.find(recipe => recipe.id === "cook_compote").requiredRecipes = { grow_strawberries: 1 };
-  assert.throws(() => economicMath(locked).sourceHome("strawberries"), /Recipe unlock cycle/);
+  const locked = structuredClone(catalog); locked.explorations.find(route => route.id === "far_bank_path").requiredHomeLevel = 5;
+  assert.equal(economicMath(locked).sourceHome("lens"), 5);
+  locked.explorations.find(route => route.id === "far_bank_path").cost.items.lens = 1;
+  assert.throws(() => economicMath(locked).sourceHome("lens"), /Recipe unlock cycle/);
 });
 
 test("new berry processing includes all crop collection and upstream station work", () => {
   const catalog = readEconomyCatalog(), math = economicMath(catalog);
-  for (const [home, crop, product, seconds, margin] of [
-    [2, "blueberries", "blueberry_compote", 180, 30],
-    [3, "currants", "currant_jelly", 720, 50],
-    [4, "blackberries", "blackberry_preserve", 1800, 80],
-    [5, "cranberries", "cranberry_glaze", 3600, 170],
+  for (const [home, crop, product, seconds] of [
+    [2, "blueberries", "blueberry_compote", 180],
+    [3, "currants", "currant_jelly", 720],
+    [4, "blackberries", "blackberry_preserve", 1800],
+    [5, "cranberries", "cranberry_glaze", 3600],
   ]) {
     const cropProfile = math.profile(crop), productProfile = math.profile(product);
     near(cropProfile.slotMinutes.garden, (seconds + 8) / 60);
     near(cropProfile.slotMinutes.mochlik, 8 / 60);
     assert.equal(cropProfile.sourceHome, home); assert.equal(productProfile.referenceHome, home);
-    assert(productProfile.slotMinutes.garden >= 2 * cropProfile.slotMinutes.garden);
     const recipe = catalog.recipes.find(row => row.rewards[product] > 0);
-    assert.equal(math.liquidation(recipe.rewards) - math.liquidation(recipe.cost.items), margin);
+    assert(productProfile.slotMinutes.garden >= recipe.cost.items[crop] * cropProfile.slotMinutes.garden);
+    assert.equal(math.liquidation(recipe.rewards) - math.liquidation(recipe.cost.items), recipe.seconds / 60 * 10);
     assert.equal(productProfile.producerLevels.garden, home);
   }
   const dessert = math.profile("cranberry_glaze");
   assert.equal(dessert.producerLevels.dryer, 4);
-  assert.equal(dessert.rawInputs.cranberries, 2);
+  assert.equal(dessert.rawInputs.cranberries, 1);
   assert.equal(dessert.rawInputs.currants, 2);
   assert.equal(dessert.rawInputs.berries, 2);
   const jam = math.profile("blackberry_preserve");
-  assert.equal(jam.rawInputs.sand, 3);
+  assert.equal(jam.rawInputs.quartz, 1);
   assert(jam.slotMinutes.kiln > 0 && jam.slotMinutes.miner > 0, "A jar must include real glass and its mining inputs");
 });
 
@@ -141,7 +141,7 @@ test("the longer catch gives eight class draws and consumes one bait per trip", 
 
 test("rare-material expectations describe each independent actor clock without invented NPC price or additive ingredient work", () => {
   const report = auditEconomicMath(readEconomyCatalog());
-  for (const p of report.profiles.filter(profile => profile.acquisition)) {
+  for (const p of report.profiles.filter(profile => profile.acquisition?.kind === "rare_drop")) {
     assert.equal(p.sourceHome, 3); assert.equal(p.referenceHome, 3);
     assert.deepEqual(p.slotMinutes, {});
     assert.equal(p.oneUnitNpcRevenue, 0); assert.equal(p.slotOpportunityCoins, null);
@@ -153,7 +153,7 @@ test("rare-material expectations describe each independent actor clock without i
     assert.equal(p.acquisition.expectedCompleteSetSeconds / 3600, 528);
     assert.equal(p.acquisition.finiteSpecificGuarantee, false);
   }
-  assert.equal(report.profiles.filter(profile => profile.acquisition).length, 3);
+  assert.equal(report.profiles.filter(profile => profile.acquisition?.kind === "rare_drop").length, 3);
 });
 
 test("fish references use the least expensive eligible rod and allow legendary fish with the free hook", () => {
@@ -192,4 +192,21 @@ test("each specialist rod and hook can lead a distinct rarity objective instead 
     assert(catalog.fishing.rods.every(other => share(own, rarity) >= share(math.catchPortfolio(other.id, null, "shore", hook.id), rarity)), `${rod.id}: missing intended ${rarity} role`);
     assert(catalog.fishing.hooks.every(other => share(own, rarity) >= share(math.catchPortfolio(rod.id, null, "shore", other.id), rarity)), `${hook.id}: missing intended ${rarity} role`);
   }
+});
+
+
+test("public math audit excludes retired jobs from recipes, mining and station benchmarks", () => {
+  const catalog = readEconomyCatalog();
+  // Archived jobs remain in the catalog to settle work already paid for. They
+  // cannot be advertised as available income routes in a fresh economy audit.
+  const retiredRecipe = catalog.recipes.find(recipe => recipe.retired);
+  const retiredRoute = catalog.explorations.find(route => route.retired && route.activity === "mining");
+  assert(retiredRecipe && retiredRoute, "regression must include both historical source kinds");
+  retiredRecipe.cost.coins = Number.MAX_SAFE_INTEGER;
+  retiredRoute.cost.coins = Number.MAX_SAFE_INTEGER;
+  const report = auditEconomicMath(catalog);
+  assert.deepEqual(report.batches.map(row => row.id), catalog.recipes.filter(row => !row.retired).map(row => row.id));
+  assert.deepEqual(report.mining.map(row => row.id), catalog.explorations.filter(row => !row.retired && row.activity === "mining").map(row => row.id));
+  const retiredIds = new Set([...catalog.recipes, ...catalog.explorations].filter(row => row.retired).map(row => row.id));
+  assert(Object.values(report.stationBenchmarks).every(row => !retiredIds.has(row.recipeId)));
 });

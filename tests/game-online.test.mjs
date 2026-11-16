@@ -135,12 +135,12 @@ test("monthly scores use server UTC and zone changes cannot move taps between mo
   assert.equal(batch(owner, session(owner), 12).value.progress.monthlyTaps, 12);
 });
 
-test("leaderboard participation is private by default and stale visibility writes cannot reverse opt-out", () => {
+test("confirmed tap scores enter rankings automatically and legacy guest-privacy writes cannot remove scores", () => {
   const owner = player("Owner");
   const other = player("Other");
   batch(owner, session(owner), 10);
   batch(other, session(other), 20);
-  assert.deepEqual(ok(game.getDevGameLeaderboard(owner.token)).entries, []);
+  assert.deepEqual(ok(game.getDevGameLeaderboard(owner.token)).entries.map(entry => entry.displayName), ["Other", "Owner"]);
   assert.equal(ok(visibility(owner, true, 0)).visibilityVersion, 1);
   assert.equal(ok(visibility(owner, true, 0)).visibilityVersion, 1);
   ok(visibility(other, true, 0));
@@ -153,13 +153,13 @@ test("leaderboard participation is private by default and stale visibility write
   assert.equal(ok(visibility(owner, false, 1)).visibilityVersion, 2);
   assert.equal(visibility(owner, true, 0).code, "GAME_VISIBILITY_CONFLICT");
   board = ok(game.getDevGameLeaderboard(owner.token));
-  assert.equal(board.myRank, null);
+  assert.equal(board.myRank, 2);
   assert.equal(board.monthlyTaps, 10);
-  assert.equal(board.leaderboardOptIn, false);
-  assert.equal(board.entries.length, 1);
+  assert.equal(board.leaderboardOptIn, true);
+  assert.equal(board.entries.length, 2);
 });
 
-test("the top 100 is capped while an opted-in player's own rank remains available below it", () => {
+test("the top 100 is capped while a player's own rank remains available below it", () => {
   const owner = player("Below top 100");
   batch(owner, session(owner), 1);
   ok(visibility(owner, true, 0));
@@ -328,14 +328,15 @@ test("series ranking shares places, persists across months and keeps the top 100
   const hidden = player("Hidden"); batch(hidden, session(hidden), 60);
   let board = ok(game.getDevGameLeaderboard(owner.token, "global", Date.now(), "best_series"));
   assert.equal(board.metric, "best_series"); assert.equal(board.bestSeries, 1);
-  assert.equal(board.entries.length, 100); assert.equal(board.myRank, 102);
-  assert.ok(board.entries.every(item => item.rank === 1 && item.score === 2));
+  assert.equal(board.entries.length, 100); assert.equal(board.myRank, 103);
+  assert.equal(board.entries[0].score, 60); assert.equal(board.entries[0].rank, 1);
+  assert.ok(board.entries.slice(1).every(item => item.rank === 2 && item.score === 2));
   context.mock.timers.setTime(Date.now() + 1_000);
   board = ok(game.getDevGameLeaderboard(owner.token, "global", Date.now(), "best_series"));
-  assert.equal(board.myRank, 102); assert.equal(board.monthlyTaps, 0);
+  assert.equal(board.myRank, 103); assert.equal(board.monthlyTaps, 0);
   assert.deepEqual(ok(game.getDevGameLeaderboard(owner.token)).entries, []);
   ok(visibility(owner, false, 1));
-  assert.equal(ok(game.getDevGameLeaderboard(owner.token, "global", Date.now(), "best_series")).myRank, null);
+  assert.equal(ok(game.getDevGameLeaderboard(owner.token, "global", Date.now(), "best_series")).myRank, 103);
 });
 test("ranking metric rejects unknown or repeated parameters", () => {
   assert.equal(validation.parseDevGameMetric(new URLSearchParams()), "monthly_taps");

@@ -48,6 +48,27 @@ export const equipmentArt: Record<string, ReactNode> = {
     "M6 29 5 20l8 1-1-9 8 4 5-11 5 11 7-5 1 11 6-1-3 10-2 5-8 4-10-1-10 1-5-5Z",
   ),
   amber_scarf: scarf("#e2a44d", "#f1cb79", "#a7723e"),
+  berest_birch_moss: <>
+    {mossShade("berest_birch_moss")}
+    <path d="m13 29 10 4 12-4 2 11-12 5-14-5Z" fill="#5b6951" />
+    <path d="M24 33v10m-10-4 9 3 12-3" fill="none" stroke="#e1d1a6" />
+    <path d="M23 35h2v2h-2Zm0 5h2v2h-2Z" fill="#f7edc8" stroke="none" />
+  </>,
+  berest_trail_hat: <>
+    <path d="M4 29c10-6 31-6 40 0 3 7-8 12-20 12S1 36 4 29Z" fill="#e1d1a6" />
+    <path d="m12 28 4-17 9-4 10 5 3 16c-9 4-18 4-26 0Z" fill="#f0e2bb" />
+    <path d="m14 23-2 5c8 4 17 4 26 0l-1-5c-8 4-15 4-23 0Z" fill="#3f8585" />
+    <path d="m20 13 5 1m5 3 4 1M8 30c9 4 22 4 32 0" fill="none" stroke="#725c44" strokeWidth="1.5" />
+    <path d="m32 24 6-19m-3 11-5-2m7-3 5 1m-4-5-3-2" fill="none" stroke="#6a8f7c" strokeWidth="3" />
+    <path d="M28 24h6v5h-6Z" fill="#e6b45e" />
+  </>,
+  berest_lantern_scarf: <>
+    {scarf("#3f8585", "#94c0af", "#28585d")}
+    <path d="m14 34 7 2m4 3 8 1" stroke="#e6b45e" strokeWidth="2" />
+    <path d="M27 17h7v4h-7Zm-2 4h11v12H25Z" fill="#e6b45e" stroke="#725c44" />
+    <path d="M28 23h5v7h-5Z" fill="#f7edc8" stroke="none" />
+    <path d="M25 32h11" stroke="#725c44" />
+  </>,
   berry_scarf: scarf("#b96374", "#e4a1a5", "#88485e"),
   heather: mossShade("heather"),
   frost: mossShade("frost"),

@@ -23,7 +23,7 @@ export type ForestGardenRoutine = {
 export type ForestGardenState = {
   elapsed: number; bushes: ForestBerryBush[]; unplacedBerries: number;
   basket: { position: WorldPoint; approach: WorldPoint; homePosition: WorldPoint; homeApproach: WorldPoint;
-    size: number; berries: number; capacity: number; held?: boolean; dropRetryAt?: number } | null;
+    size: number; berries: number; capacity: number; held?: boolean; dropRetryAt?: number; journeyOwner?: string } | null;
   basketUnavailable?: boolean;
   basketCorridors: WorldPoint[][];
   routine: ForestGardenRoutine | null; nextActionAt: number;
@@ -43,7 +43,7 @@ const finitePoint = (value: WorldPoint) => Number.isFinite(value.x) && Number.is
 /** The low wicker body occupies ground; its tall handle is not a wall. */
 export function gardenBasketFootprint(state: ForestGardenState): WorldPoint[] | null {
   const basket = state.basket;
-  if (!basket || basket.held || state.routine?.carryingBasket) return null;
+  if (!basket || basket.journeyOwner || basket.held || state.routine?.carryingBasket) return null;
   return basketFootprint(basket.position, basket.size);
 }
 function basketFootprint(position: WorldPoint, size: number): WorldPoint[] {
@@ -254,7 +254,7 @@ export function parkForestGardenBasket(state: ForestGardenState, foot: WorldPoin
   return false;
 }
 export function cancelForestGarden(state: ForestGardenState, foot?: WorldPoint, nav?: WorldNavigation | null) {
-  if ((state.routine?.carryingBasket || state.basket?.held) && state.basket && foot && finitePoint(foot))
+  if (!state.basket?.journeyOwner && (state.routine?.carryingBasket || state.basket?.held) && state.basket && foot && finitePoint(foot))
     parkForestGardenBasket(state, foot, nav);
   state.routine = null;
   if (state.harvest && state.harvest.phase !== "completed") state.harvestEvent = {

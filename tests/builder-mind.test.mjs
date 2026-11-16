@@ -253,7 +253,7 @@ test("moving only an authored work marker replans a confirmed worker from curren
   assert.equal(mind.action, "work");
   const feet = { ...mind.position }, source = structuredClone(TILED_WORLD);
   const marker = source.destinations.find(destination => destination.id === "builder-work-home");
-  marker.position = { x: 589.5761, y: 648 };
+  marker.position = { x: 594, y: 642 };
   const changed = previewWorldScene(source, initialPreviewLevels(source));
   assert.deepEqual(changed.sites, scene.sites, "only the marker changes, not artwork or building geometry");
   assert.deepEqual(builderWorkStops(changed, job())[0].position, marker.position);

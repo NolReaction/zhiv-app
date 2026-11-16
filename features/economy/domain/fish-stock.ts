@@ -30,42 +30,53 @@ export function fishStockEntries(state: FishStockSource, classId: string): FishS
   return unknown > 0 ? [...entries, { itemId: group.itemId, classId: group.itemId, quantity: unknown }] : entries;
 }
 
+/** Species keys are exact ownership requirements; class keys permit any owned fish in that class. */
 export function fishStockRequirements(requiredItems: FishSelection, catalog = economyCatalog.fishing!): FishSelection {
   const required: FishSelection = {};
   for (const [itemId, quantity] of Object.entries(requiredItems)) {
     const group = fishClassForItem(itemId, catalog);
-    if (group && quantity > 0) required[group.itemId] = (required[group.itemId] ?? 0) + quantity;
+    const key = catalog.fish.some(fish => fish.itemId === itemId) ? itemId : group?.itemId;
+    if (key && quantity > 0) required[key] = (required[key] ?? 0) + quantity;
   }
   return required;
 }
 
-/** Spend unidentified fish first, then the most abundant species, with stable ties. */
+/** Reserve exact species first, then spend unidentified and most abundant fish for generic requirements. */
 export function autoFillFishSelection(state: FishStockSource, requiredItems: FishSelection): FishSelection {
-  const selected: FishSelection = {}, required = fishStockRequirements(requiredItems, catalogFor(state));
+  const catalog = catalogFor(state), selected: FishSelection = {}, required = fishStockRequirements(requiredItems, catalog);
+  const stock = normalizedFishStock(state);
+  for (const [itemId, amount] of Object.entries(required)) if (catalog.fish.some(fish => fish.itemId === itemId)) {
+    const quantity = Math.min(amount, stock[itemId] ?? 0);
+    if (quantity) selected[itemId] = quantity;
+  }
   for (const [classId, amount] of Object.entries(required)) {
+    if (catalog.fish.some(fish => fish.itemId === classId)) continue;
     const entries = fishStockEntries(state, classId).sort((first, second) => first.itemId === classId ? -1
       : second.itemId === classId ? 1 : second.quantity - first.quantity);
     let remaining = amount;
     for (const entry of entries) {
-      const quantity = Math.min(remaining, entry.quantity);
-      if (quantity > 0) selected[entry.itemId] = quantity;
+      const quantity = Math.min(remaining, Math.max(0, entry.quantity - (selected[entry.itemId] ?? 0)));
+      if (quantity > 0) selected[entry.itemId] = (selected[entry.itemId] ?? 0) + quantity;
       remaining -= quantity;
     }
   }
   return selected;
 }
 
-/** Exact class totals and exact owned species counts protect against stale picks. */
+/** Exact class totals plus species minima reject substitutions and double spending. */
 export function fishSelectionMatches(state: FishStockSource, requiredItems: FishSelection, selection: FishSelection): boolean {
   const catalog = catalogFor(state), required = fishStockRequirements(requiredItems, catalog), totals: FishSelection = {};
+  const classTotals = fishClassInventory(required, catalog);
+  for (const [itemId, amount] of Object.entries(required))
+    if (catalog.fish.some(fish => fish.itemId === itemId) && (selection[itemId] ?? 0) < amount) return false;
   for (const [itemId, quantity] of Object.entries(selection)) {
     const group = fishClassForItem(itemId, catalog);
-    if (!group || !required[group.itemId] || !positiveCount(quantity) || positiveCount(quantity) !== quantity) return false;
+    if (!group || !classTotals[group.itemId] || !positiveCount(quantity) || positiveCount(quantity) !== quantity) return false;
     const owned = fishStockEntries(state, group.itemId).find(entry => entry.itemId === itemId)?.quantity ?? 0;
     if (quantity > owned) return false;
     totals[group.itemId] = (totals[group.itemId] ?? 0) + quantity;
   }
-  return Object.entries(required).every(([classId, quantity]) => totals[classId] === quantity);
+  return Object.entries(classTotals).every(([classId, quantity]) => totals[classId] === quantity);
 }
 
 function setFishStock(state: EconomyState, stock: FishSelection) {

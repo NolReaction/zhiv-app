@@ -11,26 +11,30 @@ class EconomyOrderVarietyTest {
     private val now = Instant.parse("2026-10-16T09:00:00Z")
     @Serializable private data class Scenario(
         val label: String, val buildings: Map<String, Int>, val recipes: Map<String, Long> = emptyMap(),
+        val completedExplorations: Map<String, Long> = emptyMap(), val fishCatches: Map<String, Long> = emptyMap(),
         val ownedRods: List<String>, val ownedHooks: List<String>, val present: List<String>, val missing: List<String>,
     )
     private fun scenarios() = economyJson.decodeFromString<List<Scenario>>(checkNotNull(
         javaClass.getResourceAsStream("/world/orders-variety-vectors.json")).bufferedReader().use { it.readText() })
     private fun state(scenario: Scenario) = EconomyRules.initial().copy(buildings = scenario.buildings,
-        progression = EconomyProgression(recipes = scenario.recipes),
-        fishing = EconomyFishing(ownedRods = scenario.ownedRods, ownedHooks = scenario.ownedHooks))
+        progression = EconomyProgression(recipes = scenario.recipes, routes = scenario.completedExplorations),
+        fishing = EconomyFishing(ownedRods = scenario.ownedRods, ownedHooks = scenario.ownedHooks, catches = scenario.fishCatches))
 
     @Test fun `browser and server share varied requests with complete ingredient recipe and gear gates`() {
         val catalog = EconomyRules.catalog
         scenarios().forEach { scenario ->
             // Buying future ingredients must not open an unavailable supply chain.
             val state = state(scenario).copy(inventory = catalog.items.associate { it.id to 100L })
-            val ids = EconomyFood.eligibleOrderTemplates(state).map { it.id }.toSet()
+            val eligible = EconomyFood.eligibleOrderTemplates(state)
+            val ids = eligible.map { it.id }.toSet()
+            val expectedResidents = eligible.map { it.residentId }.toSet()
             scenario.present.forEach { assertTrue(it in ids, "${scenario.label}: expected $it") }
             scenario.missing.forEach { assertFalse(it in ids, "${scenario.label}: unexpected $it") }
             repeat(24) { cycle ->
                 val board = EconomyFood.residentOrderBoard(state, now.plusSeconds(cycle * catalog.food!!.orders.refreshSeconds))
-                assertEquals(3, board.offers.size, scenario.label)
-                assertEquals(3, board.offers.map { it.items }.distinct().size, scenario.label)
+                assertEquals(expectedResidents.size, board.offers.size, scenario.label)
+                assertEquals(expectedResidents, board.offers.map { it.residentId }.toSet(), scenario.label)
+                assertEquals(board.offers.size, board.offers.map { it.items }.distinct().size, scenario.label)
                 board.offers.forEach { assertTrue(it.templateId in ids, "${scenario.label}: unavailable ${it.templateId}") }
             }
         }

@@ -37,9 +37,15 @@ test("current home alone does not open goods whose real station or prior recipe 
   assert.equal(market.marketItemUnlocked(view, "glass"), false);
   assert.equal(market.marketItemUnlocked(view, "planks"), false);
   assert.equal(market.marketItemUnlocked(view, "strawberries"), false);
+  assert.equal(market.marketItemUnlocked(view, "blueberries"), false);
   assert.deepEqual(row(p).state, stored, "read-only discovery does not seal or alter the profile");
   row(p).state.buildings.woodlot = 1; row(p).state.buildings.workshop = 1;
   assert.equal(market.marketItemUnlocked(read(p), "planks"), true);
+  row(p).state.buildings.garden = 2;
+  assert.equal(market.marketItemUnlocked(read(p), "blueberries"), true);
+  assert.deepEqual(row(p).state.progression.recipes, {});
+  row(p).state.inventory.berry_compote = 1;
+  assert.equal(market.marketItemUnlocked(read(p), "strawberries"), false, "purchased compote does not satisfy personal crafting history");
   row(p).state.progression.recipes.cook_compote = 1;
   assert.equal(market.marketItemUnlocked(read(p), "strawberries"), true);
 });

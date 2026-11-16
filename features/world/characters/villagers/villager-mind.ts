@@ -151,7 +151,8 @@ export function configureForestVillagers(state: ForestVillagersState, scene: Fix
     if (!places) {
       mind.available = false; mind.route = null; mind.socialVisit = null; continue;
     }
-    if ((id === "kamneshmyg" || id === "lopukh") && arrivalPhase(state, id) === "waiting") {
+    if ((id === "kamneshmyg" || id === "lopukh") && arrivalPhase(state, id) !== "complete"
+      && (arrivalPhase(state, id) === "waiting" || (id === "lopukh" ? config.lopukhArrivalSeen : config.arrivalSeen))) {
       if (id === "lopukh" ? config.lopukhArrivalSeen : config.arrivalSeen) {
         const target = id === "lopukh" ? places.home : places.work[0];
         mind.position = { ...target.position }; mind.target = target; mind.available = true; mind.initialized = true;

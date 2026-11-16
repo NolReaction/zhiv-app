@@ -1,0 +1,45 @@
+.stage { position: absolute; inset: 0; overflow: hidden; }
+.departureViewport[data-boat-map-view]:not([data-leaving]) { animation: none; }
+[data-arriving] > .stage { animation: riverApproach 900ms cubic-bezier(.2,.65,.3,1) both; }
+.departure { position: absolute; z-index: 10; inset: 0; overflow: hidden; pointer-events: auto; touch-action: none; }
+.workshop {
+  position: absolute;
+  inset: 0;
+  background: #3c4736 url('/world/boat-garage/garage.webp?v=side-profile-2') 92% 61% / cover no-repeat;
+  border-right: 5px solid #443324;
+  box-shadow: 8px 0 14px #19272366;
+  image-rendering: pixelated;
+  animation: leaveWorkshop 780ms cubic-bezier(.44,.05,.34,.92) both;
+}
+.pier {
+  position: absolute;
+  left: -5%;
+  bottom: -3%;
+  width: 88%;
+  height: clamp(34px, 15vh, 140px);
+  border-top: 5px solid #b18d61;
+  background: #684f3b url('/world/boat-garage/garage.webp?v=side-profile-2') center bottom / 100% 650% no-repeat;
+  box-shadow: 0 -4px #342d29, 4px 5px 0 #142d31;
+  image-rendering: pixelated;
+  animation: passQuay 850ms cubic-bezier(.4,.02,.5,1) both;
+}
+.pier i {
+  position: absolute;
+  bottom: 25%;
+  left: 23%;
+  height: clamp(72px, 22vh, 210px);
+  width: clamp(13px, 2vw, 28px);
+  border: 3px solid #4c392a;
+  border-top: 6px solid #b89968;
+  background: linear-gradient(90deg,#826341 0 20%,#9f7a50 20% 38%,#765337 38% 75%,#593f2b 75%);
+}
+.pier i + i { left: 94%; height: clamp(54px, 15vh, 145px); }
+.shade { position: absolute; inset: 0; background: linear-gradient(105deg,#162018 0%,#313e30 53%,#d6c390 100%); animation: openWater 900ms ease-out both; }
+@keyframes riverApproach { from { transform: translate3d(4%,0,0); } to { transform: none; } }
+@keyframes leaveWorkshop { from { transform: translateX(-7%); } to { transform: translateX(-102%); } }
+@keyframes passQuay { from { transform: translateX(0); } to { transform: translate3d(-112%,46%,0); } }
+@keyframes openWater { from { opacity: .3; } 60% { opacity: .11; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  [data-arriving] > .stage { animation: none; }
+  .departure { display: none; }
+}

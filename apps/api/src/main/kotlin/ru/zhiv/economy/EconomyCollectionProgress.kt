@@ -49,7 +49,7 @@ object EconomyCollectionProgress {
         discover(quarryFinds, quarrySeconds / catalog.quarry.secondsPerFind - previous.quarrySeconds / catalog.quarry.secondsPerFind)
         return value.copy(
             routes = if (job.kind == "exploration") value.routes + (job.targetId to add(value.routes[job.targetId] ?: 0, 1)) else value.routes,
-            recipes = if (job.kind == "production" && job.recipeId != null) value.recipes +
+            recipes = if (job.kind == "production" && job.recipeId != null && job.cooking?.successful != false) value.recipes +
                 (job.recipeId to add(value.recipes[job.recipeId] ?: 0, 1)) else value.recipes,
             collections = EconomyBookCollection(finds.sorted(), travelSeconds, quarrySeconds))
     }
@@ -70,6 +70,6 @@ object EconomyCollectionProgress {
         remainderFind(travelFinds, travelSeconds, first.collections.travelSeconds, second.collections.travelSeconds, catalog.travel.secondsPerFind)
         remainderFind(quarryFinds, quarrySeconds, first.collections.quarrySeconds, second.collections.quarrySeconds, catalog.quarry.secondsPerFind)
         return EconomyProgression(counts(first.routes, second.routes), counts(first.recipes, second.recipes),
-            EconomyBookCollection(finds.sorted(), travelSeconds, quarrySeconds))
+            EconomyBookCollection(finds.sorted(), travelSeconds, quarrySeconds), EconomyPlayerProgression.merge(first.player, second.player), EconomySkills.merge(first.skills, second.skills))
     }
 }

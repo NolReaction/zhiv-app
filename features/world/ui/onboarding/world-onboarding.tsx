@@ -1,8 +1,9 @@
 "use client";
 
+import releaseFeatures from "@/apps/api/src/main/resources/world/release-features.json";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { GuideCoach, type GuideCoachProps } from "@/features/onboarding/guide-coach";
-import { progressionRewardsCatalog } from "@/features/game/progression-rewards";
+import { onboardingRewardForState } from "@/features/game/progression-rewards";
 import { formatPearls } from "@/features/economy/domain/money";
 import { worldOnboardingNeedsHarvest, WORLD_ONBOARDING_STEPS, type WorldOnboardingProgress, type WorldOnboardingStepId } from "@/features/world/domain/world-onboarding";
 import { useForestObservation } from "@/features/world/state/use-forest-observation";
@@ -45,7 +46,7 @@ export type WorldOnboardingProps = {
 /** Track actual opened content, including choices made outside the coach. */
 function usePracticeSurface(root: RefObject<HTMLElement | null>) {
   const [surface, setSurface] = useState({ garden: false, recipe: false, pantryItem: false, pantrySale: false, pantryRelics: false,
-    routeActivities: false, routes: false, routePreparation: false, tutorialOrder: false, workshopSelected: false });
+    boatEntry: false, routeActivities: false, routes: false, routePreparation: false, tutorialOrder: false, workshopSelected: false });
   useEffect(() => {
     const element = root.current;
     if (!element) return;
@@ -57,6 +58,7 @@ function usePracticeSurface(root: RefObject<HTMLElement | null>) {
         pantrySale: Boolean(element.querySelector('[data-guide-pantry-sale]')),
         pantryRelics: Boolean(element.querySelector('[data-guide-pantry-relics]')),
         routeActivities: Boolean(element.querySelector('[data-section-guide-target="expedition-activities"]')),
+        boatEntry: Boolean(element.querySelector('[data-boat-entry="play"]')),
         routes: Boolean(element.querySelector('[data-section-guide-target="expedition-routes"]')),
         routePreparation: Boolean(element.querySelector('[data-route-preparation]')),
         tutorialOrder: Boolean(element.querySelector('[data-tutorial-order="true"]')),
@@ -196,10 +198,15 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
   if (progress?.status === "skipped" || progress?.status === "completed" && !reminder) return null;
   const index = WORLD_ONBOARDING_STEPS.findIndex(step => step.id === current);
   const step = WORLD_ONBOARDING_STEPS[index];
-  const completionGift = `${formatPearls(progressionRewardsCatalog.onboarding.pearls)} жемчуга и ${progressionRewardsCatalog.onboarding.coins.toLocaleString("ru-RU")} монет`;
+  const completionReward = snapshot ? onboardingRewardForState(snapshot) : null;
+  const completionGift = completionReward
+    ? `${formatPearls(completionReward.pearls)} жемчуга и ${completionReward.coins.toLocaleString("ru-RU")} монет`
+    : "подарок из монет и жемчуга";
+  const introduceBoat = Boolean(snapshot?.catalog.boat?.moduleEffects && !snapshot.boat?.level && !snapshot.boat?.work && !snapshot.boat?.voyage);
+  const welcomeText = "Я Мохлик. За 3-5 минут посадим ягоды, познакомимся с соседями и заглянем в мастерскую.";
   const base: GuideCoachProps = {
     open: props.open && !props.modalBlocked, flow: "world", stepId: current ?? (reminder ? "harvest" : "welcome"),
-    title: "Привет! Это наш лес", text: "Я Мохлик. За 3-5 минут посадим ягоды, познакомимся с соседями и заглянем в мастерскую. Всё можно открывать и пробовать.",
+    title: "Привет! Это наш лес", text: !progress && introduceBoat && releaseFeatures.boatFishingEnabled ? `${welcomeText} У причала есть старая лодка. Её можно сразу восстановить бесплатно через «В путь».` : `${welcomeText} Всё можно открывать и пробовать.`,
     summary: "Посадим ягоды и познакомимся с лесом за несколько минут.",
     hint: `За полное обучение получишь ${completionGift}. Любой шаг можно отложить и пройти позже: возможность получить подарок сохранится.`,
     pose: "greet", welcome: !progress, targetRoot: practiceRoot,
@@ -249,6 +256,10 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
         base.summary = surface.routePreparation ? "Здесь стоимость, время и находки. Отправка начнётся только по кнопке «Отправиться»."
           : surface.routeActivities ? "Сначала выбери занятие: откроется список его маршрутов."
           : surface.routes ? "Нажми на маршрут, чтобы посмотреть стоимость, время и находки." : "Загружаем занятия и маршруты. Можно продолжить знакомство.";
+        if (surface.routeActivities && surface.boatEntry && introduceBoat) {
+          base.summary = "В «Лодочной рыбалке» восстанови корпус бесплатно. После ремонта проверь снасти и отправляйся на реку.";
+          base.target = '[data-boat-entry="play"]';
+        }
         base.text = "Вылазки приносят припасы для рецептов и стройки. Сначала выбери занятие, затем маршрут: время и добычу видно до отправки. Плитка «Ускорение едой» открывает выбор блюда; еда тратится только по отдельной кнопке. Каменоломня открывается на карте и работает отдельно. Начинать вылазку ради знакомства не нужно.";
       }
     } else if (seen) {

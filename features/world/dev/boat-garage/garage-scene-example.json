@@ -1,0 +1,244 @@
+{
+  "schemaVersion": 1,
+  "canvas": {
+    "width": 1671,
+    "height": 941
+  },
+  "cameras": {
+    "portrait": {
+      "x": 835.5,
+      "y": 470.5,
+      "width": 1280
+    },
+    "landscape": {
+      "x": 835.5,
+      "y": 470.5,
+      "width": 1671
+    }
+  },
+  "assets": [
+    {
+      "id": "garage",
+      "name": "Гараж",
+      "src": "/world/boat-garage/garage.webp",
+      "width": 1671,
+      "height": 941
+    },
+    {
+      "id": "stand",
+      "name": "Фронтальная опора · старая",
+      "src": "/world/boat-garage/stand.webp",
+      "width": 1774,
+      "height": 887
+    },
+    {
+      "id": "starter-hull",
+      "name": "Корпус · уровень 0",
+      "src": "/world/boat-garage/starter-hull.webp",
+      "width": 1752,
+      "height": 897
+    },
+    {
+      "id": "starter-motor",
+      "name": "Первый двигатель",
+      "src": "/world/boat-garage/starter-motor.webp",
+      "width": 1145,
+      "height": 1374
+    },
+    {
+      "id": "stand-side",
+      "name": "Боковая опора",
+      "src": "/world/boat-garage/stand-side.webp",
+      "width": 1448,
+      "height": 1086
+    }
+  ],
+  "nodes": [
+    {
+      "id": "garage",
+      "name": "Фон гаража",
+      "assetId": "garage",
+      "parentId": null,
+      "socketId": null,
+      "x": 0,
+      "y": 0,
+      "width": 1671,
+      "height": 941,
+      "scale": 1,
+      "rotation": 0,
+      "pivotX": 0,
+      "pivotY": 0,
+      "zIndex": 0,
+      "visible": true,
+      "locked": true,
+      "sockets": []
+    },
+    {
+      "id": "stand-left",
+      "name": "Левая боковая опора",
+      "assetId": "stand-side",
+      "parentId": null,
+      "socketId": null,
+      "x": 571.56,
+      "y": 700,
+      "width": 1448,
+      "height": 1086,
+      "scale": 0.09,
+      "rotation": 0,
+      "pivotX": 0.5,
+      "pivotY": 0.935,
+      "zIndex": 10,
+      "visible": true,
+      "locked": false,
+      "sockets": [
+        {
+          "id": "contact",
+          "name": "Контакт с корпусом",
+          "x": 0.5,
+          "y": 0.14
+        },
+        {
+          "id": "foot",
+          "name": "Подошва на платформе",
+          "x": 0.5,
+          "y": 0.935
+        }
+      ],
+      "scaleY": 1.0810334608697445
+    },
+    {
+      "id": "stand-right",
+      "name": "Правая боковая опора",
+      "assetId": "stand-side",
+      "parentId": null,
+      "socketId": null,
+      "x": 1060.368,
+      "y": 700,
+      "width": 1448,
+      "height": 1086,
+      "scale": 0.09,
+      "rotation": 0,
+      "pivotX": 0.5,
+      "pivotY": 0.935,
+      "zIndex": 10,
+      "visible": true,
+      "locked": false,
+      "sockets": [
+        {
+          "id": "contact",
+          "name": "Контакт с корпусом",
+          "x": 0.5,
+          "y": 0.14
+        },
+        {
+          "id": "foot",
+          "name": "Подошва на платформе",
+          "x": 0.5,
+          "y": 0.935
+        }
+      ],
+      "scaleY": 1.4720111900009392
+    },
+    {
+      "id": "boat",
+      "name": "Лодка · группа",
+      "assetId": null,
+      "parentId": null,
+      "socketId": null,
+      "x": 0,
+      "y": 0,
+      "width": 1671,
+      "height": 941,
+      "scale": 1,
+      "rotation": 0,
+      "pivotX": 0,
+      "pivotY": 0,
+      "zIndex": 20,
+      "visible": true,
+      "locked": false,
+      "sockets": []
+    },
+    {
+      "id": "starter-hull",
+      "name": "Корпус · уровень 0",
+      "assetId": "starter-hull",
+      "parentId": "boat",
+      "socketId": null,
+      "x": 300,
+      "y": 125,
+      "width": 1752,
+      "height": 897,
+      "scale": 0.62,
+      "rotation": 0,
+      "pivotX": 0,
+      "pivotY": 0,
+      "zIndex": 21,
+      "visible": true,
+      "locked": false,
+      "sockets": [
+        {
+          "id": "support-left",
+          "name": "Левая опора",
+          "x": 0.25,
+          "y": 0.891862
+        },
+        {
+          "id": "support-right",
+          "name": "Правая опора",
+          "x": 0.7,
+          "y": 0.837235
+        },
+        {
+          "id": "engine",
+          "name": "Транец · мотор",
+          "x": 0.08,
+          "y": 0.5
+        },
+        {
+          "id": "cargo",
+          "name": "Ящик",
+          "x": 0.55,
+          "y": 0.55
+        },
+        {
+          "id": "fuel",
+          "name": "Бак",
+          "x": 0.27,
+          "y": 0.58
+        },
+        {
+          "id": "actor",
+          "name": "Мохлик",
+          "x": 0.43,
+          "y": 0.46
+        }
+      ]
+    },
+    {
+      "id": "starter-motor",
+      "name": "Первый двигатель",
+      "assetId": "starter-motor",
+      "parentId": "starter-hull",
+      "socketId": "engine",
+      "x": 0,
+      "y": 0,
+      "width": 1145,
+      "height": 1374,
+      "scale": 0.48387096774193544,
+      "rotation": 0,
+      "pivotX": 0.67,
+      "pivotY": 0.47,
+      "zIndex": 15,
+      "visible": true,
+      "locked": false,
+      "sockets": [
+        {
+          "id": "clamp",
+          "name": "Зажим транца",
+          "x": 0.67,
+          "y": 0.47
+        }
+      ]
+    }
+  ]
+}

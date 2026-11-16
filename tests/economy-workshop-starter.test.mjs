@@ -24,7 +24,7 @@ const row = p => { read(p); return globalThis.__zhivDevEconomyStore.profiles.get
 test("historical workshop quote follows the current construction cost and cannot mutate the catalog", () => {
   const catalog = structuredClone(model.economyCatalog);
   const level = catalog.buildings.find(building => building.id === "workshop").levels.find(level => level.level === 1);
-  assert.deepEqual(starter.workshopStarterCost(), { coins: 60, items: { wood: 2, stone: 1 } });
+  assert.deepEqual(starter.workshopStarterCost(), { coins: 50, items: { wood: 2, stone: 1 } });
   level.cost = { coins: 70, items: { wood: 3, stone: 2 } };
   const quote = starter.workshopStarterCost(catalog); assert.deepEqual(quote, level.cost);
   quote.items.wood = 999; assert.equal(level.cost.items.wood, 3);

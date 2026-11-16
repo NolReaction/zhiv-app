@@ -6,7 +6,7 @@
       "items": {
         "wood": 2
       },
-      "coins": 90
+      "coins": 75
     },
     {
       "templateId": "builder_wood_supply",
@@ -14,7 +14,7 @@
       "items": {
         "wood": 2
       },
-      "coins": 90
+      "coins": 75
     },
     {
       "templateId": "builder_wood_supply",
@@ -22,7 +22,7 @@
       "items": {
         "wood": 2
       },
-      "coins": 90
+      "coins": 75
     },
     {
       "templateId": "builder_wood_supply",
@@ -30,7 +30,7 @@
       "items": {
         "wood": 2
       },
-      "coins": 90
+      "coins": 75
     },
     {
       "templateId": "builder_wood_supply",
@@ -38,7 +38,7 @@
       "items": {
         "wood": 2
       },
-      "coins": 90
+      "coins": 75
     },
     {
       "templateId": "builder_plank_brace",
@@ -47,7 +47,7 @@
         "planks": 4,
         "rope": 2
       },
-      "coins": 350
+      "coins": 375
     },
     {
       "templateId": "builder_final_fittings",
@@ -56,7 +56,7 @@
         "reinforced_parts": 4,
         "glass": 6
       },
-      "coins": 14230
+      "coins": 13025
     },
     {
       "templateId": "plesk_river_catch",
@@ -64,7 +64,7 @@
       "items": {
         "fish_common": 3
       },
-      "coins": 180
+      "coins": 57
     },
     {
       "templateId": "plesk_grilled_dinner",
@@ -73,7 +73,7 @@
         "grilled_fish": 1,
         "berries": 2
       },
-      "coins": 120
+      "coins": 82
     },
     {
       "templateId": "plesk_legendary_dinner",
@@ -81,7 +81,7 @@
       "items": {
         "legendary_fish": 1
       },
-      "coins": 1930
+      "coins": 1085
     }
   ],
   "availability": [
@@ -152,6 +152,45 @@
         "epic_fish",
         "fish_legendary",
         "legendary_fish"
+      ],
+      "recipes": {
+        "make_metal_parts": 2
+      },
+      "completedExplorations": {
+        "old_woodland": 2,
+        "coastal_deposits": 1
+      }
+    },
+    {
+      "label": "metalwork-lessons-still-required-despite-owned-tools",
+      "buildings": {
+        "home": 5,
+        "garden": 1,
+        "warehouse": 1,
+        "workshop": 4,
+        "woodlot": 4,
+        "dryer": 5,
+        "kiln": 3,
+        "quarry": 2
+      },
+      "ownedRods": [
+        "reed_rod"
+      ],
+      "ownedHooks": [
+        "bare_hook",
+        "leviathan_hook"
+      ],
+      "present": [
+        "iron_ingot",
+        "metal_parts",
+        "reinforced_parts"
+      ],
+      "missing": [
+        "fish_epic",
+        "epic_fish",
+        "fish_legendary",
+        "legendary_fish",
+        "tools"
       ]
     },
     {
@@ -217,7 +256,14 @@
         "ancient_plank",
         "ancient_stone",
         "ancient_rope"
-      ]
+      ],
+      "recipes": {
+        "make_metal_parts": 2
+      },
+      "completedExplorations": {
+        "old_woodland": 2,
+        "coastal_deposits": 1
+      }
     }
   ]
 }

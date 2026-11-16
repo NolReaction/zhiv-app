@@ -13,6 +13,7 @@ const { forestSceneFingerprint } = await vite.ssrLoadModule("/features/world/sta
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const { forestDestinations } = await vite.ssrLoadModule("/features/world/navigation/forest-trails.ts");
+const { forestVillagerPlaces } = await vite.ssrLoadModule("/features/world/characters/villagers/villager-navigation.ts");
 const torch = (changes = {}) => ({ id: "torch", kind: "torch", position: { x: 100, y: 83.5 }, radius: 70,
   intensity: 1, color: "#ffb45d", flicker: .12, ...changes });
 const source = (lights = [torch()]) => ({ schemaVersion: 1, id: "torch-navigation", width: 200, height: 200,
@@ -60,15 +61,31 @@ test("moving a torch gets new geometry and memory identity while light styling i
     forestTorchGeometryKey([torch({ id: "second" }), torch()]));
 });
 
-test("all six authored torch feet stay blocked without disconnecting travel markers at any building tier", () => {
-  assert.equal(TILED_WORLD.lights.filter(light => light.kind === "torch" && light.enabled !== false).length, 6);
+test("all nine authored path torch feet stay blocked without disconnecting accepted travel markers at any building tier", () => {
+  assert.equal(TILED_WORLD.lights.filter(light => light.kind === "torch" && light.enabled !== false).length, 9);
   for (let level = 0; level <= 5; level++) {
     const scene = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), home: Math.max(1, level), workshop: level, quarry: level });
     const nav = createWorldNavigation(scene);
     for (const light of scene.lights.filter(light => light.kind === "torch" && light.enabled !== false))
       assert.equal(isWalkable(nav, { x: light.position.x, y: light.position.y + 16.5 }), false, light.id);
     const destinations = forestDestinations(scene);
-    for (const target of scene.destinations.filter(target => !target.id.startsWith("builder-"))) {
+    const privateRabbit = target => /^(lopukh-work|lopukh-delivery|lopukh-rest)(-|$)/.test(target.id);
+    const rabbit = forestVillagerPlaces(scene, "lopukh");
+    const workerStops = [...rabbit.woodcutting.work, ...rabbit.woodcutting.delivery, ...rabbit.woodcutting.rest];
+    for (const target of scene.destinations.filter(privateRabbit)) {
+      // Workers retain their own physical clearance; the larger hero need not
+      // fit a rabbit's private stop next to a tree.
+      const path = findWorldPath(rabbit.navigation, rabbit.home.position, target.position);
+      if (!isWalkable(rabbit.navigation, target.position)) {
+        assert.equal(path, null, `${target.id} cannot route through blocked ground`);
+        assert.equal(workerStops.some(stop => stop.id === target.id), false, `${target.id} is excluded from the work plan`);
+        continue;
+      }
+      assert.ok(path, `${target.id} stays connected for its owner at tier ${level}`);
+      assert.deepEqual(path.at(-1), target.position);
+      for (let index = 1; index < path.length; index++) assert.ok(canTraverse(rabbit.navigation, path[index - 1], path[index]));
+    }
+    for (const target of scene.destinations.filter(target => !target.id.startsWith("builder-") && !privateRabbit(target))) {
       assert.ok(destinations.has(target.id), `${target.id} remains valid at tier ${level}`);
       assert.ok(findWorldPath(nav, scene.actor.spawn, target.position), `${target.id} stays connected at tier ${level}`);
     }

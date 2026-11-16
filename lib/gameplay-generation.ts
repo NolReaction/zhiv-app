@@ -10,9 +10,10 @@ const accountPrefixes = [
   "zhiv.world-onboarding.v1:", "zhiv.world-onboarding.paused.v1:",
   "zhiv.market-unlock-onboarding.v1:", "zhiv.section-guide.launcher.v1:",
   "zhiv.miner-arrival.v1:", "zhiv.leaftail-arrival.v1:", "zhiv.lopukh-arrival.v1:",
+  "zhiv.trade-ship-arrival.v1:",
   "zhiv.world.tap-hints.v1:", "zhiv.earth-atlas.v1:",
   "zhiv:game-outbox:v1:", "zhiv:game-writer:v1:", "zhiv:game-rewards:pending:v1:",
-  "zhiv:economy:production:v1:", "zhiv:economy:pending:v1:", "zhiv:world:pending:v1:",
+  "zhiv:economy:boat-landing:v1:", "zhiv:economy:production:v1:", "zhiv:economy:pending:v1:", "zhiv:world:pending:v1:",
   "zhiv:construction-goal:v1:", "zhiv:pending-promo:v1:", "zhiv:mochlik:presence:",
   "zhiv.clicker-progress.v1:", "zhiv.clicker-progress.v2:", "zhiv.clicker-progress.v3:", "zhiv.clicker-archive.v054:",
 ];

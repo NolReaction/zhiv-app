@@ -34,7 +34,7 @@ class EconomyCancellationTest {
     }
 
     @Test fun `already spent supplies and historic coin costs are never refunded`() {
-        val route = EconomyRules.catalog.explorations.single { it.id == "deep_cave" }
+        val route = EconomyRules.catalog.explorations.single { it.id == "old_woodland" }
         val initial = EconomyRules.initial().copy(wallet = EconomyWallet(73, 2),
             inventory = route.cost.items + ("fish" to 3L),
             buildings = EconomyRules.initial().buildings + route.requiredBuildings + ("home" to route.requiredHomeLevel))

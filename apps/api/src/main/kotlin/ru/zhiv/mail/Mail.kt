@@ -23,10 +23,10 @@ fun validPlayerMailMessage(value: PlayerMailMessage): Boolean = value.title == v
     val gameItems: List<String> = emptyList(), val achievements: List<String> = emptyList(),
 )
 @Serializable data class MailGift(val pearls: Long = WELCOME_MAIL_PEARLS, val claimedAt: String? = null)
-const val WELCOME_MAIL_PEARLS = 100L
+const val WELCOME_MAIL_PEARLS = 20L
 const val WELCOME_MAIL_SOURCE = "welcome:v1"
 const val WELCOME_MAIL_TITLE = "Добро пожаловать в мой лес!"
-const val WELCOME_MAIL_BODY = "Привет! Я очень рад, что ты начал играть в «Я Живой».\n\nЯ делаю эту игру один и прошёл большой путь, чтобы всё заработало как надо. Спасибо, что заглянул в мой лес!\n\nОставил тебе 100 жемчужин для первых приключений. Забери их ниже.\n\nДмитрий, автор «Я Живой»"
+const val WELCOME_MAIL_BODY = "Привет! Я очень рад, что ты начал играть в «Я Живой».\n\nЯ делаю эту игру один и прошёл большой путь, чтобы всё заработало как надо. Спасибо, что заглянул в мой лес!\n\nОставил тебе 20 жемчужин для первых приключений. Забери их ниже.\n\nДмитрий, автор «Я Живой»"
 @Serializable data class MailMessage(val id: String, val type: String, val title: String, val body: String,
     val createdAt: String, val readAt: String?, val notify: Boolean, val attachments: MailAttachments? = null, val gift: MailGift? = null)
 @Serializable data class MailNotification(val id: String, val createdAt: String)
@@ -35,7 +35,7 @@ const val WELCOME_MAIL_BODY = "Привет! Я очень рад, что ты �
 @Serializable data class MailReadRequest(val expectedOwnerPublicId: String)
 @Serializable data class MailReadResult(val ownerPublicId: String, val id: String, val readAt: String,
     val unreadCount: Long, val serverTime: String)
-@Serializable data class MailClaimResult(val ownerPublicId: String, val id: String, val gift: MailGift, val serverTime: String)
+@Serializable data class MailClaimResult(val ownerPublicId: String, val id: String, val gift: MailGift, val serverTime: String, val replayed: Boolean)
 @Serializable data class AdminMailBroadcastRequest(val requestId: String, val reason: String, val title: String, val body: String,
     val audience: String, val publicIds: List<String> = emptyList(), val notify: Boolean, val confirmation: String)
 @Serializable data class AdminMailBroadcastReceipt(val requestId: String, val recipientCount: Long, val createdAt: String, val changed: Boolean)

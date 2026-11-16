@@ -12,6 +12,7 @@ import { analyticsAction, analyticsActions, analyticsAmount, analyticsCategory, 
   analyticsPeriod, analyticsPeriodError, analyticsResource, analyticsResources, analyticsTarget, downloadAnalyticsCsv } from "./admin-analytics-utils";
 import { AdminGameplayAnalytics, AdminPresenceAnalytics } from "./admin-gameplay-analytics";
 import { AdminProgressionAnalytics } from "./admin-progression-analytics";
+import { AdminAnalyticsExportControls } from "./admin-analytics-export-controls";
 import styles from "./admin-analytics.module.css";
 
 type View = "analytics" | "players" | "events";
@@ -143,15 +144,17 @@ function ActionTable({ rows, onEvents }: { rows: AdminAnalytics["actions"]; onEv
   return <div className={styles.tableScroll} tabIndex={0} role="region" aria-label="Популярные действия"><table><thead><tr><th>Операция / объект</th><th>Операции</th><th>Игроки</th></tr></thead><tbody>{rows.map((row, index) => <tr key={`${row.kind}:${row.targetId}:${index}`}><th scope="row"><button className={styles.textButton} type="button" onClick={() => onEvents({ kind: row.kind })}>{analyticsAction(row.kind)}</button>{row.targetId && <small>{analyticsTarget(row.targetId)}</small>}</th><td>{analyticsCount(row.events)}</td><td>{analyticsCount(row.players)}</td></tr>)}</tbody></table></div>;
 }
 
-export function AdminAnalyticsEventList({ data, loading, onPage, onOpen, onPlayer }: {
+export function AdminAnalyticsEventList({ data, loading, onPage, onOpen, onPlayer, exportControls }: {
   data: AdminAnalyticsEvents; loading: boolean; onPage: (offset: number) => void;
   onOpen: (target: AdminEconomyTarget) => void; onPlayer: (target: AdminEconomyTarget) => void;
+  exportControls?: React.ReactNode;
 }) {
   return <section className={styles.panel} aria-busy={loading}><div className={styles.sectionRow}><Heading title="Журнал операций">Подтверждённые изменения валют и припасов. Страницы зафиксированы до {economyTime(data.endAt)}; «Обновить» загрузит новые записи.</Heading>
     <ExportButton label="CSV этой страницы" onClick={() => downloadAnalyticsCsv(`events-${data.from}-${data.to}-page-${Math.floor(data.offset / data.limit) + 1}.csv`, [
       ["ID операции", "Время UTC", "ID игрока", "Игрок", "Операция", "Объект", "Контекст известен", "Количество", "Категория", "Монеты", "Жемчуг", "Изменения припасов"],
       ...data.events.map(row => [row.id, row.createdAt, row.publicId, row.displayName, analyticsAction(row.kind), row.targetId ?? "", row.contextKnown ? "Да" : "Нет", row.quantity,
         analyticsCategory[row.category], row.coins, csvAmount("pearls", row.pearls), Object.entries(row.items).map(([id, amount]) => `${analyticsResource(id)}: ${amount}`).join("; ")])])} /></div>
+    {exportControls}
     {!data.events.length ? <Empty>Операций с такими фильтрами нет. Уберите часть условий или расширьте период.</Empty> : <div className={styles.events}>{data.events.map(event => <article className={styles.event} key={event.id}>
       <div className={styles.eventIdentity}><button type="button" className={styles.textButton} onClick={() => onOpen(event)} aria-label={`Открыть хозяйство игрока ${event.displayName}`}>{event.displayName}</button><code>{event.publicId}</code><button type="button" className={styles.subtleButton} onClick={() => onPlayer(event)}>Все операции игрока</button></div>
       <div className={styles.eventAction}><strong>{analyticsAction(event.kind)}</strong><span>{event.targetId ? analyticsTarget(event.targetId) : event.contextKnown ? "Без отдельного объекта" : "Объект не записан"}{event.quantity != null && ` · количество: ${analyticsCount(event.quantity)}`}</span><small>{analyticsCategory[event.category]} · <time dateTime={event.createdAt}>{economyTime(event.createdAt)}</time></small><details className={styles.eventId}><summary>ID операции</summary><code>{event.id}</code></details></div>
@@ -260,6 +263,9 @@ export function AdminEconomyWorkspace({ actorPublicId, refreshVersion, onAccessL
     </>}
     <TabsContent value="analytics" className={styles.content}><div aria-busy={loading}>{analyticsData ? <AdminAnalyticsContent data={analyticsData} resource={resource} building={building} onResource={setResource} onBuilding={setBuilding} onEvents={openEvents} onOpen={onOpen} onPlayer={target => openEvents({}, target)} /> : <p className={styles.empty} role="status">{loading ? "Считаем активность и движение ресурсов…" : "Аналитика пока не загружена."}</p>}</div></TabsContent>
     <TabsContent value="players" className={styles.content}>{view === "players" && <AdminEconomyPanel actorPublicId={actorPublicId} refreshVersion={refreshVersion} onAccessLost={onAccessLost} onOpen={onOpen} onHistory={target => openEvents({}, target)} />}</TabsContent>
-    <TabsContent value="events" className={styles.content}>{eventsData ? <AdminAnalyticsEventList data={eventsData} loading={loading} onPage={offset => setEventOptions(current => ({ ...current, offset, at: current.at ?? eventsData.endAt }))} onOpen={onOpen} onPlayer={target => openEvents({}, target)} /> : <p className={styles.empty} role="status">{loading ? "Загружаем журнал операций…" : "Журнал пока не загружен."}</p>}</TabsContent>
+    <TabsContent value="events" className={styles.content}>{eventsData ? <AdminAnalyticsEventList data={eventsData} loading={loading} onPage={offset => setEventOptions(current => ({ ...current, offset, at: current.at ?? eventsData.endAt }))} onOpen={onOpen} onPlayer={target => openEvents({}, target)}
+      exportControls={view === "events" ? <AdminAnalyticsExportControls key={JSON.stringify([actorPublicId, filters, eventOptions, draft, version, refreshVersion, loading])}
+        actorPublicId={actorPublicId} filters={{ ...filters, kind: eventOptions.kind, resource: eventOptions.resource, direction: eventOptions.direction, allTime: false }}
+        disabled={loading || changed} onAccessLost={onAccessLost} /> : undefined} /> : <p className={styles.empty} role="status">{loading ? "Загружаем журнал операций…" : "Журнал пока не загружен."}</p>}</TabsContent>
   </Tabs>;
 }

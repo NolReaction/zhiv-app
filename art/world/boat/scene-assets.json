@@ -1,0 +1,17 @@
+{
+  "created": "2026-11-09",
+  "method": "Built-in image generation: garage edit from the previous workshop master; original water texture",
+  "garage": {
+    "master": "art/world/boat-garage/garage.png",
+    "runtime": "public/world/boat-garage/garage.webp",
+    "runtimeSize": [1671, 941],
+    "brief": "Front-facing cozy forest boathouse for a side-profile wooden fishing boat. Muted sage-green rear wall, honey-brown beams and amber lamps. High windows and a narrow view of the lake at the right. Tools and ropes only at the edges. Empty central staging area, shallow floor perspective. No baked-in boat, character, stand or platform. Hand-painted 2D game art with controlled shading and brown contours."
+  },
+  "water": {
+    "master": "art/world/boat/lake-water.png",
+    "runtime": "public/world/boat/lake-water.webp",
+    "runtimeSize": [1024, 1024],
+    "brief": "Square top-down illustrated calm forest lake surface. Muted blue-green teal and jade reflection patches, broad low-contrast colour fields, sparse small broken turquoise glints. Organic irregular ripples, empty water edge to edge, diffuse daylight. No horizon, shore, boats, fish, objects, repetitive zigzag lines, grid, concentric rings or busy caustics. Designed for gentle continuous drift."
+  },
+  "export": "node scripts/prepare-boat-scene-assets.mjs; --check verifies both runtime files"
+}

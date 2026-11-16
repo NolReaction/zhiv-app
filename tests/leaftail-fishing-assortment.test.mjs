@@ -33,7 +33,7 @@ test("Leaftail rods offer two useful directions without replacing the class spec
   assert.ok(boosted.epic > plain.epic && boosted.legendary > plain.legendary);
 });
 
-test("new tackle keeps every old class-winning loadout and the old maximum fishing income", () => {
+test("new tackle keeps class specialists and starter income while cheap mixed bait has a bounded net benefit", () => {
   const report = auditFishingBalance(economyCatalog);
   assert.deepEqual(report.targets.map(({ rarity, rodId, hookId, baitId }) => [rarity, rodId, hookId, baitId]), [
     ["common", "reed_rod", "bare_hook", "crumb_bait"],
@@ -47,7 +47,12 @@ test("new tackle keeps every old class-winning loadout and the old maximum fishi
   const previous = auditFishingBalance(old);
   for (const [index, row] of report.incomeRanges.entries()) {
     assert.ok(row.minimumNetSaleCoinsPerHour > 0);
-    assert.equal(row.maximumNetSaleCoinsPerHour, previous.incomeRanges[index].maximumNetSaleCoinsPerHour);
+    const route = economyCatalog.explorations.find(route => route.id === row.routeId);
+    const oldMaximum = previous.incomeRanges[index].maximumNetSaleCoinsPerHour;
+    assert.ok(row.maximumNetSaleCoinsPerHour >= oldMaximum, "adding choices cannot remove an existing loadout");
+    // V14's mixed bait costs one coin less than the specialist's top bait.
+    // Keep any resulting maximum-income gain below one coin per actual cast.
+    assert.ok(row.maximumNetSaleCoinsPerHour <= oldMaximum + 3600 / route.seconds);
     assert.equal(row.starterNetSaleCoinsPerHour, previous.incomeRanges[index].starterNetSaleCoinsPerHour);
   }
 });
@@ -62,5 +67,31 @@ test("mixed baits cannot create missing rod classes and every new cast uses the 
       assert.ok(species);
       assert.ok(rod.classOddsBps[species.rarity] > 0);
     }
+  }
+});
+
+
+test("a mixed epic hook is permanent 1800-coin equipment with bounded marginal returns rather than 25 extra probability points", async () => {
+  const { fishingOfferUnitPrice } = await vite.ssrLoadModule("/features/economy/domain/fishing-shop.ts");
+  const { tradePurchaseUnitPrice } = await vite.ssrLoadModule("/features/economy/domain/trade-pricing.ts");
+  const now = Date.parse("2026-11-02T12:00:00Z");
+  const friends = { tradeRelations: { reputation: { plesk: 1600, leaftail: 1600 }, activity: Object.fromEntries(
+    ["plesk", "leaftail"].map(id => [id, { pointsBps: 10000, updatedAt: new Date(now).toISOString() }])) } };
+  const report = auditFishingBalance(economyCatalog);
+  for (const hookId of ["dusk_hook", "deep_hook"]) {
+    const hook = fishing.hooks.find(item => item.id === hookId);
+    const offer = economyCatalog.leaftailShop.travelOffers.find(item => item.itemId === hookId);
+    assert.equal(hook.price, 1800);
+    assert.equal(offer.priceCoins, hook.price);
+    assert.equal(offer.quantity, 1);
+    assert.equal(tradePurchaseUnitPrice(friends, "leaftail", "hook", hook.price, "coins", economyCatalog, now), 1620);
+    assert.equal(fishingOfferUnitPrice(friends, { kind: "hook", unitPrice: hook.price }, economyCatalog, now), 1620);
+    const before = odds("dusk_rod"), after = odds("dusk_rod", hookId);
+    assert.ok(Math.abs(after.epic + after.legendary - 0.6989247311827957) < 1e-12);
+    assert.ok(after.epic + after.legendary - before.epic - before.legendary < .05);
+    const row = report.gearEconomics.hooks.find(entry => entry.hookId === hookId);
+    const paired = row.rods.find(entry => entry.rodId === "dusk_rod");
+    assert.ok(Math.abs(paired.hours.shore - 72.845953003) < 1e-8);
+    assert.ok(row.fastestHours.shore > 50, "even the best plain loadout does not repay the hook through a few quick catches");
   }
 });

@@ -8,9 +8,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
+const { worldUpgradeUnlocks, WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
-const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { economyStorage, constructionSpeedupPrice } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { formatPearls } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
+const { mealTimeExample } = await vite.ssrLoadModule("/features/economy/ui/food/meal-speed-description.ts");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");
@@ -35,23 +37,30 @@ function render(stationId = "home", overrides = {}) {
 const text = html => html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
 const buttons = html => [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(match => ({ attributes: match[1], text: text(match[2]) }));
 
-test("warehouse expansion respects its authored home tier without extra building gates when its cost is owned", () => {
+test("warehouse expansion is ready with its owned cost and declared house and ingredient sources", () => {
   const warehouse = economyCatalog.buildings.find(building => building.id === "warehouse");
-  assert.equal(warehouse.levels.find(level => level.level === 2).requiredHomeLevel, 2);
+  assert.equal(warehouse.levels.find(level => level.level === 2).requiredHomeLevel, 1);
   for (const target of warehouse.levels.filter(level => level.level > 1)) {
-    const snapshot = state({ buildings: { home: target.requiredHomeLevel, warehouse: target.level - 1, workshop: 0 },
+    const snapshot = state({ buildings: { home: target.requiredHomeLevel, warehouse: target.level - 1, ...target.requiredBuildings },
       inventory: { ...target.cost.items }, wallet: { coins: target.cost.coins, pearls: 0 } });
     const html = render("warehouse", { snapshot });
     assert.doesNotMatch(html, /aria-label="Недостающие условия"|Нужны улучшения/);
     const start = buttons(html).find(button => button.text.includes(`Улучшить до ур. ${target.level}`));
     assert.ok(start, `warehouse ${target.level} keeps its normal upgrade action`);
     assert.doesNotMatch(start.attributes, /disabled/, `warehouse ${target.level} is available after its declared home tier`);
+    for (const [id, level] of Object.entries({ home: target.requiredHomeLevel, ...target.requiredBuildings })) {
+      const lockedState = structuredClone(snapshot); lockedState.buildings[id] = level - 1;
+      const missing = render("warehouse", { snapshot: lockedState });
+      assert.match(missing, /aria-label="Недостающие условия"/);
+      assert.ok(missing.includes(`data-building-requirement="${id}"`));
+      assert.match(buttons(missing).find(button => button.text.includes(`Улучшить до ур. ${target.level}`)).attributes, /disabled/);
+    }
   }
   const first = warehouse.levels.find(level => level.level === 2);
   const locked = render("warehouse", { snapshot: state({ buildings: { home: 1, warehouse: 1 },
     inventory: { ...first.cost.items }, wallet: { coins: first.cost.coins, pearls: 0 } }) });
   assert.match(locked, /aria-label="Недостающие условия"/);
-  assert.match(text(locked), /Дом Мохлика Сейчас ур\. 1 Нужен ур\. 2/);
+  assert.match(text(locked), /Мастерская Не построено Нужен ур\. 1/);
   assert.match(buttons(locked).find(button => /Улучшить до ур\. 2/.test(button.text)).attributes, /disabled/);
 });
 
@@ -61,7 +70,8 @@ test("upgrade leads with its result and keeps exact costs and missing-level navi
   assert.ok(html.indexOf('aria-label="Что изменится"') < html.indexOf('aria-label="Подготовка к улучшению"'));
   assert.match(html, /aria-label="Где получить: Камень, В путь\. Есть 0, нужно [0-9]+"/);
   assert.match(html, /aria-label="Недостающие условия"/);
-  assert.match(text(html), /Монеты 5 000 \/ 250/);
+  const cost = economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 2).cost.coins;
+  assert.ok(text(html).includes(`Монеты 5 000 / ${cost.toLocaleString("ru-RU").replace(/\s/g, " ")}`));
   assert.ok(!buttons(html).some(button => button.text.trim() === "Кладовая"));
   assert.doesNotMatch(html, /DEV: Дом Мохлика/);
 });
@@ -90,7 +100,8 @@ test("a ready construction has one enabled completion action and reuses normal r
 test("active construction shows its real pearl quote without spending on first press", () => {
   const snapshot = state({ wallet: { coins: 1000, pearls: 400 }, jobs: [construction()] });
   const html = render("home", { snapshot });
-  const accelerate = buttons(html).find(button => /aria-label="Завершить сейчас за 4 жемчужины"/.test(button.attributes));
+  const quote = constructionSpeedupPrice(snapshot.jobs[0], now, snapshot.catalog.constructionSpeedup);
+  const accelerate = buttons(html).find(button => button.attributes.includes(`aria-label="Завершить сейчас за ${formatPearls(quote)} жемчуж`));
   assert.ok(accelerate);
   assert.doesNotMatch(accelerate.attributes, /disabled/);
   assert.match(accelerate.attributes, /aria-expanded="false"/);
@@ -156,7 +167,7 @@ test("the claimed maximum home offers a playful finale instead of another-level 
   const maximum = Math.max(...economyCatalog.buildings.find(building => building.id === "home").levels.map(level => level.level));
   const snapshot = state({ buildings: { home: maximum, warehouse: 1 } }), before = structuredClone(snapshot);
   const html = render("home", { snapshot });
-  assert.match(text(html), /Поздравляем! Вы прошли игру\./);
+  assert.match(text(html), /Поздравляем! Дом мечты готов\./);
   assert.match(html, /data-home-finale="celebration"/);
   assert.ok(buttons(html).some(button => button.text.trim() === "Смотреть титры"));
   assert.ok(buttons(html).some(button => button.text.trim() === "В лес!"));
@@ -187,37 +198,66 @@ test("maximum workshops, storage and restorations retain their own completion st
   }
 });
 
-test("late pantry expansion has three distinct relic counters and no house, building or coin gate", () => {
-  const snapshot = state({ buildings: { home: 1, warehouse: 9 }, wallet: { coins: 0, pearls: 0 }, inventory: { ancient_core: 10, moon_crystal: 3, living_resin: 3 } });
-  const html = render("warehouse", { snapshot });
-  assert.match(text(html), /Вместимость кладовой 450 500 \+50 мест/);
-  for (const id of ["ancient_core", "moon_crystal", "living_resin"]) assert.match(html, new RegExp(`data-relic="${id}"`));
-  assert.equal((html.match(/width="34" height="34"/g) ?? []).length, 3);
-  assert.match(text(html), /Древнее ядро 10 \/ 10/);
-  assert.match(text(html), /Лунный кристалл 3 \/ 3/);
-  assert.match(text(html), /Живая смола 3 \/ 3/);
-  assert.doesNotMatch(buttons(html).find(button => /Улучшить до ур\. 10/.test(button.text)).attributes, /disabled/);
-  assert.doesNotMatch(html, /Нужны улучшения|data-item-icon="coins"|Купить.*жемч/);
-  snapshot.inventory.living_resin = 2;
-  const missing = render("warehouse", { snapshot });
-  assert.match(text(missing), /Живая смола 2 \/ 3/);
-  assert.match(missing, /data-relic="living_resin" data-missing="true"/);
-  assert.match(buttons(missing).find(button => /Улучшить до ур\. 10/.test(button.text)).attributes, /disabled/);
+test("late pantry expansion shows exact ordinary or relic-only costs and requires the full payment", () => {
+  const warehouse = economyCatalog.buildings.find(building => building.id === "warehouse");
+  const ordinary = warehouse.levels.find(level => level.level === 10), final = warehouse.levels.at(-1);
+  assert.deepEqual(ordinary.cost, { coins: 95_000, items: { reinforced_parts: 3, lens: 2, field_kit: 2 } });
+  assert.deepEqual(final.cost, { coins: 0, items: { ancient_core: 1, moon_crystal: 1, living_resin: 1 } });
+  assert.equal(final.level, 15);
+  for (const target of [ordinary, final]) {
+    const snapshot = state({ buildings: { home: target.requiredHomeLevel, warehouse: target.level - 1, ...target.requiredBuildings },
+      wallet: { coins: target.cost.coins, pearls: 0 }, inventory: { ...target.cost.items } });
+    const before = structuredClone(snapshot);
+    const html = render("warehouse", { snapshot });
+    const startButton = output => buttons(output).find(button => button.text.includes(`Улучшить до ур. ${target.level}`));
+    assert.ok(text(html).includes(`Вместимость кладовой ${target.warehouseCapacity - 50} ${target.warehouseCapacity} +50 мест`));
+    if (target.cost.coins > 0) {
+      assert.match(text(html), /Монеты 95 000 \/ 95 000/);
+      assert.match(html, /data-item-icon="coins"/);
+    } else assert.doesNotMatch(html, /data-item-icon="coins"/);
+    const relics = economyCatalog.rareDrops.itemIds.filter(id => target.cost.items[id]);
+    for (const id of relics) assert.match(html, new RegExp(`data-relic="${id}"`));
+    assert.equal((html.match(/width="34" height="34"/g) ?? []).length, relics.length);
+    for (const [id, amount] of Object.entries(target.cost.items)) {
+      const name = economyCatalog.items.find(item => item.id === id).name;
+      assert.ok(text(html).includes(`${name} ${amount} / ${amount}`), id);
+    }
+    assert.doesNotMatch(startButton(html).attributes, /disabled/);
+    assert.doesNotMatch(html, /Нужны улучшения|Купить.*жемч/);
+    assert.deepEqual(snapshot, before, "reading the exact upgrade cost cannot spend coins or materials");
+    if (target.cost.coins > 0) {
+      snapshot.wallet.coins--;
+      const shortCoins = render("warehouse", { snapshot });
+      assert.match(text(shortCoins), /Монеты 94 999 \/ 95 000/);
+      assert.match(startButton(shortCoins).attributes, /disabled/);
+      snapshot.wallet.coins = target.cost.coins;
+    }
+    const missingItem = target.level === 15 ? "living_resin" : "field_kit";
+    snapshot.inventory[missingItem]--;
+    const missing = render("warehouse", { snapshot });
+    const name = economyCatalog.items.find(item => item.id === missingItem).name;
+    assert.ok(text(missing).includes(`${name} ${snapshot.inventory[missingItem]} / ${target.cost.items[missingItem]}`));
+    if (target.level === 15) assert.match(missing, /data-relic="living_resin" data-missing="true"/);
+    assert.match(startButton(missing).attributes, /disabled/);
+  }
 });
 
 test("relic cost navigation separates an available project reward from chance finds and respects their actual home unlock", () => {
   const navigation = { canOpen() { return true; }, open() {}, explore() {} };
-  const snapshot = state({ buildings: { home: economyCatalog.rareDrops.requiredHomeLevel, warehouse: 3 }, inventory: {} });
+  for (const [warehouse, item, inventory] of [[10, "Древнее ядро", { moon_crystal: 1, living_resin: 1 }], [11, "Лунный кристалл", { ancient_core: 1, living_resin: 1 }]]) {
+    const chance = render("warehouse", { snapshot: state({ buildings: { home: economyCatalog.rareDrops.requiredHomeLevel, warehouse }, inventory }), navigation });
+    const find = buttons(chance).filter(button => /aria-label="Где искать:/.test(button.attributes));
+    assert.equal(find.length, 1); assert.ok(find[0].attributes.includes(`Где искать: ${item}`));
+  }
+  const snapshot = state({ buildings: { home: economyCatalog.rareDrops.requiredHomeLevel, warehouse: 12 }, inventory: { ancient_core: 1, moon_crystal: 1 } });
   const pending = render("warehouse", { snapshot, navigation });
   const pendingFinds = buttons(pending).filter(button => /aria-label="Где искать:/.test(button.attributes));
-  assert.equal(pendingFinds.length, 2);
-  assert.ok(pendingFinds.some(button => /Где искать: Древнее ядро/.test(button.attributes)));
-  assert.ok(pendingFinds.some(button => /Где искать: Лунный кристалл/.test(button.attributes)));
-  assert.ok(!pendingFinds.some(button => /Где искать: Живая смола/.test(button.attributes)));
+  assert.equal(pendingFinds.length, 0);
   assert.match(text(pending), /Гарантированный источник: завершите проект к дому 4.*Награда: Живая смола × 1/);
   snapshot.stageOrders = { version: 1, stages: { 3: { step: 8, completed: true, terms: null, completionRewards: { living_resin: 1 } } } };
   const html = render("warehouse", { snapshot, navigation });
-  assert.equal(buttons(html).filter(button => /aria-label="Где искать:/.test(button.attributes)).length, 3);
+  assert.equal(buttons(html).filter(button => /aria-label="Где искать:/.test(button.attributes)).length, 1);
+  assert.match(html, /Где искать: Живая смола/);
   assert.doesNotMatch(html, /Гарантированный источник: завершите проект/);
   assert.match(html, /конкретный предмет не гарантирован/);
   assert.doesNotMatch(html, /Где получить: (Древнее ядро|Лунный кристалл|Живая смола)/);
@@ -225,7 +265,7 @@ test("relic cost navigation separates an available project reward from chance fi
   const locked = render("warehouse", { snapshot, navigation });
   assert.ok(!buttons(locked).some(button => /aria-label="Где искать:/.test(button.attributes)));
   assert.ok(text(locked).includes(`Находки реликвий в вылазках доступны с домом ур. ${economyCatalog.rareDrops.requiredHomeLevel}.`));
-  snapshot.inventory = { ...economyCatalog.buildings.find(building => building.id === "warehouse").levels.find(level => level.level === 4).cost.items };
+  snapshot.inventory = { ...economyCatalog.buildings.find(building => building.id === "warehouse").levels.find(level => level.level === 13).cost.items };
   assert.doesNotMatch(render("warehouse", { snapshot, navigation }), /Находки реликвий в вылазках доступны с домом/);
 });
 
@@ -236,16 +276,17 @@ test("pantry expansion shows only its real capacity gain, without dependent buil
   assert.doesNotMatch(html, /Развитие хозяйства|Дом Мохлика|Ягодный куст|Можно развивать|Новые рецепты|другие постройки/);
   assert.match(text(html), /Доска 0 \/ 3/);
   assert.match(text(html), /Камень 0 \/ 2/);
-  assert.match(text(html), /Верёвка 0 \/ 2/);
+  assert.match(text(html), /Бревно 20 \/ 2/);
 });
 
-test("workshop upgrade presents only its two unit products, with recipe details initially closed", () => {
+test("workshop upgrade presents its three current unit products with recipe details initially closed", () => {
   const html = render("workshop", { snapshot: state({ buildings: { home: 3, warehouse: 1, workshop: 1, woodlot: 2, kiln: 2 } }) });
   const products = buttons(html).filter(button => /data-recipe=/.test(button.attributes));
-  assert.deepEqual(products.map(button => button.attributes.match(/data-recipe="([^"]+)"/)[1]), ["make_metal_parts", "weave_cloth"]);
+  assert.deepEqual(products.map(button => button.attributes.match(/data-recipe="([^"]+)"/)[1]), ["make_metal_parts", "weave_cloth", "make_trade_crate"]);
   assert.ok(products.every(button => /aria-expanded="false"/.test(button.attributes)));
-  assert.match(text(html), /Металлическая деталь ×1 · 30 мин/);
-  assert.match(text(html), /Полотно ×1 · 40 мин/);
+  assert.match(text(html), /Металлическая деталь ×1 · 10 мин/);
+  assert.match(text(html), /Полотно ×1 · 12 мин/);
+  assert.match(text(html), /Торговый ящик ×1 · 8 мин/);
   assert.doesNotMatch(html, /Набор · 3 вида|data-recipe="workshop_overnight"/);
   assert.doesNotMatch(html, /Развитие хозяйства|Дом Мохлика|Старый лес|Результат рецепта/);
 });
@@ -256,42 +297,57 @@ test("a furnace upgrade does not claim that it manufactures workshop products un
   assert.doesNotMatch(html, /Металлическая деталь|Сделать металлические детали/);
 });
 
-test("the first furnace previews one charcoal and one brick per separate second-stage job", () => {
+test("the first furnace previews separate unit charcoal brick and ceramic jobs", () => {
   const html = render("kiln", { snapshot: state({ buildings: { home: 2, warehouse: 1, workshop: 1, quarry: 2, kiln: 0 } }) });
   const products = buttons(html).filter(button => /data-recipe=/.test(button.attributes));
-  assert.deepEqual(products.map(button => button.attributes.match(/data-recipe="([^"]+)"/)[1]), ["make_charcoal", "fire_bricks"]);
+  assert.deepEqual(products.map(button => button.attributes.match(/data-recipe="([^"]+)"/)[1]), ["make_charcoal", "fire_bricks", "make_ceramic_jar"]);
   assert.match(products[0].text, /Древесный уголь ×1 · 2 мин/);
   assert.match(products[1].text, /Кирпич ×1 · 3 мин/);
+  assert.match(products[2].text, /Керамическая банка ×1 · 5 мин/);
   assert.doesNotMatch(html, /data-recipe="smelt_iron"/);
 });
 
-test("home previews each opportunity with explicit collapsed disclosures for additional requirements", () => {
+test("home groups its benefits into closed, keyboard-accessible sections while keeping each unlock and its conditions", () => {
   const html = render("home");
-  assert.match(text(html), /Новый облик дома Можно развивать постройки до ур\. 2/);
-  assert.match(html, /aria-roledescription="карусель"/);
-  assert.doesNotMatch(html, /<details/);
-  assert.match(text(html), /Каменоломня.*Печь.*Добыть камень.*Добыть глину.*Рынок между игроками/);
+  assert.match(text(html), /Новый облик дома Можно развивать постройки до ур\. 3/);
+  assert.doesNotMatch(html, /aria-roledescription="карусель"|Предыдущая возможность|Следующая возможность/);
+  const groups = [...html.matchAll(/<details\b([^>]*)data-benefit-group="([^"]+)"([^>]*)>\s*<summary>/g)];
+  assert.deepEqual(groups.map(match => match[2]), ["buildings", "routes", "production", "cooking", "fishing"]);
+  assert.ok(groups.every(match => !/\bopen\b/.test(match[1] + match[3])));
+  assert.match(text(html), /Каменоломня.*Печь.*Рынок между игроками/);
+  assert.match(text(html), /Добыть камень.*Добыть глину/);
   for (const id of ["home", "building:quarry", "building:kiln", "route:quarry_stone", "route:quarry_clay", "market"]) assert.ok(html.includes(`data-upgrade-benefit="${id}"`));
   assert.doesNotMatch(html, /data-upgrade-benefit="route:cave"|data-upgrade-benefit="route:quarry_stone_overnight"/);
-  assert.match(buttons(html).find(button => /aria-label="Предыдущая возможность"/.test(button.attributes)).attributes, /disabled/);
-  assert.doesNotMatch(buttons(html).find(button => /aria-label="Следующая возможность"/.test(button.attributes)).attributes, /disabled/);
   assert.match(text(html), /Торговля Рынок между игроками Покупайте материалы и продавайте свои запасы\. Ещё условия/);
   assert.doesNotMatch(html, /<section[^>]*aria-label="Подробнее: Рынок между игроками"/, "prerequisites open only on an explicit card press");
   assert.doesNotMatch(text(html), /Нужно завершить вылазок/);
   assert.doesNotMatch(html, /Развитие хозяйства|Новых рецептов|Выплавить железо/);
 });
 
-test("every next home tier previews its new berry and dish with the real station and distinct food effects", () => {
+test("each home tier previews crops and groups unfamiliar dishes without revealing names or results", () => {
   for (const [level, crop, dish] of [[2, "grow_blueberries", "cook_blueberry_compote"], [3, "grow_currants", "cook_currant_jelly"],
     [4, "grow_blackberries", "cook_blackberry_preserve"], [5, "grow_cranberries", "cook_cranberry_glaze"]]) {
-    const html = render("home", { snapshot: state({ buildings: { home: level - 1, warehouse: 1 } }) });
+    const snapshot = state({ buildings: { home: level - 1, warehouse: 1 } });
+    const html = render("home", { snapshot });
     assert.ok(html.includes(`data-upgrade-benefit="recipe:${crop}"`));
-    assert.ok(html.includes(`data-upgrade-benefit="recipe:${dish}"`));
+    assert.ok(!html.includes(dish));
     const recipe = economyCatalog.recipes.find(entry => entry.id === dish);
     const meal = economyCatalog.food.meals.find(entry => recipe.rewards[entry.itemId]);
     assert.match(text(html), /Новый рецепт · Ягодный куст/);
-    assert.match(text(html), /Новый рецепт · Костёр/);
-    assert.ok(text(html).includes(`Вылазка +${meal.heroSpeedBps / 100}% · стройка +${meal.builderSpeedBps / 100}% скорости`));
+    const target = snapshot.catalog.buildings.find(building => building.id === "home").levels.find(tier => tier.level === level);
+    const hiddenRecipes = worldUpgradeUnlocks(snapshot, "home", target).recipes.filter(entry => entry.buildingId === "dryer");
+    const cookingGroup = html.match(/data-benefit-group="cooking"[^>]*>([\s\S]*?)<\/details>/)[1];
+    assert.equal((cookingGroup.match(/data-upgrade-benefit=/g) ?? []).length, 1);
+    assert.ok(text(cookingGroup).includes(`Рецептов предстоит открыть: ${hiddenRecipes.length}`));
+    for (const entry of hiddenRecipes) {
+      assert.ok(!cookingGroup.includes(entry.id) && !cookingGroup.includes(entry.name));
+      if (entry.experiment) assert.ok(!cookingGroup.includes(entry.experiment.title));
+    }
+    assert.doesNotMatch(cookingGroup, /data-item-icon|Состав и условия|мин|×/);
+    const learned = render("home", { snapshot: { ...snapshot, progression: { recipes: { [dish]: 1 } } } });
+    assert.ok(learned.includes(`data-upgrade-benefit="recipe:${dish}"`));
+    assert.ok(text(learned).includes(`Рецептов предстоит открыть: ${hiddenRecipes.length - 1}`));
+    assert.ok(text(learned).includes(`Пример: вылазка ${mealTimeExample(meal.heroSpeedBps, meal.heroWorkSeconds)} · стройка ${mealTimeExample(meal.builderSpeedBps, meal.builderWorkSeconds, "builder")}`));
     assert.match(text(html), /Ещё условия/);
   }
 });
@@ -299,11 +355,10 @@ test("every next home tier previews its new berry and dish with the real station
 
 test("mine route cards retain actual yields, times and the additional home requirements", () => {
   const html = render("quarry", { snapshot: state({ buildings: { home: 1, warehouse: 1 } }) });
-  for (const id of ["cave", "deep_cave", "quarry_stone", "quarry_stone_overnight"]) assert.ok(html.includes(`data-upgrade-benefit="route:${id}"`));
-  assert.match(text(html), /Новая добыча · 1 ч Вход в пещеру Камень ×8 Железная руда ×4 Ещё условия/);
-  assert.match(text(html), /Новая добыча · 4 ч Глубокий проход Камень ×30 Железная руда ×15 Ещё условия/);
+  assert.deepEqual([...html.matchAll(/data-upgrade-benefit="route:([^"]+)"/g)].map(match => match[1]), ["quarry_stone"]);
+  for (const id of ["cave", "deep_cave", "quarry_stone_overnight"]) assert.ok(!html.includes(`data-upgrade-benefit="route:${id}"`));
   assert.match(text(html), /Новая добыча · 3 мин Добыть камень Камень ×1 Ещё условия/);
-  assert.match(html, /aria-label="Подробнее: Вход в пещеру" aria-expanded="false"/);
+  assert.match(html, /aria-label="Подробнее: Добыть камень" aria-expanded="false"/);
   assert.doesNotMatch(html, /<section[^>]*aria-label="Подробнее:/);
   assert.doesNotMatch(text(html), /Для этой добычи/);
   assert.match(text(html), /Шахта работает независимо от Мохлика/);

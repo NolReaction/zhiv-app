@@ -1,0 +1,10 @@
+[
+  { "voyageId": "trip-7", "cast": 1, "heldMs": 0, "marker": 0, "target": 70, "quality": 0, "power": 15 },
+  { "voyageId": "trip-7", "cast": 1, "heldMs": 390, "marker": 39, "target": 74, "quality": 3, "power": 48 },
+  { "voyageId": "trip-7", "cast": 1, "heldMs": 630, "marker": 63, "target": 72, "quality": 81, "power": 69 },
+  { "voyageId": "trip-7", "cast": 1, "heldMs": 635, "marker": 63, "target": 71, "quality": 84, "power": 69 },
+  { "voyageId": "trip-7", "cast": 1, "heldMs": 685, "marker": 68, "target": 68, "quality": 100, "power": 73 },
+  { "voyageId": "trip-7", "cast": 2, "heldMs": 615, "marker": 61, "target": 52, "quality": 81, "power": 67 },
+  { "voyageId": "🌊-река", "cast": 3, "heldMs": 43500, "marker": 50, "target": 51, "quality": 98, "power": 58 },
+  { "voyageId": "trip-7", "cast": 1, "heldMs": 60000, "marker": 0, "target": 70, "quality": 0, "power": 15 }
+]

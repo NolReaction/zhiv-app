@@ -1,0 +1,12 @@
+.forecast { display: grid; gap: 8px; min-width: 0; padding: 12px; border: 1px solid #b5b695; border-radius: 9px; background: #e8ecde; }
+.forecast h3 { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #344e43; }
+.forecast p { color: #61705e; font-size: 11px; line-height: 1.5; }
+.forecast button { justify-self: start; min-height: 44px; padding: 8px 10px; border: 1px solid #637e61; border-radius: 7px; background: #395d4b; color: #f6eed7; font: inherit; font-size: 11px; }
+.forecast button:focus-visible, .order summary:focus-visible { outline: 3px solid #8b713c; outline-offset: 2px; }
+.order { min-width: 0; border-top: 1px solid #c1c9ae; padding-top: 8px; }
+.order summary { cursor: pointer; color: #456456; font-size: 12px; overflow-wrap: anywhere; }
+.order ul { display: grid; gap: 6px; list-style: none; padding: 0; margin: 8px 0 0; }
+.order li { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 11px; }
+.order li span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.order li strong { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+@media (forced-colors: active) { .forecast, .forecast button, .order { border-color: CanvasText; } }

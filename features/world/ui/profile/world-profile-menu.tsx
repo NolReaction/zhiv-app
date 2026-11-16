@@ -1,11 +1,12 @@
 "use client";
 
+import { ForestSkillsPanel } from "@/features/economy/ui/skills/forest-skills-panel";
 import { AudioSettingsPanel } from "@/features/audio/ui/audio-settings";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { ChevronRight, CircleHelp, Heart, Leaf, Settings, ShieldCheck } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
-import { GameLevelIcon } from "@/features/game/game-level-icon";
+import { CooperationSeasonCard, PlayerProgressionCard } from "@/features/game/player-progression-card";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import type { Person } from "@/lib/check-in-contract";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -14,12 +15,12 @@ import type { WorldController } from "@/features/world/state/use-world";
 import { useForestObservation, type ForestObservation } from "@/features/world/state/use-forest-observation";
 import { takeOverForestSession } from "@/features/world/state/forest-session";
 import { WorldMoodDialog } from "./world-mood-dialog";
-import { WorldProfileFriends, type WorldFriendsState } from "./world-profile-friends";
+import { WorldProfileFriends, type WorldFriendsState, type NeighborFriend } from "./world-profile-friends";
 import { WorldTapHintSetting } from "./world-tap-hint-setting";
 import styles from "./world-profile-menu.module.css";
 
-export type WorldProfileTab = "profile" | "friends" | "settings";
-/** Older help destinations still open the mood dialog, never a fourth tab. */
+export type WorldProfileTab = "profile" | "skills" | "friends" | "settings";
+/** Older help destinations still open the mood dialog, never a separate tab. */
 export type WorldProfileDestination = WorldProfileTab | "mood";
 type Props = {
   world: WorldController;
@@ -36,6 +37,8 @@ type Props = {
   friends?: WorldFriendsState;
   onOpenPeople?: () => void;
   onVisitFriend?: (person: Person) => void;
+  onVisitNeighbor?: () => void;
+  neighbor?: NeighborFriend;
   onOpenHelp?: () => void;
   onOpenOnboarding?: () => void;
   onboardingStatus?: "started" | "completed" | "skipped" | null;
@@ -44,6 +47,7 @@ type Props = {
 
 const tabs = [
   { id: "profile", label: "Профиль" },
+  { id: "skills", label: "Навыки леса" },
   { id: "friends", label: "Друзья" },
   { id: "settings", label: "Настройки" },
 ] as const;
@@ -73,6 +77,13 @@ function WorldProfileSession({ presenceKey, ownerPublicId, ...props }: Props) {
   const observation = useForestObservation(presenceKey);
   const [activeTab, setActiveTab] = useState<WorldProfileTab>(props.initialTab === "mood" ? "profile" : props.initialTab ?? "profile");
   const [moodOpen, setMoodOpen] = useState(props.initialTab === "mood");
+  const readNeighbor = activeTab === "friends" && Boolean(props.onVisitNeighbor) && props.friends?.isOnline !== false;
+  const refreshNeighbor = props.economy.refreshNeighbor;
+  useEffect(() => {
+    if (!readNeighbor) return;
+    const timer = setTimeout(() => { void refreshNeighbor(); }, 0);
+    return () => clearTimeout(timer);
+  }, [readNeighbor, refreshNeighbor, ownerPublicId]);
   const [guideOpen, setGuideOpen] = useState(false);
   const moodTrigger = useRef<HTMLButtonElement>(null);
   const [callPulse, setCallPulse] = useState(0);
@@ -86,8 +97,15 @@ function WorldProfileSession({ presenceKey, ownerPublicId, ...props }: Props) {
     props.onCall?.();
     callTimer.current = setTimeout(() => setCallPulse(0), 1200);
   } : undefined;
+  const friends = props.friends && props.onVisitNeighbor ? {
+    ...props.friends,
+    onRefresh: async () => {
+      if (props.friends?.isOnline === false) return;
+      await Promise.allSettled([props.friends?.onRefresh(), refreshNeighbor()]);
+    },
+  } : props.friends;
   return <>
-    <WorldProfileContent {...props} observation={observation} onCall={call} callPulse={callPulse}
+    <WorldProfileContent {...props} friends={friends} observation={observation} onCall={call} callPulse={callPulse}
       tapHintSetting={<WorldTapHintSetting owner={ownerPublicId} tone="forest" />}
       activeTab={activeTab} onTabChange={setActiveTab} idPrefix={idPrefix} onTakeOver={() => takeOverForestSession(presenceKey)}
       onOpenMood={() => setMoodOpen(true)} moodTriggerRef={moodTrigger}
@@ -100,9 +118,9 @@ function WorldProfileSession({ presenceKey, ownerPublicId, ...props }: Props) {
 }
 
 /** Pure contents keep map focus ownership separate from data subscriptions. */
-export function WorldProfileContent({ world, economy, displayName, level, bestStreakDays, observation, onCall, onTakeOver,
+export function WorldProfileContent({ world, economy, displayName, bestStreakDays, observation, onCall, onTakeOver,
   rewards, achievements, callPulse = 0, initialTab = "profile", activeTab = initialTab === "mood" ? "profile" : initialTab, onTabChange, idPrefix = "world-profile",
-  friends, onOpenPeople, onVisitFriend, onOpenOnboarding, onboardingStatus, guideOpen = false, onToggleGuide, onOpenMood, moodTriggerRef, tapHintSetting }: Omit<Props, "presenceKey" | "ownerPublicId"> & {
+  friends, onOpenPeople, onVisitFriend, onVisitNeighbor, neighbor, onOpenOnboarding, onboardingStatus, guideOpen = false, onToggleGuide, onOpenMood, moodTriggerRef, tapHintSetting }: Omit<Props, "presenceKey" | "ownerPublicId"> & {
   observation: ForestObservation | null;
   guideOpen?: boolean;
   onToggleGuide?: () => void;
@@ -141,48 +159,57 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
     {sync?.canTakeOver && onTakeOver && <button type="button" className={styles.action} onClick={onTakeOver}>Продолжить здесь</button>}
   </div>;
 
-  return <div className={styles.profile}>
+  return <div className={styles.profile} data-game-profile data-profile-section={activeTab}>
     <div className={styles.navigation} data-guide-profile-tabs>
     <div className={styles.tabs} role="tablist" aria-label="Разделы профиля">
       {tabs.map((tab, index) => <button key={tab.id} type="button" role="tab" aria-label={tab.label} title={tab.id === "settings" ? tab.label : undefined} id={`${idPrefix}-tab-${tab.id}`}
         aria-selected={activeTab === tab.id} aria-controls={`${idPrefix}-panel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1}
-        onClick={() => changeTab(tab.id)} onKeyDown={event => changeWithKeyboard(event, index)}>{tab.id === "settings" ? <Settings size={19} aria-hidden="true" /> : tab.label}</button>)}
+        onClick={() => changeTab(tab.id)} onKeyDown={event => changeWithKeyboard(event, index)}>{tab.id === "settings" ? <><Settings size={19} aria-hidden="true" /><span className={styles.settingsLabel}>Настройки</span></> : tab.label}</button>)}
     </div>
     {onOpenOnboarding && <button type="button" className={styles.guideEntry} aria-label="О профиле" title="О профиле" aria-expanded={guideOpen} aria-controls={`${idPrefix}-guide`}
       onClick={onToggleGuide} data-audio-cue="ui.open"><CircleHelp size={20} aria-hidden="true" /></button>}
     </div>
     {guideOpen && <section id={`${idPrefix}-guide`} className={styles.guideHelp} aria-label="О профиле">
-      <p>Тут общая статистика, друзья и настройки.</p>
+      <p>Тут общая статистика, навыки леса, друзья и настройки.</p>
       {onOpenOnboarding && <button type="button" className={styles.action} onClick={onOpenOnboarding}>
         {onboardingStatus === "started" ? "Продолжить обучение" : onboardingStatus ? "Повторить обучение" : "Начать обучение"}
       </button>}
     </section>}
     {memoryWarning && memory}
     <div className={styles.panel} role="tabpanel" id={`${idPrefix}-panel-${activeTab}`} aria-labelledby={`${idPrefix}-tab-${activeTab}`} tabIndex={0}>
-      {activeTab === "profile" && <>
+      {activeTab === "profile" && <div className={styles.overview}>
         <div className={styles.identity}>
-          <span className={styles.levelIcon}><GameLevelIcon level={level} size={27} /></span>
-          <div><h2>{displayName}</h2><p>Уровень {level}</p></div>
+          <PlayerProgressionCard progression={economy.snapshot?.progression} now={economy.now} ownerKey={economy.snapshot?.ownerPublicId}
+            displayName={displayName} presentation="profile" showSeason={false} />
         </div>
-        <button ref={moodTriggerRef} type="button" className={styles.moodPreview} onClick={onOpenMood} aria-label="Как Мохлик?" aria-haspopup="dialog" data-audio-cue="ui.open">
-          <Leaf size={18} aria-hidden="true" /><span><small>{observation?.paused ? "Полянка на паузе" : "Как Мохлик?"}</small>
-            <strong>{observation?.mood ?? "Полянка загружается"}</strong></span><ChevronRight size={16} aria-hidden="true" />
-        </button>
-        {achievements && <div className={styles.achievements}>{achievements}</div>}
-        <dl className={styles.stats} aria-label="Достижения Мохлика">
-          <div><dt>Дом</dt><dd>{houseLevel === undefined ? "-" : `${houseLevel} ур.`}</dd></div>
-          <div><dt>Исследования</dt><dd>{economy.snapshot?.completedExplorations ?? "-"}</dd></div>
-          <div><dt>Книга находок</dt><dd>{bookCount === null ? "-" : `${bookCount} / ${BOOK_COLLECTION_COUNT}`}</dd></div>
-          {!!state?.completedJourneys && <div><dt>Прежние походы</dt><dd>{state.completedJourneys}</dd></div>}
-          <div><dt>Лучшая серия отметок</dt><dd>{formatDayCount(bestStreakDays)}</dd></div>
-        </dl>
-        {(rewards || onCall) && <div className={styles.actions}>{rewards}
-          {onCall && <button type="button" className={styles.action} data-called={callPulse > 0 || undefined} disabled={!observation || observation.paused} onClick={onCall}>
-            <Heart key={callPulse} size={15} aria-hidden="true" />{callPulse > 0 ? "Мохлик, иди сюда!" : observation?.sleeping ? "Разбудить Мохлика" : "Позвать Мохлика"}
-          </button>}
-        </div>}
-      </>}
-      {activeTab === "friends" && <WorldProfileFriends friends={friends} onOpenPeople={onOpenPeople} onVisitFriend={onVisitFriend} />}
+        <div className={styles.life}>
+          <button ref={moodTriggerRef} type="button" className={styles.moodPreview} onClick={onOpenMood} aria-label="Как Мохлик?" aria-haspopup="dialog" data-audio-cue="ui.open">
+            <Leaf size={18} aria-hidden="true" /><span><small>{observation?.paused ? "Полянка на паузе" : "Как Мохлик?"}</small>
+              <strong>{observation?.mood ?? "Полянка загружается"}</strong></span><ChevronRight size={16} aria-hidden="true" />
+          </button>
+          <h3 className={styles.sectionTitle}>На полянке</h3>
+          <dl className={styles.stats} aria-label="Достижения Мохлика">
+            <div><dt>Дом</dt><dd>{houseLevel === undefined ? "-" : `${houseLevel} ур.`}</dd></div>
+            <div><dt>Исследования</dt><dd>{economy.snapshot?.completedExplorations ?? "-"}</dd></div>
+            <div><dt>Книга находок</dt><dd>{bookCount === null ? "-" : `${bookCount} / ${BOOK_COLLECTION_COUNT}`}</dd></div>
+            {!!state?.completedJourneys && <div><dt>Прежние походы</dt><dd>{state.completedJourneys}</dd></div>}
+            <div><dt>Лучшая серия отметок</dt><dd>{formatDayCount(bestStreakDays)}</dd></div>
+          </dl>
+          {achievements && <div className={styles.achievements}>{achievements}</div>}
+          {(rewards || onCall) && <div className={styles.actions}>{rewards}
+            {onCall && <button type="button" className={styles.action} data-called={callPulse > 0 || undefined} disabled={!observation || observation.paused} onClick={onCall}>
+              <Heart key={callPulse} size={15} aria-hidden="true" />{callPulse > 0 ? "Мохлик, иди сюда!" : observation?.sleeping ? "Разбудить Мохлика" : "Позвать Мохлика"}
+            </button>}
+          </div>}
+        </div>
+        <div className={styles.season}>
+          <CooperationSeasonCard progression={economy.snapshot?.progression} now={economy.now} />
+        </div>
+      </div>}
+      {activeTab === "skills" && (economy.snapshot ? <ForestSkillsPanel state={economy.snapshot} /> : <p role="status">Загружаем навыки…</p>)}
+      {activeTab === "friends" && <WorldProfileFriends friends={friends} onOpenPeople={onOpenPeople} onVisitFriend={onVisitFriend} onVisitNeighbor={onVisitNeighbor} neighbor={neighbor}
+        neighborMarket={{ shop: economy.neighbor && economy.neighbor.ownerPublicId === economy.snapshot?.ownerPublicId ? economy.neighbor.shop : null,
+          error: Boolean(economy.neighborError), now: economy.now }} />}
       {activeTab === "settings" && <><AudioSettingsPanel tone="forest" />{tapHintSetting}</>}
     </div>
     {!memoryWarning && memory}

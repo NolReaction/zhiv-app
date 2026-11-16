@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test, { after, afterEach } from "node:test";
+import test, { after, afterEach, beforeEach } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -18,7 +18,18 @@ const { searchWorldStudioActions, studioSearchMatches, revealStudioSearchField }
 const { accountSceneLevels } = await vite.ssrLoadModule("/features/world/state/economy/economy-scene-state.ts");
 const { takeWorldLightingEditorFocus } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-map.ts");
 const { claimWorldLightingStudio, releaseWorldLightingStudio, hasWorldLightingStudioOwner, takeWorldLightingStudioHandoff } = await vite.ssrLoadModule("/features/world/dev/world-lighting-studio-session.ts");
-afterEach(() => { store.resetAll(); store.select(null); store.setEnabled(false); store.setPreviewDraft(true); store.setTool("select"); worldDevStore.reset(); takeWorldLightingEditorFocus(); takeWorldLightingStudioHandoff(); });
+// Folder/selection contracts need five levels and a two-part tree even when
+// the artist removes or renames those optional volumes in the actual map.
+const casterShape = TILED_WORLD.shadowCasters.find(item => item.when?.siteId === "home");
+assert.ok(casterShape);
+const studioScene = { ...TILED_WORLD, shadowCasters: [
+  ...Array.from({ length: 5 }, (_, index) => ({ ...casterShape, id: `home-shadow-${index + 1}`,
+    studioName: undefined, studioFolder: undefined, when: { siteId: "home", level: index + 1 } })),
+  ...["trunk", "crown"].map(part => ({ ...casterShape, id: `clearing-north-${part}`,
+    studioName: undefined, studioFolder: undefined, when: undefined })),
+] };
+beforeEach(() => { assert.equal(store.adoptProjectScene(studioScene), true); });
+afterEach(() => { store.resetAll(); store.select(null); store.setEnabled(false); store.setPreviewDraft(true); store.setTool("select"); worldDevStore.reset(); takeWorldLightingEditorFocus(); takeWorldLightingStudioHandoff(); assert.equal(store.adoptProjectScene(TILED_WORLD), true); });
 function markup(Component, props) {
   const serverSnapshot = store.getServerSnapshot;
   store.getServerSnapshot = store.getSnapshot;
@@ -89,7 +100,7 @@ test("the selected caster inspector exposes height and an explicit active-level 
 });
 
 test("showing a hidden level enables preview even when that level equals the cached DEV default", () => {
-  const caster = TILED_WORLD.shadowCasters.find(item => item.id === "home-shadow-1");
+  const caster = studioScene.shadowCasters.find(item => item.id === "home-shadow-1");
   const actual = { ...WORLD_DEV_DEFAULTS.levels, home: 3 };
   assert.equal(worldDevStore.getSnapshot().levels.home, 1);
   previewLightingCasterLevel(caster, actual, patch => worldDevStore.patch(patch));
@@ -97,6 +108,22 @@ test("showing a hidden level enables preview even when that level equals the cac
   assert.equal(preview.previewBuildings, true);
   assert.equal(accountSceneLevels(TILED_WORLD, 3, preview).home, 1);
   for (const [id, level] of Object.entries(actual)) if (id !== "home") assert.equal(preview.levels[id], level);
+});
+
+test("the current authored lighting still opens its actual volumes, surfaces and sources without requiring deleted fixture IDs", () => {
+  assert.equal(store.adoptProjectScene(TILED_WORLD), true);
+  activateWorldLightingStudio(true);
+  for (const [kind, values] of [["caster", TILED_WORLD.shadowCasters], ["receiver", TILED_WORLD.shadowReceivers], ["light", TILED_WORLD.lights]]) {
+    assert.ok(values.length);
+    const element = values[0];
+    assert.equal(store.selectElement(kind, element.id), true);
+    const html = markup(WorldLightingStudio, props());
+    assert.match(html, /aria-label="Имя и папка элемента"/);
+    assert.ok(html.includes(`<code>${element.id}</code>`));
+  }
+  assert.deepEqual(store.getSnapshot().dirtyIds, []);
+  assert.deepEqual(store.getSnapshot().dirtyReceiverIds, []);
+  assert.deepEqual(store.getSnapshot().dirtyLightIds, []);
 });
 
 test("attached source fields display the real rendered projection instead of guessing an authored height or location", () => {

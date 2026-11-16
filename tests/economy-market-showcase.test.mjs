@@ -25,7 +25,7 @@ function player(home = 2, inventory = { berries: 100 }, unlockedItems = Object.k
 const command = (p, action, targetId, quantity = 1, totalPrice = 0, at = now) => ({ requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,
   expectedRevision: read(p, at).revision, action, targetId, quantity, totalPrice });
 const trade = (p, action, target, quantity = 1, price = 0, at = now) => economy.commandDevEconomyMarket(p.token, command(p, action, target, quantity, price, at), at);
-const offer = (p, item = "berries", quantity = 1, price = rules.marketMinimumPrice(item, quantity), at = now) => trade(p, "create_listing", item, quantity, price, at).listing;
+const offer = (p, item = "berries", quantity = 1, price = Math.ceil(rules.marketMinimumPrice(item, quantity) / 10) * 10, at = now) => trade(p, "create_listing", item, quantity, price, at).listing;
 const buy = (p, lot, at = now) => trade(p, "buy_listing", lot.id, lot.quantity, lot.totalPrice, at);
 
 test("catalog source tiers describe items while permanent discovery controls actual trade access", () => {
@@ -47,10 +47,12 @@ test("catalog source tiers describe items while permanent discovery controls act
 
 test("unknown gift stock cannot bypass bait or legendary tackle discovery, including direct stale purchases", () => {
   for (const [itemId, home] of [["firefly_bait", 3], ["fish_legendary", 4]]) {
-    const low = player(home, { [itemId]: 1 }, []), beforeLow = read(low);
-    assert.throws(() => offer(low, itemId), { code: "ECONOMY_MARKET_ITEM_LOCKED" });
+    const basePrice = catalog.items.find(item => item.id === itemId).baseSellPrice;
+    const quantity = Math.ceil(10 / basePrice);
+    const low = player(home, { [itemId]: quantity }, []), beforeLow = read(low);
+    assert.throws(() => offer(low, itemId, quantity), { code: "ECONOMY_MARKET_ITEM_LOCKED" });
     assert.deepEqual(read(low), beforeLow, "new gift stock stays owned; rejection cannot consume or open it");
-    const seller = player(home, { [itemId]: 2 }), lot = offer(seller, itemId);
+    const seller = player(home, { [itemId]: quantity * 2 }), lot = offer(seller, itemId, quantity);
     assert.ok(!market(low).listings.some(item => item.id === lot.id));
     assert.throws(() => buy(low, lot), { code: "ECONOMY_MARKET_SHOWCASE_CHANGED" });
 
@@ -62,28 +64,32 @@ test("unknown gift stock cannot bypass bait or legendary tackle discovery, inclu
     assert.deepEqual(read(high), denied);
     row.state.unlockedItems = [itemId];
     const paid = buy(high, lot).state;
-    assert.equal(paid.inventory[itemId], 1);
+    assert.equal(paid.inventory[itemId], quantity);
     assert.deepEqual(paid.fishing.catches, {}, "buying class stock does not open a species discovery");
 
-    const cancel = offer(seller, itemId);
+    const cancel = offer(seller, itemId, quantity);
     const sellerRow = globalThis.__zhivDevEconomyStore.profiles.get(seller.me.user.publicId);
     sellerRow.state.buildings.home = home - 1; sellerRow.state.unlockedItems = [];
-    assert.equal(trade(seller, "cancel_listing", cancel.id).state.inventory[itemId], 1,
+    assert.equal(trade(seller, "cancel_listing", cancel.id).state.inventory[itemId], quantity,
       "an old listing stays refundable after its source becomes unavailable");
   }
 });
 
 test("whole-lot floor prevents immediate NPC arbitrage for every item and preserves the maximum", () => {
   for (const item of catalog.items.filter(item => item.tradable)) {
-    const seller = player(5, { [item.id]: 2 });
-    const floor = rules.marketMinimumPrice(item.id, 2);
-    assert.throws(() => offer(seller, item.id, 2, floor - 1), { code: "ECONOMY_MARKET_PRICE" }, item.id);
-    const npc = catalog.fishing.classes.some(group => group.itemId === item.id) ? item.baseSellPrice * 2 : economyLocalSellPrice(item.baseSellPrice, 2, catalog.localBuyer, item.id);
+    // Cheap bait needs a real stack: a ten-coin market quantum must also fit
+    // below the unchanged per-item price ceiling.
+    const quantity = Math.ceil(10 / item.baseSellPrice), basePrice = item.baseSellPrice * quantity;
+    const seller = player(5, { [item.id]: quantity * 2 });
+    const floor = rules.marketMinimumPrice(item.id, quantity);
+    assert.throws(() => offer(seller, item.id, quantity, floor - 1), { code: "ECONOMY_MARKET_PRICE" }, item.id);
+    const npc = catalog.fishing.classes.some(group => group.itemId === item.id) ? basePrice : economyLocalSellPrice(item.baseSellPrice, quantity, catalog.localBuyer, item.id);
     assert.ok(floor >= npc, item.id);
-    const legalBase = Math.ceil(item.baseSellPrice / 10) * 10;
-    if (legalBase !== item.baseSellPrice) assert.throws(() => offer(seller, item.id, 1, item.baseSellPrice), { code: "ECONOMY_MARKET_PRICE" });
-    assert.equal(offer(seller, item.id, 1, legalBase).totalPrice, legalBase);
-    assert.equal(offer(seller, item.id, 1, item.baseSellPrice * catalog.market.maxPriceMultiplier).totalPrice, item.baseSellPrice * catalog.market.maxPriceMultiplier);
+    const legalBase = Math.ceil(basePrice / 10) * 10, maximum = Math.floor(basePrice * catalog.market.maxPriceMultiplier / 10) * 10;
+    if (legalBase !== basePrice) assert.throws(() => offer(seller, item.id, quantity, basePrice), { code: "ECONOMY_MARKET_PRICE" });
+    assert.throws(() => offer(seller, item.id, quantity, maximum + 10), { code: "ECONOMY_MARKET_PRICE" });
+    assert.equal(offer(seller, item.id, quantity, legalBase).totalPrice, legalBase);
+    assert.equal(offer(seller, item.id, quantity, maximum).totalPrice, maximum);
   }
 });
 

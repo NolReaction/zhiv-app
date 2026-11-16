@@ -11,6 +11,8 @@ export type UpgradeBenefitCard = {
   details?: ReactNode;
   detailLabel?: string;
   recipeId?: string;
+  group?: "buildings" | "routes" | "production" | "cooking" | "fishing";
+  count?: number;
 };
 
 /** Browsing previews never opens their conditions; each card is an explicit disclosure. */

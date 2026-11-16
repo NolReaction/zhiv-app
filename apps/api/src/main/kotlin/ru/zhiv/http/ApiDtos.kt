@@ -147,6 +147,7 @@ data class PersonDto(
     val checkInState: String,
     val lastCheckInAt: String?,
     val status: UserStatusDto? = null,
+    val gameSummary: ru.zhiv.relationships.FriendGameSummary? = null,
 )
 
 @Serializable

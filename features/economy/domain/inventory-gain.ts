@@ -1,8 +1,8 @@
 import { fishClassForItem, fishClassInventory } from "./fishing";
 import { isMinerJob } from "./actor-availability";
 import { hasGardenBerryReward } from "./garden-berries";
-import { productionCollectionRewards } from "./production-collection";
 import { leaftailOfferTarget, leaftailShopOffers } from "./leaftail-shop";
+import { leaftailRelicExchangeOffer } from "./leaftail-relic-exchange";
 import type { EconomyCommand, EconomyJob, EconomyResult, EconomyView, MarketCommand } from "./model";
 
 export type InventoryGainItem = Readonly<{ itemId: string; quantity: number }>;
@@ -14,8 +14,29 @@ export type InventoryGain = Readonly<{
   items: readonly InventoryGainItem[];
   /** Saved catch drawings only. Economic stock and every existing consumer keep using items. */
   displayItems?: readonly InventoryGainItem[];
+  /** Actual local supply claim, retained only for the visible return report. */
+  expedition?: Readonly<{ routeId: string; title: string; xp: number; rareItemIds: readonly string[] }>;
 }>;
 export const INVENTORY_GAIN_HISTORY_LIMIT = 8;
+
+// Paid attempts from the first experiment catalog keep their one-portion fallback.
+// These are historical delivery terms, not ingredients for newly started attempts.
+const legacyCookingFallbacks: Readonly<Record<string, string>> = {
+  experiment_currant_fish: "currant_jelly", experiment_berry_pastila: "strawberry_compote",
+  experiment_trail_feast: "trail_ration", experiment_river_aspic: "fish_soup",
+};
+
+/** Public experiments conceal their saved draw. Authorize the possible goods,
+ * then use only the accepted inventory delta below to reveal the actual dish. */
+function productionGainLimits(job: EconomyJob, catalog: EconomyView["catalog"]): Record<string, number> {
+  const recipe = job.cooking ? catalog.recipes.find(recipe => recipe.id === job.recipeId) : undefined;
+  if (!recipe?.experiment) return job.rewards;
+  const limits = { ...recipe.rewards };
+  for (const [id, count] of Object.entries(recipe.experiment.failureRewards)) limits[id] = Math.max(limits[id] ?? 0, count);
+  const legacy = legacyCookingFallbacks[recipe.id];
+  if (legacy && (job.cost.items[legacy] ?? 0) >= 1) limits[legacy] = Math.max(limits[legacy] ?? 0, 1);
+  return limits;
+}
 
 /** A receipt may replace class drawings with its own actual species. A previous
  * masked snapshot can recover species from the accepted collection delta, but
@@ -61,6 +82,7 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
     || command.expectedRevision !== before.revision || result.acceptedRevision !== before.revision + 1
     || after.revision !== result.acceptedRevision || !before.inventory || !after.inventory) return null;
   let allowed: Record<string, number>, source: InventoryGain["source"], stationId: string | undefined, fishingJob: EconomyJob | undefined;
+  let expedition: InventoryGain["expedition"];
   if (command.action === "claim_garden_collection") {
     const jobs = before.jobs.filter(job => job.collection?.batchId === command.targetId);
     if (!jobs.length || jobs.some(job => job.kind !== "production" || job.targetId !== "garden" || !hasGardenBerryReward(job.rewards)
@@ -73,12 +95,45 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
     const jobs = before.jobs.filter(job => job.kind === "production" && job.targetId === command.targetId
       && !job.collection && !(job.targetId === "garden" && hasGardenBerryReward(job.rewards)) && !after.jobs.some(item => item.id === job.id));
     if (!jobs.length) return null;
-    allowed = productionCollectionRewards(jobs); source = "claim";
+    allowed = {}; source = "claim";
+    for (const job of jobs) for (const [id, count] of Object.entries(productionGainLimits(job, before.catalog)))
+      allowed[id] = (allowed[id] ?? 0) + count;
     if (after.catalog.buildings.some(station => station.id === command.targetId)) stationId = command.targetId;
-  } else if (command.action === "claim_job") {
+  } else if (command.action === "claim_job" || command.action === "claim_mining_batch") {
     const job = before.jobs.find(item => item.id === command.targetId);
-    if (!job || job.kind === "construction" || after.jobs.some(item => item.id === job.id)) return null;
-    allowed = fishClassInventory(job.rewards); source = "claim";
+    if (!job || job.kind === "construction" || command.action === "claim_mining_batch" && (!isMinerJob(job) || !job.miningBatch)) return null;
+    const remaining = after.jobs.find(item => item.id === job.id);
+    if (remaining && !(isMinerJob(job) && job.miningBatch)) return null;
+    allowed = fishClassInventory(job.kind === "production" ? productionGainLimits(job, before.catalog) : job.rewards); source = "claim";
+    const route = before.catalog.explorations.find(item => item.id === job.targetId);
+    if (isMinerJob(job) && job.miningBatch) {
+      const batch = job.miningBatch;
+      if (remaining && (!isMinerJob(remaining) || !remaining.miningBatch || remaining.targetId !== job.targetId
+        || Date.parse(remaining.finishesAt) - Date.parse(remaining.startedAt) !== Date.parse(job.finishesAt) - Date.parse(job.startedAt)
+        || remaining.miningBatch.quantity !== batch.quantity || remaining.miningBatch.unitSeconds !== batch.unitSeconds)) return null;
+      const received = (remaining?.miningBatch?.claimed ?? batch.quantity) - batch.claimed;
+      if (!Number.isSafeInteger(received) || received < 1 || received > batch.quantity - batch.claimed
+        || command.action === "claim_mining_batch" && received > command.quantity) return null;
+      allowed = Object.fromEntries(Object.entries(batch.unitRewards).map(([id, quantity]) => [id, quantity * received]));
+      // Each delivered unit may carry its saved rare find; use the exact inventory
+      // delta below, never the next unit's newly prepared reward.
+      for (const [id, quantity] of Object.entries(job.rewards)) allowed[id] = Math.max(allowed[id] ?? 0, quantity);
+      for (const id of before.catalog.rareDrops?.itemIds ?? []) allowed[id] = Math.max(allowed[id] ?? 0, received);
+      for (const entry of route?.finds?.entries ?? []) allowed[entry.itemId] = Math.max(allowed[entry.itemId] ?? 0,
+        (batch.unitRewards[entry.itemId] ?? 0) * received + entry.quantity * received);
+    } else if (job.kind === "exploration" && !isMinerJob(job) && !job.fishing && !before.catalog.fishing?.routeIds.includes(job.targetId)) {
+      for (const entry of route?.loot ?? []) allowed[entry.itemId] = (allowed[entry.itemId] ?? 0) + entry.max;
+      const extras: Record<string, number> = {};
+      for (const entry of route?.finds?.entries ?? []) extras[entry.itemId] = Math.max(extras[entry.itemId] ?? 0, entry.quantity);
+      for (const [id, quantity] of Object.entries(extras)) allowed[id] = (allowed[id] ?? 0) + quantity;
+      const previousXp = before.progression?.player?.xp ?? 0, nextXp = after.progression?.player?.xp ?? 0;
+      const total = (route?.finds?.emptyWeight ?? 0) + (route?.finds?.entries.reduce((sum, entry) => sum + entry.weight, 0) ?? 0);
+      expedition = Object.freeze({ routeId: job.targetId, title: route?.name ?? "Вылазка Мохлика",
+        xp: Number.isSafeInteger(previousXp) && Number.isSafeInteger(nextXp) && nextXp > previousXp ? nextXp - previousXp : 0,
+        rareItemIds: Object.freeze([...new Set([...(before.catalog.rareDrops?.itemIds ?? []),
+          ...(route?.finds?.entries.filter(entry => total > 0 && entry.weight / total <= .1
+            && !(job.rewards[entry.itemId] > 0) && !route.loot?.some(extra => extra.itemId === entry.itemId)).map(entry => entry.itemId) ?? [])])]) });
+    }
     if (job.fishing && after.catalog.fishing) {
       fishingJob = job;
       const fishEntries = Object.entries(job.rewards).filter(([id]) => fishClassForItem(id, after.catalog.fishing));
@@ -91,6 +146,13 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
     }
     if (job.kind === "production" && after.catalog.buildings.some(station => station.id === job.targetId)) stationId = job.targetId;
     if (isMinerJob(job) && after.catalog.buildings.some(station => station.id === "quarry")) stationId = "quarry";
+  } else if (command.action === "claim_boat") {
+    const voyage = before.boat?.voyage;
+    if (!voyage || voyage.id !== command.targetId || after.boat?.voyage
+      || after.boat?.completedVoyages !== before.boat.completedVoyages + 1) return null;
+    allowed = {};
+    for (const caught of voyage.catches) allowed[caught.fishId] = (allowed[caught.fishId] ?? 0) + 1;
+    source = "claim";
   } else if (command.action === "buy_fishing_item") {
     const offer = before.fishingShop?.offers.find(item => item.id === command.targetId && (item.kind === "bait" || item.kind === "fish"));
     if (!offer || !before.catalog.fishing || !before.catalog.fishing.baits.some(item => item.itemId === offer.itemId) && !fishClassForItem(offer.itemId, before.catalog.fishing)) return null;
@@ -101,6 +163,13 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
     if (!offer || !Number.isSafeInteger(command.quantity) || command.quantity < 1 || command.quantity > 20
       || offer.kind !== "item" && offer.kind !== "bait") return null;
     allowed = { [offer.itemId]: offer.quantity * command.quantity }; source = "purchase";
+  } else if (command.action === "exchange_leaftail_relic") {
+    const ids = command.targetId.split(":"), offer = ids.length === 2
+      ? leaftailRelicExchangeOffer(before, ids[0], ids[1], before.catalog) : null;
+    if (!offer?.unlocked || !offer.canAfford || command.quantity !== 1 || command.totalPrice !== offer.priceCoins
+      || before.wallet.coins - after.wallet.coins !== offer.priceCoins
+      || (before.inventory[offer.fromItemId] ?? 0) - (after.inventory[offer.fromItemId] ?? 0) !== offer.quantity) return null;
+    allowed = { [offer.toItemId]: 1 }; source = "purchase";
   } else if (command.action === "buy_listing") {
     const listing = result.listing;
     if (!listing || listing.id !== command.targetId || listing.status !== "sold") return null;
@@ -119,5 +188,5 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
   const displayItems = fishingJob ? fishingDisplayItems(before, after, fishingJob, items) : undefined;
   return Object.freeze({ id: command.requestId, ownerPublicId: after.ownerPublicId,
     revision: result.acceptedRevision, source, ...(stationId ? { stationId } : {}), items: Object.freeze(items),
-    ...(displayItems ? { displayItems } : {}) });
+    ...(displayItems ? { displayItems } : {}), ...(expedition ? { expedition } : {}) });
 }

@@ -1,0 +1,552 @@
+{
+  "catalogVersion": 14,
+  "rewardVersion": 7,
+  "relicIds": [
+    "ancient_core",
+    "moon_crystal",
+    "living_resin"
+  ],
+  "baselineSource": "32a39382f311faabf203621374ba878ede57f0cc:apps/api/src/main/resources/world/economy-catalog.json",
+  "method": {
+    "scope": "Conditional relic acquisition after home3, not a complete-game playthrough or a guaranteed date.",
+    "exactPart": "Finite-state expected independent uniform item draws, including duplicate types.",
+    "approximation": "Expected draws times mean96 actor-hours divided by two perfectly utilized actors; concurrent clock phase and final work boundaries make this a throughput approximation.",
+    "simulation": "Two independent uniform integer-second clocks; complete exactly h hours per actor/day, settle once daily. No paid acceleration or barter.",
+    "shop": "Conservative one-type/day rotating ring, stock1/type/day. Buy only the current largest deficit. Real personal ring may offer1–2types/day.",
+    "budget": "All lifetime awards available at rare unlock, weekly award received every7days without modeling its work. Optimistic sensitivity only; not the actual availability of achievements or a proven lower bound.",
+    "excludes": [
+      "Time before home3",
+      "Construction, source unlocks and ordinary recipes",
+      "Job-boundary overshoot and manual gaps",
+      "Fishing/atlas/recipe/reputation completion",
+      "Weekly task inputs and active time",
+      "Other pearl spending and player barter"
+    ],
+    "noFiniteGuarantee": "A particular random relic type has no finite guaranteed date; the48–144work-hour bound applies to any next find per actor."
+  },
+  "meanIntervalHours": 96,
+  "budgetsVisible": {
+    "starter": 100,
+    "allAchievements": 2060,
+    "pureEconomyAchievements": 1720,
+    "outsideEconomyAchievements": 340,
+    "outsideEconomyAchievementIds": [
+      "seven_day_streak",
+      "thousand_taps",
+      "ten_thousand_series",
+      "linked_email",
+      "saved_recovery_code",
+      "five_friends",
+      "first_sale"
+    ],
+    "lifetimeAll": 2160,
+    "lifetimePureEconomy": 1820,
+    "productionStations": [
+      "garden",
+      "woodlot",
+      "workshop",
+      "dryer",
+      "kiln"
+    ],
+    "allProductionSlots": 1750,
+    "allSecondSlots": 500,
+    "relicPrice": 150,
+    "weekly": 10
+  },
+  "currentWarehouseLevels": [
+    {
+      "level": 1,
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "seconds": 0,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      }
+    },
+    {
+      "level": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 600,
+      "cost": {
+        "coins": 100,
+        "items": {
+          "planks": 3,
+          "stone": 2,
+          "rope": 2
+        }
+      }
+    },
+    {
+      "level": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {},
+      "seconds": 3600,
+      "cost": {
+        "coins": 600,
+        "items": {
+          "planks": 6,
+          "bricks": 6,
+          "iron_ingot": 2,
+          "cloth": 2
+        }
+      }
+    },
+    {
+      "level": 4,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "workshop": 3,
+        "woodlot": 3,
+        "kiln": 1,
+        "quarry": 2
+      },
+      "seconds": 7200,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "beams": 2,
+          "bricks": 2,
+          "cloth": 2,
+          "ancient_core": 1
+        }
+      }
+    },
+    {
+      "level": 5,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "workshop": 2,
+        "kiln": 3,
+        "quarry": 3
+      },
+      "seconds": 14400,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "glass": 2,
+          "ceramic_jar": 2,
+          "cloth": 2,
+          "moon_crystal": 1
+        }
+      }
+    },
+    {
+      "level": 6,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "workshop": 3,
+        "woodlot": 3,
+        "kiln": 2,
+        "quarry": 2
+      },
+      "seconds": 14400,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "beams": 3,
+          "cut_stone": 2,
+          "tools": 1,
+          "living_resin": 1
+        }
+      }
+    },
+    {
+      "level": 7,
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {
+        "workshop": 4,
+        "woodlot": 4,
+        "kiln": 3,
+        "quarry": 4
+      },
+      "seconds": 14400,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "reinforced_parts": 2,
+          "lens": 1,
+          "cloth": 2,
+          "ancient_core": 1,
+          "moon_crystal": 1
+        }
+      }
+    },
+    {
+      "level": 8,
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {
+        "workshop": 4,
+        "woodlot": 3,
+        "quarry": 5
+      },
+      "seconds": 14400,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "beams": 4,
+          "mortar": 3,
+          "trade_crate": 2,
+          "ancient_core": 1,
+          "living_resin": 1
+        }
+      }
+    },
+    {
+      "level": 9,
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {
+        "workshop": 3,
+        "kiln": 3,
+        "quarry": 3
+      },
+      "seconds": 14400,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "cut_stone": 4,
+          "glass": 4,
+          "tools": 2,
+          "ancient_core": 1,
+          "moon_crystal": 1
+        }
+      }
+    },
+    {
+      "level": 10,
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {
+        "workshop": 4,
+        "woodlot": 4,
+        "kiln": 3,
+        "quarry": 4
+      },
+      "seconds": 14400,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "reinforced_parts": 3,
+          "lens": 2,
+          "field_kit": 2,
+          "ancient_core": 2,
+          "living_resin": 1
+        }
+      }
+    }
+  ],
+  "variants": [
+    {
+      "id": "handoff_32a39382",
+      "warehouseRelics": [
+        38,
+        12,
+        12
+      ],
+      "allBuildingRelics": [
+        39,
+        13,
+        13
+      ],
+      "guaranteedGifts": [
+        2,
+        1,
+        1
+      ],
+      "needsAfterGuaranteedGifts": [
+        37,
+        12,
+        12
+      ],
+      "expectedDraws": 111.00114854952967,
+      "expectedActorHours": 10656.11026075485,
+      "throughputApproxDays": {
+        "8": 666.0068912971781,
+        "16": 333.00344564858904,
+        "24": 222.00229709905935
+      },
+      "conditionalMonteCarlo": [
+        {
+          "id": "natural_no_shop",
+          "samples": 10000,
+          "seed": 726022,
+          "hoursPerActor": 8,
+          "frontloadedPearls": 0,
+          "weeklyPearls": 0,
+          "meanDays": 669.0018,
+          "p10Days": 556,
+          "medianDays": 664,
+          "p90Days": 788
+        },
+        {
+          "id": "all_slots_economy_achievements",
+          "samples": 10000,
+          "seed": 726022,
+          "hoursPerActor": 8,
+          "frontloadedPearls": 70,
+          "weeklyPearls": 10,
+          "meanDays": 570.9528,
+          "p10Days": 478,
+          "medianDays": 574,
+          "p90Days": 670
+        },
+        {
+          "id": "all_slots_all_achievements",
+          "samples": 10000,
+          "seed": 726022,
+          "hoursPerActor": 8,
+          "frontloadedPearls": 410,
+          "weeklyPearls": 10,
+          "meanDays": 535.8845,
+          "p10Days": 448,
+          "medianDays": 538,
+          "p90Days": 631
+        },
+        {
+          "id": "second_slots_all_achievements",
+          "samples": 10000,
+          "seed": 726022,
+          "hoursPerActor": 8,
+          "frontloadedPearls": 1660,
+          "weeklyPearls": 10,
+          "meanDays": 409.1658,
+          "p10Days": 334,
+          "medianDays": 411,
+          "p90Days": 491
+        },
+        {
+          "id": "all_pearls_to_relics",
+          "samples": 10000,
+          "seed": 726022,
+          "hoursPerActor": 8,
+          "frontloadedPearls": 2160,
+          "weeklyPearls": 10,
+          "meanDays": 360.9166,
+          "p10Days": 295,
+          "medianDays": 360,
+          "p90Days": 431
+        },
+        {
+          "id": "natural_no_shop",
+          "samples": 10000,
+          "seed": 726030,
+          "hoursPerActor": 16,
+          "frontloadedPearls": 0,
+          "weeklyPearls": 0,
+          "meanDays": 335.1201,
+          "p10Days": 278,
+          "medianDays": 332,
+          "p90Days": 396
+        },
+        {
+          "id": "all_slots_economy_achievements",
+          "samples": 10000,
+          "seed": 726030,
+          "hoursPerActor": 16,
+          "frontloadedPearls": 70,
+          "weeklyPearls": 10,
+          "meanDays": 308.7959,
+          "p10Days": 261,
+          "medianDays": 306,
+          "p90Days": 367
+        },
+        {
+          "id": "all_slots_all_achievements",
+          "samples": 10000,
+          "seed": 726030,
+          "hoursPerActor": 16,
+          "frontloadedPearls": 410,
+          "weeklyPearls": 10,
+          "meanDays": 290.0385,
+          "p10Days": 238,
+          "medianDays": 288,
+          "p90Days": 343
+        },
+        {
+          "id": "second_slots_all_achievements",
+          "samples": 10000,
+          "seed": 726030,
+          "hoursPerActor": 16,
+          "frontloadedPearls": 1660,
+          "weeklyPearls": 10,
+          "meanDays": 221.2339,
+          "p10Days": 183,
+          "medianDays": 216,
+          "p90Days": 267
+        },
+        {
+          "id": "all_pearls_to_relics",
+          "samples": 10000,
+          "seed": 726030,
+          "hoursPerActor": 16,
+          "frontloadedPearls": 2160,
+          "weeklyPearls": 10,
+          "meanDays": 194.2954,
+          "p10Days": 161,
+          "medianDays": 189,
+          "p90Days": 237
+        }
+      ]
+    },
+    {
+      "id": "current_catalog",
+      "warehouseRelics": [
+        6,
+        3,
+        3
+      ],
+      "allBuildingRelics": [
+        7,
+        4,
+        4
+      ],
+      "guaranteedGifts": [
+        2,
+        1,
+        1
+      ],
+      "needsAfterGuaranteedGifts": [
+        5,
+        3,
+        3
+      ],
+      "expectedDraws": 16.921889288980335,
+      "expectedActorHours": 1624.501371742112,
+      "throughputApproxDays": {
+        "8": 101.531335733882,
+        "16": 50.765667866941,
+        "24": 33.84377857796067
+      },
+      "conditionalMonteCarlo": [
+        {
+          "id": "natural_no_shop",
+          "samples": 10000,
+          "seed": 726022,
+          "hoursPerActor": 8,
+          "frontloadedPearls": 0,
+          "weeklyPearls": 0,
+          "meanDays": 104.4243,
+          "p10Days": 74,
+          "medianDays": 98,
+          "p90Days": 142
+        },
+        {
+          "id": "all_slots_economy_achievements",
+          "samples": 10000,
+          "seed": 726022,
+          "hoursPerActor": 8,
+          "frontloadedPearls": 70,
+          "weeklyPearls": 10,
+          "meanDays": 90.0116,
+          "p10Days": 64,
+          "medianDays": 85,
+          "p90Days": 123
+        },
+        {
+          "id": "all_slots_all_achievements",
+          "samples": 10000,
+          "seed": 726022,
+          "hoursPerActor": 8,
+          "frontloadedPearls": 410,
+          "weeklyPearls": 10,
+          "meanDays": 73.5139,
+          "p10Days": 52,
+          "medianDays": 69,
+          "p90Days": 102
+        },
+        {
+          "id": "second_slots_all_achievements",
+          "samples": 10000,
+          "seed": 726022,
+          "hoursPerActor": 8,
+          "frontloadedPearls": 1660,
+          "weeklyPearls": 10,
+          "meanDays": 12.6645,
+          "p10Days": 12,
+          "medianDays": 13,
+          "p90Days": 13
+        },
+        {
+          "id": "all_pearls_to_relics",
+          "samples": 10000,
+          "seed": 726022,
+          "hoursPerActor": 8,
+          "frontloadedPearls": 2160,
+          "weeklyPearls": 10,
+          "meanDays": 12.6645,
+          "p10Days": 12,
+          "medianDays": 13,
+          "p90Days": 13
+        },
+        {
+          "id": "natural_no_shop",
+          "samples": 10000,
+          "seed": 726030,
+          "hoursPerActor": 16,
+          "frontloadedPearls": 0,
+          "weeklyPearls": 0,
+          "meanDays": 52.8135,
+          "p10Days": 38,
+          "medianDays": 50,
+          "p90Days": 72
+        },
+        {
+          "id": "all_slots_economy_achievements",
+          "samples": 10000,
+          "seed": 726030,
+          "hoursPerActor": 16,
+          "frontloadedPearls": 70,
+          "weeklyPearls": 10,
+          "meanDays": 50.4118,
+          "p10Days": 38,
+          "medianDays": 50,
+          "p90Days": 60
+        },
+        {
+          "id": "all_slots_all_achievements",
+          "samples": 10000,
+          "seed": 726030,
+          "hoursPerActor": 16,
+          "frontloadedPearls": 410,
+          "weeklyPearls": 10,
+          "meanDays": 35.5211,
+          "p10Days": 28,
+          "medianDays": 32,
+          "p90Days": 48
+        },
+        {
+          "id": "second_slots_all_achievements",
+          "samples": 10000,
+          "seed": 726030,
+          "hoursPerActor": 16,
+          "frontloadedPearls": 1660,
+          "weeklyPearls": 10,
+          "meanDays": 11.991,
+          "p10Days": 11,
+          "medianDays": 12,
+          "p90Days": 13
+        },
+        {
+          "id": "all_pearls_to_relics",
+          "samples": 10000,
+          "seed": 726030,
+          "hoursPerActor": 16,
+          "frontloadedPearls": 2160,
+          "weeklyPearls": 10,
+          "meanDays": 11.991,
+          "p10Days": 11,
+          "medianDays": 12,
+          "p90Days": 13
+        }
+      ]
+    }
+  ],
+  "sourceHashes": {
+    "scripts/audit-endgame-relics.mjs": "5aff2f4bc681cf11d817a52762cd56207a4817051867472bc18d67ae755fb782",
+    "apps/api/src/main/resources/world/economy-catalog.json": "1cf158dcc29a24217d20cbb2b113467c3cf20a73dcc1d1ec34dae4002b66a14e",
+    "apps/api/src/main/resources/world/progression-rewards-catalog.json": "85faa5dd15ec166362ea3a14b6d8479c00e93e886d3e01c41707e22b766ef9fa",
+    "features/economy/domain/money.ts": "e03f50e67c0c30fc55829fd4cceb72a0751b732b6ba66875128e8ab8ab7ec22a",
+    "features/mailbox/welcome.ts": "963a918c8ca11eaebb86ddd2180f9d8999c26bc76445555212aa62210227cc9c",
+    "features/economy/domain/production-slots.ts": "a0952ddd0663c0c37e0c3081d94ff9e839d8015e18a9a44735a27d9cd93f0e50"
+  }
+}

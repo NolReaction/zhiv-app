@@ -29,7 +29,7 @@ function inspect(element) {
   return { markup: renderToStaticMarkup(element), elements };
 }
 const labelText = element => Children.toArray(element.props.children).filter(child => typeof child === "string").join("");
-function panel(page, overrides = {}) {
+function panel(page, overrides = {}, Content = WorldDevPanelContent) {
   const calls = { patches: [], actions: [], poses: [], outfits: [], notices: [] };
   const props = {
     world: { busy: false, uncertain: false, snapshot: null, act() { assert.fail("render cannot issue account commands"); } },
@@ -39,7 +39,7 @@ function panel(page, overrides = {}) {
     shortcut: callback => callback(), onFeedback: message => calls.notices.push(message), prefersReducedMotion: false,
     ...overrides,
   };
-  return { ...inspect(WorldDevPanelContent(props)), calls, props };
+  return { ...inspect(Content(props)), calls, props };
 }
 
 const tabs = [["scenes", "Сценки"], ["animation", "Анимации"], ["appearance", "Внешность"]];
@@ -228,6 +228,41 @@ test("water DEV controls separate wildlife, surface, breeze and wind without aff
   assert.deepEqual(view.calls.actions, []);
 });
 
+test("PNG ship inspection changes only the visual toggle and links to its independent workshop", () => {
+  const view = panel("world", { state: { ...WORLD_DEV_DEFAULTS, tradeShipPreview: true } });
+  const ship = view.elements.find(element => element.props.label === "Торговый корабль (PNG)");
+  assert.equal(ship.props.checked, true);
+  ship.props.onChange(false);
+  assert.deepEqual(view.calls.patches, [{ tradeShipPreview: false }]);
+  assert.deepEqual(view.calls.actions, []);
+  assert.match(view.markup, /href="\/prototype\/trade-ship"/);
+});
+
+test("in-game ship actions focus the real map and close the drawer without account commands", () => {
+  const commands = [], cameras = [], opened = [];
+  const trigger = worldDevStore.triggerTradeShip, camera = worldDevStore.triggerCamera;
+  worldDevStore.triggerTradeShip = command => commands.push(command);
+  worldDevStore.triggerCamera = action => cameras.push(action);
+  try {
+    const view = panel("world", { state: { ...WORLD_DEV_DEFAULTS, tradeShipPreview: true },
+      onOpenWorld: () => opened.push(true) });
+    const button = label => view.elements.find(element => element.type === "button" && labelText(element) === label);
+    for (const label of ["Приплыть", "Отойти", "У причала", "К кораблю"]) button(label).props.onClick();
+    assert.deepEqual(commands, ["arrive", "depart", "dock"]);
+    assert.deepEqual(cameras, ["ship"]); assert.equal(opened.length, 4);
+    assert.deepEqual(view.calls.actions, []); assert.deepEqual(view.calls.patches, []);
+    for (const tradeShipPhase of ["arriving", "deploying", "retracting", "departing"]) {
+      const moving = panel("world", { state: { ...WORLD_DEV_DEFAULTS, tradeShipPreview: true }, tradeShipPhase });
+      for (const label of ["Приплыть", "Отойти"]) assert.equal(moving.elements.find(element => element.type === "button" && labelText(element) === label).props.disabled, true);
+      if (tradeShipPhase === "deploying") assert.match(moving.markup, /Выдвигает мостик/);
+      if (tradeShipPhase === "retracting") assert.match(moving.markup, /Убирает мостик/);
+    }
+    const staticView = panel("world", { state: { ...WORLD_DEV_DEFAULTS, tradeShipPreview: true, reducedMotion: "on" } });
+    assert.match(staticView.markup, /покажет корабль без анимации/);
+    assert.equal(staticView.elements.find(element => element.type === "button" && labelText(element) === "У причала").props.disabled, undefined);
+  } finally { worldDevStore.triggerTradeShip = trigger; worldDevStore.triggerCamera = camera; }
+});
+
 test("lighting page offers an A/B shadow switch and a night campfire through the existing local scenario", () => {
   const view = panel("lighting", { state: { ...WORLD_DEV_DEFAULTS, lightShadows: false, lightTestLamp: true } });
   const controls = view.elements.find(element => element.type === WorldDevLighting);
@@ -331,11 +366,37 @@ test("object shortcuts use authored places and account menus without granting a 
     interactiveMapObjects(TILED_WORLD, { showBuildings: false }).map(object => object.place));
 });
 
-test("route diagnostics follow the selected house geometry instead of the base Tiled level", () => {
-  const routes = level => panel("routes", { state: { ...WORLD_DEV_DEFAULTS, levels: { ...WORLD_DEV_DEFAULTS.levels, home: level } } }).markup;
-  assert.match(routes(1), /<strong>home-approach<\/strong>: Готов к прогулке/);
-  assert.match(routes(5), /<strong>home-approach<\/strong>: Последняя вершина должна совпадать с home-entry/);
+test("route diagnostics reject the obsolete authored approach while all selected house entrances remain ready", () => {
+  for (let home = 1; home <= 5; home++) {
+    const { markup } = panel("routes", { state: { ...WORLD_DEV_DEFAULTS, levels: { ...WORLD_DEV_DEFAULTS.levels, home } } });
+    assert.match(markup, /<strong>home-approach<\/strong>: Последняя вершина должна совпадать с home-entry/);
+    assert.match(markup, /<strong>home<\/strong>: Точки перехода готовы/);
+  }
   assert.match(panel("appearance").markup, /визуальный масштаб.*Actor.size/);
+});
+
+test("route diagnostics follow selected house geometry rather than a base or cached level", async () => {
+  // The authored legacy line no longer ends at any live home entrance. Give an
+  // isolated fixture one matching state so the UI's selected-level contract
+  // stays observable without modifying Tiled or making that unsafe line valid.
+  const fixture = structuredClone(TILED_WORLD), end = fixture.paths.find(path => path.id === "home-approach").points.at(-1);
+  const geometry = fixture.sites.find(site => site.id === "home").states.find(state => state.level === 1).geometry;
+  geometry.entry = { ...end }; geometry.doorway = { x: end.x, y: end.y - 12 };
+  const scoped = await createServer({ appType: "custom", configFile: false, root, optimizeDeps: { noDiscovery: true, include: [] },
+    resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
+    plugins: [{ name: "route-diagnostics-fixture", enforce: "pre",
+      transform(source, id) {
+        if (id.endsWith("/features/world/scene/presentation.ts")) return source.replace(
+          'import forest from "@/features/world/tiled/forest.generated.json";', `const forest = ${JSON.stringify(fixture)};`);
+      },
+    }] });
+  try {
+    const { WorldDevPanelContent: Content } = await scoped.ssrLoadModule("/features/world/dev/world-dev-panel.tsx");
+    const routes = home => panel("routes", { state: { ...WORLD_DEV_DEFAULTS, levels: { ...WORLD_DEV_DEFAULTS.levels, home } } }, Content).markup;
+    assert.match(routes(1), /<strong>home-approach<\/strong>: Готов к прогулке/);
+    assert.match(routes(5), /<strong>home-approach<\/strong>: Последняя вершина должна совпадать с home-entry/);
+    assert.match(routes(1), /<strong>home-approach<\/strong>: Готов к прогулке/);
+  } finally { await scoped.close(); }
 });
 
 test("application diagnostics link to economy cheats instead of granting obsolete resources", () => {
@@ -588,4 +649,25 @@ test("builder page exposes six poses and independent directions with safe stop/r
     assert.notEqual(button.props.disabled, true); button.props.onClick();
   }
   assert.deepEqual(blocked.calls.patches, [{ builderPreview: null }, { builderPreview: null, builderDirection: "front" }]);
+});
+
+test("ship DEV scenarios describe actual voyage state and use only gated account commands", () => {
+  const closed = cheats();
+  assert.equal(cheatButton(closed, "prepare-ship").props.disabled, true);
+  const awaiting = cheats({}, { buildings: { home: 3, lighthouse: 1 }, ship: { voyage: null, completedVoyages: 1, nextAvailableAt: new Date(cheatNow + 3600000).toISOString() } });
+  assert.equal(cheatButton(awaiting, "shorten-ship-wait").props.disabled, false);
+  cheatButton(awaiting, "shorten-ship-wait").props.onClick();
+  assert.deepEqual(awaiting.commands.at(-1), ["shorten_ship_wait", "ship", 1]);
+  cheatButton(awaiting, "prepare-ship").props.onClick();
+  assert.deepEqual(awaiting.commands.at(-1), ["prepare_ship", "ship", 1]);
+  const id = "11111111-1111-4111-8111-111111111111";
+  const voyage = { id, number: 2, openedAt: new Date(cheatNow).toISOString(), rewardPearls: 20,
+    orders: [0, 1, 2].map(index => ({ id: `${id}:${index}`, templateId: `dev-${index}`, title: "Груз", items: { wood: 5 }, loadedItems: { wood: 1 }, rewardCoins: 100, deliveredAt: null })) };
+  const active = cheats({}, { buildings: { home: 3, lighthouse: 1 }, ship: { voyage, completedVoyages: 1, nextAvailableAt: null } });
+  assert.match(active.markup, /3 \/ 15/);
+  assert.equal(cheatButton(active, "prepare-ship").props.disabled, true);
+  assert.equal(cheatButton(active, "shorten-ship-wait").props.disabled, true);
+  cheatButton(active, "grant-ship-cargo").props.onClick();
+  assert.deepEqual(active.commands.at(-1), ["grant_ship_cargo", id, 1]);
+  assert.deepEqual(active.claims, []);
 });

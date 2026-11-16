@@ -672,7 +672,7 @@ class JdbcAccountLifecycleIntegrationTest {
         assertEquals("2026-01-03T00:00:00Z",awards.single { it.id=="seven_day_streak" }.unlockedAt)
         assertEquals(1000L,awards.single { it.id=="thousand_taps" }.progress,"merged verified lifetime totals may cross a new threshold")
         assertEquals("0",scalar("SELECT count(*) FROM game_achievements WHERE user_id=?",b.id))
-        assertEquals(listOf("2026-01-01T00:00:00Z","2026-01-03T00:00:00Z",null),awards.single { it.id=="explorer" }.tiers.map { it.unlockedAt })
+        assertEquals(listOf("2026-01-01T00:00:00Z","2026-01-03T00:00:00Z",null,null),awards.single { it.id=="explorer" }.tiers.map { it.unlockedAt })
         assertEquals("0",scalar("SELECT count(*) FROM game_achievement_tiers WHERE user_id=?",b.id))
         prove(a,browser,"delete"); auth.deleteAccount(a.session,browser,tokens.issue().hash)
         assertEquals("0",scalar("SELECT count(*) FROM game_achievements WHERE user_id IN (?,?)",a.id,b.id))

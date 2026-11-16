@@ -10,11 +10,14 @@ export const analyticsActions: Record<string, string> = {
   start_tutorial_harvest: "Первый учебный урожай",
   onboarding_reward: "Награда за основное обучение",
   eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя", cancel_meal: "Возврат обеда",
+  accept_weekly_order: "Выбор недельного поручения",
   complete_resident_order: "Сдача заказа жителя", replace_resident_order: "Замена заказа жителя",
+  open_ship_voyage: "Прибытие корабля с грузами", load_ship_cargo: "Загрузка товара на корабль", complete_ship_order: "Отгрузка заказа корабля",
+  claim_ship_voyage: "Награда за поставку кораблю", skip_ship_voyage: "Отказ от оставшихся заказов корабля",
   start_production: "Начало производства", cancel_production: "Отмена производства", buy_production_slot: "Место производства", buy_market_slot: "Место прилавка", start_collection: "Начало сбора",
   start_garden_collection: "Сбор всех созревших ягод", claim_garden_collection: "Получение корзины урожая", claim_production: "Сбор готового производства",
   start_exploration: "Начало вылазки", cancel_exploration: "Отмена вылазки", start_construction: "Начало стройки",
-  speedup_construction: "Ускорение стройки", claim_job: "Получение результата", sell: "Продажа припасов",
+  speedup_construction: "Ускорение стройки", claim_job: "Получение результата", claim_mining_batch: "Сбор части добычи", sell: "Продажа припасов",
   buy_fishing_item: "Покупка снастей", buy_wardrobe_item: "Покупка одежды", sell_fish: "Продажа рыбы",
   equip_fishing_rod: "Выбор удочки", equip_fishing_bait: "Выбор наживки", equip_fishing_hook: "Выбор крючка",
   refresh_fishing_shop: "Обновление лавки Плёски", start_fishing: "Начало рыбалки",
@@ -31,9 +34,10 @@ export function analyticsResource(id: string) { return analyticsResources.find(i
 export function analyticsTarget(id: string | null) {
   if (!id) return "Объект не записан";
   if (id === "fishing_shop") return "Лавка Плёски";
+  if (id === "port") return "Порт";
   const order = economyCatalog.onboarding?.residentOrder.id === id ? economyCatalog.onboarding.residentOrder
     : economyCatalog.food?.orders.templates.find(order => order.id === id);
-  if (order) return `${order.name} · ${order.residentId === "plesk" ? "Плёска" : "Шишколап"}`;
+  if (order) return `${order.name} · ${{ plesk: "Плёска", builder: "Шишколап", lopukh: "Лопоух", kamneshmyg: "Камнешмыг", leaftail: "Листохвост" }[order.residentId]}`;
   return [...economyCatalog.buildings, ...economyCatalog.recipes, ...economyCatalog.explorations, ...economyCatalog.items,
     ...(economyCatalog.fishing?.rods ?? []), ...(economyCatalog.fishing?.hooks ?? []), ...worldCatalog.items].find(item => item.id === id.split("@")[0])?.name ?? id;
 }

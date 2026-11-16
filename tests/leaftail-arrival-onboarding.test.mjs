@@ -71,6 +71,17 @@ test("same-owner active stores share changes and release peer notifications on u
   releaseOther();
 });
 
+test("stale storage events and lost preference writes cannot replay a completed resident in this gameplay generation", () => {
+  const local = storage(), owner = "leaftail-monotonic-arrival", first = createLeaftailArrivalStore(owner, local);
+  first.restore(); first.complete(); first.dismiss();
+  local.map.set(leaftailArrivalStorageKey(owner), JSON.stringify({ version: 1, arrived: false, dismissed: false }));
+  first.restore();
+  assert.deepEqual(first.getSnapshot().progress, { version: 1, arrived: true, dismissed: true });
+  local.map.delete(leaftailArrivalStorageKey(owner));
+  const remount = createLeaftailArrivalStore(owner, local); remount.restore();
+  assert.deepEqual(remount.getSnapshot().progress, { version: 1, arrived: true, dismissed: true });
+});
+
 test("blocked and absent browser storage preserve both presentation flags for this session", () => {
   const blocked = { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); } };
   for (const [owner, local] of [["leaftail-blocked", blocked], ["leaftail-no-storage", undefined]]) {

@@ -10,7 +10,6 @@ const { worldHelpAdvice } = await vite.ssrLoadModule("/features/world/ui/help/wo
 const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
-const { worldDuration } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
 const now = Date.parse("2026-10-07T12:00:00Z");
 const snapshot = (patch = {}) => {
   const value = { ownerPublicId: "0000-0000-0001", revision: 0, serverTime: new Date(now).toISOString(), catalog: economyCatalog,
@@ -67,10 +66,10 @@ test("single-item recipe advice uses exact ingredients without substituting rare
   assert.deepEqual(advice({ inventory: { fish_common: 1 } }, { context: foodContext }), []);
   const selected = advice({ inventory: {} }, { context: foodContext });
   assert.equal(selected[0].id, "missing:fish_common"); assert.match(selected[0].message, /Есть 0, нужно 1/);
-  assert.deepEqual(selected[0].action.target, { kind: "expeditions", sector: "coast" });
+  assert.deepEqual(selected[0].action.target, { kind: "boat" });
   const rarerStock = advice({ inventory: { fish_uncommon: 2, wood: 2 } }, { context: foodContext });
   assert.equal(rarerStock[0].id, "missing:fish_common");
-  assert.deepEqual(rarerStock[0].action.target, { kind: "expeditions", sector: "coast" });
+  assert.deepEqual(rarerStock[0].action.target, { kind: "boat" });
   for (const bad of [{ recipeId: "unknown" }, { quantity: 0 }, { quantity: 1.1 }, { stationId: "kiln" }, { fishItemId: "fish_shark" }])
     assert.deepEqual(advice({}, { context: { ...context, ...bad } }), []);
 });
@@ -91,20 +90,51 @@ test("batch limits send the player back to quantity before recommending a bigger
   assert.match(result[0].message, /не больше 1/);
 });
 
-test("strawberry advice opens the compote recipe until its result has been collected", () => {
-  const context = { intent: "production", stationId: "garden", recipeId: "grow_strawberries", quantity: 1 };
-  const result = advice({}, { context });
-  assert.equal(result[0].id, "recipe:unlock:cook_compote");
-  assert.match(result[0].message, /Произведите и заберите «Малиновый компот»: 0 \/ 1\. После этого откроется клубника\./);
-  assert.doesNotMatch(result[0].message, /Приготовить|вырастить/i);
-  assert.deepEqual(result[0].action.target, { kind: "station", stationId: "dryer", recipeId: "cook_compote" });
-  const running = job({ targetId: "dryer", recipeId: "cook_compote", rewards: { berry_compote: 1 } });
-  assert.equal(advice({ jobs: [running] }, { context })[0].id, "recipe:unlock:cook_compote", "a started job does not unlock strawberries");
-  assert.deepEqual(advice({ progression: { recipes: { cook_compote: 1 } } }, { context }), []);
+test("strawberry and craft advice point to personally completed practice", () => {
+  const berryContext = { intent: "production", stationId: "garden", recipeId: "grow_strawberries", quantity: 1 };
+  const berryAdvice = advice({}, { context: berryContext });
+  assert.equal(berryAdvice[0].id, "recipe:unlock:cook_compote");
+  assert.deepEqual(berryAdvice[0].action.target, { kind: "station", stationId: "dryer", recipeId: "cook_compote" });
+  assert.deepEqual(advice({ progression: { recipes: { cook_compote: 1 } } }, { context: berryContext }), []);
+  const context = { intent: "production", stationId: "workshop", recipeId: "make_trade_crate", quantity: 1 };
+  const recipe = economyCatalog.recipes.find(row => row.id === context.recipeId);
+  const patch = { buildings: { home: 5, warehouse: 15, workshop: 5, woodlot: 5, kiln: 5 }, inventory: { ...recipe.cost.items } };
+  const result = advice(patch, { context });
+  assert.equal(result[0].id, "recipe:unlock:exploration:forest");
+  assert.match(result[0].message, /Завершите и заберите.*0 \/ 2/);
+  assert.deepEqual(result[0].action.target, { kind: "expeditions", sector: "forest" });
+  const running = job({ kind: "exploration", targetId: "forest", recipeId: null, rewards: { wood: 1 } });
+  const ongoing = advice({ ...patch, jobs: [running] }, { context })[0];
+  assert.equal(ongoing.id, `job:${running.id}`);
+  assert.equal(ongoing.title, "Мохлик ещё в пути");
+  assert.deepEqual(ongoing.action.target, { kind: "expeditions", sector: "forest" });
+  const practice = { recipes: {}, routes: { forest: 2 } };
+  const journey = advice({ ...patch, progression: practice }, { context });
+  assert.equal(journey[0].action.target.kind, "expeditions");
+  assert.match(journey[0].message, /Завершите и заберите.*0 \/ 1/);
+  assert.deepEqual(advice({ ...patch, progression: { ...practice, routes: { ...recipe.requiredExplorations } } }, { context }), []);
+});
+
+test("recipe advice distinguishes personal catches from owned fish and leads to receiving an active catch", () => {
+  const context = { intent: "production", stationId: "dryer", recipeId: "cook_fish_soup" };
+  const recipe = economyCatalog.recipes.find(row => row.id === context.recipeId);
+  const patch = { buildings: { home: 3, warehouse: 5, dryer: 3 }, inventory: { ...recipe.cost.items, fish_common: 20 },
+    progression: { recipes: { cook_grilled_fish: 1 } } };
+  const result = advice(patch, { context });
+  assert.match(result[0].message, /Поймайте и заберите любую рыбу: 0 \/ 8/);
+  assert.deepEqual(result[0].action.target, { kind: "boat" });
+  const species = economyCatalog.fishing.fish[0];
+  assert.deepEqual(advice({ ...patch, fishing: { catches: { [species.itemId]: 8 } } }, { context }), []);
+  const incoming = job({ kind: "exploration", targetId: economyCatalog.fishing.routeIds[0], recipeId: null,
+    finishesAt: new Date(now).toISOString(), rewards: { fish_common: 1 } });
+  const waiting = advice({ ...patch, jobs: [incoming] }, { context });
+  assert.equal(waiting[0].title, "Находки ждут получения");
+  assert.deepEqual(waiting[0].action.target, { kind: "expeditions", sector: "coast" });
 });
 
 test("house two advice separates its single intro from three stage requests before sale suggestions", () => {
-  const patch = { inventory: { wood: 3, stone: 2, planks: 2 }, wallet: { coins: 250, pearls: 0 }, tutorialOrder: newTutorialOrder() };
+  const target = economyCatalog.buildings.find(entry => entry.id === "home").levels.find(entry => entry.level === 2);
+  const patch = { inventory: { ...target.cost.items }, wallet: { coins: target.cost.coins, pearls: 0 }, tutorialOrder: newTutorialOrder() };
   const context = { intent: "construction", stationId: "home" };
   let result = advice(patch, { context });
   assert.equal(result[0].id, "construction:tutorial");
@@ -156,12 +186,16 @@ test("house-four advice gates legacy tutorials on the eight supplies and disting
   result = advice(patch, { context });
   assert.equal(result[0].title, "Дождитесь следующей поставки");
   assert.match(result[0].message, /1 из 8.*Следующая поставка через 1 д/,
-    "an already accepted 24-hour deadline remains authoritative after the current course changes to 23 hours");
+    "an already accepted 24-hour deadline remains authoritative after the current course removes daily waits");
   assert.match(result[0].message, /Материалы можно подготовить заранее.*жемчуг не сокращает/);
   assert.deepEqual(result[0].action.target, { kind: "orders" });
   assert.deepEqual(patch, before, "waiting advice never moves the accepted deadline or the course");
   patch.stageOrders.stages[3].availableAt = new Date(now + course.intervalSeconds * 1000).toISOString();
-  assert.match(advice(patch, { context })[0].message, new RegExp(`Следующая поставка через ${worldDuration(course.intervalSeconds)}`));
+  assert.equal(course.intervalSeconds, 0);
+  const immediate = advice(patch, { context })[0];
+  assert.equal(immediate.title, "Завершите заказы этапа");
+  assert.match(immediate.message, /1 из 8.*Соберите товары/);
+  assert.doesNotMatch(immediate.message, /Следующая поставка через/);
   assert.equal(advice({ ...patch, inventory: {} }, { context })[0].id, "construction:stage-orders",
     "the required project remains ahead of unrelated resource shortfalls");
   patch.stageOrders.stages[3] = { step: 8, completed: true, terms: null };
@@ -178,7 +212,8 @@ test("material advice directs stage-two stone and clay to the mine and first-sta
   const clay = advice({ ...patch, inventory: { clay: 0, charcoal: 1 } },
     { context: { intent: "production", stationId: "kiln", recipeId: "fire_bricks", quantity: 1 } }).find(entry => entry.id === "missing:clay");
   assert.deepEqual(clay.action.target, { kind: "station", stationId: "quarry", recipeId: "quarry_clay" });
-  const first = advice({ inventory: { wood: 3, stone: 0, planks: 2 }, wallet: { coins: 250, pearls: 0 } },
+  const firstCost = economyCatalog.buildings.find(entry => entry.id === "home").levels.find(entry => entry.level === 2).cost;
+  const first = advice({ inventory: { ...firstCost.items, stone: 0 }, wallet: { coins: firstCost.coins, pearls: 0 } },
     { context: { intent: "construction", stationId: "home" } }).find(entry => entry.id === "missing:stone");
   assert.deepEqual(first.action.target, { kind: "expeditions", sector: "forest" });
 });
@@ -286,9 +321,11 @@ test("exact trip context handles missing bait, provisions and locked mine withou
   assert.deepEqual(worldHelpAdvice({ economy }), [], "unselected fishing is not an error");
   const bait = worldHelpAdvice({ economy, context: { intent: "expedition", routeId: "shore" } });
   assert.equal(bait[0].id, "fishing:bait"); assert.match(bait[0].message, /Без наживки/);
-  const mine = advice({}, { context: { intent: "expedition", routeId: "cave" } });
+  const mine = advice({}, { context: { intent: "expedition", routeId: "quarry_stone" } });
   assert.equal(mine[0].action.target.kind, "upgrade");
-  const provisions = advice({ buildings: { home: 3, warehouse: 3, quarry: 1, dryer: 2 } }, { context: { intent: "expedition", routeId: "deep_cave" } });
+  const route = economyCatalog.explorations.find(entry => entry.id === "old_woodland");
+  const provisions = advice({ buildings: { home: route.requiredHomeLevel, warehouse: 3, ...route.requiredBuildings } },
+    { context: { intent: "expedition", routeId: route.id } });
   assert.equal(provisions[0].id, "missing:dried_berries"); assert.equal(provisions[0].action.target.recipeId, "dry_berries");
   const away = job({ kind: "exploration", targetId: "shore", recipeId: null, rewards: { fish: 4 }, finishesAt: new Date(now).toISOString() });
   const returned = advice({ jobs: [away] }, { context: { intent: "expedition", routeId: "forest" } });

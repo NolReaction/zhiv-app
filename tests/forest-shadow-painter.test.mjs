@@ -162,13 +162,31 @@ test("directional geometry is reused across night and camera changes; angle chan
 
 test("quality and lamp-history budgets cap every allocation and evict old lamp masks", () => withCanvas(surfaces => {
   const map = scene(), paint = context(), options = { ...frame(), quality: "low" };
-  for (let index = 0; index < 20; index++) drawForestOccludedLighting(paint.ctx, map, { ...options, sources: [lamp(`lamp-${index}`)] });
+  for (let index = 0; index < 28; index++) drawForestOccludedLighting(paint.ctx, map, { ...options, sources: [lamp(`lamp-${index}`)] });
   assert.ok(surfaces.every(surface => surface.canvas.width <= 512 && surface.canvas.height <= 512));
   let count = surfaces.length;
-  drawForestOccludedLighting(paint.ctx, map, { ...options, sources: [lamp("lamp-19")] }); assert.equal(surfaces.length, count);
+  drawForestOccludedLighting(paint.ctx, map, { ...options, sources: [lamp("lamp-27")] }); assert.equal(surfaces.length, count);
   drawForestOccludedLighting(paint.ctx, map, { ...options, sources: [lamp("lamp-0")] }); assert.equal(surfaces.length, count + 1, "evicted geometry is rebuilt");
   count = surfaces.length; drawForestOccludedLighting(paint.ctx, map, frame());
   assert.ok(surfaces.slice(count).every(surface => surface.canvas.width <= 768 && surface.canvas.height <= 768));
+}));
+
+test("all restored village lamps and path lights retain their pools while the full map flickers", () => withCanvas(surfaces => {
+  const levels = { home: 3, quarry: 2, workshop: 2, market: 1, lighthouse: 1, bridge: 1 };
+  const map = previewWorldScene(authoredForest, levels), paint = context();
+  paint.ctx.canvas.width = map.width; paint.ctx.canvas.height = map.height;
+  paint.ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const options = createForestShadowFrame(map, { night: 1, elapsed: 0, reducedMotion: false,
+    quality: "low", lights: forestLightSources(map, { levels }), actors: [],
+    fires: map.campfires.map(fire => ({ ...fire, flame: .8, embers: .3 })) });
+  assert.ok(options.sources.length > 16, "a busy restored map exceeds the old pool budget");
+  drawForestOccludedLighting(paint.ctx, map, options);
+  const count = surfaces.length;
+  for (let step = 1; step <= 3; step++) drawForestOccludedLighting(paint.ctx, map, {
+    ...options, sources: options.sources.map(source => ({ ...source, intensity: source.intensity * (1 - step * .01) })),
+  });
+  assert.equal(surfaces.length, count, "visible sources must never evict one another during flicker");
+  assert.ok(surfaces.every(surface => surface.canvas.width <= 512 && surface.canvas.height <= 512));
 }));
 
 test("daytime, disabled sources and distant actors perform no unnecessary shadow removal", () => withCanvas(surfaces => {

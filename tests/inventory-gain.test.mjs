@@ -263,3 +263,109 @@ test("receipt history is bounded and changing accounts discards a late command r
   resolve(result(state(1, [], { fish: 3, stone: 2 }))); await flush();
   assert.deepEqual(old.getSnapshot().inventoryGains, []); assert.deepEqual(next.getSnapshot().inventoryGains, []); stopNext();
 });
+
+test("supply claims report actual private loot and XP without marking guaranteed materials rare", () => {
+  const route = { ...economyCatalog.explorations.find(item => item.id === "uplands"), rewards: { wood: 2 },
+    loot: [{ itemId: "wood", min: 0, max: 4 }, { itemId: "ore", min: 0, max: 2 }],
+    finds: { emptyWeight: 90, entries: [{ itemId: "ore", quantity: 1, weight: 5 }, { itemId: "lens", quantity: 1, weight: 5 }] } };
+  const catalog = { ...economyCatalog, explorations: [route] };
+  const trip = { ...job("exploration", { wood: 2 }), targetId: route.id, actorId: "mochlik" };
+  const before = { ...state(4, [trip], { wood: 10 }), catalog, progression: { player: { xp: 100 } } };
+  const after = { ...state(5, [], { wood: 15, ore: 1, lens: 1, rope: 99 }), catalog, progression: { player: { xp: 172 } } };
+  const event = inventoryGainFromReceipt(before, result(after), command("claim_job", trip.id, 4));
+  assert.deepEqual(event.items, [{ itemId: "wood", quantity: 5 }, { itemId: "ore", quantity: 1 }, { itemId: "lens", quantity: 1 }]);
+  assert.equal(event.expedition.xp, 72); assert.equal(event.expedition.title, route.name);
+  assert.ok(event.expedition.rareItemIds.includes("lens"));
+  assert.ok(!event.expedition.rareItemIds.includes("wood") && !event.expedition.rareItemIds.includes("ore"));
+  assert.equal(inventoryGainFromReceipt(before, result({ ...after, ownerPublicId: other }), command("claim_job", trip.id, 4)), null);
+  assert.equal(inventoryGainFromReceipt(after, { ...result(after), replayed: true }, command("claim_job", trip.id, 4)), null);
+});
+
+test("partial mining claims celebrate only the delivered prefix and preserve the remaining work", () => {
+  const trip = { ...job("exploration", { stone: 1, moon_crystal: 1 }), targetId: "quarry_stone", actorId: "miner",
+    finishesAt: "2026-10-04T00:15:00.000Z", miningBatch: { quantity: 5, claimed: 1, unitSeconds: 180, unitRewards: { stone: 1 } } };
+  const remaining = { ...trip, rewards: { stone: 1 }, miningBatch: { ...trip.miningBatch, claimed: 3 } };
+  const before = state(4, [trip], { stone: 9 }), after = state(5, [remaining], { stone: 11, moon_crystal: 1 });
+  const event = inventoryGainFromReceipt(before, result(after), command("claim_job", trip.id, 4));
+  assert.deepEqual(event.items, [{ itemId: "stone", quantity: 2 }, { itemId: "moon_crystal", quantity: 1 }]);
+  assert.deepEqual(inventoryGainFromReceipt(before, result(after), command("claim_mining_batch", trip.id, 4, 2)).items, event.items);
+  assert.equal(inventoryGainFromReceipt(before, result(after), command("claim_mining_batch", trip.id, 4, 1)), null,
+    "a selected receipt cannot credit more units than the player requested");
+  assert.equal(event.stationId, "quarry"); assert.equal(event.expedition, undefined);
+  assert.equal(inventoryGainFromReceipt(before, result({ ...after, jobs: [trip] }), command("claim_job", trip.id, 4)), null);
+  const last = inventoryGainFromReceipt(after, result(state(6, [], { stone: 13, moon_crystal: 1 })), command("claim_job", trip.id, 5));
+  assert.deepEqual(last.items, [{ itemId: "stone", quantity: 2 }]);
+  const shifted = { ...remaining, startedAt: "2026-10-03T23:59:50.000Z", finishesAt: "2026-10-04T00:14:50.000Z" };
+  assert.deepEqual(inventoryGainFromReceipt(before, result({ ...after, jobs: [shifted] }), command("claim_job", trip.id, 4)).items, event.items,
+    "a confirmed tap boost can shift both clocks without changing the accepted prefix");
+});
+
+test("a local supply report survives lost reply plus GET exactly once; reloaded receipt stays silent", async () => {
+  for (const reload of [false, true]) {
+    const trip = { ...job("exploration", { wood: 2 }), targetId: "forest", actorId: "mochlik" };
+    const cache = storage(); let latest = state(0, [trip]), sends = 0;
+    const transport = { get: async () => latest, send: async () => {
+      latest = state(1, [], { wood: 3 });
+      if (++sends === 1) throw Error("Lost accepted reply");
+      return { ...result(latest), replayed: true };
+    } };
+    const session = createEconomySession(owner, transport, () => assert.fail(), cache), stop = session.activate();
+    await session.refresh(); session.act("claim_job", trip.id); await flush(); await session.refresh();
+    assert.equal(session.getSnapshot().snapshot.revision, 1); assert.equal(session.getSnapshot().inventoryGains.length, 0);
+    if (reload) {
+      stop(); const restored = createEconomySession(owner, transport, () => assert.fail(), cache), stopRestored = restored.activate();
+      await restored.refresh(); await restored.retry();
+      assert.equal(restored.getSnapshot().inventoryGains.some(event => event.expedition), false); stopRestored();
+    } else {
+      await session.retry(); await session.refresh(); await session.retry();
+      assert.equal(session.getSnapshot().inventoryGains.length, 1);
+      assert.equal(session.getSnapshot().inventoryGains[0].expedition.routeId, "forest"); stop();
+    }
+  }
+});
+
+test("masked cooking claims reveal accepted success and zero failure, including a mixed collection", () => {
+  const recipe = economyCatalog.recipes.find(recipe => recipe.experiment);
+  const [successId, successCount] = Object.entries(recipe.rewards)[0];
+  const trial = { ...job("production", recipe.rewards), targetId: "dryer", recipeId: recipe.id, cost: recipe.cost,
+    cooking: { successChanceBps: recipe.experiment.successBps, workSeconds: recipe.seconds } };
+  const before = state(0, [trial]), after = state(1, [], { [successId]: successCount, wood: 999 });
+  const receipt = command("claim_job", trial.id);
+  const gain = inventoryGainFromReceipt(before, result(after), receipt);
+  assert.deepEqual(gain.items, [{ itemId: successId, quantity: successCount }]);
+  assert.equal(gain.stationId, "dryer");
+  assert.equal(inventoryGainFromReceipt(after, { ...result(after), replayed: true }, receipt), null);
+  assert.equal(inventoryGainFromReceipt(before, result(state(1, [], { wood: 999 })), receipt), null);
+  const ordinary = { ...job("production", { grilled_fish: 2 }), targetId: "dryer" };
+  const batch = inventoryGainFromReceipt(state(0, [trial, ordinary]), result(state(1, [], { grilled_fish: 2 })), command("claim_production", "dryer"));
+  assert.deepEqual(batch.items, [{ itemId: "grilled_fish", quantity: 2 }]);
+  assert.equal(inventoryGainFromReceipt(before, result(state(1, [trial], { [successId]: 1 })), receipt), null);
+});
+
+test("old paid experimental fallbacks still surface only the actual accepted saved delivery", async () => {
+  const { publicEconomyJob } = await vite.ssrLoadModule("/features/economy/domain/public-jobs.ts");
+  const { newEconomyState, applyEconomyCommand } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+  const historical = { experiment_currant_fish: "currant_jelly", experiment_berry_pastila: "strawberry_compote",
+    experiment_trail_feast: "trail_ration", experiment_river_aspic: "fish_soup" };
+  for (const [recipeId, fallback] of Object.entries(historical)) {
+    const recipe = economyCatalog.recipes.find(recipe => recipe.id === recipeId);
+    assert.deepEqual(recipe.experiment.failureRewards, {});
+    const saved = { ...job("production", { [fallback]: 1 }), targetId: "dryer", recipeId, cost: recipe.cost,
+      cooking: { successChanceBps: 8500, workSeconds: recipe.seconds, successful: false } };
+    const live = newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
+    live.jobs = [saved]; live.inventory = {};
+    const before = state(0, [publicEconomyJob(saved)]), receipt = command("claim_job", saved.id);
+    assert.deepEqual(before.jobs[0].rewards, recipe.rewards, "old fallback does not leak before claim");
+    applyEconomyCommand(live, receipt, Date.parse(saved.finishesAt));
+    const after = { ...state(1, live.jobs, live.inventory), progression: live.progression };
+    assert.deepEqual(after.inventory, { [fallback]: 1 });
+    const gain = inventoryGainFromReceipt(before, result(after), receipt);
+    assert.deepEqual(gain.items, [{ itemId: fallback, quantity: 1 }]);
+    assert.equal(inventoryGainFromReceipt(after, { ...result(after), replayed: true }, receipt), null);
+    const mixed = { ...job("production", { [fallback]: 2 }), targetId: "dryer" };
+    const batch = inventoryGainFromReceipt(state(0, [publicEconomyJob(saved), mixed]), result(state(1, [], { [fallback]: 3, wood: 999 })), command("claim_production", "dryer"));
+    assert.deepEqual(batch.items, [{ itemId: fallback, quantity: 3 }]);
+    const unfunded = { ...publicEconomyJob(saved), cost: { coins: 0, items: {} } };
+    assert.equal(inventoryGainFromReceipt(state(0, [unfunded]), result(after), receipt), null, "legacy allowance requires the paid input");
+  }
+});

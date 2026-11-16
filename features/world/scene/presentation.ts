@@ -15,7 +15,7 @@ export const WORLD_PRESENTATION = {
 
 // Edit world/tiled/forest.tmj, then run world:export or world:watch.
 // The circle, main world and preview all consume this same compiled scene.
-export const TILED_WORLD = forest as FixedWorldScene;
+export let TILED_WORLD = forest as FixedWorldScene;
 if (!TILED_WORLD.actor) throw new Error("Forest needs a Tiled point with role=spawn and size");
 export const NEW_MAP_BOUNDS = { width: TILED_WORLD.width, height: TILED_WORLD.height };
 export const NEW_MAP_SIZE = TILED_WORLD.width;
@@ -23,11 +23,16 @@ export const NEW_MAP_FOCUS = TILED_WORLD.focus;
 export const NEW_MAP_SPAWN = TILED_WORLD.actor.spawn;
 export const NEW_MAP_PET_SIZE = TILED_WORLD.actor.size;
 
+export function refreshWorldLighting(next: FixedWorldScene): boolean {
+  return acceptWorldLightingRefresh(TILED_WORLD, next, () => { TILED_WORLD = next; });
+}
+
 // Studio already applies and acknowledges its draft. Let webpack update only the
 // shared lighting data, without replacing the game, editor or presence sessions.
 // Other Tiled edits still use the ordinary refresh path and rebuild navigation.
 if (process.env.NODE_ENV === "development" && typeof module !== "undefined" && module.hot) {
   module.hot.accept("@/features/world/tiled/forest.generated.json", () => {
-    if (!acceptWorldLightingRefresh(TILED_WORLD, forest as FixedWorldScene)) module.hot?.invalidate();
+    const next = forest as FixedWorldScene;
+    if (!refreshWorldLighting(next)) module.hot?.invalidate();
   });
 }

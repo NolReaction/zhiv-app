@@ -71,7 +71,7 @@ test("missing or empty inventory cannot sell the resident's ambient catch", () =
   assert.match(html, /Улов ещё впереди/);
   assert.doesNotMatch(html, /Продать|В запасе|Речная рыба|data-item-icon="fish"/);
   const conversation = render(economy);
-  assert.equal(disabled(button(conversation, "На рыбалку")), false);
+  assert.equal(disabled(button(conversation, "Лодочная рыбалка")), false);
   assert.equal(disabled(button(conversation, "Другие запасы")), false);
 });
 

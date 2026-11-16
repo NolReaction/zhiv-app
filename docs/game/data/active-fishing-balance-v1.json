@@ -1,0 +1,562 @@
+{
+  "schemaVersion": 1,
+  "status": "proposal-not-runtime",
+  "version": "active-fishing-v2-fuel-draft",
+  "scope": "Instant active fishing with regenerating outing fuel and finite catches replaces old timed fishing; proposal only, no live rules changed.",
+  "engineDecision": "Motor improves player-controlled zone response; hull smooths fish target bursts. Neither changes travel or loot odds.",
+  "flow": {
+    "starterHomeLevel": 1,
+    "outboundSeconds": 0,
+    "inboundSeconds": 0,
+    "tripCooldownSeconds": 0,
+    "maxCastsPerTrip": "by-crate-attemptBudget",
+    "actorExclusive": true,
+    "fullCrateAction": "return-and-deliver; another outing costs fuel",
+    "freeUnloadAndContinue": false
+  },
+  "loot": {
+    "fishBps": 6500,
+    "weedBps": 3500,
+    "blueprintBps": 0,
+    "maxConsecutiveNonFish": 2
+  },
+  "futureBlueprintLoot": {
+    "fishBps": 6500,
+    "weedBps": 3400,
+    "blueprintBps": 100,
+    "maxConsecutiveNonFish": 2
+  },
+  "futureBlueprint": {
+    "enabled": false,
+    "piecesPerBlueprint": 6,
+    "repeatableSameBuff": false,
+    "categoryBonusCapBps": 500
+  },
+  "timing": {
+    "castAndResultSeconds": 5,
+    "weedPullSeconds": 3,
+    "blueprintPullSeconds": 5,
+    "tripPresentationSeconds": 2
+  },
+  "fightByRarity": {
+    "common": {
+      "successSeconds": 32,
+      "failureSeconds": 20
+    },
+    "uncommon": {
+      "successSeconds": 36,
+      "failureSeconds": 24
+    },
+    "rare": {
+      "successSeconds": 42,
+      "failureSeconds": 28
+    },
+    "epic": {
+      "successSeconds": 48,
+      "failureSeconds": 32
+    },
+    "legendary": {
+      "successSeconds": 56,
+      "failureSeconds": 38
+    }
+  },
+  "baitCostPerAttempt": true,
+  "paidBaitSupply": {
+    "mode": "unlimited-coin-purchase-proposal",
+    "prices": "current-catalog",
+    "requiredHomeLevel": "current-catalog",
+    "batchSizes": [
+      1,
+      10,
+      25
+    ],
+    "batchDiscountBps": 0,
+    "purchasePractice": 0,
+    "purchaseAccountXp": 0
+  },
+  "progression": {
+    "successPracticePerActiveSecond": 1,
+    "failurePracticePerActiveSecond": 0.25,
+    "nonFishPracticePerActiveSecond": 0,
+    "maxActiveSecondsPerCast": 90,
+    "practiceSecondsPerAccountXp": 45,
+    "carryFractionalRemainder": true
+  },
+  "legacyLandingNet": {
+    "zoneWidthBps": 4000,
+    "assumedSuccessBonusBps": 800,
+    "scope": "Migration-only forecast for already-owned net; no new purchasable hull tier."
+  },
+  "hulls": [
+    {
+      "level": 1,
+      "name": "Рабочий корпус",
+      "zoneWidthBps": 3200,
+      "assumedSuccessBonusBps": 0,
+      "requiredHomeLevel": 1,
+      "workshopLevel": 0,
+      "buildSeconds": 0,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "fishBurstAmplitudeMultiplier": 1,
+      "fishBurstSpeedMultiplier": 1
+    },
+    {
+      "level": 2,
+      "name": "Устойчивый корпус",
+      "zoneWidthBps": 3200,
+      "assumedSuccessBonusBps": 300,
+      "requiredHomeLevel": 2,
+      "workshopLevel": 1,
+      "buildSeconds": 900,
+      "cost": {
+        "coins": 400,
+        "items": {
+          "planks": 4,
+          "rope": 2
+        }
+      },
+      "fishBurstAmplitudeMultiplier": 0.88,
+      "fishBurstSpeedMultiplier": 1
+    },
+    {
+      "level": 3,
+      "name": "Сбалансированный корпус",
+      "zoneWidthBps": 3200,
+      "assumedSuccessBonusBps": 600,
+      "requiredHomeLevel": 3,
+      "workshopLevel": 2,
+      "buildSeconds": 1200,
+      "cost": {
+        "coins": 1200,
+        "items": {
+          "planks": 6,
+          "rope": 3,
+          "metal_parts": 1
+        }
+      },
+      "fishBurstAmplitudeMultiplier": 0.76,
+      "fishBurstSpeedMultiplier": 1
+    }
+  ],
+  "crates": [
+    {
+      "level": 1,
+      "name": "Малый ящик",
+      "capacity": 3,
+      "requiredHomeLevel": 1,
+      "workshopLevel": 0,
+      "buildSeconds": 0,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "attemptBudget": 10
+    },
+    {
+      "level": 2,
+      "name": "Рыбный ящик",
+      "capacity": 5,
+      "requiredHomeLevel": 2,
+      "workshopLevel": 1,
+      "buildSeconds": 600,
+      "cost": {
+        "coins": 200,
+        "items": {
+          "planks": 2,
+          "rope": 1
+        }
+      },
+      "attemptBudget": 14
+    },
+    {
+      "level": 3,
+      "name": "Вместительный ящик",
+      "capacity": 8,
+      "requiredHomeLevel": 3,
+      "workshopLevel": 2,
+      "buildSeconds": 900,
+      "cost": {
+        "coins": 600,
+        "items": {
+          "planks": 4,
+          "rope": 2
+        }
+      },
+      "attemptBudget": 20
+    }
+  ],
+  "tanks": [
+    {
+      "name": "Малый бак",
+      "level": 1,
+      "requiredHomeLevel": 1,
+      "workshopLevel": 0,
+      "buildSeconds": 0,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "fuelCapacity": 2
+    },
+    {
+      "name": "Речной бак",
+      "level": 2,
+      "requiredHomeLevel": 2,
+      "workshopLevel": 1,
+      "buildSeconds": 900,
+      "cost": {
+        "coins": 600,
+        "items": {
+          "planks": 3,
+          "rope": 2
+        }
+      },
+      "fuelCapacity": 3
+    },
+    {
+      "name": "Большой бак",
+      "level": 3,
+      "requiredHomeLevel": 3,
+      "workshopLevel": 2,
+      "buildSeconds": 1200,
+      "cost": {
+        "coins": 1800,
+        "items": {
+          "planks": 4,
+          "rope": 3,
+          "metal_parts": 2
+        }
+      },
+      "fuelCapacity": 4
+    }
+  ],
+  "profiles": [
+    {
+      "id": "novice",
+      "name": "Новичок",
+      "timeMultiplier": 1.2,
+      "successBpsByRarity": {
+        "common": 6800,
+        "uncommon": 6000,
+        "rare": 5000,
+        "epic": 3800,
+        "legendary": 2800
+      }
+    },
+    {
+      "id": "regular",
+      "name": "Освоивший управление",
+      "timeMultiplier": 1,
+      "successBpsByRarity": {
+        "common": 8600,
+        "uncommon": 8000,
+        "rare": 7200,
+        "epic": 6200,
+        "legendary": 5000
+      }
+    },
+    {
+      "id": "expert",
+      "name": "Опытный игрок",
+      "timeMultiplier": 0.8,
+      "successBpsByRarity": {
+        "common": 9800,
+        "uncommon": 9600,
+        "rare": 9300,
+        "epic": 8700,
+        "legendary": 7800
+      }
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "starter",
+      "name": "Бесплатный старт",
+      "homeLevel": 1,
+      "rodId": "reed_rod",
+      "hookId": "bare_hook",
+      "baitId": null,
+      "hullLevel": 1,
+      "crateLevel": 1,
+      "motorLevel": 1,
+      "locationId": "shallows",
+      "tankLevel": 1
+    },
+    {
+      "id": "river",
+      "name": "Необычный улов",
+      "homeLevel": 2,
+      "rodId": "river_rod",
+      "hookId": "barbed_hook",
+      "baitId": "worm_bait",
+      "hullLevel": 2,
+      "crateLevel": 2,
+      "motorLevel": 2,
+      "locationId": "shallows",
+      "tankLevel": 2
+    },
+    {
+      "id": "rare",
+      "name": "Редкая рыба",
+      "homeLevel": 2,
+      "rodId": "willow_rod",
+      "hookId": "silver_hook",
+      "baitId": "glow_bait",
+      "hullLevel": 2,
+      "crateLevel": 2,
+      "motorLevel": 2,
+      "locationId": "backwater",
+      "tankLevel": 2
+    },
+    {
+      "id": "epic",
+      "name": "Глубокая рыбалка",
+      "homeLevel": 3,
+      "rodId": "tide_rod",
+      "hookId": "tide_hook",
+      "baitId": "firefly_bait",
+      "hullLevel": 3,
+      "crateLevel": 3,
+      "motorLevel": 3,
+      "locationId": "deepwater",
+      "tankLevel": 3
+    },
+    {
+      "id": "legendary",
+      "name": "Легендарный улов",
+      "homeLevel": 4,
+      "rodId": "starfall_rod",
+      "hookId": "leviathan_hook",
+      "baitId": "star_bait",
+      "hullLevel": 3,
+      "crateLevel": 3,
+      "motorLevel": 3,
+      "locationId": "deepwater",
+      "tankLevel": 3
+    }
+  ],
+  "assumptions": [
+    "Skill success probabilities and fight durations are forecast assumptions, not measured V4/V5 gameplay and not hidden reward rolls.",
+    "Loot is fixed at cast start; a won fish challenge always lands its predetermined fish. No secondary random failure.",
+    "Travel, return and cooldown are zero. Presentation seconds are an optional skippable scene transition, never a server reward gate.",
+    "Free basic fishing stays available; paid bait is optional and one portion is spent per started cast. Paid supply must be replenishable without a six-hour stock wait.",
+    "Prices and existing tackle class preferences are read from the live economy catalog. No sale, recipe, XP or gameplay changes are applied by this proposal.",
+    "Future blueprint finding is disabled until storage, recipes and bounded passive effects exist; its former chance is weeds, never an unusable placeholder item.",
+    "Stationary rates exclude human breaks, inventory limits, food production, orders/market proceeds and demand saturation. They do not establish a 24–25 day progression result.",
+    "Tank holds2/3/4outing-fuel units; same120minute regeneration for every level. This limits sustainable trips, not the time of an ongoing mini-game.",
+    "Crate holds3/5/8fish and allows10/14/20started casts per outing. Every outcome/cancel consumes a cast; weeds/finds/failures do not occupy fish slots. No free mid-outing unload.",
+    "Tank capacity upgrades do not grant refill or faster regeneration. Settle regeneration under old capacity before changing it; no retroactive refill after capped offline time.",
+    "Motor response and hull burst stability affect physical control. Added success-bps in this report are human-skill forecast hypotheses only, never hidden after-win reward RNG.",
+    "Outing fuel is spent at first confirmed cast; finished, aborted and empty outings do not refund it. Preview/cancel before any cast is free.",
+    "Fresh-full-tank session and long-run12trips/day are separate bounds; do not add the initial stock to every calendar day.",
+    "Unlimited active-hour figures are retained solely as timing diagnostics. Finite outing and fuel-aware visit rewards are the economy-facing outputs."
+  ],
+  "fuel": {
+    "unit": "outing",
+    "costPerTrip": 1,
+    "regenerationSecondsPerUnit": 7200,
+    "regeneratesOffline": true,
+    "regenerationRateDependsOnTank": false,
+    "initialFill": "full-basic-tank",
+    "upgradePolicy": "settle-old-capacity-then-expand-without-free-fuel",
+    "consumeAt": "first-server-confirmed-cast",
+    "beforeFirstCastCancelRefund": true,
+    "afterFirstCastRefund": false,
+    "pityPersistsBetweenTrips": true
+  },
+  "control": {
+    "zoneWidthBps": 3200,
+    "motorAffects": "response-time-constant-with-immediate-first-tick; same-speed-ceiling-faster-reversal-and-braking",
+    "hullAffects": "fish-target-burst-amplitude; unchanged-zone-width-and-burst-frequency",
+    "forecastBonusesAreNotRuntimeRng": true,
+    "burstTelegraphSeconds": 0.35,
+    "rarityBurstProfiles": {
+      "common": {
+        "intervalSeconds": [
+          5,
+          8
+        ],
+        "durationSeconds": [
+          0.4,
+          0.7
+        ],
+        "amplitudeBps": [
+          800,
+          1400
+        ]
+      },
+      "uncommon": {
+        "intervalSeconds": [
+          4.5,
+          7
+        ],
+        "durationSeconds": [
+          0.45,
+          0.8
+        ],
+        "amplitudeBps": [
+          1000,
+          1700
+        ]
+      },
+      "rare": {
+        "intervalSeconds": [
+          4,
+          6.5
+        ],
+        "durationSeconds": [
+          0.5,
+          0.9
+        ],
+        "amplitudeBps": [
+          1400,
+          2200
+        ]
+      },
+      "epic": {
+        "intervalSeconds": [
+          3.5,
+          6
+        ],
+        "durationSeconds": [
+          0.55,
+          1
+        ],
+        "amplitudeBps": [
+          1700,
+          2600
+        ]
+      },
+      "legendary": {
+        "intervalSeconds": [
+          3,
+          5.5
+        ],
+        "durationSeconds": [
+          0.6,
+          1.1
+        ],
+        "amplitudeBps": [
+          2000,
+          3000
+        ]
+      }
+    }
+  },
+  "motors": [
+    {
+      "level": 1,
+      "name": "Простой мотор",
+      "assumedSuccessBonusBps": 0,
+      "requiredHomeLevel": 1,
+      "workshopLevel": 0,
+      "buildSeconds": 0,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "speedCeilingMultiplier": 1,
+      "responseTimeConstantMilliseconds": 220
+    },
+    {
+      "level": 2,
+      "name": "Отзывчивый мотор",
+      "assumedSuccessBonusBps": 200,
+      "requiredHomeLevel": 2,
+      "workshopLevel": 1,
+      "buildSeconds": 900,
+      "cost": {
+        "coins": 500,
+        "items": {
+          "planks": 4,
+          "rope": 2
+        }
+      },
+      "speedCeilingMultiplier": 1,
+      "responseTimeConstantMilliseconds": 180
+    },
+    {
+      "level": 3,
+      "name": "Точный мотор",
+      "assumedSuccessBonusBps": 400,
+      "requiredHomeLevel": 3,
+      "workshopLevel": 2,
+      "buildSeconds": 1200,
+      "cost": {
+        "coins": 1500,
+        "items": {
+          "planks": 4,
+          "rope": 3,
+          "metal_parts": 1
+        }
+      },
+      "speedCeilingMultiplier": 1,
+      "responseTimeConstantMilliseconds": 145
+    }
+  ],
+  "locations": [
+    {
+      "id": "shallows",
+      "name": "Прибрежный плёс",
+      "requiredHomeLevel": 1,
+      "allowedSpecies": [
+        "fish",
+        "fish_silverfin",
+        "fish_rudd",
+        "fish_reedperch",
+        "fish_dace",
+        "fish_mooncarp"
+      ],
+      "unlockCost": {
+        "coins": 0,
+        "items": {}
+      }
+    },
+    {
+      "id": "backwater",
+      "name": "Камышовая заводь",
+      "requiredHomeLevel": 2,
+      "allowedSpecies": [
+        "fish",
+        "fish_silverfin",
+        "fish_rudd",
+        "fish_reedperch",
+        "fish_dace",
+        "fish_bream",
+        "fish_mooncarp",
+        "fish_pike",
+        "fish_eel"
+      ],
+      "unlockCost": {
+        "coins": 0,
+        "items": {}
+      }
+    },
+    {
+      "id": "deepwater",
+      "name": "Глубокие воды",
+      "requiredHomeLevel": 3,
+      "allowedSpecies": [
+        "fish",
+        "fish_silverfin",
+        "fish_rudd",
+        "fish_reedperch",
+        "fish_dace",
+        "fish_bream",
+        "fish_mooncarp",
+        "fish_pike",
+        "fish_eel",
+        "fish_sturgeon",
+        "fish_mirror_koi",
+        "fish_shark"
+      ],
+      "unlockCost": {
+        "coins": 0,
+        "items": {}
+      }
+    }
+  ]
+}

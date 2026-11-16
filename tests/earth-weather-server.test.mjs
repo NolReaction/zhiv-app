@@ -42,7 +42,7 @@ test("one coarse request uses a truthful server identity and returns a small cac
   const response = await handler(request());
   assert.equal(response.status, 200);
   assert.equal(call[0], "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=55&lon=38");
-  assert.equal(call[1].headers["User-Agent"], "YaZhivoy/0.7.1 (https://github.com/NolReaction/zhiv-app)");
+  assert.equal(call[1].headers["User-Agent"], "YaZhivoy/0.7.2 (https://github.com/NolReaction/zhiv-app)");
   assert.equal(call[1].credentials, "omit");
   assert.equal(call[1].redirect, "error");
   assert.match(response.headers.get("cache-control"), /public, max-age=900/);

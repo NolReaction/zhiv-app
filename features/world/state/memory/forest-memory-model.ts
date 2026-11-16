@@ -56,8 +56,8 @@ export const forestMemoryPayloadSchema = z.object({
 export const forestMemoryReadSchema = z.object({ expectedOwnerPublicId: publicId, clientId: uuid }).strict();
 export const forestMemoryCommandSchema = z.object({
   ownerPublicId: publicId, clientId: uuid, requestId: uuid, expectedRevision: revision,
-  action: z.enum(["acquire", "save", "release"]), takeover: z.boolean().default(false),
-  leaseToken: uuid.nullable().default(null), snapshot: forestMemoryPayloadSchema.nullable().default(null),
+  action: z.enum(["acquire", "save", "release"]), takeover: z.boolean().prefault(false),
+  leaseToken: uuid.nullable().prefault(null), snapshot: forestMemoryPayloadSchema.nullable().prefault(null),
 }).strict().superRefine((value, context) => {
   const valid = value.action === "acquire" ? value.leaseToken === null && value.snapshot === null
     : !value.takeover && value.leaseToken !== null && (value.action === "save" ? value.snapshot !== null : value.snapshot === null);

@@ -193,10 +193,11 @@ test("instant building levels use catalog bounds, can bypass gates and preserve 
   assert.equal(read(p).storage.reserved, 2); assert.deepEqual(read(p).jobs, [production]);
 });
 
-test("DEV storage controls fund every independent upgrade through level 10 without changing home or other buildings", () => {
+test("DEV storage controls fund every independent upgrade through level 15 without changing home or other buildings", () => {
   const p = player(), warehouse = model.economyCatalog.buildings.find(building => building.id === "warehouse");
-  assert.equal(Math.max(...warehouse.levels.map(level => level.level)), 10);
-  cheat(p, "set_building_level", "home", 2);
+  assert.equal(Math.max(...warehouse.levels.map(level => level.level)), 15);
+  for (const building of model.economyCatalog.buildings.filter(entry => entry.id !== "warehouse"))
+    cheat(p, "set_building_level", building.id, building.levels.at(-1).level);
   const ordinaryBuildings = structuredClone(read(p).buildings);
   for (const target of warehouse.levels.filter(level => level.level >= 2)) {
     const previous = cheat(p, "set_building_level", "warehouse", target.level - 1).state;
@@ -207,6 +208,13 @@ test("DEV storage controls fund every independent upgrade through level 10 witho
     assert.deepEqual(granted.buildings, { ...ordinaryBuildings, warehouse: target.level - 1 });
     const repeated = cheat(p, "grant_upgrade_cost", "warehouse").state;
     assert.deepEqual(repeated.inventory, granted.inventory, "cost grants are missing-only for ordinary materials and relic sets");
+    if (target.requiredHomeLevel > 1) {
+      cheat(p, "set_building_level", "home", target.requiredHomeLevel - 1);
+      const locked = read(p);
+      assert.throws(() => normal(p, "start_construction", "warehouse"), { code: "ECONOMY_HOME_REQUIRED" });
+      assert.deepEqual(read(p), locked, "funding an upgrade cannot bypass the current house gate");
+      cheat(p, "set_building_level", "home", ordinaryBuildings.home);
+    }
     const construction = normal(p, "start_construction", "warehouse").state.jobs.find(job => job.kind === "construction");
     assert.equal(construction.targetLevel, target.level);
     cheat(p, "finish_jobs", "construction");
@@ -215,7 +223,7 @@ test("DEV storage controls fund every independent upgrade through level 10 witho
     assert.equal(finished.storage.capacity, target.warehouseCapacity);
     assert.deepEqual(finished.buildings, { ...ordinaryBuildings, warehouse: target.level });
   }
-  assert.throws(() => cheat(p, "set_building_level", "warehouse", 11), { code: "INVALID_ECONOMY_COMMAND" });
+  assert.throws(() => cheat(p, "set_building_level", "warehouse", 16), { code: "INVALID_ECONOMY_COMMAND" });
   assert.throws(() => cheat(p, "grant_upgrade_cost", "warehouse"), { code: "ECONOMY_MAX_LEVEL" });
 });
 
@@ -348,4 +356,82 @@ test("DEV cannot remove or change an occupied mine until its actor delivery is c
   assert.throws(() => cheat(p, "set_building_level", "quarry", 0), { code: "ECONOMY_BUILDING_BUSY" });
   normal(p, "claim_job", before.jobs[0].id);
   assert.equal(cheat(p, "set_building_level", "quarry", 0).state.buildings.quarry, 0);
+});
+
+test("DEV finish aligns a partially claimed mining batch clock once and keeps boosted delivery collectible", () => {
+  const p = player();
+  cheat(p, "apply_settlement", "home", 2);
+  fixture(p).state.inventory = {};
+  normal(p, "start_exploration", "quarry_stone", 3);
+  const job = fixture(p).state.jobs[0], unitMillis = job.miningBatch.unitSeconds * 1000;
+  job.startedAt = new Date(now - unitMillis).toISOString();
+  job.finishesAt = new Date(now + unitMillis * 2).toISOString();
+  normal(p, "claim_job", job.id);
+  assert.equal(read(p).inventory.stone, 1);
+  fixture(p).state.tapBoost = { charge: 1000, powerBps: 2000, jobId: job.id,
+    grantedAt: new Date(now - 1000).toISOString(), appliedAt: new Date(now - 1000).toISOString(), expiresAt: new Date(now + 59000).toISOString() };
+  const finish = command(p, "finish_jobs", "exploration", 1);
+  const finished = economy.commandDevEconomyCheat(p.token, finish, now);
+  const ready = finished.state.jobs[0];
+  assert.equal(ready.miningBatch.claimed, 1);
+  assert.equal(ready.startedAt, new Date(now - unitMillis * 3).toISOString());
+  assert.equal(ready.finishesAt, new Date(now).toISOString());
+  assert.equal(finished.state.inventory.stone, 1, "DEV completion does not collect any unit");
+  const replay = economy.commandDevEconomyCheat(p.token, finish, now + 1000);
+  assert.equal(replay.replayed, true); assert.deepEqual(replay.state.jobs, finished.state.jobs);
+  const collected = normal(p, "claim_job", job.id).state;
+  assert.equal(collected.inventory.stone, 3);
+  assert.equal(collected.progression.routes.quarry_stone, 3);
+  assert.equal(collected.jobs.length, 0);
+  assert.throws(() => normal(p, "claim_job", job.id), { code: "ECONOMY_JOB_GONE" });
+});
+
+test("DEV ship arrival keeps an active voyage and wallet, bypasses only the wait and replays once", () => {
+  const p = player();
+  assert.throws(() => cheat(p, "prepare_ship", "ship"), { code: "ECONOMY_SHIP_LOCKED" });
+  cheat(p, "apply_settlement", "home", 3);
+  const before = read(p), cmd = command(p, "prepare_ship", "ship", 1);
+  assert.equal(model.economyCommandSchema.safeParse(cmd).success, false, "DEV cannot enter the player endpoint");
+  const prepared = economy.commandDevEconomyCheat(p.token, cmd, now);
+  assert.equal(prepared.state.ship.voyage.orders.length, 3);
+  assert.deepEqual(prepared.state.wallet, before.wallet);
+  assert.deepEqual(prepared.state.inventory, before.inventory);
+  assert.equal(prepared.state.ship.nextAvailableAt, null);
+  const replay = economy.commandDevEconomyCheat(p.token, cmd, now);
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.state.ship.voyage.id, prepared.state.ship.voyage.id);
+  assert.deepEqual(cheat(p, "prepare_ship", "ship").state.ship.voyage, prepared.state.ship.voyage, "preparing twice never discards cargo");
+  assert.throws(() => cheat(p, "shorten_ship_wait", "ship"), { code: "ECONOMY_SHIP_ACTIVE" });
+});
+
+test("DEV cargo supply counts partial loading and shared materials without repeated grants", () => {
+  const p = player(); cheat(p, "apply_settlement", "home", 3); cheat(p, "prepare_ship", "ship");
+  const state = fixture(p).state, voyage = state.ship.voyage;
+  const [item, amount] = Object.entries(voyage.orders[0].items)[0];
+  voyage.orders[0].loadedItems = { [item]: Math.min(1, amount) };
+  const needed = {};
+  for (const order of voyage.orders) for (const [id, quantity] of Object.entries(order.items))
+    needed[id] = (needed[id] ?? 0) + quantity - (order.loadedItems[id] ?? 0);
+  state.inventory[item] = Math.min(needed[item], 1);
+  const before = read(p);
+  assert.throws(() => cheat(p, "grant_ship_cargo", crypto.randomUUID()), { code: "ECONOMY_SHIP_CHANGED" });
+  const supplied = cheat(p, "grant_ship_cargo", voyage.id).state;
+  for (const [id, quantity] of Object.entries(needed)) assert.equal(supplied.inventory[id], Math.max(quantity, before.inventory[id] ?? 0));
+  assert.deepEqual(supplied.ship, before.ship);
+  assert.deepEqual(supplied.wallet, before.wallet);
+  assert.deepEqual(cheat(p, "grant_ship_cargo", voyage.id).state.inventory, supplied.inventory);
+});
+
+test("DEV can shorten a departed ship wait without rewarding or replacing active cargo", () => {
+  const p = player(); cheat(p, "apply_settlement", "home", 3);
+  fixture(p).state.ship = { voyage: null, completedVoyages: 2, nextAvailableAt: new Date(now + 6 * 3600000).toISOString() };
+  const before = read(p), result = cheat(p, "shorten_ship_wait", "ship").state;
+  assert.equal(result.ship.nextAvailableAt, new Date(now + 5000).toISOString());
+  assert.equal(result.ship.completedVoyages, 2);
+  assert.deepEqual(result.wallet, before.wallet);
+  const arrived = cheat(p, "prepare_ship", "ship").state;
+  assert.equal(arrived.ship.voyage.number, 3);
+  assert.equal(arrived.ship.nextAvailableAt, null);
+  process.env.NODE_ENV = "production";
+  assert.throws(() => cheat(p, "prepare_ship", "ship"), { code: "DEV_TOOLS_DISABLED" });
 });

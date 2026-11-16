@@ -19,6 +19,14 @@ class EconomyActorTest {
         inventory = mapOf("wood" to 20L, "fiber" to 20L, "dried_berries" to 20L, "smoked_fish" to 20L, "tools" to 20L, "rope" to 20L))
     private val quarryRoutes get() = EconomyRules.catalog.explorations.filter { it.id.startsWith("quarry_") }
     private val miningRoutes get() = EconomyRules.catalog.explorations.filter { it.activity == "mining" }
+    private val activeQuarryRoutes get() = quarryRoutes.filterNot { it.retired }
+    private val activeMiningRoutes get() = miningRoutes.filterNot { it.retired }
+    private fun savedCave(state: EconomyState, id: String): EconomyState {
+        val route = miningRoutes.single { it.id == id }
+        return state.copy(jobs = state.jobs + EconomyJob(UUID.randomUUID().toString(), "exploration", id,
+            startedAt = now.toString(), finishesAt = now.plusSeconds(route.seconds).toString(),
+            rewards = route.rewards, cost = route.cost, catalogVersion = 12, actorId = "miner"))
+    }
     private fun legacyMine(state: EconomyState, routeId: String = "quarry_stone"): EconomyState {
         val route = quarryRoutes.single { it.id == routeId }
         val job = EconomyJob(UUID.randomUUID().toString(), "production", "quarry", routeId,
@@ -31,7 +39,7 @@ class EconomyActorTest {
         val locked = player().copy(buildings = player().buildings + ("quarry" to 0),
             rareDropState = EconomyRareDropClock(1, 1800, "moon_crystal"))
         val before = economyJson.encodeToString(locked)
-        for (route in miningRoutes) for (action in listOf("start_exploration", "start_fishing")) {
+        for (route in activeMiningRoutes) for (action in listOf("start_exploration", "start_fishing")) {
             assertEquals("ECONOMY_BUILDING_REQUIRED", assertFailsWith<AuthFailure> {
                 apply(locked, action, route.id)
             }.code, route.id)
@@ -39,17 +47,18 @@ class EconomyActorTest {
         }
     }
 
-    @Test fun `cave routes open with quarry one at their existing home levels and retain their costs rewards and timers`() {
+    @Test fun `retired cave routes reject new starts while paid snapshots retain their costs rewards and timers`() {
         for (id in listOf("cave", "deep_cave")) {
             val route = miningRoutes.single { it.id == id }
             val original = player().copy(buildings = player().buildings + mapOf("home" to route.requiredHomeLevel, "quarry" to 1))
-            val started = apply(original, "start_exploration", id)
+            assertEquals("ECONOMY_SOURCE_RETIRED", assertFailsWith<AuthFailure> { apply(original, "start_exploration", id) }.code)
+            val started = savedCave(original, id)
             val job = started.jobs.single()
             assertEquals(id, job.targetId)
             assertEquals(now.plusSeconds(route.seconds), readyAt(job))
             assertEquals(route.cost, job.cost)
             for ((item, amount) in route.rewards) assertEquals(amount, job.rewards[item])
-            for ((item, amount) in route.cost.items) assertEquals(original.inventory.getValue(item) - amount, started.inventory[item] ?: 0L)
+            assertEquals(original.inventory, started.inventory)
             assertEquals(1, started.buildings["quarry"])
         }
     }
@@ -59,7 +68,7 @@ class EconomyActorTest {
         for (id in listOf("cave", "deep_cave")) {
             val ready = player().copy(buildings = player().buildings + ("quarry" to 1),
                 inventory = player().inventory + upgrade.cost.items)
-            val travelling = apply(ready, "start_exploration", id)
+            val travelling = savedCave(ready, id)
             val trip = travelling.jobs.single()
             val beforeTrip = economyJson.encodeToString(travelling)
             for (at in listOf(now, readyAt(trip))) {
@@ -74,12 +83,12 @@ class EconomyActorTest {
             val beforeConstruction = economyJson.encodeToString(building)
             for (at in listOf(readyAt(trip), readyAt(construction))) {
                 assertEquals("ECONOMY_BUILDING_BUSY", assertFailsWith<AuthFailure> {
-                    apply(building, "start_exploration", id, at)
+                    apply(building, "start_exploration", "quarry_stone", at)
                 }.code)
                 assertEquals(beforeConstruction, economyJson.encodeToString(building))
             }
             val completed = apply(building, "claim_job", construction.id, readyAt(construction))
-            assertEquals(id, apply(completed, "start_exploration", id, readyAt(construction)).jobs.single().targetId)
+            assertEquals("quarry_stone", apply(completed, "start_exploration", "quarry_stone", readyAt(construction)).jobs.single().targetId)
         }
     }
 
@@ -100,14 +109,14 @@ class EconomyActorTest {
             assertEquals(if (cancel) 0L else 1L, result.progression.routes[id] ?: 0L)
             assertEquals(if (cancel) 0L else route.seconds, result.progression.collections.quarrySeconds)
             assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> { apply(result, "claim_job", job.id, readyAt(job)) }.code)
-            assertEquals("ECONOMY_BUILDING_REQUIRED", assertFailsWith<AuthFailure> { apply(result, "start_exploration", id, readyAt(job)) }.code)
+            assertEquals("ECONOMY_SOURCE_RETIRED", assertFailsWith<AuthFailure> { apply(result, "start_exploration", id, readyAt(job)) }.code)
         }
     }
 
     @Test fun `legacy quarry jobs still own Mochlik while new mining owns an independent worker`() {
         val mining = legacyMine(player())
         val before = economyJson.encodeToString(mining)
-        for (at in listOf(now, readyAt(mining.jobs.single()))) for (route in EconomyRules.catalog.explorations) {
+        for (at in listOf(now, readyAt(mining.jobs.single()))) for (route in EconomyRules.catalog.explorations.filterNot { it.retired }) {
             val actions = if (route.id in checkNotNull(EconomyRules.catalog.fishing).routeIds) listOf("start_exploration", "start_fishing")
                 else listOf("start_exploration")
             for (action in actions) if (route.activity == "mining") {
@@ -117,9 +126,9 @@ class EconomyActorTest {
             }.code)
         }
         assertEquals(before, economyJson.encodeToString(mining))
-        val travelling = apply(player(), "start_exploration", "cave")
+        val travelling = apply(player(), "start_exploration", "quarry_stone")
         val paid = economyJson.encodeToString(travelling)
-        for (at in listOf(now, readyAt(travelling.jobs.single()))) for (recipe in quarryRoutes)
+        for (at in listOf(now, readyAt(travelling.jobs.single()))) for (recipe in activeQuarryRoutes)
             assertEquals("ECONOMY_MINER_BUSY", assertFailsWith<AuthFailure> { apply(travelling, "start_exploration", recipe.id, at) }.code)
         assertEquals(paid, economyJson.encodeToString(travelling))
     }
@@ -140,7 +149,7 @@ class EconomyActorTest {
         val collecting = apply(construction, "start_collection", berries.id, finish)
         val deliveredAt = Instant.parse(checkNotNull(collecting.jobs.single { it.id == berries.id }.collection?.finishesAt))
         val receivedStone = apply(collecting, "claim_job", mine.id, deliveredAt)
-        for (recipe in quarryRoutes) assertEquals("miner",
+        for (recipe in activeQuarryRoutes) assertEquals("miner",
             apply(receivedStone, "start_exploration", recipe.id, deliveredAt).jobs.last().actorId)
         assertEquals("ECONOMY_COLLECTOR_BUSY", assertFailsWith<AuthFailure> { apply(receivedStone, "start_exploration", "forest", deliveredAt) }.code)
         val receivedBerries = apply(receivedStone, "claim_job", berries.id, deliveredAt)
@@ -155,7 +164,7 @@ class EconomyActorTest {
         assertEquals("ECONOMY_QUARRY_BUSY", assertFailsWith<AuthFailure> { apply(full, "start_exploration", "forest", finish) }.code)
         val claimed = apply(mining.copy(inventory = emptyMap()), "claim_job", job.id, finish)
         assertEquals(job.rewards, claimed.inventory); assertEquals(0L, claimed.completedExplorations)
-        val trip = apply(claimed, "start_exploration", "cave", finish)
+        val trip = apply(claimed, "start_exploration", "quarry_stone", finish)
         val returned = apply(trip, "cancel_exploration", trip.jobs.single().id, finish)
         assertTrue(apply(returned, "start_exploration", "quarry_stone", finish).jobs.any { it.targetId == "quarry_stone" })
     }
@@ -165,7 +174,7 @@ class EconomyActorTest {
             val original = player()
             val mine = legacyMine(original).jobs.single().copy(
                 recipeId = "retired-quarry-order", rewards = mapOf("stone" to 13L), catalogVersion = 1)
-            val cave = apply(original, "start_exploration", "cave").jobs.single().copy(
+            val cave = savedCave(original, "cave").jobs.single().copy(
                 rewards = mapOf("ore" to 9L), rareDrop = null, actorId = null, catalogVersion = 1)
             var saved = original.copy(jobs = listOf(mine, cave), inventory = emptyMap())
             val at = maxOf(readyAt(mine), readyAt(cave))
@@ -219,7 +228,7 @@ class EconomyActorTest {
             apply(building, "start_exploration", "quarry_clay")
         }.code)
         assertEquals("ECONOMY_BUILDING_BUSY", assertFailsWith<AuthFailure> {
-            apply(building, "start_exploration", "cave")
+            apply(building, "start_exploration", "quarry_stone")
         }.code)
     }
 

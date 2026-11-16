@@ -14,6 +14,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 const identity = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const store = await vite.ssrLoadModule("/lib/dev/mail-store.ts");
 const model = await vite.ssrLoadModule("/features/mailbox/model.ts");
+const { claimMailGift } = await vite.ssrLoadModule("/features/mailbox/api.ts");
 const { GET } = await vite.ssrLoadModule("/app/api/v1/mail/route.ts");
 const { POST } = await vite.ssrLoadModule("/app/api/v1/mail/[id]/read/route.ts");
 const { POST: CLAIM } = await vite.ssrLoadModule("/app/api/v1/mail/[id]/claim/route.ts");
@@ -53,7 +54,7 @@ test("local inbox delivers one real welcome gift without automatically crediting
   const response = await status(await inbox(p), 200), body = model.mailboxPageSchema.parse(await response.json());
   assert.equal(body.ownerPublicId, p.me.user.publicId);
   assert.equal(body.messages.length, 1); assert.equal(body.unreadCount, 1);
-  assert.equal(body.messages[0].gift.pearls, 100); assert.equal(body.messages[0].gift.claimedAt, null);
+  assert.equal(body.messages[0].gift.pearls, 20); assert.equal(body.messages[0].gift.claimedAt, null);
   assert.match(body.messages[0].body, /Я делаю эту игру один/); assert.doesNotMatch(body.messages[0].body, /команд/);
   assert.equal(body.messages[0].attachments, null);
   assert.equal(body.nextCursor, null); assert.equal(body.latestUnreadNotification, null);
@@ -86,7 +87,7 @@ test("pagination is stable across tied timestamps and notification metadata is i
   const third = await (await status(await inbox(p, `&limit=1&cursor=${second.nextCursor}`), 200)).json();
   assert.equal(third.messages[0].id, id(1)); assert.ok(third.nextCursor);
   const fourth = await (await inbox(p, `&limit=1&cursor=${third.nextCursor}`)).json();
-  assert.equal(fourth.messages[0].gift.pearls, 100); assert.equal(fourth.nextCursor, null);
+  assert.equal(fourth.messages[0].gift.pearls, 20); assert.equal(fourth.nextCursor, null);
   const accepted = model.mailReadResultSchema.parse(await (await status(await read(p, id(2)), 200)).json());
   assert.equal(accepted.unreadCount, 3);
   const repeated = await (await status(await read(p, id(2)), 200)).json();
@@ -128,7 +129,7 @@ test("recovery revokes former sessions and retains mail only for the recovered o
   assert.equal((await (await status(await inbox(p), 200)).json()).unreadCount, 2);
   identity.resetDevStoreForTests();
   const fresh = player(); globalThis.__mailToken = fresh.token;
-  assert.equal((await (await status(await inbox(fresh), 200)).json()).messages[0].gift.pearls, 100);
+  assert.equal((await (await status(await inbox(fresh), 200)).json()).messages[0].gift.pearls, 20);
 });
 
 test("production gates run before cookies identity or local mail access", async () => {
@@ -139,16 +140,23 @@ test("production gates run before cookies identity or local mail access", async 
   assert.throws(() => store.seedDevMailForTests(p.me.user.publicId, [letter(2)]), /NODE_ENV=test/);
 });
 
-test("welcome open and read do not pay, explicit concurrent retries credit exactly 100 visible pearls once", async () => {
+test("welcome open and read do not pay, explicit concurrent retries credit exactly 20 visible pearls once", async t => {
   const p = player(); globalThis.__mailToken = p.token;
   const before = economy.getDevEconomy(p.token), welcome = (await (await inbox(p)).json()).messages[0];
   await status(await read(p, welcome.id), 200);
   assert.equal(economy.getDevEconomy(p.token).wallet.pearls, before.wallet.pearls);
-  const results = await Promise.all(Array.from({ length: 8 }, () => claim(p, welcome.id)));
-  const gifts = await Promise.all(results.map(async response => model.mailClaimResultSchema.parse(await (await status(response, 200)).json())));
-  assert.ok(gifts.every(result => result.gift.pearls === 100 && result.gift.claimedAt === gifts[0].gift.claimedAt));
+  t.mock.method(globalThis, "fetch", async (path, init) => {
+    const request = new Request(new URL(path, "http://localhost:3000"), init);
+    request.headers.set("Origin", "http://localhost:3000");
+    assert.equal(new URL(request.url).pathname, `/api/v1/mail/${welcome.id}/claim`);
+    return status(await CLAIM(request, { params: Promise.resolve({ id: welcome.id }) }), 200);
+  });
+  const gifts = await Promise.all(Array.from({ length: 8 }, () => claimMailGift(p.me.user.publicId, welcome.id)));
+  assert.ok(gifts.every(result => result.gift.pearls === 20 && result.gift.claimedAt === gifts[0].gift.claimedAt));
+  assert.equal(gifts.filter(result => result.replayed === false).length, 1);
+  assert.equal(gifts.filter(result => result.replayed === true).length, gifts.length - 1);
   const paid = economy.getDevEconomy(p.token);
-  assert.equal(paid.wallet.pearls, before.wallet.pearls + 200); assert.equal(paid.revision, before.revision + 1);
+  assert.equal(paid.wallet.pearls, before.wallet.pearls + 40); assert.equal(paid.revision, before.revision + 1);
   await claim(p, welcome.id); await inbox(p);
   assert.equal(economy.getDevEconomy(p.token).wallet.pearls, paid.wallet.pearls);
   economy.resetDevEconomyStoreForTests();
@@ -182,5 +190,20 @@ test("wallet capacity rolls back the gift fence and later retry can still collec
   assert.equal(store.getDevMail(p.token, p.me.user.publicId).value.messages[0].gift.claimedAt, null);
   economy.resetDevEconomyStoreForTests(); const reset = economy.getDevEconomy(p.token);
   await status(await claim(p, welcome.id), 200);
-  assert.equal(economy.getDevEconomy(p.token).wallet.pearls, reset.wallet.pearls + 200);
+  assert.equal(economy.getDevEconomy(p.token).wallet.pearls, reset.wallet.pearls + 40);
+});
+
+test("saved welcome letters retain their hundred or thirty pearls after new letters become twenty", async () => {
+  for (const pearls of [100, 30]) {
+    const p = player(); globalThis.__mailToken = p.token;
+    const saved = letter(500, { gift: { pearls, claimedAt: null }, attachments: null });
+    store.seedDevMailForTests(p.me.user.publicId, [saved]);
+    const before = economy.getDevEconomy(p.token);
+    const paid = await (await status(await claim(p, saved.id), 200)).json();
+    assert.equal(paid.gift.pearls, pearls);
+    assert.equal(economy.getDevEconomy(p.token).wallet.pearls, before.wallet.pearls + pearls * 2);
+    const replay = await (await status(await claim(p, saved.id), 200)).json();
+    assert.deepEqual(replay.gift, paid.gift);
+    assert.equal(economy.getDevEconomy(p.token).wallet.pearls, before.wallet.pearls + pearls * 2);
+  }
 });

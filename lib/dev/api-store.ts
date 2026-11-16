@@ -5,7 +5,7 @@ import { naturalItems } from "@/features/game/game-rewards";
 import { rollingStreakStartedAt } from "@/lib/daily-streak";
 import { isTimeZone, nextLocalDay } from "@/lib/time-zone";
 import type { GameAchievementId, GameAchievements } from "@/features/game/game-api";
-import { GAME_ACHIEVEMENT_TARGETS, economyAchievementProgress, type AchievementProgressState } from "@/features/game/achievement-progress";
+import { GAME_ACHIEVEMENT_TARGETS, LEGACY_GAME_ACHIEVEMENT_TARGETS, economyAchievementProgress, type AchievementProgressState } from "@/features/game/achievement-progress";
 import type {
   CheckInResponse,
   CheckInCalendarResponse,
@@ -36,7 +36,7 @@ import { activeUserStatus, normalizeUserStatus, validStatusDuration } from "@/li
 import { normalizePersonNickname, personDisplayName } from "@/lib/person-nickname";
 import { createHash } from "node:crypto";
 import { normalizeDisplayName } from "@/lib/check-in-presentation";
-import { resetDevEconomyStoreForTests, getDevEconomyAchievementState, getDevConfirmedMarketSales, getDevGuestWorldEconomy } from "@/lib/dev/economy-store";
+import { resetDevEconomyStoreForTests, getDevEconomyAchievementState, getDevConfirmedMarketSales, getDevGuestFishingSummary, getDevGuestWorldEconomy, getDevFriendGameSummary } from "@/lib/dev/economy-store";
 import { resetDevWorldStoreForTests, getDevCollectionFinds, getDevGuestWorldAppearance } from "@/lib/dev/world-store";
 import { resetDevProgressionRewardsForTests } from "@/lib/dev/progression-rewards-store";
 import { resetDevForestMemoryStoreForTests } from "@/lib/dev/forest-memory-state";
@@ -591,6 +591,7 @@ function personDto(circle: DirectCircleRecord, currentUserId: string): Person {
         );
   return {
     circleId: circle.id,
+    gameSummary: getDevFriendGameSummary(store().users.get(currentUserId)!.publicId, relatedUser.publicId, theirSharing.mode !== "OFF"),
     user: publicUser(relatedUser),
     status: visibleStatus(relatedUser,currentUserId),
     isFavorite: store().favoritePeople.has(sharingKey(circle.id, currentUserId)),
@@ -654,6 +655,11 @@ export function createDevIdentity(
 export function getDevIdentity(token: string | undefined): MeResponse | null {
   const user = sessionUser(token);
   return user ? asMe(user) : null;
+}
+
+/** Server-only directory for the explicitly unlocked local administrator. Never includes session tokens. */
+export function getDevAdminDirectory() {
+  return [...store().users.values()].map(user => ({ publicId: user.publicId, displayName: user.displayName }));
 }
 
 /** Private server credentials; never serialize this record into a DEV/API response. */
@@ -812,9 +818,9 @@ export function getDevAchievements(token: string | undefined, lifetimeTaps: numb
     return { ...value, progress: unlockedAt ? value.target : Math.min(value.progress, value.target), unlockedAt };
   });
   const expanded = catalog >= 5 ? [...legacy.map(value => ({ ...value, tiers: [{ level: 1, target: value.target, progress: value.progress, unlockedAt: value.unlockedAt }] })),
-    ...Object.entries(economic).map(([id, progress]) => {
+    ...Object.entries(economic).filter(([id]) => catalog >= 8 || LEGACY_GAME_ACHIEVEMENT_TARGETS[id as GameAchievementId].length > 0).map(([id, progress]) => {
       const typedId = id as GameAchievementId, dates = store().achievementTierAwards.get(user.id)?.get(typedId);
-      const targets = GAME_ACHIEVEMENT_TARGETS[typedId];
+      const targets = (catalog >= 7 ? GAME_ACHIEVEMENT_TARGETS : LEGACY_GAME_ACHIEVEMENT_TARGETS)[typedId];
       const floor = targets.filter((_, index) => dates?.has(index + 1)).at(-1) ?? 0;
       const tiers = targets.map((target, index) => ({ level: index + 1, target,
         progress: dates?.has(index + 1) ? target : Math.min(target, Math.max(floor, progress)), unlockedAt: dates?.get(index + 1) ?? null }));
@@ -1097,6 +1103,8 @@ export function getDevGuestProfile(token: string | undefined, circleId: string):
   return { kind: "ok", value: { ownerPublicId: viewer.publicId, circleId,
     user: { publicId: target.publicId, displayName: target.displayName },
     homeLevel: Math.min(5, Math.max(1, state?.buildings.home ?? 1)), completedExplorations: state?.completedExplorations ?? 0,
+    playerXp: state?.progression.player?.xp ?? 0,
+    fishingSummary: getDevGuestFishingSummary(target.publicId),
     achievements, tapStats: devSharedTapStats(target.publicId), collections: guestCollections(finds, state?.fishing.catches ?? {}), serverTime: new Date().toISOString() } };
 }
 

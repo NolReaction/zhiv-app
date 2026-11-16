@@ -88,7 +88,7 @@ class JdbcGuestProfileRepositoryIntegrationTest {
         assertEquals(listOf(GuestAchievement("home_builder",2)),result.achievements)
         assertEquals(GuestCollections(listOf("acorn"),listOf(fish),listOf("quartz_cluster")),result.collections)
         val json=Json.parseToJsonElement(Json.encodeToString(result)).jsonObject
-        assertEquals(setOf("ownerPublicId","circleId","user","homeLevel","completedExplorations","achievements","collections","serverTime"),json.keys)
+        assertEquals(setOf("ownerPublicId","circleId","user","homeLevel","completedExplorations","achievements","collections","serverTime","fishingSummary"),json.keys)
         assertEquals(setOf("publicId","displayName"),json.getValue("user").jsonObject.keys)
         for(secret in listOf("wallet","inventory","jobs","rareDropState","fishingCastSeed","travelSeconds","quarrySeconds","linked_email","unlockedAt","status","email","tap"))
             assertFalse(Json.encodeToString(result).contains(secret),secret)
@@ -96,7 +96,22 @@ class JdbcGuestProfileRepositoryIntegrationTest {
     }
 
 
-    @Test fun `tap statistics require leaderboard consent and are revoked immediately`() = runBlocking<Unit> {
+    @Test fun `friends see only installed tackle and the three heaviest delivered species`() = runBlocking<Unit> {
+        val viewer = player(); val friend = player(); val circle = connect(viewer, friend)
+        assertNull(profiles.profile(viewer.hash, circle).fishingSummary)
+        val weights = mapOf("fish" to 900, "fish_silverfin" to 100, "fish_dace" to 1400, "fish_bream" to 1400, "unknown" to 9999)
+        val boat = EconomyBoatState(level = 1, completedVoyages = 9, upgrades = listOf("oars", "crate"),
+            records = weights.mapValues { EconomyBoatRecord(it.value, "2026-11-10T00:01:00Z") })
+        val state = EconomyRules.initial().copy(boat = boat, fishing = EconomyFishing(equippedBaitId = "crumb_bait"))
+        execute("INSERT INTO economy_profiles(user_id,state) VALUES (?,?::jsonb)", friend.id, economyJson.encodeToString(state))
+        assertEquals(GuestFishingSummary("reed_rod", "bare_hook", "crumb_bait", GuestBoatModules(1, 1, 0, 1),
+            9, listOf(GuestFishingRecord("fish_bream", 1400), GuestFishingRecord("fish_dace", 1400), GuestFishingRecord("fish", 900))),
+            profiles.profile(viewer.hash, circle).fishingSummary)
+        unavailable(player(), circle)
+        ok(relationships.removePerson(viewer.hash, circle)); unavailable(viewer, circle)
+    }
+
+    @Test fun `guest lifetime statistics remain private without legacy permission regardless of automatic ranking`() = runBlocking<Unit> {
         val a=player();val b=player();val circle=connect(a,b)
         assertNull(profiles.profile(a.hash,circle).tapStats)
         execute("INSERT INTO game_profiles(user_id,lifetime_taps,best_series) VALUES (?,12345,678)",b.id)

@@ -1,0 +1,8 @@
+auto-gorizont.ru {
+    encode zstd gzip
+    reverse_proxy unix//srv/deploy/avto-gorizont/site.sock {
+        header_up Host auto-gorizont.ru
+        header_up X-Real-IP {remote_host}
+        header_up -Forwarded
+    }
+}

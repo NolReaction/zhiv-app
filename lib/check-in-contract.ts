@@ -114,7 +114,19 @@ export type DirectRequest = {
   expiresAt: string;
 };
 
+export type FriendMarketPreview = { id: string; itemId: string; quantity: number; totalPrice: number };
+export type FriendGameSummary = {
+  level: number;
+  market: {
+    available: boolean;
+    reason: "world_hidden" | "buyer_locked" | "seller_locked" | "home_band" | null;
+    count: number;
+    listings: FriendMarketPreview[];
+  };
+};
+
 export type Person = {
+  gameSummary?: FriendGameSummary | null;
   nickname?: string | null;
   isFavorite?: boolean;
   status?: UserStatus | null;

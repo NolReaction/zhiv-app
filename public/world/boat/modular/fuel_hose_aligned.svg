@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="1600" height="640" viewBox="0 0 1600 640">
+  <title>Общий топливный шланг</title>
+  <g id="fuel-hose">
+    <path d="M185 267 C257 267 274 232 312 241 S360 262 390 243" fill="none" stroke="#302b23" stroke-width="10" stroke-linecap="round"/>
+    <path d="M185 267 C257 267 274 232 312 241 S360 262 390 243" fill="none" stroke="#79745b" stroke-width="5" stroke-linecap="round"/>
+    <path d="M185 267 C257 267 274 232 312 241 S360 262 390 243" fill="none" stroke="#b9af80" stroke-width="1.4" stroke-linecap="round"/>
+  </g>
+</svg>

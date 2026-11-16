@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { getMailbox, markMailRead, claimMailGift } from "./api";
 import { createMailboxSession } from "./session";
 
@@ -35,7 +36,15 @@ export function useMailbox({ ownerPublicId, isOnline, enabled = true, onSessionL
     isActive: () => currentOwner.current === ownerPublicId && session.isActive(),
     isAvailable: () => currentOwner.current === ownerPublicId && session.isAvailable(),
     open: () => { if (currentOwner.current === ownerPublicId) session.open(); },
-    claimGift: (id: string) => currentOwner.current === ownerPublicId ? session.claimGift(id) : Promise.resolve(),
+    async claimGift(id: string) {
+      if (currentOwner.current !== ownerPublicId) return;
+      const receipt = await session.claimGift(id);
+      if (receipt?.replayed === false && currentOwner.current === receipt.ownerPublicId && session.isAvailable()) {
+        try {
+          getAudioRuntime().play({ id: `mail-gift:${receipt.ownerPublicId}:${id}`, cueId: "ui.reward", occurredAt: Date.now() });
+        } catch { /* Playback is optional once the gift has been credited. */ }
+      }
+    },
     claimNotification: (id: string) => currentOwner.current === ownerPublicId && session.claimNotification(id),
   }), [session, ownerPublicId]);
   return { ...view, ...actions, isOnline };

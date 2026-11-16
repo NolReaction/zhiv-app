@@ -155,7 +155,7 @@ test("ordinary workshop menus hide future recipes but direct product links show 
 });
 const disabled = entry => /\bdisabled=/.test(entry.attributes);
 
-test("production slots are available at home one with pearl gates and keep all orders claimable", () => {
+test("production slots unlock the second place at home one and the third at home three while keeping all orders claimable", () => {
   let state = snapshot({ buildings: { home: 1, garden: 1 }, wallet: { coins: 0, pearls: 10000 } });
   let html = render("garden", controller({ snapshot: state }));
   assert.match(html, /data-production-slots="garden"/);
@@ -171,7 +171,10 @@ test("production slots are available at home one with pearl gates and keep all o
   assert.doesNotMatch(html, /Не хватает жемчужин: 0,5/, "purchase restrictions appear only after opening its confirmation");
   state.wallet.pearls = 10000; state.productionSlots = { garden: 2 };
   html = render("garden", controller({ snapshot: state }));
-  assert.doesNotMatch(html, /Нужен дом 4 уровня/);
+  assert.match(html, /Место 3 появится с домом 3 уровня/);
+  assert.doesNotMatch(html, /data-production-slot="3"|Открыть место 3/);
+  state.buildings.home = 3;
+  html = render("garden", controller({ snapshot: state }));
   assert.match(html, /Открыть место 3 за 250 жемчужин/);
   assert.equal(disabled(button(html, "Место 3")), false);
   state.buildings.home = 4;
@@ -207,7 +210,7 @@ test("a second recipe uses the remaining station slot while ready results and co
 
 test("idle production shows three places and reveals each expansion price only after the previous place opens", () => {
   const buildings = { home: 5, workshop: 5, kiln: 5, garden: 5, woodlot: 5, dryer: 5, warehouse: 5 };
-  for (const [place, stationId] of [["workshop", "workshop"], ["workshop", "kiln"], ["garden", "garden"], ["woodlot", "woodlot"], ["campfire", "dryer"]]) {
+  for (const [place, stationId] of [["workshop", "workshop"], ["workshop", "kiln"], ["garden", "garden"], ["woodlot", "woodlot"]]) {
     const state = snapshot({ buildings, wallet: { coins: 0, pearls: 10000 } });
     const economy = controller({ snapshot: state, act() { assert.fail("Viewing the next place must not buy it"); } });
     const html = render(place, economy, { initialStationId: stationId });
@@ -252,7 +255,7 @@ test("all unfinished production places show construction without slots, products
       state.jobs = []; state.buildings[stationId] = 1;
       html = render(place, economy, extra);
       assert.doesNotMatch(html, /data-station-setup=/);
-      assert.match(html, stationId === "quarry" ? /data-mining-duration=/ : /data-production-slots=/);
+      assert.match(html, stationId === "quarry" ? /data-route="quarry_stone"/ : /data-production-slots=/);
     }
   }
 });
@@ -267,10 +270,14 @@ test("the basic campfire cooks fish before its paid first improvement at phone a
     const before = structuredClone(state);
     let html = render("campfire", economy, extra);
     assert.match(html, /Уровень 0/);
-    assert.match(html, /data-production-slots="dryer"/);
-    assert.deepEqual([...html.matchAll(/data-production-slot="(\d+)"/g)].map(match => match[1]), ["1"]);
-    assert.deepEqual([...html.matchAll(/data-recipe="([^"]+)"/g)].map(match => match[1]), ["cook_grilled_fish", "cook_compote"]);
-    assert.match(html, /data-recipe-access[^>]*>Доступно с 1 уровня костра/);
+    assert.match(html, /Книга рецептов/);
+    assert.match(html, /data-cookbook-queue/);
+    assert.doesNotMatch(html, /data-production-slot=/);
+    assert.deepEqual([...html.matchAll(/data-cookbook-recipe="([^"]+)"/g)].map(match => match[1]), ["cook_grilled_fish"]);
+    assert.doesNotMatch(html, /data-recipe=|Малиновый компот|Доступно с 1 уровня костра/);
+    const grilled = render("campfire", economy, { ...extra, initialRecipeId: "cook_grilled_fish" });
+    assert.match(grilled, /data-recipe="cook_grilled_fish"/);
+    assert.equal(disabled(button(grilled, "Приготовить")), false, "the basic recipe is actionable before the first improvement");
     assert.doesNotMatch(html, /data-station-setup=|Сначала постройте|Пока не обустроено|data-cooking-duration=|Обустроить/);
     assert.equal(disabled(button(html, "Улучшить")), false);
     const upgrade = renderUpgrade("dryer", economy);
@@ -287,8 +294,9 @@ test("the basic campfire cooks fish before its paid first improvement at phone a
     state.jobs = []; state.buildings.dryer = 1;
     html = render("campfire", economy, extra);
     assert.match(html, /data-recipe="cook_compote"/);
-    assert.match(html, /data-cooking-duration=/);
-    assert.equal([...html.matchAll(/data-production-slot="/g)].length, 3);
+    assert.match(html, /Разделы книги рецептов/);
+    assert.match(html, /data-cookbook-queue/);
+    assert.doesNotMatch(html, /data-production-slot=/);
   }
 });
 
@@ -492,7 +500,7 @@ test("starter stone sources use an available forest exploration instead of the l
   assert.equal(helpers.worldMaterialSource(state, "stone").targetId, "quarry_stone", "the second stage directs stone to its mine construction");
 });
 
-test("first-stage cards offer one item directly and strawberry explains its real compote prerequisite", () => {
+test("first-stage cards offer one item directly and explain the strawberry compote prerequisite", () => {
   const state = snapshot({ buildings: { home: 1, garden: 1, warehouse: 1, dryer: 1, workshop: 1, woodlot: 1 },
     inventory: { berries: 4, wood: 2, fish_common: 1 }, progression: { recipes: {} } });
   for (const [place, stationId, recipeId] of [["garden", "garden", "grow_berries"], ["workshop", "workshop", "make_planks"],
@@ -511,24 +519,20 @@ test("first-stage cards offer one item directly and strawberry explains its real
     assert.deepEqual(state, before);
   }
   const recipe = state.catalog.recipes.find(entry => entry.id === "grow_strawberries");
-  let html = render("garden", controller({ snapshot: state }), { initialRecipeId: recipe.id, onNavigate() {} });
+  const html = render("garden", controller({ snapshot: state }), { initialRecipeId: recipe.id, onNavigate() {} });
+  assert.deepEqual(state.progression.recipes, {});
+  assert.equal(disabled(markedButton(html, "data-recipe", recipe.id)), false);
   assert.match(html, /Приготовьте и заберите: Малиновый компот \(0 \/ 1\)/);
-  const lockedStrawberry = markedButton(html, "data-recipe", recipe.id);
-  assert.match(lockedStrawberry.attributes, /data-blocked="true"/);
-  assert.equal(disabled(lockedStrawberry), false, "a blocked card remains reachable to explain the prerequisite");
-  assert.doesNotMatch(html, /Открыть рецепт:|Начать ·/);
-  assert.equal(helpers.worldRecipeUnlockReason(state, recipe).includes("0 / 1"), true);
+  assert.match(markedButton(html, "data-recipe", recipe.id).attributes, /data-blocked="true"/);
+  assert.match(helpers.worldRecipeUnlockReason(state, recipe), /Малиновый компот/);
   state.progression.recipes.cook_compote = 1;
-  html = render("garden", controller({ snapshot: state }), { initialRecipeId: recipe.id });
-  assert.doesNotMatch(html, /Приготовьте и заберите:|Открыть рецепт:/);
-  assert.doesNotMatch(markedButton(html, "data-recipe", recipe.id).attributes, /data-blocked="true"/);
   assert.equal(helpers.worldRecipeUnlockReason(state, recipe), null);
 });
 
 test("new house two requires one introduction and three house requests even with enough stock and coins", () => {
-  const state = snapshot({ wallet: { coins: 250, pearls: 0 }, inventory: { wood: 3, stone: 2, planks: 2 },
+  const target = economyCatalog.buildings.find(entry => entry.id === "home").levels.find(entry => entry.level === 2);
+  const state = snapshot({ wallet: { coins: target.cost.coins, pearls: 0 }, inventory: { ...target.cost.items },
     buildings: { home: 1, warehouse: 1, garden: 1, woodlot: 1, dryer: 1, workshop: 1 }, tutorialOrder: newTutorialOrder() });
-  const target = state.catalog.buildings.find(entry => entry.id === "home").levels.find(entry => entry.level === 2);
   assert.match(helpers.worldConstructionReason(state, "home", target), /первый учебный заказ: 1 малина/);
   state.tutorialOrder.step = 1; state.tutorialOrder.completed = true;
   assert.match(helpers.worldConstructionReason(state, "home", target), /заказы для дома 2: 0 \/ 3/);
@@ -602,7 +606,7 @@ test("map menu is compact and nonmodal with place-specific production rather tha
   assert.doesNotMatch(html, /Начать ·/);
 });
 
-test("the mine has one independent route picker without production tabs or paid slots and keeps upgrade gates", () => {
+test("the mine shares production layout with one permanent slot, compact resources and existing upgrade gates", () => {
   const prepareMine = state => renderToStaticMarkup(createElement(WorldExpeditionSector, {
     sectorId: "caves", selectedRoute: "quarry_stone", onSelectRoute() {}, economy: controller({ snapshot: state }), state,
     exploring: false, embeddedCaves: true, onOpenPantry() {}, onNavigateStation() {},
@@ -631,12 +635,15 @@ test("the mine has one independent route picker without production tabs or paid 
   const built = render("quarry", controller({ snapshot: builtState, act() { assert.fail("Opening the mine catalogue cannot launch extraction"); } }));
   const stone = markedButton(built, "data-route", "quarry_stone");
   assert.doesNotMatch(stone.attributes, /data-locked="true"/);
-  assert.match(stone.attributes, /aria-label="Подготовиться: Добыть камень"/);
+  assert.match(stone.attributes, /aria-label="Добыть: Камень ×1, 3 мин"/);
   assert.match(stone.text, /Камень/);
   assert.doesNotMatch(stone.text, /Добыть камень|×1/);
-  assert.match(built, /aria-label="Время добычи"/);
-  assert.match(built, /data-mining-resource="stone"/);
-  for (const id of ["all", "short", "medium", "long"]) assert.ok(built.includes(`data-mining-duration="${id}"`));
+  assert.doesNotMatch(built, /aria-label="Время добычи"|data-mining-duration=/, "single-resource routes do not offer obsolete duration variants");
+  assert.match(built, /data-production-slots="quarry"/);
+  assert.equal([...built.matchAll(/data-production-slot="1"/g)].length, 1);
+  assert.doesNotMatch(built, /Место 2|Место 3|Открыть место|жемчужин/);
+  assert.match(built, /Что добывать\?/);
+  assert.match(built, /data-route="quarry_clay"/);
   assert.doesNotMatch(built, /Вход в пещеру|data-route-preparation=/);
   assert.equal(disabled(button(prepareMine(builtState), "Начать добычу")), false, "a completed quarry opens one stone per free launch");
   for (const finishesAt of [new Date(now + 500_000).toISOString(), new Date(now).toISOString()]) {
@@ -648,7 +655,8 @@ test("the mine has one independent route picker without production tabs or paid 
   }
   const fullMine = render("quarry", controller({ snapshot: snapshot({ buildings: { home: 5, warehouse: 5, quarry: 5 } }) }));
   assert.doesNotMatch(fullMine, /data-route="quarry_shift"|data-route="quarry_deep_face"/);
-  assert.match(fullMine, /data-route="quarry_supply"/);
+  assert.doesNotMatch(fullMine, /data-route="quarry_supply"/);
+  for (const id of ["quarry_stone", "quarry_clay", "quarry_ore"]) assert.match(fullMine, new RegExp(`data-route="${id}"`));
 });
 
 test("legacy simultaneous quarry and expedition jobs remain claimable in the unified mine", () => {
@@ -695,7 +703,7 @@ test("missing-navigation requirements remain honest text and landmarks offer act
   assert.equal(disabled(button(html, "Начать обустройство")), true);
   for (const place of ["bridge", "lighthouse"]) {
     const landmark = render(place);
-    assert.match(landmark, /Требует восстановления/);
+    assert.match(landmark, /Разрушено/);
     assert.match(landmark, /Восстановить/);
     assert.doesNotMatch(landmark, /Будущая ветка|Выберите рецепт|data-production-slots=/);
     const upgrade = renderUpgrade(place);
@@ -711,23 +719,26 @@ test("restored landmarks show expedition routes and their remaining prerequisite
   for (const place of ["bridge", "lighthouse"]) {
     const html = render(place, controller({ snapshot: snapshot({ buildings: { home: 4, warehouse: 1, bridge: 1, lighthouse: 1, workshop: 3 } }) }), { onExplore() {} });
     assert.match(html, /Восстановлено/);
-    assert.match(html, /Маршруты экспедиций/);
+    assert.match(html, /Маршруты/);
     assert.match(html, /Выбрать экспедицию/);
-    assert.match(html, /Восстановление завершено/);
+    assert.doesNotMatch(html, /Восстановление завершено/);
+    assert.match(html, /data-landmark-route=/);
     assert.doesNotMatch(html, /Выберите рецепт|Сначала обустройте|data-production-slots=|Место 2/);
     assert.doesNotMatch(html, /data-guide-station-upgrade=/);
   }
 });
 
-test("restored bridge explains the map market without a second trade launcher and lighthouse labels future content", () => {
+test("restored bridge explains the map market without a second trade launcher and lighthouse explains available cargo", () => {
   const bridge = render("bridge", controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, bridge: 1 }, completedExplorations: 0 }) }));
   assert.doesNotMatch(bridge, /Открыть рынок игроков/);
-  assert.match(bridge, /Торговля с игроками открывается нажатием на рынок на карте/);
+  assert.match(bridge, /Торгуйте на рынке на карте/);
   assert.doesNotMatch(bridge, /Будущая ветка|data-production-slots=/);
   const ruined = render("bridge", controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, bridge: 0 } }) }));
   assert.doesNotMatch(ruined, /Открыть рынок игроков/);
   const lighthouse = render("lighthouse", controller({ snapshot: snapshot({ buildings: { home: 3, warehouse: 1, bridge: 1, lighthouse: 1 } }) }));
-  assert.match(lighthouse, /Пароход с крупными заказами появится в будущем обновлении/);
+  assert.match(lighthouse, /Загружайте товары на корабль у причала/);
+  assert.doesNotMatch(lighthouse, /Полевой комплект и паёк позволят|Свет маяка приводит/);
+  assert.doesNotMatch(lighthouse, /Пароход с крупными заказами появится в будущем обновлении/);
   assert.doesNotMatch(lighthouse, /Получить заказ парохода|Отправить пароход/);
 });
 
@@ -793,6 +804,7 @@ test("navigation to house storage preserves the requested station instead of ope
 
 test("embedded warehouse sale quotes the same markdown and preserves legacy catalog prices", () => {
   const state = snapshot({ inventory: { fish_common: 4 } }); state.catalog.localBuyer = { payoutBps: 6000 };
+  state.catalog.items.find(item => item.id === "fish_common").baseSellPrice = 40; // Explicit legacy price: fallback must respect this saved catalogue.
   const sale = () => renderToStaticMarkup(createElement(WorldObjectSale, { economy: controller({ snapshot: state }), itemId: "fish_common", onCollapse() {} }));
   let html = sale();
   assert.match(html, /быстрая продажа с уценкой 40%/); assert.match(html, /Плёска купит дороже: 40 монет/);

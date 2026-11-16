@@ -42,7 +42,7 @@ export function WorldProductionStatus({ economy, groups, anchors, reserved = [],
     if (sections.length > 1) return <div key={group.place} className={`${styles.marker} ${styles.markerSplit}`} style={position}
       role="group" aria-label={`Верстак и печь${group.construction ? `. ${description(group.construction)}` : ""}`}
       data-wide-host={sections.some(section => section.entries.length > 1 || constructionCountdown(section.primary.remaining).length > 8) || undefined}
-      data-production-host={group.place} data-map-object={anchor.objectId} title={details.join("\n")}>
+      data-production-host={group.place} data-map-object={anchor.objectId} data-below={anchor.below || undefined} title={details.join("\n")}>
       {sections.map(section => <button key={section.stationId} type="button" className={styles.sectionButton}
         data-production-status={section.primary.phase} data-production-target={section.stationId} data-work-kind={section.primary.kind}
         title={section.entries.map(description).join("\n")}
@@ -50,7 +50,7 @@ export function WorldProductionStatus({ economy, groups, anchors, reserved = [],
         onClick={() => onOpen(section.stationId)}>{content(section.primary, section.entries.length)}</button>)}
     </div>;
     return <button key={group.place} type="button" className={styles.marker} data-production-status={entry.phase}
-      data-production-target={entry.stationId} data-map-object={anchor.objectId} data-work-kind={entry.kind}
+      data-production-target={entry.stationId} data-map-object={anchor.objectId} data-below={anchor.below || undefined} data-work-kind={entry.kind}
       style={position}
       title={details.join("\n")} aria-label={`${sections[0] ? `${sections[0].label}. ` : ""}${details.join(". ")}. ${construction ? "Открыть улучшение" : "Открыть здание"}`}
       onClick={() => construction && onOpenConstruction ? onOpenConstruction(entry.stationId) : onOpen(entry.stationId)}>

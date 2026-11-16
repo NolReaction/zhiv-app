@@ -11,12 +11,14 @@ const { economyCatalog: catalog } = await vite.ssrLoadModule("/features/economy/
 const food = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const { newEconomyState } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const scenarios = JSON.parse(await readFile(new URL("../apps/api/src/test/resources/world/orders-variety-vectors.json", import.meta.url), "utf8"));
-const balanceVectors = JSON.parse(await readFile(new URL("../apps/api/src/test/resources/world/resident-order-balance-vectors.json", import.meta.url), "utf8"));
+const balanceVectors = JSON.parse(await readFile(new URL("../apps/api/src/test/resources/world/time-economy-order-vectors.json", import.meta.url), "utf8"));
 const now = Date.parse("2026-10-16T09:00:00Z");
 const make = scenario => {
   const state = newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
   state.buildings = scenario.buildings;
   state.progression.recipes = scenario.recipes ?? {};
+  state.progression.routes = scenario.completedExplorations ?? {};
+  state.fishing.catches = scenario.fishCatches ?? {};
   state.fishing.ownedRods = scenario.ownedRods;
   state.fishing.ownedHooks = scenario.ownedHooks;
   return state;
@@ -31,8 +33,10 @@ for (const scenario of scenarios) test(`shared order variety/availability: ${sce
   for (const id of scenario.missing) assert(!ids.has(id), `unexpected ${id}`);
   for (let cycle = 0; cycle < 24; cycle++) {
     const board = food.residentOrderBoard(state, now + cycle * catalog.food.orders.refreshSeconds * 1000);
-    assert.equal(board.offers.length, 3);
-    assert.equal(new Set(board.offers.map(offer => JSON.stringify(Object.entries(offer.items).sort()))).size, 3);
+    const expectedResidents = new Set(eligible.map(offer => offer.residentId));
+    assert.equal(board.offers.length, expectedResidents.size);
+    assert.deepEqual(new Set(board.offers.map(offer => offer.residentId)), expectedResidents);
+    assert.equal(new Set(board.offers.map(offer => JSON.stringify(Object.entries(offer.items).sort()))).size, board.offers.length);
     for (const offer of board.offers) assert(ids.has(offer.templateId), `cycle ${cycle}: unavailable ${offer.templateId}`);
   }
 });

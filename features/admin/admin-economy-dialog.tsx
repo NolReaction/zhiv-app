@@ -7,10 +7,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ApiError } from "@/lib/check-in-api";
 import { economyCatalog, type EconomyCatalog, type EconomyJob } from "@/features/economy/domain/model";
 import { formatPearls } from "@/features/economy/domain/money";
+import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import { economyBuilderStatus } from "@/features/economy/domain/builder-status";
 import { constructionSpeedupPrice } from "@/features/economy/domain/rules";
 import { getAdminAccess, getAdminEconomyPlayer, type AdminEconomyDetail } from "./admin-api";
 import { economyCount, economyTime, type AdminEconomyTarget } from "./admin-economy-panel";
+import { AdminBoatStatus } from "./admin-boat-status";
 import styles from "./admin-economy.module.css";
 
 const ledgerLabels: Record<string, string> = {
@@ -20,12 +22,19 @@ const ledgerLabels: Record<string, string> = {
   start_tutorial_harvest: "Первый учебный урожай",
   onboarding_reward: "Награда за основное обучение",
   eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя", cancel_meal: "Возврат обеда",
+  accept_weekly_order: "Выбор недельного поручения",
   complete_resident_order: "Сдача заказа жителя", replace_resident_order: "Замена заказа жителя",
+  open_ship_voyage: "Прибытие корабля с грузами", load_ship_cargo: "Загрузка товара на корабль", complete_ship_order: "Отгрузка заказа корабля",
+  claim_ship_voyage: "Награда за поставку кораблю", skip_ship_voyage: "Отказ от оставшихся заказов корабля",
   legacy_conversion: "Перенос прежних ресурсов", legacy_journey: "Прежнее путешествие", start_production: "Начало производства",
   buy_production_slot: "Открытие места производства", buy_market_slot: "Открытие места прилавка", start_collection: "Начало сбора", start_exploration: "Начало вылазки", cancel_exploration: "Отмена вылазки",
-  start_construction: "Начало стройки", speedup_construction: "Ускорение стройки", claim_job: "Получение результата",
+  start_construction: "Начало стройки", speedup_construction: "Ускорение стройки", claim_job: "Получение результата", claim_mining_batch: "Сбор части добычи",
   sell: "Продажа припасов", buy_fishing_item: "Покупка снастей", buy_wardrobe_item: "Покупка одежды", sell_fish: "Продажа рыбы", equip_fishing_rod: "Выбор удочки",
   equip_fishing_bait: "Выбор наживки", equip_fishing_hook: "Выбор крючка", refresh_fishing_shop: "Обновление лавки Плёски",
+  start_boat_upgrade: "Работа в лодочной мастерской", claim_boat_upgrade: "Получение улучшения лодки",
+  buy_boat_fuel: "Покупка лодочного топлива", depart_boat: "Выход на речной плёс",
+  begin_boat_cast: "Заброс с лодки", submit_boat_cast: "Результат заброса", return_boat: "Возвращение к причалу",
+  claim_boat: "Разгрузка лодки", sell_boat_catch: "Продажа улова у причала",
   start_fishing: "Начало рыбалки", market_create: "Выставление на рынок",
   market_buy: "Покупка на рынке", market_sell: "Продажа на рынке", market_sold: "Партия продана", market_claim: "Сбор выручки", market_cancel: "Возврат с рынка",
   daily_reward: "Подарок за вход", achievement_reward: "Жемчуг за достижение",
@@ -70,7 +79,11 @@ export function AdminEconomyDetailContent({ detail }: { detail: AdminEconomyDeta
   const state = detail.economy, catalog = state?.catalog ?? economyCatalog;
   const snapshotTime = Date.parse(detail.serverTime);
   const builder = state ? economyBuilderStatus(state, snapshotTime) : null;
-  const expedition = state?.jobs.find(job => job.kind === "exploration");
+  const boatWork = state?.boat?.work;
+  const builderReady = builder?.ready ?? (boatWork && Date.parse(boatWork.finishesAt) <= snapshotTime);
+  const builderLabel = builderReady ? "Ждёт получения" : builder || boatWork ? "Занят" : "Свободен";
+  const voyage = state?.boat?.voyage;
+  const expedition = state?.jobs.find(job => job.kind === "exploration" && !isMinerJob(job));
   const expeditionStatus = expedition && detail.jobStatuses.find(status => status.jobId === expedition.id);
   return <div className={styles.stack}>
     <p className={styles.hint}>Снимок: {economyTime(detail.serverTime)}. Последнее изменение хозяйства: {economyTime(detail.updatedAt)}.{state && ` Версия состояния: ${economyCount(state.revision)}.`}</p>
@@ -80,14 +93,20 @@ export function AdminEconomyDetailContent({ detail }: { detail: AdminEconomyDeta
         <div className={styles.metric}><span>Жемчуг</span><strong>{formatPearls(state.wallet.pearls)}</strong></div>
         <div className={styles.metric}><span>Завершённые вылазки</span><strong>{economyCount(state.completedExplorations)}</strong></div>
       </div>
+      <AdminBoatStatus state={state} now={snapshotTime} />
       <section className={styles.panel} aria-label="Поручения жителей на момент снимка">
         <div className={styles.heading}><h3>Поручения жителей</h3><p>На момент серверного снимка. Положение и анимация персонажей здесь не отслеживаются.</p></div>
         <div className={styles.residents}>
-          <article className={styles.job}><div className={styles.jobHeading}><strong>Шишколап · строитель</strong><span className={styles.badge} data-ready={builder?.ready}>{builder ? builder.ready ? "Ждёт получения" : "Занят" : "Свободен"}</span></div>
-            {builder ? <><p>{economyJobTitle(builder.job, catalog)}</p>{builder.ready ? <p className={styles.hint}>Игроку нужно получить постройку, чтобы освободить строителя.</p> : <><p>Осталось: <strong>{economyRemaining(builder.job.finishesAt, detail.serverTime)}</strong></p><p className={styles.hint}>Ускорение на момент снимка: {formatPearls(constructionSpeedupPrice(builder.job, snapshotTime, catalog.constructionSpeedup))} жемчуга.</p></>}</> : <p className={styles.hint}>Заказов на постройку и улучшение нет.</p>}
+          <article className={styles.job}><div className={styles.jobHeading}><strong>Шишколап · строитель</strong><span className={styles.badge} data-ready={builderReady}>{builderLabel}</span></div>
+            {builder ? <><p>{economyJobTitle(builder.job, catalog)}</p>{builder.ready ? <p className={styles.hint}>Игроку нужно получить постройку, чтобы освободить строителя.</p> : <><p>Осталось: <strong>{economyRemaining(builder.job.finishesAt, detail.serverTime)}</strong></p><p className={styles.hint}>Ускорение на момент снимка: {formatPearls(constructionSpeedupPrice(builder.job, snapshotTime, catalog.constructionSpeedup))} жемчуга.</p></>}</>
+              : boatWork ? <><p>Работа в лодочной мастерской</p>{builderReady
+                ? <p className={styles.hint}>Игроку нужно получить улучшение лодки, чтобы освободить строителя.</p>
+                : <p>Осталось: <strong>{economyRemaining(boatWork.finishesAt, detail.serverTime)}</strong></p>}</>
+              : <p className={styles.hint}>Заказов на постройку и улучшение нет.</p>}
           </article>
-          <article className={styles.job}><div className={styles.jobHeading}><strong>Мохлик · вылазки</strong><span className={styles.badge} data-ready={expeditionStatus?.status === "ready"}>{expeditionStatus ? expeditionStatus.status === "ready" ? "Ждёт получения" : "В пути" : "Нет вылазки"}</span></div>
-            {expedition ? <><p>{economyJobTitle(expedition, catalog)}</p>{expeditionStatus?.status === "ready" ? <p className={styles.hint}>{expeditionStatus.storageBlocked ? "Награда готова, но для неё не хватает места на складе." : "Награда готова. Следующая вылазка доступна после получения."}</p> : <p>Осталось: <strong>{economyRemaining(expedition.finishesAt, detail.serverTime)}</strong></p>}</> : <p className={styles.hint}>Подтверждённых вылазок сейчас нет.</p>}
+          <article className={styles.job}><div className={styles.jobHeading}><strong>Мохлик · вылазки</strong><span className={styles.badge} data-ready={expeditionStatus?.status === "ready"}>{expeditionStatus ? expeditionStatus.status === "ready" ? "Ждёт получения" : "В пути" : voyage ? "Занят лодкой" : "Нет вылазки"}</span></div>
+            {expedition ? <><p>{economyJobTitle(expedition, catalog)}</p>{expeditionStatus?.status === "ready" ? <p className={styles.hint}>{expeditionStatus.storageBlocked ? "Награда готова, но для неё не хватает места на складе." : "Награда готова. Следующая вылазка доступна после получения."}</p> : <p>Осталось: <strong>{economyRemaining(expedition.finishesAt, detail.serverTime)}</strong></p>}</>
+              : <p className={styles.hint}>{voyage ? "Следующая вылазка доступна после завершения рейса у причала." : "Подтверждённых вылазок сейчас нет."}</p>}
           </article>
         </div>
       </section>

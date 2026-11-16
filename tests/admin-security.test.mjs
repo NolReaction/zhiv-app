@@ -51,12 +51,16 @@ test("security reads use authenticated no-store requests and bind the response t
   }
 });
 
-test("standalone local admin route does not fabricate player observations", async () => {
-  const route = await vite.ssrLoadModule("/app/api/v1/admin/[...path]/route.ts");
-  const response = await route.GET(new Request(`http://localhost/api/v1/admin/users/${target}/security`));
-  assert.equal(response.status, 503); assert.equal(response.headers.get("cache-control"), "no-store");
-  const body = await response.json();
-  assert.equal(body.code, "ADMIN_UNAVAILABLE"); assert.equal(body.signals, undefined);
+test("standalone production admin route does not fabricate player observations", async () => {
+  const mode = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
+  try {
+    const route = await vite.ssrLoadModule("/app/api/v1/admin/[...path]/route.ts");
+    const response = await route.GET(new Request(`http://localhost/api/v1/admin/users/${target}/security`));
+    assert.equal(response.status, 503); assert.equal(response.headers.get("cache-control"), "no-store");
+    const body = await response.json();
+    assert.equal(body.code, "ADMIN_UNAVAILABLE"); assert.equal(body.signals, undefined);
+  } finally { if (mode == null) delete process.env.NODE_ENV; else process.env.NODE_ENV = mode; }
 });
 
 test("same administrator is checked before and after private player and security reads", async () => {

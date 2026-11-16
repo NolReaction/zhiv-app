@@ -8,7 +8,7 @@ import {
 
 const apiErrorSchema = z.object({ code: z.string(), message: z.string() });
 
-async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, schema: z.ZodType<T, unknown>, init: RequestInit = {}): Promise<T> {
   return withRequestDeadline(8_000, init.signal, async signal => {
     const response = await fetch(path, {
       ...init, signal, cache: "no-store", credentials: "same-origin",

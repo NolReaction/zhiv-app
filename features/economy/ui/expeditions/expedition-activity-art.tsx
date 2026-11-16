@@ -2,10 +2,19 @@
 export function ExpeditionActivityArt({ sector }: { sector: "forest" | "shore" | "caves" }) {
   return <svg viewBox="0 0 150 130" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" data-activity-art={sector}>
     {sector === "forest" ? <>
-      <path d="M41 143c-24-34 52-26 47-55S55 63 68 30" strokeDasharray="3 6" opacity=".45" />
-      <path d="m109 11-16 26h9L85 63h16L82 88h51l-19-25h16l-16-26h9Z" fill="currentColor" fillOpacity=".06" /><path d="M108 88v20m-47-61L48 68h8L41 90h34L61 68h8Z" /><path d="M59 90v15" />
-      <path d="M132 111c-25-8-16-31-16-31s24 7 16 31Zm0 0-12-23M25 42C1 39 7 15 7 15s25 2 18 27Zm0 0L12 22M145 43c-18 1-17-17-17-17s20-2 17 17Z" fill="currentColor" fillOpacity=".1" />
-      <path d="M16 91h7m-4-4v8m111-84h5m-2-3v6" opacity=".5" />
+      <path d="M-8 114c18-23 34-19 54-42 24-28 31-20 47-29 26-15 40-16 70-44v144H-8Z" fill="#486044" stroke="none" />
+      <path d="M11 120c35-37 50-20 80-51 25-25 48-28 70-36v110H11Z" fill="#354b39" stroke="none" />
+      <path d="M50 136c11-18 48-24 51-36 4-12-32-7-27-19 3-9 24-10 23-21" stroke="#ddc893" strokeWidth="2" strokeDasharray="3 5" />
+      <g stroke="#203e30" strokeLinejoin="round">
+        <path d="m109 37-10 18h5L91 74h8l-12 16h43l-13-17h8l-13-18h6Z" fill="#769268" />
+        <path d="M108 88v11" stroke="#9c8460" strokeWidth="4" />
+        <path d="m135 20-11 21h6l-16 23h9l-13 19h48l-15-21h7l-14-21h6Z" fill="#91a378" />
+        <path d="M134 82v12" stroke="#a88d65" strokeWidth="4" />
+      </g>
+      <path d="m96 102 23-11c7-3 17 12 11 16l-24 12Z" fill="#a37c50" stroke="#503f32" />
+      <ellipse cx="101" cy="111" rx="7" ry="10" transform="rotate(-28 101 111)" fill="#ddbd86" stroke="#624d37" />
+      <ellipse cx="101" cy="111" rx="3.4" ry="6" transform="rotate(-28 101 111)" stroke="#a17b4f" />
+      <path d="m111 103 13-6m-9 13 12-6" stroke="#77583e" />
     </> : sector === "shore" ? <>
       <ellipse cx="121" cy="10" rx="44" ry="29" opacity=".4" /><ellipse cx="121" cy="10" rx="58" ry="41" opacity=".25" /><ellipse cx="121" cy="10" rx="72" ry="53" opacity=".15" />
       <g transform="translate(51 58) rotate(-15)"><path d="M0 0c12-15 36-15 47 0C36 15 12 15 0 0Zm0 0-13-10v20Z" fill="currentColor" fillOpacity=".07" /><path d="M32-10c-5 5-5 15 0 20m-14-22 5-6 7 5m-12 24 6 5 5-4" /><circle cx="37" cy="-1" r="1.2" fill="currentColor" stroke="none" /></g>

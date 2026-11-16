@@ -1,6 +1,7 @@
 import type { FixedWorldScene, PreviewLevels, WorldLight, WorldPoint } from "@/features/world/tiled/types";
 import { forestLightSources } from "./forest-light-sources";
 import { TORCH_FIXTURE } from "./forest-torch-fixture";
+import { drawForestNightAmbient } from "./forest-night-ambient";
 export { forestLightSources } from "./forest-light-sources";
 import { drawLighthouseBeams, drawLighthouseLens } from "./forest-lighthouse";
 export { forestLighthouseAngle } from "./forest-lighthouse";
@@ -48,12 +49,7 @@ function lightTexture(scene: FixedWorldScene, sources: WorldLight[]) {
   const ctx = canvas.getContext("2d"); if (!ctx) return undefined;
   ctx.scale(scale, scale);
   // Multiplication darkens the painted world without laying a grey veil over it.
-  ctx.fillStyle = "#2d3d62"; ctx.fillRect(0, 0, scene.width, scene.height);
-  const moon = ctx.createRadialGradient(scene.width * .68, scene.height * .12, 0,
-    scene.width * .68, scene.height * .12, Math.max(scene.width, scene.height) * .98);
-  moon.addColorStop(0, "rgba(112,151,198,.28)");
-  moon.addColorStop(.55, "rgba(87,121,176,.12)"); moon.addColorStop(1, "rgba(76,101,156,0)");
-  ctx.globalCompositeOperation = "screen"; ctx.fillStyle = moon; ctx.fillRect(0, 0, scene.width, scene.height);
+  drawForestNightAmbient(ctx, scene.width, scene.height);
   for (const light of sources) {
     if (light.intensity <= 0) continue;
     const { x, y } = light.position, r = light.radius;
@@ -77,7 +73,7 @@ export function drawForestLighting(ctx: CanvasRenderingContext2D, scene: FixedWo
   const texture = lightTexture(scene, forestLightSources(scene, options));
   ctx.save(); ctx.globalCompositeOperation = "multiply"; ctx.globalAlpha = night;
   if (texture) ctx.drawImage(texture, 0, 0, scene.width, scene.height);
-  else { ctx.fillStyle = "#354b78"; ctx.fillRect(0, 0, scene.width, scene.height); }
+  else { ctx.fillStyle = "#3d4f70"; ctx.fillRect(0, 0, scene.width, scene.height); }
   ctx.restore();
 }
 

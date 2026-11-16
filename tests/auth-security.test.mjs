@@ -147,7 +147,8 @@ test("status OFF hides marks and visits while safe friend profiles retain friend
   const projection = await visible.json();
   assert.equal(projection.ownerPublicId, f.owner.me.user.publicId);
   assert.equal(projection.user.publicId, f.member.me.user.publicId);
-  assert.deepEqual(Object.keys(projection).sort(), ["ownerPublicId", "circleId", "user", "homeLevel", "completedExplorations", "achievements", "collections", "serverTime"].sort());
+  assert.deepEqual(Object.keys(projection).sort(), ["ownerPublicId", "circleId", "user", "homeLevel", "playerXp", "completedExplorations", "achievements", "collections", "serverTime"].sort());
+  assert.equal(projection.playerXp, 0);
   globalThis.__authSecurityToken = f.outsider.token;
   const outsider = await (await status(await routes.guest.GET(request(path), context(f)), 404)).json();
   globalThis.__authSecurityToken = f.owner.token;
@@ -239,6 +240,11 @@ test("guest HTTP extension is exact opt-in and never leaks public or private rec
   globalThis.__authSecurityToken = f.owner.token;
   const get = async version => (await status(await routes.guest.GET(request(path, "GET", undefined,
     version === undefined ? {} : { "X-Zhiv-Profile": version }), context(f)), 200)).json();
+  const fishingHeaders = { "X-Zhiv-Fishing-Profile": "v1" };
+  assert.equal(Object.hasOwn(await get("tap-stats-v1"), "fishingSummary"), false);
+  const fishing = await (await status(await routes.guest.GET(request(path, "GET", undefined, fishingHeaders), context(f)), 200)).json();
+  assert.equal(fishing.fishingSummary, null);
+  assert.equal(Object.hasOwn(fishing, "tapStats"), false);
   assert.equal(Object.hasOwn(await get(), "tapStats"), false);
   assert.equal(Object.hasOwn(await get("tap-stats-v2"), "tapStats"), false);
   assert.equal((await get("tap-stats-v1")).tapStats, null);
@@ -253,5 +259,6 @@ test("guest HTTP extension is exact opt-in and never leaks public or private rec
   assert.equal((await get("tap-stats-v1")).tapStats, null);
   await status(await routes.guest.GET(request(path + "?include=tapStats", "GET", undefined, { "X-Zhiv-Profile": "tap-stats-v1" }), context(f)), 400);
   globalThis.__authSecurityToken = f.outsider.token;
+  await status(await routes.guest.GET(request(path, "GET", undefined, fishingHeaders), context(f)), 404);
   await status(await routes.guest.GET(request(path, "GET", undefined, { "X-Zhiv-Profile": "tap-stats-v1" }), context(f)), 404);
 });

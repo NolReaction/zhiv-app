@@ -3,10 +3,10 @@ import { ApiError, getMe } from "./check-in-api";
 import { deviceTimeZone } from "./time-zone";
 import { retryAfterMs, withRequestDeadline } from "./request-deadline";
 
-export const authOptionsSchema = z.object({ telegram: z.boolean().default(false), email: z.boolean(), vk: z.boolean().default(false), legacy: z.boolean().default(false) });
+export const authOptionsSchema = z.object({ telegram: z.boolean().prefault(false), email: z.boolean(), vk: z.boolean().prefault(false), legacy: z.boolean().prefault(false) });
 const accountAccessSchema = z.object({
   methods: z.array(z.object({ provider: z.enum(["telegram", "email", "vk"]), label: z.string() })),
-  sessions: z.array(z.object({ id: z.string().uuid(), label: z.string(), createdAt: z.string().datetime(), lastSeenAt: z.string().datetime(), current: z.boolean() })),
+  sessions: z.array(z.object({ id: z.guid(), label: z.string(), createdAt: z.string().datetime(), lastSeenAt: z.string().datetime(), current: z.boolean() })),
 });
 export type AuthOptions = z.infer<typeof authOptionsSchema>;
 export type AccountAccess = z.infer<typeof accountAccessSchema>;
@@ -22,7 +22,7 @@ export async function authRequest<T extends z.ZodTypeAny>(path: string, schema: 
     });
     const value: unknown = await response.json().catch(() => null);
     if (!response.ok) {
-      const error = z.object({ code: z.string(), message: z.string(), requestId: z.string().uuid().nullish() }).safeParse(value);
+      const error = z.object({ code: z.string(), message: z.string(), requestId: z.guid().nullish() }).safeParse(value);
       throw new ApiError(error.success ? error.data.message : response.status === 429 ? "Слишком много попыток. Подождите и попробуйте позже." : "Не удалось связаться с сервером", response.status, error.success ? error.data : undefined, response.headers.get("X-Request-ID"), retryAfterMs(response.headers.get("Retry-After")));
     }
     const parsed = schema.safeParse(value);

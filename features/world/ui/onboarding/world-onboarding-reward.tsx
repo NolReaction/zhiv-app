@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { RewardContents, RewardRecovery } from "@/features/game/daily-rewards";
-import { progressionRewardsCatalog } from "@/features/game/progression-rewards";
+import { onboardingRewardForState } from "@/features/game/progression-rewards";
 import { useGameRewards } from "@/features/game/use-game-rewards";
 import { GuideCoach } from "@/features/onboarding/guide-coach";
 import type { WorldOnboardingProgress } from "@/features/world/domain/world-onboarding";
@@ -64,6 +64,8 @@ export function WorldOnboardingReward({ owner, progress, open, isOnline, onSessi
     : rewards.loading ? "Проверяем награду…"
     : !data?.onboarding ? "Проверим доступность награды."
     : undefined;
+  const shownReward = receipt?.reward ?? (economy.snapshot?.ownerPublicId === owner
+    ? onboardingRewardForState(economy.snapshot) : null);
   return <GuideCoach open={visible} flow="world" stepId="completion-reward" title={claimed ? "Подарок твой!" : "Обучение пройдено!"}
     pose={claimed ? "jump" : "present"}
     summary={claimed ? "Спасибо за знакомство с лесом! Можно продолжать приключение." : "За пройденное обучение тебя ждёт подарок."}
@@ -75,7 +77,7 @@ export function WorldOnboardingReward({ owner, progress, open, isOnline, onSessi
       : data?.onboarding ? { label: rewards.busy ? "Получаем…" : "Получить награду", disabled: blocked, onClick: claim }
       : { label: "Проверить награду", disabled: !isOnline || rewards.loading || rewards.busy || rewards.retryAt > rewards.now,
         onClick: () => { if (isOnline) void rewards.refresh(); } }}>
-    <RewardContents reward={receipt?.reward ?? progressionRewardsCatalog.onboarding} />
+    {shownReward ? <RewardContents reward={shownReward} /> : null}
     <RewardRecovery controller={rewards} isOnline={isOnline} />
   </GuideCoach>;
 }

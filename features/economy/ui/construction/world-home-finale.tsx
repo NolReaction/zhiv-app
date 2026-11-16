@@ -75,9 +75,9 @@ export function WorldHomeFinale() {
     {!showCredits ? <div className={styles.congratulations}>
       <span className={styles.trophy} aria-hidden="true"><Trophy size={34} strokeWidth={1.5} /><Sprout size={18} className={styles.trophySprout} /></span>
       <span className={styles.eyebrow}>Дом мечты построен</span>
-      <h3 className={styles.title}>Поздравляем!<br />Вы прошли игру.</h3>
-      <p className={styles.description}>Ну, дом точно. Дальше улучшать некуда - можно наконец-то пожить.</p>
-      <p className={styles.aside}>Лесная жизнь продолжается. А съёмочная группа уже ждёт оваций.</p>
+      <h3 className={styles.title}>Поздравляем!<br />Дом мечты готов.</h3>
+      <p className={styles.description}>Главная стройка завершена. Можно наконец-то пожить. А съёмочная группа уже ждёт оваций.</p>
+      <p className={styles.aside}>Лесная жизнь продолжается: мастерские, кладовая, новые рецепты и доверие жителей ещё ждут своего часа.</p>
       <button ref={watchButton} type="button" className={`${styles.button} ${styles.primary}`} onClick={openCredits}><Clapperboard size={17} aria-hidden="true" />Смотреть титры</button>
     </div> : <div className={styles.cinema}>
       <div className={styles.cinemaHeading}>

@@ -385,7 +385,7 @@ const welcomeLetter = welcomeInbox.messages[0];
 assert.equal(welcomeLetter.type, "event");
 assert.equal(welcomeLetter.notify, false);
 assert.equal(welcomeLetter.attachments, null);
-assert.deepEqual(welcomeLetter.gift, { pearls: 100, claimedAt: null });
+assert.deepEqual(welcomeLetter.gift, { pearls: 20, claimedAt: null }, "Fresh accounts receive the v7 welcome promise");
 const welcomeRead = await api("POST", `/api/v1/mail/${welcomeLetter.id}/read`, { cookie: mailTarget.cookie,
   body: { expectedOwnerPublicId: mailTarget.publicId } });
 assert.equal(welcomeRead.data.unreadCount, 0);

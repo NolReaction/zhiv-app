@@ -5,7 +5,7 @@ export type ProductionSlotOffer = typeof economyCatalog.productionSlots.upgrades
 
 /** The quarry is a single actor activity, never an unattended production station. */
 export function productionStationSupported(stationId: string): boolean {
-  return stationId !== "quarry" && economyCatalog.recipes.some(recipe => recipe.buildingId === stationId);
+  return stationId !== "quarry" && economyCatalog.recipes.some(recipe => !recipe.retired && recipe.buildingId === stationId);
 }
 
 /** Unclaimed results occupy their slot until an individual or station claim. */

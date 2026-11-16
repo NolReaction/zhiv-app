@@ -1,0 +1,40 @@
+.controls {
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 0 14px 16px;
+  color: var(--paper);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.root { padding: 12px 0; }
+.root > label { margin: 0; font-size: 12px; }
+.root select { font-size: 13px; }
+.controls p, .empty { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.empty { padding: 0 14px; }
+
+.controls details { border-top: 1px solid var(--line); }
+.controls summary { padding: 12px 1px; font-weight: 600; cursor: pointer; }
+.controls summary::marker { color: var(--gold); }
+.sectionBody, .fields { display: grid; gap: 7px; padding-bottom: 12px; }
+.sectionBody p { margin: 0; }
+.sectionBody .fields { margin-top: 4px; padding-bottom: 0; }
+.fields > label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 12px;
+}
+.fields input { font-variant-numeric: tabular-nums; }
+.check { display: flex; align-items: center; gap: 8px; min-height: 32px; cursor: pointer; }
+.check input { flex: none; width: 17px; height: 17px; margin: 0; accent-color: var(--gold); }
+.check span { overflow-wrap: anywhere; }
+@media (pointer: coarse) {
+  .check { min-height: 42px; }
+  .root select, .fields input { min-height: 40px; }
+}

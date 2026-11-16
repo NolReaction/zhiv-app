@@ -25,9 +25,9 @@ export function marketRequiredHomeLevel(itemId: string, catalog: EconomyCatalog 
   const requirements = (home: number, buildings: Record<string, number>) =>
     Math.max(home, ...Object.entries(buildings).map(([id, level]) => buildingHome(id, level)));
   const sources = [
-    ...catalog.recipes.filter(recipe => (recipe.rewards[itemId] ?? 0) > 0).map(recipe => requirements(recipe.requiredHomeLevel,
+    ...catalog.recipes.filter(recipe => !recipe.retired && (recipe.rewards[itemId] ?? 0) > 0).map(recipe => requirements(recipe.requiredHomeLevel,
       { ...recipe.requiredBuildings, [recipe.buildingId]: Math.max(recipeBuildingLevel(recipe), recipe.requiredBuildings[recipe.buildingId] ?? 0) })),
-    ...catalog.explorations.filter(route => (route.rewards[itemId] ?? 0) > 0).map(route => requirements(route.requiredHomeLevel, route.requiredBuildings)),
+    ...catalog.explorations.filter(route => !route.retired && (route.rewards[itemId] ?? 0) > 0).map(route => requirements(route.requiredHomeLevel, route.requiredBuildings)),
   ];
   const bait = catalog.fishing?.baits.find(item => item.itemId === itemId);
   if (bait) sources.push(bait.requiredHomeLevel);
@@ -38,7 +38,7 @@ export function marketRequiredHomeLevel(itemId: string, catalog: EconomyCatalog 
       fishing.fish.some(fish => fish.rarity === group.rarity && !fishingIneligibility(fish, rod.id, hook.id, fishing))
         ? [Math.max(rod.requiredHomeLevel, hook.requiredHomeLevel)] : []));
     const tackleHome = Math.min(...gearHomes);
-    for (const route of catalog.explorations.filter(route => fishing.routeIds.includes(route.id)))
+    for (const route of catalog.explorations.filter(route => !route.retired && fishing.routeIds.includes(route.id)))
       sources.push(Math.max(tackleHome, requirements(route.requiredHomeLevel, route.requiredBuildings)));
   }
   return Math.min(...sources);

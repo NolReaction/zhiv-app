@@ -4,12 +4,12 @@ import { gameProgressSchema, gameSessionSchema } from "@/features/game/game-api"
 
 const count = z.number().int().safe().nonnegative();
 const times = z.array(count).max(60);
-const queueSchema = z.array(z.object({ runId: z.string().uuid(), count: count.min(1).max(60), times: times.optional(), deferred: z.boolean().optional() })
+const queueSchema = z.array(z.object({ runId: z.guid(), count: count.min(1).max(60), times: times.optional(), deferred: z.boolean().optional() })
   .refine(value => !value.times || value.times.length === value.count)).max(30000);
-const batchSchema = z.object({ sessionId: z.string().uuid(), sequence: count.min(1), tapCount: count.min(1).max(60),
-  runId: z.string().uuid(), tapTimes: times.optional() }).refine(value => !value.tapTimes || value.tapTimes.length === value.tapCount).nullable();
-const startSchema = z.object({ requestId: z.string().uuid(), ownerPublicId: z.string() }).nullable();
-const runSchema = z.object({ runId: z.string().uuid(), acceptedTaps: count, creditedTaps: count.optional(), rejectedTaps: count, interrupted: z.boolean() });
+const batchSchema = z.object({ sessionId: z.guid(), sequence: count.min(1), tapCount: count.min(1).max(60),
+  runId: z.guid(), tapTimes: times.optional() }).refine(value => !value.tapTimes || value.tapTimes.length === value.tapCount).nullable();
+const startSchema = z.object({ requestId: z.guid(), ownerPublicId: z.string() }).nullable();
+const runSchema = z.object({ runId: z.guid(), acceptedTaps: count, creditedTaps: count.optional(), rejectedTaps: count, interrupted: z.boolean() });
 const archiveSchema = z.object({
   archivedAt: count, code: z.enum(["GAME_QUEUE_EXPIRED", "GAME_SESSION_GONE", "GAME_SESSION_CONFLICT"]),
   requestId: z.string().optional(), queue: queueSchema, pendingBatch: batchSchema,
@@ -18,14 +18,14 @@ const archiveSchema = z.object({
 export const gameJournalSchema = z.object({
   version: z.literal(1), ownerPublicId: z.string(), savedAt: count,
   progress: gameProgressSchema.nullable(), session: gameSessionSchema.nullable(),
-  run: runSchema.nullable(), runs: z.array(runSchema).max(30000).default([]),
-  inputReceipts: z.array(z.string().uuid()).max(30000).default([]),
+  run: runSchema.nullable(), runs: z.array(runSchema).max(30000).prefault([]),
+  inputReceipts: z.array(z.guid()).max(30000).prefault([]),
   errorCode: z.string().nullable().optional(), requestId: z.string().optional(),
-  deferredQueue: queueSchema.default([]), catchUpMode: z.boolean().default(false),
+  deferredQueue: queueSchema.prefault([]), catchUpMode: z.boolean().prefault(false),
   queue: queueSchema, pendingBatch: batchSchema, startRequest: startSchema,
-  archivedQueues: z.array(archiveSchema).max(100).default([]),
-  recordingStopped: z.boolean().default(false), lastEventAt: count.default(0),
-  rejectedTaps: count, serverOffset: z.number().finite(), retryAfter: count, retryRemaining: count.max(3600000).default(0),
+  archivedQueues: z.array(archiveSchema).max(100).prefault([]),
+  recordingStopped: z.boolean().prefault(false), lastEventAt: count.prefault(0),
+  rejectedTaps: count, serverOffset: z.number().finite(), retryAfter: count, retryRemaining: count.max(3600000).prefault(0),
 }).refine(value => [...value.queue, ...value.deferredQueue].reduce((sum, item) => sum + item.count, value.pendingBatch?.tapCount ?? 0) <= 30000);
 export type GameJournal = z.infer<typeof gameJournalSchema>;
 export interface GameJournalStore { read(): GameJournal | null; write(value: GameJournal): void }

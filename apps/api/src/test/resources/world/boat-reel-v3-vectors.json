@@ -1,0 +1,3703 @@
+{
+  "version": 3,
+  "description": "Independent Python integer replay with truncation toward zero: public class scaling, phase boundaries, unsigned seeds, and terminal outcomes. V1/V2 fixtures remain unchanged.",
+  "cases": [
+    {
+      "name": "v3-common-steady-0-follow",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "steady",
+        "fishRarity": "common",
+        "seed": 0,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 1,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "inputs": [
+        {
+          "tick": 3,
+          "held": true
+        },
+        {
+          "tick": 6,
+          "held": false
+        },
+        {
+          "tick": 12,
+          "held": true
+        },
+        {
+          "tick": 15,
+          "held": false
+        },
+        {
+          "tick": 18,
+          "held": true
+        },
+        {
+          "tick": 21,
+          "held": false
+        },
+        {
+          "tick": 27,
+          "held": true
+        },
+        {
+          "tick": 30,
+          "held": false
+        },
+        {
+          "tick": 33,
+          "held": true
+        },
+        {
+          "tick": 36,
+          "held": false
+        },
+        {
+          "tick": 39,
+          "held": true
+        },
+        {
+          "tick": 42,
+          "held": false
+        },
+        {
+          "tick": 48,
+          "held": true
+        },
+        {
+          "tick": 51,
+          "held": false
+        },
+        {
+          "tick": 54,
+          "held": true
+        },
+        {
+          "tick": 57,
+          "held": false
+        },
+        {
+          "tick": 60,
+          "held": true
+        },
+        {
+          "tick": 63,
+          "held": false
+        },
+        {
+          "tick": 66,
+          "held": true
+        },
+        {
+          "tick": 69,
+          "held": false
+        },
+        {
+          "tick": 75,
+          "held": true
+        },
+        {
+          "tick": 78,
+          "held": false
+        },
+        {
+          "tick": 81,
+          "held": true
+        },
+        {
+          "tick": 84,
+          "held": false
+        },
+        {
+          "tick": 87,
+          "held": true
+        },
+        {
+          "tick": 90,
+          "held": false
+        },
+        {
+          "tick": 96,
+          "held": true
+        },
+        {
+          "tick": 99,
+          "held": false
+        },
+        {
+          "tick": 102,
+          "held": true
+        },
+        {
+          "tick": 108,
+          "held": false
+        },
+        {
+          "tick": 114,
+          "held": true
+        },
+        {
+          "tick": 120,
+          "held": false
+        },
+        {
+          "tick": 126,
+          "held": true
+        },
+        {
+          "tick": 132,
+          "held": false
+        },
+        {
+          "tick": 138,
+          "held": true
+        },
+        {
+          "tick": 141,
+          "held": false
+        },
+        {
+          "tick": 144,
+          "held": true
+        },
+        {
+          "tick": 150,
+          "held": false
+        },
+        {
+          "tick": 156,
+          "held": true
+        },
+        {
+          "tick": 159,
+          "held": false
+        },
+        {
+          "tick": 162,
+          "held": true
+        },
+        {
+          "tick": 165,
+          "held": false
+        },
+        {
+          "tick": 168,
+          "held": true
+        },
+        {
+          "tick": 171,
+          "held": false
+        },
+        {
+          "tick": 177,
+          "held": true
+        },
+        {
+          "tick": 183,
+          "held": false
+        },
+        {
+          "tick": 189,
+          "held": true
+        },
+        {
+          "tick": 192,
+          "held": false
+        },
+        {
+          "tick": 198,
+          "held": true
+        },
+        {
+          "tick": 201,
+          "held": false
+        },
+        {
+          "tick": 207,
+          "held": true
+        },
+        {
+          "tick": 210,
+          "held": false
+        },
+        {
+          "tick": 216,
+          "held": true
+        },
+        {
+          "tick": 219,
+          "held": false
+        },
+        {
+          "tick": 222,
+          "held": true
+        },
+        {
+          "tick": 225,
+          "held": false
+        },
+        {
+          "tick": 228,
+          "held": true
+        },
+        {
+          "tick": 231,
+          "held": false
+        },
+        {
+          "tick": 234,
+          "held": true
+        }
+      ],
+      "endTick": 235,
+      "expected": {
+        "tick": 235,
+        "bar": 5681,
+        "velocity": 6,
+        "fish": 5615,
+        "progress": 10000,
+        "status": "caught"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 4980,
+          "velocity": -20,
+          "fish": 4962,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 15,
+          "bar": 4585,
+          "velocity": 7,
+          "fish": 4430,
+          "progress": 2980,
+          "status": "active"
+        },
+        {
+          "tick": 16,
+          "bar": 4571,
+          "velocity": -14,
+          "fish": 4396,
+          "progress": 3012,
+          "status": "active"
+        },
+        {
+          "tick": 24,
+          "bar": 4474,
+          "velocity": -30,
+          "fish": 4213,
+          "progress": 3268,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 4216,
+          "velocity": 7,
+          "fish": 4143,
+          "progress": 3460,
+          "status": "active"
+        },
+        {
+          "tick": 38,
+          "bar": 4135,
+          "velocity": -11,
+          "fish": 4094,
+          "progress": 3716,
+          "status": "active"
+        },
+        {
+          "tick": 42,
+          "bar": 4177,
+          "velocity": 49,
+          "fish": 4081,
+          "progress": 3844,
+          "status": "active"
+        },
+        {
+          "tick": 60,
+          "bar": 3981,
+          "velocity": -23,
+          "fish": 4057,
+          "progress": 4420,
+          "status": "active"
+        },
+        {
+          "tick": 64,
+          "bar": 4100,
+          "velocity": 30,
+          "fish": 4057,
+          "progress": 4548,
+          "status": "active"
+        },
+        {
+          "tick": 72,
+          "bar": 4257,
+          "velocity": -6,
+          "fish": 4057,
+          "progress": 4804,
+          "status": "active"
+        },
+        {
+          "tick": 80,
+          "bar": 4107,
+          "velocity": -18,
+          "fish": 4057,
+          "progress": 5060,
+          "status": "active"
+        },
+        {
+          "tick": 88,
+          "bar": 4136,
+          "velocity": 8,
+          "fish": 4057,
+          "progress": 5316,
+          "status": "active"
+        },
+        {
+          "tick": 96,
+          "bar": 4120,
+          "velocity": -64,
+          "fish": 4057,
+          "progress": 5572,
+          "status": "active"
+        },
+        {
+          "tick": 100,
+          "bar": 4103,
+          "velocity": 0,
+          "fish": 4209,
+          "progress": 5700,
+          "status": "active"
+        },
+        {
+          "tick": 120,
+          "bar": 4831,
+          "velocity": 112,
+          "fish": 4969,
+          "progress": 6340,
+          "status": "active"
+        },
+        {
+          "tick": 160,
+          "bar": 6333,
+          "velocity": 31,
+          "fish": 6478,
+          "progress": 7620,
+          "status": "active"
+        },
+        {
+          "tick": 200,
+          "bar": 6708,
+          "velocity": -13,
+          "fish": 6449,
+          "progress": 8900,
+          "status": "active"
+        },
+        {
+          "tick": 235,
+          "bar": 5681,
+          "velocity": 6,
+          "fish": 5615,
+          "progress": 10000,
+          "status": "caught"
+        }
+      ]
+    },
+    {
+      "name": "v3-uncommon-steady-4294967295-follow",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "steady",
+        "fishRarity": "uncommon",
+        "seed": 4294967295,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 4000,
+        "difficulty": 3,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "inputs": [
+        {
+          "tick": 6,
+          "held": true
+        },
+        {
+          "tick": 12,
+          "held": false
+        },
+        {
+          "tick": 24,
+          "held": true
+        },
+        {
+          "tick": 30,
+          "held": false
+        },
+        {
+          "tick": 36,
+          "held": true
+        },
+        {
+          "tick": 42,
+          "held": false
+        },
+        {
+          "tick": 54,
+          "held": true
+        },
+        {
+          "tick": 66,
+          "held": false
+        },
+        {
+          "tick": 84,
+          "held": true
+        },
+        {
+          "tick": 96,
+          "held": false
+        },
+        {
+          "tick": 108,
+          "held": true
+        },
+        {
+          "tick": 114,
+          "held": false
+        },
+        {
+          "tick": 120,
+          "held": true
+        },
+        {
+          "tick": 126,
+          "held": false
+        },
+        {
+          "tick": 138,
+          "held": true
+        },
+        {
+          "tick": 144,
+          "held": false
+        },
+        {
+          "tick": 150,
+          "held": true
+        },
+        {
+          "tick": 156,
+          "held": false
+        },
+        {
+          "tick": 162,
+          "held": true
+        },
+        {
+          "tick": 168,
+          "held": false
+        },
+        {
+          "tick": 180,
+          "held": true
+        },
+        {
+          "tick": 192,
+          "held": false
+        },
+        {
+          "tick": 204,
+          "held": true
+        },
+        {
+          "tick": 216,
+          "held": false
+        },
+        {
+          "tick": 228,
+          "held": true
+        }
+      ],
+      "endTick": 235,
+      "expected": {
+        "tick": 235,
+        "bar": 4416,
+        "velocity": 94,
+        "fish": 4655,
+        "progress": 10000,
+        "status": "caught"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 4980,
+          "velocity": -20,
+          "fish": 4952,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 15,
+          "bar": 4703,
+          "velocity": -3,
+          "fish": 4280,
+          "progress": 2980,
+          "status": "active"
+        },
+        {
+          "tick": 16,
+          "bar": 4681,
+          "velocity": -22,
+          "fish": 4232,
+          "progress": 3012,
+          "status": "active"
+        },
+        {
+          "tick": 24,
+          "bar": 3938,
+          "velocity": -140,
+          "fish": 3848,
+          "progress": 3268,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 3763,
+          "velocity": 40,
+          "fish": 3575,
+          "progress": 3460,
+          "status": "active"
+        },
+        {
+          "tick": 38,
+          "bar": 3516,
+          "velocity": -15,
+          "fish": 3368,
+          "progress": 3716,
+          "status": "active"
+        },
+        {
+          "tick": 42,
+          "bar": 3707,
+          "velocity": 82,
+          "fish": 3311,
+          "progress": 3844,
+          "status": "active"
+        },
+        {
+          "tick": 60,
+          "bar": 2973,
+          "velocity": 44,
+          "fish": 3210,
+          "progress": 4420,
+          "status": "active"
+        },
+        {
+          "tick": 64,
+          "bar": 3363,
+          "velocity": 127,
+          "fish": 3202,
+          "progress": 4548,
+          "status": "active"
+        },
+        {
+          "tick": 72,
+          "bar": 4069,
+          "velocity": 6,
+          "fish": 3196,
+          "progress": 4804,
+          "status": "active"
+        },
+        {
+          "tick": 80,
+          "bar": 3488,
+          "velocity": -124,
+          "fish": 3196,
+          "progress": 5060,
+          "status": "active"
+        },
+        {
+          "tick": 88,
+          "bar": 2551,
+          "velocity": -35,
+          "fish": 3196,
+          "progress": 5316,
+          "status": "active"
+        },
+        {
+          "tick": 96,
+          "bar": 3151,
+          "velocity": 146,
+          "fish": 3196,
+          "progress": 5572,
+          "status": "active"
+        },
+        {
+          "tick": 100,
+          "bar": 3459,
+          "velocity": 39,
+          "fish": 3066,
+          "progress": 5700,
+          "status": "active"
+        },
+        {
+          "tick": 120,
+          "bar": 3002,
+          "velocity": -59,
+          "fish": 2826,
+          "progress": 6340,
+          "status": "active"
+        },
+        {
+          "tick": 160,
+          "bar": 2733,
+          "velocity": -7,
+          "fish": 2789,
+          "progress": 7620,
+          "status": "active"
+        },
+        {
+          "tick": 200,
+          "bar": 3515,
+          "velocity": -31,
+          "fish": 3173,
+          "progress": 8900,
+          "status": "active"
+        },
+        {
+          "tick": 235,
+          "bar": 4416,
+          "velocity": 94,
+          "fish": 4655,
+          "progress": 10000,
+          "status": "caught"
+        }
+      ]
+    },
+    {
+      "name": "v3-uncommon-sprightly-17-follow",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "sprightly",
+        "fishRarity": "uncommon",
+        "seed": 17,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 2,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "inputs": [
+        {
+          "tick": 6,
+          "held": true
+        },
+        {
+          "tick": 12,
+          "held": false
+        },
+        {
+          "tick": 18,
+          "held": true
+        },
+        {
+          "tick": 24,
+          "held": false
+        },
+        {
+          "tick": 36,
+          "held": true
+        },
+        {
+          "tick": 48,
+          "held": false
+        },
+        {
+          "tick": 54,
+          "held": true
+        },
+        {
+          "tick": 60,
+          "held": false
+        },
+        {
+          "tick": 78,
+          "held": true
+        },
+        {
+          "tick": 90,
+          "held": false
+        },
+        {
+          "tick": 96,
+          "held": true
+        },
+        {
+          "tick": 102,
+          "held": false
+        },
+        {
+          "tick": 108,
+          "held": true
+        },
+        {
+          "tick": 114,
+          "held": false
+        },
+        {
+          "tick": 120,
+          "held": true
+        },
+        {
+          "tick": 126,
+          "held": false
+        },
+        {
+          "tick": 144,
+          "held": true
+        },
+        {
+          "tick": 150,
+          "held": false
+        },
+        {
+          "tick": 156,
+          "held": true
+        },
+        {
+          "tick": 162,
+          "held": false
+        },
+        {
+          "tick": 168,
+          "held": true
+        },
+        {
+          "tick": 174,
+          "held": false
+        },
+        {
+          "tick": 180,
+          "held": true
+        },
+        {
+          "tick": 186,
+          "held": false
+        },
+        {
+          "tick": 192,
+          "held": true
+        },
+        {
+          "tick": 198,
+          "held": false
+        },
+        {
+          "tick": 216,
+          "held": true
+        },
+        {
+          "tick": 222,
+          "held": false
+        },
+        {
+          "tick": 228,
+          "held": true
+        }
+      ],
+      "endTick": 235,
+      "expected": {
+        "tick": 235,
+        "bar": 4207,
+        "velocity": 89,
+        "fish": 4770,
+        "progress": 10000,
+        "status": "caught"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 4980,
+          "velocity": -20,
+          "fish": 4944,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 15,
+          "bar": 4703,
+          "velocity": -3,
+          "fish": 4504,
+          "progress": 2980,
+          "status": "active"
+        },
+        {
+          "tick": 16,
+          "bar": 4681,
+          "velocity": -22,
+          "fish": 4492,
+          "progress": 3012,
+          "status": "active"
+        },
+        {
+          "tick": 24,
+          "bar": 4801,
+          "velocity": 94,
+          "fish": 4434,
+          "progress": 3268,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 4870,
+          "velocity": -39,
+          "fish": 4415,
+          "progress": 3460,
+          "status": "active"
+        },
+        {
+          "tick": 38,
+          "bar": 4159,
+          "velocity": -61,
+          "fish": 4408,
+          "progress": 3716,
+          "status": "active"
+        },
+        {
+          "tick": 42,
+          "bar": 4197,
+          "velocity": 48,
+          "fish": 4408,
+          "progress": 3844,
+          "status": "active"
+        },
+        {
+          "tick": 60,
+          "bar": 5864,
+          "velocity": 138,
+          "fish": 5527,
+          "progress": 4420,
+          "status": "active"
+        },
+        {
+          "tick": 64,
+          "bar": 6145,
+          "velocity": 33,
+          "fish": 5423,
+          "progress": 4548,
+          "status": "active"
+        },
+        {
+          "tick": 72,
+          "bar": 5722,
+          "velocity": -109,
+          "fish": 5215,
+          "progress": 4804,
+          "status": "active"
+        },
+        {
+          "tick": 80,
+          "bar": 4580,
+          "velocity": -104,
+          "fish": 5007,
+          "progress": 5060,
+          "status": "active"
+        },
+        {
+          "tick": 88,
+          "bar": 4771,
+          "velocity": 106,
+          "fish": 5455,
+          "progress": 5316,
+          "status": "active"
+        },
+        {
+          "tick": 96,
+          "bar": 5345,
+          "velocity": -7,
+          "fish": 5903,
+          "progress": 5572,
+          "status": "active"
+        },
+        {
+          "tick": 100,
+          "bar": 5564,
+          "velocity": 88,
+          "fish": 6127,
+          "progress": 5700,
+          "status": "active"
+        },
+        {
+          "tick": 120,
+          "bar": 6627,
+          "velocity": -22,
+          "fish": 6806,
+          "progress": 6340,
+          "status": "active"
+        },
+        {
+          "tick": 160,
+          "bar": 4987,
+          "velocity": 22,
+          "fish": 5200,
+          "progress": 7620,
+          "status": "active"
+        },
+        {
+          "tick": 200,
+          "bar": 6285,
+          "velocity": 59,
+          "fish": 5759,
+          "progress": 8900,
+          "status": "active"
+        },
+        {
+          "tick": 235,
+          "bar": 4207,
+          "velocity": 89,
+          "fish": 4770,
+          "progress": 10000,
+          "status": "caught"
+        }
+      ]
+    },
+    {
+      "name": "v3-rare-sprightly-3902242211-follow",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "sprightly",
+        "fishRarity": "rare",
+        "seed": 3902242211,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 4,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "inputs": [
+        {
+          "tick": 6,
+          "held": true
+        },
+        {
+          "tick": 24,
+          "held": false
+        },
+        {
+          "tick": 36,
+          "held": true
+        },
+        {
+          "tick": 42,
+          "held": false
+        },
+        {
+          "tick": 60,
+          "held": true
+        },
+        {
+          "tick": 66,
+          "held": false
+        },
+        {
+          "tick": 72,
+          "held": true
+        },
+        {
+          "tick": 78,
+          "held": false
+        },
+        {
+          "tick": 84,
+          "held": true
+        },
+        {
+          "tick": 96,
+          "held": false
+        },
+        {
+          "tick": 108,
+          "held": true
+        },
+        {
+          "tick": 114,
+          "held": false
+        },
+        {
+          "tick": 126,
+          "held": true
+        },
+        {
+          "tick": 132,
+          "held": false
+        },
+        {
+          "tick": 144,
+          "held": true
+        },
+        {
+          "tick": 150,
+          "held": false
+        },
+        {
+          "tick": 156,
+          "held": true
+        },
+        {
+          "tick": 162,
+          "held": false
+        },
+        {
+          "tick": 168,
+          "held": true
+        },
+        {
+          "tick": 174,
+          "held": false
+        },
+        {
+          "tick": 192,
+          "held": true
+        },
+        {
+          "tick": 198,
+          "held": false
+        },
+        {
+          "tick": 204,
+          "held": true
+        },
+        {
+          "tick": 216,
+          "held": false
+        },
+        {
+          "tick": 222,
+          "held": true
+        },
+        {
+          "tick": 228,
+          "held": false
+        },
+        {
+          "tick": 234,
+          "held": true
+        }
+      ],
+      "endTick": 235,
+      "expected": {
+        "tick": 235,
+        "bar": 4901,
+        "velocity": 21,
+        "fish": 5048,
+        "progress": 10000,
+        "status": "caught"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 4980,
+          "velocity": -20,
+          "fish": 5065,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 15,
+          "bar": 4968,
+          "velocity": 127,
+          "fish": 5975,
+          "progress": 2980,
+          "status": "active"
+        },
+        {
+          "tick": 16,
+          "bar": 5113,
+          "velocity": 145,
+          "fish": 6040,
+          "progress": 3012,
+          "status": "active"
+        },
+        {
+          "tick": 24,
+          "bar": 6733,
+          "velocity": 220,
+          "fish": 6560,
+          "progress": 3268,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 7408,
+          "velocity": 45,
+          "fish": 6950,
+          "progress": 3460,
+          "status": "active"
+        },
+        {
+          "tick": 38,
+          "bar": 7195,
+          "velocity": -11,
+          "fish": 7174,
+          "progress": 3716,
+          "status": "active"
+        },
+        {
+          "tick": 42,
+          "bar": 7402,
+          "velocity": 86,
+          "fish": 7286,
+          "progress": 3844,
+          "status": "active"
+        },
+        {
+          "tick": 60,
+          "bar": 5824,
+          "velocity": -192,
+          "fish": 5360,
+          "progress": 4420,
+          "status": "active"
+        },
+        {
+          "tick": 64,
+          "bar": 5416,
+          "velocity": -52,
+          "fish": 5277,
+          "progress": 4548,
+          "status": "active"
+        },
+        {
+          "tick": 72,
+          "bar": 5054,
+          "velocity": -97,
+          "fish": 5167,
+          "progress": 4804,
+          "status": "active"
+        },
+        {
+          "tick": 80,
+          "bar": 5145,
+          "velocity": 20,
+          "fish": 5103,
+          "progress": 5060,
+          "status": "active"
+        },
+        {
+          "tick": 88,
+          "bar": 5081,
+          "velocity": 51,
+          "fish": 5623,
+          "progress": 5316,
+          "status": "active"
+        },
+        {
+          "tick": 96,
+          "bar": 6192,
+          "velocity": 197,
+          "fish": 6051,
+          "progress": 5572,
+          "status": "active"
+        },
+        {
+          "tick": 100,
+          "bar": 6677,
+          "velocity": 79,
+          "fish": 6161,
+          "progress": 5700,
+          "status": "active"
+        },
+        {
+          "tick": 120,
+          "bar": 6617,
+          "velocity": -51,
+          "fish": 6312,
+          "progress": 6340,
+          "status": "active"
+        },
+        {
+          "tick": 160,
+          "bar": 4473,
+          "velocity": 32,
+          "fish": 4958,
+          "progress": 7620,
+          "status": "active"
+        },
+        {
+          "tick": 200,
+          "bar": 2970,
+          "velocity": -33,
+          "fish": 2728,
+          "progress": 8900,
+          "status": "active"
+        },
+        {
+          "tick": 235,
+          "bar": 4901,
+          "velocity": 21,
+          "fish": 5048,
+          "progress": 10000,
+          "status": "caught"
+        }
+      ]
+    },
+    {
+      "name": "v3-rare-surging-0-follow",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "surging",
+        "fishRarity": "rare",
+        "seed": 0,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 3,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "inputs": [
+        {
+          "tick": 6,
+          "held": true
+        },
+        {
+          "tick": 18,
+          "held": false
+        },
+        {
+          "tick": 30,
+          "held": true
+        },
+        {
+          "tick": 36,
+          "held": false
+        },
+        {
+          "tick": 42,
+          "held": true
+        },
+        {
+          "tick": 54,
+          "held": false
+        },
+        {
+          "tick": 60,
+          "held": true
+        },
+        {
+          "tick": 66,
+          "held": false
+        },
+        {
+          "tick": 78,
+          "held": true
+        },
+        {
+          "tick": 84,
+          "held": false
+        },
+        {
+          "tick": 96,
+          "held": true
+        },
+        {
+          "tick": 108,
+          "held": false
+        },
+        {
+          "tick": 132,
+          "held": true
+        },
+        {
+          "tick": 144,
+          "held": false
+        },
+        {
+          "tick": 168,
+          "held": true
+        },
+        {
+          "tick": 174,
+          "held": false
+        },
+        {
+          "tick": 180,
+          "held": true
+        },
+        {
+          "tick": 186,
+          "held": false
+        },
+        {
+          "tick": 192,
+          "held": true
+        },
+        {
+          "tick": 198,
+          "held": false
+        },
+        {
+          "tick": 210,
+          "held": true
+        },
+        {
+          "tick": 222,
+          "held": false
+        },
+        {
+          "tick": 228,
+          "held": true
+        },
+        {
+          "tick": 234,
+          "held": false
+        }
+      ],
+      "endTick": 235,
+      "expected": {
+        "tick": 235,
+        "bar": 3889,
+        "velocity": 109,
+        "fish": 3790,
+        "progress": 10000,
+        "status": "caught"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 4980,
+          "velocity": -20,
+          "fish": 5044,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 15,
+          "bar": 4968,
+          "velocity": 127,
+          "fish": 5372,
+          "progress": 2980,
+          "status": "active"
+        },
+        {
+          "tick": 16,
+          "bar": 5113,
+          "velocity": 145,
+          "fish": 5383,
+          "progress": 3012,
+          "status": "active"
+        },
+        {
+          "tick": 24,
+          "bar": 5929,
+          "velocity": 17,
+          "fish": 5439,
+          "progress": 3268,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 5634,
+          "velocity": -90,
+          "fish": 5454,
+          "progress": 3460,
+          "status": "active"
+        },
+        {
+          "tick": 38,
+          "bar": 5770,
+          "velocity": 25,
+          "fish": 5466,
+          "progress": 3716,
+          "status": "active"
+        },
+        {
+          "tick": 42,
+          "bar": 5666,
+          "velocity": -53,
+          "fish": 5926,
+          "progress": 3844,
+          "status": "active"
+        },
+        {
+          "tick": 60,
+          "bar": 7433,
+          "velocity": 31,
+          "fish": 7623,
+          "progress": 4420,
+          "status": "active"
+        },
+        {
+          "tick": 64,
+          "bar": 7781,
+          "velocity": 118,
+          "fish": 7709,
+          "progress": 4548,
+          "status": "active"
+        },
+        {
+          "tick": 72,
+          "bar": 8342,
+          "velocity": -38,
+          "fish": 7772,
+          "progress": 4804,
+          "status": "active"
+        },
+        {
+          "tick": 80,
+          "bar": 7635,
+          "velocity": -61,
+          "fish": 7516,
+          "progress": 5060,
+          "status": "active"
+        },
+        {
+          "tick": 88,
+          "bar": 7647,
+          "velocity": -36,
+          "fish": 7260,
+          "progress": 5316,
+          "status": "active"
+        },
+        {
+          "tick": 96,
+          "bar": 6821,
+          "velocity": -148,
+          "fish": 7004,
+          "progress": 5572,
+          "status": "active"
+        },
+        {
+          "tick": 100,
+          "bar": 6559,
+          "velocity": -20,
+          "fish": 6876,
+          "progress": 5700,
+          "status": "active"
+        },
+        {
+          "tick": 120,
+          "bar": 7242,
+          "velocity": -100,
+          "fish": 5836,
+          "progress": 6340,
+          "status": "active"
+        },
+        {
+          "tick": 160,
+          "bar": 4208,
+          "velocity": -161,
+          "fish": 2762,
+          "progress": 7620,
+          "status": "active"
+        },
+        {
+          "tick": 200,
+          "bar": 2632,
+          "velocity": 61,
+          "fish": 2278,
+          "progress": 8900,
+          "status": "active"
+        },
+        {
+          "tick": 235,
+          "bar": 3889,
+          "velocity": 109,
+          "fish": 3790,
+          "progress": 10000,
+          "status": "caught"
+        }
+      ]
+    },
+    {
+      "name": "v3-epic-surging-4294967295-follow",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "surging",
+        "fishRarity": "epic",
+        "seed": 4294967295,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 4000,
+        "difficulty": 5,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "inputs": [
+        {
+          "tick": 6,
+          "held": true
+        },
+        {
+          "tick": 12,
+          "held": false
+        },
+        {
+          "tick": 24,
+          "held": true
+        },
+        {
+          "tick": 30,
+          "held": false
+        },
+        {
+          "tick": 36,
+          "held": true
+        },
+        {
+          "tick": 42,
+          "held": false
+        },
+        {
+          "tick": 102,
+          "held": true
+        },
+        {
+          "tick": 108,
+          "held": false
+        },
+        {
+          "tick": 114,
+          "held": true
+        },
+        {
+          "tick": 120,
+          "held": false
+        },
+        {
+          "tick": 126,
+          "held": true
+        },
+        {
+          "tick": 132,
+          "held": false
+        },
+        {
+          "tick": 144,
+          "held": true
+        },
+        {
+          "tick": 168,
+          "held": false
+        },
+        {
+          "tick": 180,
+          "held": true
+        },
+        {
+          "tick": 186,
+          "held": false
+        },
+        {
+          "tick": 198,
+          "held": true
+        },
+        {
+          "tick": 204,
+          "held": false
+        },
+        {
+          "tick": 216,
+          "held": true
+        },
+        {
+          "tick": 222,
+          "held": false
+        },
+        {
+          "tick": 228,
+          "held": true
+        },
+        {
+          "tick": 234,
+          "held": false
+        },
+        {
+          "tick": 240,
+          "held": true
+        }
+      ],
+      "endTick": 249,
+      "expected": {
+        "tick": 249,
+        "bar": 6151,
+        "velocity": 154,
+        "fish": 7042,
+        "progress": 10000,
+        "status": "caught"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 4980,
+          "velocity": -20,
+          "fish": 4939,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 15,
+          "bar": 4703,
+          "velocity": -3,
+          "fish": 4085,
+          "progress": 2980,
+          "status": "active"
+        },
+        {
+          "tick": 16,
+          "bar": 4681,
+          "velocity": -22,
+          "fish": 4025,
+          "progress": 3012,
+          "status": "active"
+        },
+        {
+          "tick": 24,
+          "bar": 3938,
+          "velocity": -140,
+          "fish": 3706,
+          "progress": 3268,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 3763,
+          "velocity": 40,
+          "fish": 3618,
+          "progress": 3460,
+          "status": "active"
+        },
+        {
+          "tick": 38,
+          "bar": 3516,
+          "velocity": -15,
+          "fish": 3542,
+          "progress": 3716,
+          "status": "active"
+        },
+        {
+          "tick": 42,
+          "bar": 3707,
+          "velocity": 82,
+          "fish": 3010,
+          "progress": 3844,
+          "status": "active"
+        },
+        {
+          "tick": 60,
+          "bar": 2097,
+          "velocity": -193,
+          "fish": 1100,
+          "progress": 4420,
+          "status": "active"
+        },
+        {
+          "tick": 64,
+          "bar": 2000,
+          "velocity": 0,
+          "fish": 1010,
+          "progress": 4548,
+          "status": "active"
+        },
+        {
+          "tick": 72,
+          "bar": 2000,
+          "velocity": 0,
+          "fish": 944,
+          "progress": 4804,
+          "status": "active"
+        },
+        {
+          "tick": 80,
+          "bar": 2000,
+          "velocity": 0,
+          "fish": 1232,
+          "progress": 5060,
+          "status": "active"
+        },
+        {
+          "tick": 88,
+          "bar": 2000,
+          "velocity": 0,
+          "fish": 1520,
+          "progress": 5316,
+          "status": "active"
+        },
+        {
+          "tick": 96,
+          "bar": 2000,
+          "velocity": 0,
+          "fish": 1808,
+          "progress": 5572,
+          "status": "active"
+        },
+        {
+          "tick": 100,
+          "bar": 2000,
+          "velocity": 0,
+          "fish": 1952,
+          "progress": 5700,
+          "status": "active"
+        },
+        {
+          "tick": 120,
+          "bar": 3170,
+          "velocity": 123,
+          "fish": 3172,
+          "progress": 6340,
+          "status": "active"
+        },
+        {
+          "tick": 160,
+          "bar": 5009,
+          "velocity": 220,
+          "fish": 6734,
+          "progress": 7158,
+          "status": "active"
+        },
+        {
+          "tick": 200,
+          "bar": 6711,
+          "velocity": -66,
+          "fish": 6633,
+          "progress": 8438,
+          "status": "active"
+        },
+        {
+          "tick": 249,
+          "bar": 6151,
+          "velocity": 154,
+          "fish": 7042,
+          "progress": 10000,
+          "status": "caught"
+        }
+      ]
+    },
+    {
+      "name": "v3-epic-stubborn-17-follow",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "stubborn",
+        "fishRarity": "epic",
+        "seed": 17,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 4,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "inputs": [
+        {
+          "tick": 6,
+          "held": true
+        },
+        {
+          "tick": 18,
+          "held": false
+        },
+        {
+          "tick": 24,
+          "held": true
+        },
+        {
+          "tick": 30,
+          "held": false
+        },
+        {
+          "tick": 36,
+          "held": true
+        },
+        {
+          "tick": 42,
+          "held": false
+        },
+        {
+          "tick": 54,
+          "held": true
+        },
+        {
+          "tick": 66,
+          "held": false
+        },
+        {
+          "tick": 84,
+          "held": true
+        },
+        {
+          "tick": 96,
+          "held": false
+        },
+        {
+          "tick": 108,
+          "held": true
+        },
+        {
+          "tick": 114,
+          "held": false
+        },
+        {
+          "tick": 126,
+          "held": true
+        },
+        {
+          "tick": 132,
+          "held": false
+        },
+        {
+          "tick": 138,
+          "held": true
+        },
+        {
+          "tick": 144,
+          "held": false
+        },
+        {
+          "tick": 168,
+          "held": true
+        },
+        {
+          "tick": 180,
+          "held": false
+        },
+        {
+          "tick": 192,
+          "held": true
+        },
+        {
+          "tick": 198,
+          "held": false
+        },
+        {
+          "tick": 204,
+          "held": true
+        },
+        {
+          "tick": 210,
+          "held": false
+        },
+        {
+          "tick": 216,
+          "held": true
+        },
+        {
+          "tick": 222,
+          "held": false
+        },
+        {
+          "tick": 228,
+          "held": true
+        },
+        {
+          "tick": 234,
+          "held": false
+        },
+        {
+          "tick": 246,
+          "held": true
+        },
+        {
+          "tick": 252,
+          "held": false
+        },
+        {
+          "tick": 258,
+          "held": true
+        },
+        {
+          "tick": 264,
+          "held": false
+        }
+      ],
+      "endTick": 269,
+      "expected": {
+        "tick": 269,
+        "bar": 3418,
+        "velocity": -25,
+        "fish": 2518,
+        "progress": 10000,
+        "status": "caught"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 4980,
+          "velocity": -20,
+          "fish": 5026,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 15,
+          "bar": 4968,
+          "velocity": 127,
+          "fish": 5390,
+          "progress": 2980,
+          "status": "active"
+        },
+        {
+          "tick": 16,
+          "bar": 5113,
+          "velocity": 145,
+          "fish": 5416,
+          "progress": 3012,
+          "status": "active"
+        },
+        {
+          "tick": 24,
+          "bar": 5929,
+          "velocity": 17,
+          "fish": 6392,
+          "progress": 3268,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 6494,
+          "velocity": 143,
+          "fish": 6938,
+          "progress": 3460,
+          "status": "active"
+        },
+        {
+          "tick": 38,
+          "bar": 6864,
+          "velocity": 44,
+          "fish": 7232,
+          "progress": 3716,
+          "status": "active"
+        },
+        {
+          "tick": 42,
+          "bar": 7254,
+          "velocity": 127,
+          "fish": 7296,
+          "progress": 3844,
+          "status": "active"
+        },
+        {
+          "tick": 60,
+          "bar": 6986,
+          "velocity": 57,
+          "fish": 7376,
+          "progress": 4420,
+          "status": "active"
+        },
+        {
+          "tick": 64,
+          "bar": 7423,
+          "velocity": 138,
+          "fish": 7380,
+          "progress": 4548,
+          "status": "active"
+        },
+        {
+          "tick": 72,
+          "bar": 8187,
+          "velocity": 11,
+          "fish": 7381,
+          "progress": 4804,
+          "status": "active"
+        },
+        {
+          "tick": 80,
+          "bar": 7631,
+          "velocity": -122,
+          "fish": 7381,
+          "progress": 5060,
+          "status": "active"
+        },
+        {
+          "tick": 88,
+          "bar": 6706,
+          "velocity": -34,
+          "fish": 7381,
+          "progress": 5316,
+          "status": "active"
+        },
+        {
+          "tick": 96,
+          "bar": 7314,
+          "velocity": 147,
+          "fish": 7173,
+          "progress": 5572,
+          "status": "active"
+        },
+        {
+          "tick": 100,
+          "bar": 7626,
+          "velocity": 40,
+          "fish": 7069,
+          "progress": 5700,
+          "status": "active"
+        },
+        {
+          "tick": 120,
+          "bar": 7170,
+          "velocity": -59,
+          "fish": 6549,
+          "progress": 6340,
+          "status": "active"
+        },
+        {
+          "tick": 160,
+          "bar": 5044,
+          "velocity": -176,
+          "fish": 3316,
+          "progress": 6619,
+          "status": "active"
+        },
+        {
+          "tick": 200,
+          "bar": 2951,
+          "velocity": 10,
+          "fish": 2784,
+          "progress": 7822,
+          "status": "active"
+        },
+        {
+          "tick": 269,
+          "bar": 3418,
+          "velocity": -25,
+          "fish": 2518,
+          "progress": 10000,
+          "status": "caught"
+        }
+      ]
+    },
+    {
+      "name": "v3-legendary-stubborn-3902242211-follow",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "stubborn",
+        "fishRarity": "legendary",
+        "seed": 3902242211,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 5,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "inputs": [
+        {
+          "tick": 6,
+          "held": true
+        },
+        {
+          "tick": 18,
+          "held": false
+        },
+        {
+          "tick": 24,
+          "held": true
+        },
+        {
+          "tick": 36,
+          "held": false
+        },
+        {
+          "tick": 54,
+          "held": true
+        },
+        {
+          "tick": 66,
+          "held": false
+        },
+        {
+          "tick": 78,
+          "held": true
+        },
+        {
+          "tick": 84,
+          "held": false
+        },
+        {
+          "tick": 90,
+          "held": true
+        },
+        {
+          "tick": 96,
+          "held": false
+        },
+        {
+          "tick": 108,
+          "held": true
+        },
+        {
+          "tick": 114,
+          "held": false
+        },
+        {
+          "tick": 126,
+          "held": true
+        },
+        {
+          "tick": 138,
+          "held": false
+        },
+        {
+          "tick": 168,
+          "held": true
+        },
+        {
+          "tick": 174,
+          "held": false
+        },
+        {
+          "tick": 180,
+          "held": true
+        },
+        {
+          "tick": 186,
+          "held": false
+        },
+        {
+          "tick": 192,
+          "held": true
+        },
+        {
+          "tick": 198,
+          "held": false
+        },
+        {
+          "tick": 204,
+          "held": true
+        },
+        {
+          "tick": 210,
+          "held": false
+        },
+        {
+          "tick": 222,
+          "held": true
+        },
+        {
+          "tick": 234,
+          "held": false
+        },
+        {
+          "tick": 246,
+          "held": true
+        },
+        {
+          "tick": 252,
+          "held": false
+        },
+        {
+          "tick": 264,
+          "held": true
+        },
+        {
+          "tick": 270,
+          "held": false
+        }
+      ],
+      "endTick": 288,
+      "expected": {
+        "tick": 288,
+        "bar": 1600,
+        "velocity": 0,
+        "fish": 1561,
+        "progress": 10000,
+        "status": "caught"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 4980,
+          "velocity": -20,
+          "fish": 5028,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 15,
+          "bar": 4968,
+          "velocity": 127,
+          "fish": 5420,
+          "progress": 2980,
+          "status": "active"
+        },
+        {
+          "tick": 16,
+          "bar": 5113,
+          "velocity": 145,
+          "fish": 5448,
+          "progress": 3012,
+          "status": "active"
+        },
+        {
+          "tick": 24,
+          "bar": 5929,
+          "velocity": 17,
+          "fish": 6528,
+          "progress": 3268,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 6494,
+          "velocity": 143,
+          "fish": 7231,
+          "progress": 3460,
+          "status": "active"
+        },
+        {
+          "tick": 38,
+          "bar": 8004,
+          "velocity": 154,
+          "fish": 7633,
+          "progress": 3716,
+          "status": "active"
+        },
+        {
+          "tick": 42,
+          "bar": 8339,
+          "velocity": 45,
+          "fish": 7720,
+          "progress": 3844,
+          "status": "active"
+        },
+        {
+          "tick": 60,
+          "bar": 7231,
+          "velocity": 32,
+          "fish": 7833,
+          "progress": 4420,
+          "status": "active"
+        },
+        {
+          "tick": 64,
+          "bar": 7583,
+          "velocity": 119,
+          "fish": 7837,
+          "progress": 4548,
+          "status": "active"
+        },
+        {
+          "tick": 72,
+          "bar": 8231,
+          "velocity": 0,
+          "fish": 7840,
+          "progress": 4804,
+          "status": "active"
+        },
+        {
+          "tick": 80,
+          "bar": 7756,
+          "velocity": -37,
+          "fish": 7840,
+          "progress": 5060,
+          "status": "active"
+        },
+        {
+          "tick": 88,
+          "bar": 7912,
+          "velocity": -22,
+          "fish": 7840,
+          "progress": 5316,
+          "status": "active"
+        },
+        {
+          "tick": 96,
+          "bar": 8032,
+          "velocity": 94,
+          "fish": 7616,
+          "progress": 5572,
+          "status": "active"
+        },
+        {
+          "tick": 100,
+          "bar": 8161,
+          "velocity": -2,
+          "fish": 7504,
+          "progress": 5700,
+          "status": "active"
+        },
+        {
+          "tick": 120,
+          "bar": 7280,
+          "velocity": -69,
+          "fish": 6944,
+          "progress": 6340,
+          "status": "active"
+        },
+        {
+          "tick": 160,
+          "bar": 5364,
+          "velocity": -205,
+          "fish": 3303,
+          "progress": 6157,
+          "status": "active"
+        },
+        {
+          "tick": 200,
+          "bar": 2753,
+          "velocity": 40,
+          "fish": 2576,
+          "progress": 7206,
+          "status": "active"
+        },
+        {
+          "tick": 288,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 1561,
+          "progress": 10000,
+          "status": "caught"
+        }
+      ]
+    },
+    {
+      "name": "v3-legendary-surging-2147483648-follow",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "surging",
+        "fishRarity": "legendary",
+        "seed": 2147483648,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 5,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "inputs": [
+        {
+          "tick": 6,
+          "held": true
+        },
+        {
+          "tick": 18,
+          "held": false
+        },
+        {
+          "tick": 24,
+          "held": true
+        },
+        {
+          "tick": 30,
+          "held": false
+        },
+        {
+          "tick": 36,
+          "held": true
+        },
+        {
+          "tick": 42,
+          "held": false
+        },
+        {
+          "tick": 48,
+          "held": true
+        },
+        {
+          "tick": 96,
+          "held": false
+        },
+        {
+          "tick": 102,
+          "held": true
+        },
+        {
+          "tick": 108,
+          "held": false
+        },
+        {
+          "tick": 120,
+          "held": true
+        },
+        {
+          "tick": 126,
+          "held": false
+        },
+        {
+          "tick": 132,
+          "held": true
+        },
+        {
+          "tick": 138,
+          "held": false
+        },
+        {
+          "tick": 162,
+          "held": true
+        },
+        {
+          "tick": 174,
+          "held": false
+        },
+        {
+          "tick": 180,
+          "held": true
+        },
+        {
+          "tick": 186,
+          "held": false
+        },
+        {
+          "tick": 198,
+          "held": true
+        },
+        {
+          "tick": 204,
+          "held": false
+        },
+        {
+          "tick": 210,
+          "held": true
+        },
+        {
+          "tick": 216,
+          "held": false
+        },
+        {
+          "tick": 228,
+          "held": true
+        }
+      ],
+      "endTick": 235,
+      "expected": {
+        "tick": 235,
+        "bar": 3756,
+        "velocity": 69,
+        "fish": 3960,
+        "progress": 10000,
+        "status": "caught"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 4980,
+          "velocity": -20,
+          "fish": 5064,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 15,
+          "bar": 4968,
+          "velocity": 127,
+          "fish": 5960,
+          "progress": 2980,
+          "status": "active"
+        },
+        {
+          "tick": 16,
+          "bar": 5113,
+          "velocity": 145,
+          "fish": 6024,
+          "progress": 3012,
+          "status": "active"
+        },
+        {
+          "tick": 24,
+          "bar": 5929,
+          "velocity": 17,
+          "fish": 6536,
+          "progress": 3268,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 6494,
+          "velocity": 143,
+          "fish": 6704,
+          "progress": 3460,
+          "status": "active"
+        },
+        {
+          "tick": 38,
+          "bar": 6864,
+          "velocity": 44,
+          "fish": 6912,
+          "progress": 3716,
+          "status": "active"
+        },
+        {
+          "tick": 42,
+          "bar": 7254,
+          "velocity": 127,
+          "fish": 7476,
+          "progress": 3844,
+          "status": "active"
+        },
+        {
+          "tick": 60,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 9099,
+          "progress": 4420,
+          "status": "active"
+        },
+        {
+          "tick": 64,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 9150,
+          "progress": 4548,
+          "status": "active"
+        },
+        {
+          "tick": 72,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 9187,
+          "progress": 4804,
+          "status": "active"
+        },
+        {
+          "tick": 80,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 8899,
+          "progress": 5060,
+          "status": "active"
+        },
+        {
+          "tick": 88,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 8611,
+          "progress": 5316,
+          "status": "active"
+        },
+        {
+          "tick": 96,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 8323,
+          "progress": 5572,
+          "status": "active"
+        },
+        {
+          "tick": 100,
+          "bar": 8216,
+          "velocity": -71,
+          "fish": 8179,
+          "progress": 5700,
+          "status": "active"
+        },
+        {
+          "tick": 120,
+          "bar": 7338,
+          "velocity": -140,
+          "fish": 7049,
+          "progress": 6340,
+          "status": "active"
+        },
+        {
+          "tick": 160,
+          "bar": 4653,
+          "velocity": -220,
+          "fish": 4220,
+          "progress": 7620,
+          "status": "active"
+        },
+        {
+          "tick": 200,
+          "bar": 4229,
+          "velocity": -52,
+          "fish": 4540,
+          "progress": 8900,
+          "status": "active"
+        },
+        {
+          "tick": 235,
+          "bar": 3756,
+          "velocity": 69,
+          "fish": 3960,
+          "progress": 10000,
+          "status": "caught"
+        }
+      ]
+    },
+    {
+      "name": "v3-common-steady-0-release",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "steady",
+        "fishRarity": "common",
+        "seed": 0,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 1,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "inputs": [],
+      "endTick": 85,
+      "expected": {
+        "tick": 85,
+        "bar": 1600,
+        "velocity": 0,
+        "fish": 4057,
+        "progress": 0,
+        "status": "escaped"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 4980,
+          "velocity": -20,
+          "fish": 4962,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 15,
+          "bar": 3202,
+          "velocity": -197,
+          "fish": 4430,
+          "progress": 2980,
+          "status": "active"
+        },
+        {
+          "tick": 16,
+          "bar": 2997,
+          "velocity": -205,
+          "fish": 4396,
+          "progress": 3012,
+          "status": "active"
+        },
+        {
+          "tick": 24,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 4213,
+          "progress": 2729,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 4143,
+          "progress": 2459,
+          "status": "active"
+        },
+        {
+          "tick": 38,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 4094,
+          "progress": 2099,
+          "status": "active"
+        },
+        {
+          "tick": 42,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 4081,
+          "progress": 1919,
+          "status": "active"
+        },
+        {
+          "tick": 60,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 4057,
+          "progress": 1109,
+          "status": "active"
+        },
+        {
+          "tick": 64,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 4057,
+          "progress": 929,
+          "status": "active"
+        },
+        {
+          "tick": 72,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 4057,
+          "progress": 569,
+          "status": "active"
+        },
+        {
+          "tick": 80,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 4057,
+          "progress": 209,
+          "status": "active"
+        },
+        {
+          "tick": 85,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 4057,
+          "progress": 0,
+          "status": "escaped"
+        }
+      ]
+    },
+    {
+      "name": "v3-uncommon-sprightly-4294967295-hold",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "sprightly",
+        "fishRarity": "uncommon",
+        "seed": 4294967295,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 3,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "inputs": [
+        {
+          "tick": 0,
+          "held": true
+        }
+      ],
+      "endTick": 71,
+      "expected": {
+        "tick": 71,
+        "bar": 8400,
+        "velocity": 0,
+        "fish": 4755,
+        "progress": 0,
+        "status": "escaped"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 5026,
+          "velocity": 26,
+          "fish": 4941,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 15,
+          "bar": 7278,
+          "velocity": 220,
+          "fish": 4115,
+          "progress": 2518,
+          "status": "active"
+        },
+        {
+          "tick": 16,
+          "bar": 7498,
+          "velocity": 220,
+          "fish": 4056,
+          "progress": 2473,
+          "status": "active"
+        },
+        {
+          "tick": 24,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 3594,
+          "progress": 2113,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 3388,
+          "progress": 1843,
+          "status": "active"
+        },
+        {
+          "tick": 38,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 3308,
+          "progress": 1483,
+          "status": "active"
+        },
+        {
+          "tick": 42,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 3281,
+          "progress": 1303,
+          "status": "active"
+        },
+        {
+          "tick": 60,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 4991,
+          "progress": 493,
+          "status": "active"
+        },
+        {
+          "tick": 64,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 4885,
+          "progress": 313,
+          "status": "active"
+        },
+        {
+          "tick": 71,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 4755,
+          "progress": 0,
+          "status": "escaped"
+        }
+      ]
+    },
+    {
+      "name": "v3-rare-surging-3902242211-release",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "surging",
+        "fishRarity": "rare",
+        "seed": 3902242211,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 4,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "inputs": [],
+      "endTick": 78,
+      "expected": {
+        "tick": 78,
+        "bar": 1600,
+        "velocity": 0,
+        "fish": 7316,
+        "progress": 0,
+        "status": "escaped"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 4980,
+          "velocity": -20,
+          "fish": 5021,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 15,
+          "bar": 3202,
+          "velocity": -197,
+          "fish": 5178,
+          "progress": 2826,
+          "status": "active"
+        },
+        {
+          "tick": 16,
+          "bar": 2997,
+          "velocity": -205,
+          "fish": 5183,
+          "progress": 2781,
+          "status": "active"
+        },
+        {
+          "tick": 24,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 5210,
+          "progress": 2421,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 5216,
+          "progress": 2151,
+          "status": "active"
+        },
+        {
+          "tick": 38,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 5224,
+          "progress": 1791,
+          "status": "active"
+        },
+        {
+          "tick": 42,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 5704,
+          "progress": 1611,
+          "status": "active"
+        },
+        {
+          "tick": 60,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 7389,
+          "progress": 801,
+          "status": "active"
+        },
+        {
+          "tick": 64,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 7465,
+          "progress": 621,
+          "status": "active"
+        },
+        {
+          "tick": 72,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 7520,
+          "progress": 261,
+          "status": "active"
+        },
+        {
+          "tick": 78,
+          "bar": 1600,
+          "velocity": 0,
+          "fish": 7316,
+          "progress": 0,
+          "status": "escaped"
+        }
+      ]
+    },
+    {
+      "name": "v3-epic-stubborn-2147483648-hold",
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "stubborn",
+        "fishRarity": "epic",
+        "seed": 2147483648,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 5,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "inputs": [
+        {
+          "tick": 0,
+          "held": true
+        }
+      ],
+      "endTick": 210,
+      "expected": {
+        "tick": 210,
+        "bar": 8400,
+        "velocity": 0,
+        "fish": 1663,
+        "progress": 0,
+        "status": "escaped"
+      },
+      "checkpoints": [
+        {
+          "tick": 1,
+          "bar": 5026,
+          "velocity": 26,
+          "fish": 5028,
+          "progress": 2532,
+          "status": "active"
+        },
+        {
+          "tick": 15,
+          "bar": 7278,
+          "velocity": 220,
+          "fish": 5420,
+          "progress": 2826,
+          "status": "active"
+        },
+        {
+          "tick": 16,
+          "bar": 7498,
+          "velocity": 220,
+          "fish": 5448,
+          "progress": 2781,
+          "status": "active"
+        },
+        {
+          "tick": 24,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 6450,
+          "progress": 2421,
+          "status": "active"
+        },
+        {
+          "tick": 30,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 6915,
+          "progress": 2305,
+          "status": "active"
+        },
+        {
+          "tick": 38,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 7163,
+          "progress": 2561,
+          "status": "active"
+        },
+        {
+          "tick": 42,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 7216,
+          "progress": 2689,
+          "status": "active"
+        },
+        {
+          "tick": 60,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 7285,
+          "progress": 3265,
+          "status": "active"
+        },
+        {
+          "tick": 64,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 7289,
+          "progress": 3393,
+          "status": "active"
+        },
+        {
+          "tick": 72,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 7289,
+          "progress": 3649,
+          "status": "active"
+        },
+        {
+          "tick": 80,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 7289,
+          "progress": 3905,
+          "status": "active"
+        },
+        {
+          "tick": 88,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 7289,
+          "progress": 4161,
+          "status": "active"
+        },
+        {
+          "tick": 96,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 7065,
+          "progress": 4417,
+          "status": "active"
+        },
+        {
+          "tick": 100,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 6953,
+          "progress": 4545,
+          "status": "active"
+        },
+        {
+          "tick": 120,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 6393,
+          "progress": 4030,
+          "status": "active"
+        },
+        {
+          "tick": 160,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 2921,
+          "progress": 2230,
+          "status": "active"
+        },
+        {
+          "tick": 200,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 1611,
+          "progress": 430,
+          "status": "active"
+        },
+        {
+          "tick": 210,
+          "bar": 8400,
+          "velocity": 0,
+          "fish": 1663,
+          "progress": 0,
+          "status": "escaped"
+        }
+      ]
+    }
+  ],
+  "phases": [
+    {
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "steady",
+        "fishRarity": "legendary",
+        "seed": 4294967295,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 5,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "period": 96,
+      "samples": [
+        {
+          "tick": 0,
+          "phase": "cruising"
+        },
+        {
+          "tick": 15,
+          "phase": "cruising"
+        },
+        {
+          "tick": 16,
+          "phase": "cruising"
+        },
+        {
+          "tick": 23,
+          "phase": "cruising"
+        },
+        {
+          "tick": 24,
+          "phase": "cruising"
+        },
+        {
+          "tick": 29,
+          "phase": "cruising"
+        },
+        {
+          "tick": 30,
+          "phase": "cruising"
+        },
+        {
+          "tick": 37,
+          "phase": "cruising"
+        },
+        {
+          "tick": 38,
+          "phase": "cruising"
+        },
+        {
+          "tick": 41,
+          "phase": "cruising"
+        },
+        {
+          "tick": 42,
+          "phase": "cruising"
+        },
+        {
+          "tick": 59,
+          "phase": "cruising"
+        },
+        {
+          "tick": 60,
+          "phase": "cruising"
+        },
+        {
+          "tick": 63,
+          "phase": "cruising"
+        },
+        {
+          "tick": 64,
+          "phase": "recovering"
+        },
+        {
+          "tick": 71,
+          "phase": "recovering"
+        },
+        {
+          "tick": 72,
+          "phase": "recovering"
+        },
+        {
+          "tick": 79,
+          "phase": "recovering"
+        },
+        {
+          "tick": 80,
+          "phase": "recovering"
+        },
+        {
+          "tick": 87,
+          "phase": "recovering"
+        },
+        {
+          "tick": 88,
+          "phase": "recovering"
+        },
+        {
+          "tick": 95,
+          "phase": "recovering"
+        },
+        {
+          "tick": 96,
+          "phase": "cruising"
+        },
+        {
+          "tick": 99,
+          "phase": "cruising"
+        },
+        {
+          "tick": 100,
+          "phase": "cruising"
+        },
+        {
+          "tick": 119,
+          "phase": "cruising"
+        },
+        {
+          "tick": 120,
+          "phase": "cruising"
+        },
+        {
+          "tick": 599,
+          "phase": "cruising"
+        },
+        {
+          "tick": 600,
+          "phase": "cruising"
+        }
+      ]
+    },
+    {
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "sprightly",
+        "fishRarity": "legendary",
+        "seed": 4294967295,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 5,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "period": 80,
+      "samples": [
+        {
+          "tick": 0,
+          "phase": "cruising"
+        },
+        {
+          "tick": 15,
+          "phase": "cruising"
+        },
+        {
+          "tick": 16,
+          "phase": "cruising"
+        },
+        {
+          "tick": 23,
+          "phase": "cruising"
+        },
+        {
+          "tick": 24,
+          "phase": "cruising"
+        },
+        {
+          "tick": 29,
+          "phase": "cruising"
+        },
+        {
+          "tick": 30,
+          "phase": "preparing"
+        },
+        {
+          "tick": 37,
+          "phase": "preparing"
+        },
+        {
+          "tick": 38,
+          "phase": "preparing"
+        },
+        {
+          "tick": 41,
+          "phase": "preparing"
+        },
+        {
+          "tick": 42,
+          "phase": "surging"
+        },
+        {
+          "tick": 59,
+          "phase": "surging"
+        },
+        {
+          "tick": 60,
+          "phase": "recovering"
+        },
+        {
+          "tick": 63,
+          "phase": "recovering"
+        },
+        {
+          "tick": 64,
+          "phase": "recovering"
+        },
+        {
+          "tick": 71,
+          "phase": "recovering"
+        },
+        {
+          "tick": 72,
+          "phase": "recovering"
+        },
+        {
+          "tick": 79,
+          "phase": "recovering"
+        },
+        {
+          "tick": 80,
+          "phase": "cruising"
+        },
+        {
+          "tick": 87,
+          "phase": "cruising"
+        },
+        {
+          "tick": 88,
+          "phase": "cruising"
+        },
+        {
+          "tick": 95,
+          "phase": "cruising"
+        },
+        {
+          "tick": 96,
+          "phase": "cruising"
+        },
+        {
+          "tick": 99,
+          "phase": "cruising"
+        },
+        {
+          "tick": 100,
+          "phase": "cruising"
+        },
+        {
+          "tick": 119,
+          "phase": "preparing"
+        },
+        {
+          "tick": 120,
+          "phase": "preparing"
+        },
+        {
+          "tick": 599,
+          "phase": "preparing"
+        },
+        {
+          "tick": 600,
+          "phase": "preparing"
+        }
+      ]
+    },
+    {
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "surging",
+        "fishRarity": "legendary",
+        "seed": 4294967295,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 5,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "period": 100,
+      "samples": [
+        {
+          "tick": 0,
+          "phase": "cruising"
+        },
+        {
+          "tick": 15,
+          "phase": "cruising"
+        },
+        {
+          "tick": 16,
+          "phase": "cruising"
+        },
+        {
+          "tick": 23,
+          "phase": "cruising"
+        },
+        {
+          "tick": 24,
+          "phase": "preparing"
+        },
+        {
+          "tick": 29,
+          "phase": "preparing"
+        },
+        {
+          "tick": 30,
+          "phase": "preparing"
+        },
+        {
+          "tick": 37,
+          "phase": "preparing"
+        },
+        {
+          "tick": 38,
+          "phase": "surging"
+        },
+        {
+          "tick": 41,
+          "phase": "surging"
+        },
+        {
+          "tick": 42,
+          "phase": "surging"
+        },
+        {
+          "tick": 59,
+          "phase": "surging"
+        },
+        {
+          "tick": 60,
+          "phase": "surging"
+        },
+        {
+          "tick": 63,
+          "phase": "surging"
+        },
+        {
+          "tick": 64,
+          "phase": "surging"
+        },
+        {
+          "tick": 71,
+          "phase": "surging"
+        },
+        {
+          "tick": 72,
+          "phase": "recovering"
+        },
+        {
+          "tick": 79,
+          "phase": "recovering"
+        },
+        {
+          "tick": 80,
+          "phase": "recovering"
+        },
+        {
+          "tick": 87,
+          "phase": "recovering"
+        },
+        {
+          "tick": 88,
+          "phase": "recovering"
+        },
+        {
+          "tick": 95,
+          "phase": "recovering"
+        },
+        {
+          "tick": 96,
+          "phase": "recovering"
+        },
+        {
+          "tick": 99,
+          "phase": "recovering"
+        },
+        {
+          "tick": 100,
+          "phase": "cruising"
+        },
+        {
+          "tick": 119,
+          "phase": "cruising"
+        },
+        {
+          "tick": 120,
+          "phase": "cruising"
+        },
+        {
+          "tick": 599,
+          "phase": "recovering"
+        },
+        {
+          "tick": 600,
+          "phase": "cruising"
+        }
+      ]
+    },
+    {
+      "challenge": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "rulesVersion": 3,
+        "resistance": "stubborn",
+        "fishRarity": "legendary",
+        "seed": 4294967295,
+        "tickMs": 50,
+        "maxTicks": 600,
+        "zoneWidth": 3200,
+        "difficulty": 5,
+        "startedAt": "2026-11-04T10:00:00.000Z",
+        "expiresAt": "2026-11-04T10:02:00.000Z"
+      },
+      "period": 120,
+      "samples": [
+        {
+          "tick": 0,
+          "phase": "preparing"
+        },
+        {
+          "tick": 15,
+          "phase": "preparing"
+        },
+        {
+          "tick": 16,
+          "phase": "surging"
+        },
+        {
+          "tick": 23,
+          "phase": "surging"
+        },
+        {
+          "tick": 24,
+          "phase": "surging"
+        },
+        {
+          "tick": 29,
+          "phase": "surging"
+        },
+        {
+          "tick": 30,
+          "phase": "surging"
+        },
+        {
+          "tick": 37,
+          "phase": "surging"
+        },
+        {
+          "tick": 38,
+          "phase": "surging"
+        },
+        {
+          "tick": 41,
+          "phase": "surging"
+        },
+        {
+          "tick": 42,
+          "phase": "surging"
+        },
+        {
+          "tick": 59,
+          "phase": "surging"
+        },
+        {
+          "tick": 60,
+          "phase": "surging"
+        },
+        {
+          "tick": 63,
+          "phase": "surging"
+        },
+        {
+          "tick": 64,
+          "phase": "surging"
+        },
+        {
+          "tick": 71,
+          "phase": "surging"
+        },
+        {
+          "tick": 72,
+          "phase": "surging"
+        },
+        {
+          "tick": 79,
+          "phase": "surging"
+        },
+        {
+          "tick": 80,
+          "phase": "surging"
+        },
+        {
+          "tick": 87,
+          "phase": "surging"
+        },
+        {
+          "tick": 88,
+          "phase": "recovering"
+        },
+        {
+          "tick": 95,
+          "phase": "recovering"
+        },
+        {
+          "tick": 96,
+          "phase": "recovering"
+        },
+        {
+          "tick": 99,
+          "phase": "recovering"
+        },
+        {
+          "tick": 100,
+          "phase": "recovering"
+        },
+        {
+          "tick": 119,
+          "phase": "recovering"
+        },
+        {
+          "tick": 120,
+          "phase": "preparing"
+        },
+        {
+          "tick": 599,
+          "phase": "recovering"
+        },
+        {
+          "tick": 600,
+          "phase": "preparing"
+        }
+      ]
+    }
+  ]
+}

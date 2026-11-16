@@ -1,0 +1,10 @@
+.layer { position: fixed; z-index: 125; left: 50%; bottom: calc(94px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: max-content; max-width: calc(100vw - 24px); pointer-events: none; }
+.card { display: grid; grid-template-columns: 30px minmax(0, 1fr); column-gap: 9px; align-items: center; min-width: 145px; max-width: 270px; padding: 10px 16px 10px 11px; overflow: hidden; border: 1px solid rgba(196,222,158,.5); border-radius: 16px 16px 16px 6px; color: #e7f2d6; background: linear-gradient(130deg, #364629, #1d2b1d); box-shadow: 0 7px 24px #09140955, inset 0 1px #e1f2bb12; }
+.card[hidden] { display: none; }
+.emblem { position: relative; grid-row: 1 / 3; display: grid; place-items: center; width: 30px; height: 33px; color: #c6df9e; }
+.emblem > svg:last-child { position: absolute; right: -1px; top: 0; }
+.amount { color: #f0f6dd; font-size: 17px; font-weight: 750; line-height: 1.25; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.level { margin-top: 2px; color: #bacba6; font-size: 10px; line-height: 1.3; }
+.card[data-level-up="true"] { border-color: #dcc37e; background: linear-gradient(130deg, #50482a, #253321); }
+.card[data-level-up="true"] .emblem, .card[data-level-up="true"] .level { color: #f0d590; }
+@media (prefers-reduced-motion: reduce) { .card { animation: none; transition: none; } }

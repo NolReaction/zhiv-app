@@ -1,0 +1,18 @@
+.card { --catch-accent: #a8c3b4; display: flex; align-items: center; gap: 12px; min-width: 0; animation: catchReveal 420ms cubic-bezier(.2,.75,.25,1) both; }
+.card[data-rarity='uncommon'] { --catch-accent: #a9c782; }.card[data-rarity='rare'] { --catch-accent: #8dbde1; }.card[data-rarity='epic'] { --catch-accent: #c4a6e2; }.card[data-rarity='legendary'] { --catch-accent: #efd187; }
+.portrait { display: grid; place-items: center; flex: 0 0 72px; width: 72px; height: 72px; border: 1px solid var(--catch-accent); border-radius: 50%; background: radial-gradient(circle, #d6dca526, #17353c10 70%); box-shadow: 0 0 15px #0a212d80; }
+.card[data-catch-record] .portrait { animation: recordSeal 650ms ease-out both; }
+.details { min-width: 0; flex: 1; }
+.rarity { color: var(--catch-accent); font-size: 9px; letter-spacing: .025em; }
+.card h3 { margin: 3px 0 4px; color: #f1e5ba; font-size: 16px; line-height: 1.25; }
+.weight { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.weight strong { color: #e8cd91; font-size: 17px; line-height: 1.2; font-variant-numeric: tabular-nums; }.weight > span { font-size: 9px; color: #a8c5ac; }
+.note { margin: 4px 0 0; color: #b4c9bb; font-size: 10px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.badges { display: flex; flex-wrap: wrap; gap: 3px 8px; margin-top: 5px; min-height: 0; }
+.badges span { display: inline-flex; align-items: center; gap: 3px; color: #e8d494; font-size: 10px; line-height: 1.35; }
+.previous { display: block; margin-top: 2px; color: #a6bbab; font-size: 9px; }
+@keyframes catchReveal { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes recordSeal { 0% { box-shadow: 0 0 0 0 #ead29160; } 100% { box-shadow: 0 0 0 14px #ead29100; } }
+@media (max-width: 380px) { .card { gap: 9px; }.portrait { width: 57px; height: 57px; flex-basis: 57px; }.portrait svg { width: 52px; height: 52px; }.card h3 { font-size: 14px; }.weight strong { font-size: 15px; } }
+@media (max-height: 500px) { .card { gap: 9px; }.portrait { width: 48px; height: 48px; flex-basis: 48px; }.portrait svg { width: 45px; height: 45px; }.card h3 { font-size: 13px; margin: 2px 0; }.rarity { font-size: 8px; }.weight strong { font-size: 13px; }.weight > span { display: none; }.note { margin-top: 2px; font-size: 9px; }.badges { margin-top: 2px; }.badges span { font-size: 9px; }.previous { display: none; } }
+@media (prefers-reduced-motion: reduce) { .card, .portrait { animation: none !important; } }

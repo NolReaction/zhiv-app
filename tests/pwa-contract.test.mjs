@@ -323,7 +323,7 @@ test("offline product and other pages never receive the cached game at the wrong
   await prepareOfflineShell(harness);
   harness.responses.set(origin + "/", new Error("Offline"));
   assert.equal(await (await harness.dispatchFetch("/")).text(), shell.html);
-  for (const path of ["/site", "/site/", "/branch"]) {
+  for (const path of ["/site", "/site/"]) {
     harness.responses.set(origin + path, new Error("Offline"));
     const response = await harness.dispatchFetch(path);
     assert.equal(response.type, "error");
@@ -694,7 +694,7 @@ test("admin navigation and data always bypass offline cache and root-shell fallb
   const harness = await createServiceWorkerHarness();
   setShellResponses(harness, "admin-network-only");
   await prepareOfflineShell(harness);
-  for (const path of ["/admin", "/admin/users", "/api/v1/admin/overview"]) {
+  for (const path of ["/admin", "/admin/users", "/branch", "/branch/reports", "/api/v1/admin/overview"]) {
     assert.equal(await harness.dispatchFetch(path), null);
   }
 });
@@ -886,10 +886,11 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
 });
 
 test("keeps the ten-second clicker lightweight and motion-safe", async () => {
-  const [app, appStyles, clicker] = await Promise.all([
+  const [app, appStyles, clicker, orbitStyles] = await Promise.all([
     readFile(new URL("../features/app/app-shell.tsx", import.meta.url), "utf8"),
     readFile(new URL("../features/app/app-shell.module.css", import.meta.url), "utf8"),
     readFile(new URL("../features/game/clicker-story.ts", import.meta.url), "utf8"),
+    readFile(new URL("../features/game/tap-boost-orbit.module.css", import.meta.url), "utf8"),
   ]);
 
   assert.doesNotMatch(clicker, /CLICKER_FINAL_TAP|rotateClickerStory/);
@@ -921,14 +922,15 @@ test("keeps the ten-second clicker lightweight and motion-safe", async () => {
   assert.match(timerFill, /transform:\s*scaleX\(var\(--series-remaining\)\);/);
   assert.match(timerFill, /transform-origin:\s*left center;/);
   assert.doesNotMatch(timerFill, /width:/);
-  assert.match(appStyles, /\.tapWave\s*\{[^}]*pointer-events:\s*none;/s);
+  assert.match(app, /<TapBoostOrbit/);
+  assert.match(orbitStyles, /\.orbit\s*\{[^}]*pointer-events:\s*none;/s);
   assert.match(appStyles, /\.seriesBreakBurst\s*\{[^}]*pointer-events:\s*none;/s);
 
   const reducedMotion = appStyles.slice(
     appStyles.indexOf("@media (prefers-reduced-motion: reduce)"),
   );
   assert.match(reducedMotion, /\.championBurst/);
-  assert.match(reducedMotion, /\.tapWave/);
+  assert.match(orbitStyles, /prefers-reduced-motion:\s*reduce[\s\S]*\.pulse\s*\{\s*display:\s*none/);
   assert.match(reducedMotion, /\.seriesBreakBurst/);
   assert.match(reducedMotion, /\.tapCounterProgress::after/);
   assert.match(reducedMotion, /display:\s*none;/);
@@ -1081,7 +1083,7 @@ test("uses a wide desktop dashboard without changing the mobile navigation contr
   assert.match(desktopPeople, /grid-template-columns:\s*minmax\(260px, 0\.72fr\) minmax\(420px, 1\.28fr\);/);
   assert.match(desktopPeople, /\.tabPanel, \.freshnessRow\s*\{[^}]*grid-column:\s*1 \/ -1;/s);
   assert.match(desktopPeople, /\.tabPanel:not\(\.sections\) > \.sections\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/s);
-  assert.match(desktopProfile, /grid-template-columns:\s*minmax\(280px, 0\.8fr\) minmax\(0, 1\.2fr\);/);
+  assert.match(desktopProfile, /\.overviewColumn\s*\{[^}]*grid-template-columns:\s*minmax\(280px, 1fr\) minmax\(0, 1\.5fr\);/s);
   // Dashboard panels follow document order. Local icon/label rows inside a
   // button do not pin a dashboard panel or change mobile navigation.
   assert.doesNotMatch(profileStyles, /[^{}]*\.(?:columns|overviewColumn|settingsList)[^{}]*\{[^}]*\bgrid-row(?:-[a-z]+)?:/);

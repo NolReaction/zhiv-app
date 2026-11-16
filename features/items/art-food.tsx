@@ -2,6 +2,62 @@ import type { ReactNode } from "react";
 
 /** Prepared meals use different serving shapes so they remain distinct at 24 px. */
 export const foodItemArt: Record<string, ReactNode> = {
+  grilled_silverfin: <>
+    <path d="m5 34 10-6 27 5-8 10-25-2Z" fill="#667767" />
+    <path d="m11 35 5 2m9-2 4 3m5-3 3 1" stroke="#de9762" strokeWidth="3" />
+    <path d="m13 21-7-6 1 13 7-4c8 7 20 4 27-4-9-7-20-8-28 1Z" fill="#d4c4a0" />
+    <path d="M16 23c8 2 15 0 21-3" stroke="#f2e3b5" strokeWidth="3" />
+    <path d="m20 16-3 8m10-9-3 9m9-7-3 7" stroke="#976743" />
+    <circle cx="36" cy="19" r="1.4" fill="#344236" stroke="none" />
+    <path d="M20 10c-4-3 3-4 0-7m10 8c-3-3 3-4 0-7" stroke="#a6b2a0" strokeWidth="1.4" />
+  </>,
+  smoked_bream: <>
+    <path d="m7 13 32-3 4 28-32 7Z" fill="#b98b55" />
+    <path d="m12 17 25-3M14 39l23-4" stroke="#e0bd82" />
+    <path d="m13 26-6-6 2 12 6-3c5 8 21 8 24-2-4-13-19-14-26-1Z" fill="#c58e4c" />
+    <path d="m21 19 6-6 1 9" fill="#a76c3e" />
+    <path d="m20 21-2 10m9-12-3 15m10-11-3 9" stroke="#825739" strokeWidth="2.5" />
+    <circle cx="35" cy="26" r="1.4" fill="#344236" stroke="none" />
+    <path d="M12 10c-3-3 3-4 0-7m12 7c-3-3 3-4 0-7" stroke="#9da994" strokeWidth="1.4" />
+  </>,
+  mooncarp_blueberries: <>
+    <ellipse cx="24" cy="30" rx="21" ry="13" fill="#acb4cb" />
+    <ellipse cx="24" cy="29" rx="17" ry="9" fill="#e2dbb7" />
+    <path d="m14 23-7-5 2 12 6-3c5 7 17 6 24-2-6-9-18-11-25-2Z" fill="#d6b97e" />
+    <path d="m18 23 3 6m3-9 3 9m3-7 3 5" stroke="#a47b4f" />
+    <circle cx="34" cy="23" r="1.4" fill="#344236" stroke="none" />
+    <circle cx="15" cy="35" r="4" fill="#697da3" /><circle cx="23" cy="36" r="3.5" fill="#526c94" />
+    <path d="M28 37c-2-7 4-9 9-7-1 6-5 9-9 7Z" fill="#87a174" />
+    <path d="M30 7a7 7 0 1 0 8 9 7 7 0 0 1-8-9Z" fill="#e9d69a" strokeWidth="1.2" />
+  </>,
+  pike_berry_sauce: <>
+    <path d="m5 22 30-12 10 24-30 11Z" fill="#a4b58a" />
+    <path d="m13 23-7-4 3 12 5-4 24-1 7-7-10-2Z" fill="#b5a46f" />
+    <path d="m16 20 5-8 4 7m1 7 5 5 1-6" fill="#7e9264" />
+    <path d="M17 23c9-5 18-3 18 0-4 5-11 4-18 4Z" fill="#b56372" stroke="#8b4d5c" />
+    <circle cx="38" cy="20" r="1.2" fill="#344236" stroke="none" />
+    <circle cx="23" cy="37" r="4" fill="#b55e71" /><circle cx="30" cy="35" r="3.5" fill="#9f4e65" />
+    <path d="m20 36 3-2m4 1 3-2M14 34l3-3" stroke="#edb5a9" />
+  </>,
+  eel_in_jar: <>
+    <path d="M15 12h18v8c6 6 7 11 5 19-4 6-24 6-28 0-2-8-1-13 5-19Z" fill="#b97f56" />
+    <ellipse cx="24" cy="12" rx="10" ry="4" fill="#ddba86" />
+    <path d="M13 31c6 5 16 5 22 0m-22 7c7 4 15 4 22 0" stroke="#edc78f" strokeWidth="2.5" />
+    <path d="M16 23c17-1 20-10 12-15-9-5-14 4-6 9" stroke="#718c78" strokeWidth="6" />
+    <path d="M16 23c8 0 15-3 16-7" stroke="#b9c3a0" strokeWidth="2" />
+    <circle cx="22" cy="15" r="1.2" fill="#263c32" stroke="none" />
+    <path d="m15 10-6-4m26 15 7-5" stroke="#93a07a" strokeWidth="2" />
+  </>,
+  festive_sturgeon: <>
+    <path d="m4 30 20-9 20 9-5 11H9Z" fill="#d6b366" />
+    <path d="m9 33 15 6 15-6" stroke="#f5dca1" strokeWidth="3" />
+    <path d="m13 23-8-6 2 13 7-4 22 1 9-7-11-2Z" fill="#94a195" />
+    <path d="m17 21 4-8 5 7m2 6 6 6 1-6" fill="#6a817b" />
+    <path d="m16 24 5-4 5 3 5-3 5 2" stroke="#ead6a2" strokeWidth="2.5" />
+    <circle cx="38" cy="21" r="1.2" fill="#344236" stroke="none" />
+    <path d="m19 9-2-6 6 3 5-4 1 7Z" fill="#e6be64" />
+    <circle cx="13" cy="37" r="3" fill="#a96374" /><circle cx="35" cy="36" r="3" fill="#ae6474" />
+  </>,
   berry_compote: <>
     <path d="M11 18h26v19c0 9-26 9-26 0Z" fill="#d6a195" />
     <path d="M15 23h18v13c0 6-18 6-18 0Z" fill="#a55769" strokeWidth="1.3" />

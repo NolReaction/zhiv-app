@@ -81,6 +81,36 @@ export function auditFishingBalance(catalog) {
     return { routeId, minimumNetSaleCoinsPerHour: rounded(Math.min(...rows)), maximumNetSaleCoinsPerHour: rounded(Math.max(...rows)),
       starterNetSaleCoinsPerHour: rounded(starter) };
   });
+  const valuePerFish = (rodId, hookId = "bare_hook") => {
+    const catchValue = math.catchPortfolio(rodId, null, "shore", hookId);
+    return catchValue.expectedFishRevenue / catchValue.speciesDrawsPerJob;
+  };
+  const payback = (price, incrementalValue) => Object.fromEntries(fishing.routeIds.map(routeId => {
+    const route = catalog.explorations.find(route => route.id === routeId);
+    return [routeId, incrementalValue > 0 ? rounded(price / (incrementalValue * fishing.collectionDrawsByRoute[routeId]) * route.seconds / 3600) : null];
+  }));
+  const starterValue = valuePerFish("reed_rod");
+  const gearEconomics = {
+    assumptions: ["Permanent ownership; no resale value, repair costs or wear",
+      "Full displayed coin price, bare hook for rod comparisons, no bait, meals, skill speed or reputation discount",
+      "Only additional raw-fish NPC sale revenue is credited; recipes, species collection, orders and upgrade gates have separate value",
+      "Continuous claims with no idle time; expected payback is not a guaranteed deadline"],
+    rods: fishing.rods.map(rod => {
+      const expectedValue = valuePerFish(rod.id), gain = expectedValue - starterValue;
+      return { rodId: rod.id, priceCoins: rod.price, requiredHomeLevel: rod.requiredHomeLevel,
+        expectedSaleCoinsPerFish: rounded(expectedValue), incrementalSaleCoinsPerFish: rounded(gain),
+        hoursOverStarter: rod.price > 0 ? payback(rod.price, gain) : null };
+    }),
+    hooks: fishing.hooks.filter(hook => hook.price > 0).map(hook => {
+      const rods = fishing.rods.map(rod => {
+        const gain = valuePerFish(rod.id, hook.id) - valuePerFish(rod.id);
+        return { rodId: rod.id, incrementalSaleCoinsPerFish: rounded(gain), hours: payback(hook.price, gain) };
+      });
+      const best = rods.reduce((a, b) => a.incrementalSaleCoinsPerFish >= b.incrementalSaleCoinsPerFish ? a : b);
+      return { hookId: hook.id, priceCoins: hook.price, requiredHomeLevel: hook.requiredHomeLevel,
+        bestRawSaleRodId: best.rodId, fastestHours: best.hours, rods };
+    }),
+  };
   const shop = fishing.shop.gearRarityBpsByHome.map((row, index) => {
     assert.equal(Object.values(row).reduce((sum, value) => sum + value, 0), 10000);
     const p = row.legendary / 10000, daysPerStock = fishing.shop.refreshSeconds / 86400;
@@ -99,7 +129,7 @@ export function auditFishingBalance(catalog) {
       "Shop waits assume every six-hour supply is viewed and the offered model can be afforded; no finite guarantee",
       "Global game reset is prepared separately; no live data is changed by this audit"], targets,
     starterRarityProbabilities: Object.fromEntries(Object.entries(loadouts[0].shares).map(([key, value]) => [key, rounded(value)])),
-    saleEconomics, baitMargins, incomeRanges, shop };
+    saleEconomics, baitMargins, incomeRanges, gearEconomics, shop };
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {

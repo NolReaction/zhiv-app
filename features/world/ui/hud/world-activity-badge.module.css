@@ -2,6 +2,7 @@
 .badge[data-world-activity='fishing'] { --activity-color: #9cdae1; }
 .badge[data-world-activity='cave'] { --activity-color: #d5c5a8; }
 .badge[data-world-activity='production'] { --activity-color: #e2c893; }
+.badge[data-world-activity='mining'] { --activity-color: #dec49a; }
 .badge[data-ready='true'] { --activity-color: #f3d991; border-color: #ddc37885; background: #28351bef; }
 .badge[data-collection-phase='harvesting'] .fill { stroke-dasharray: 3 4; }
 .dial { position: relative; flex: 0 0 var(--activity-dial-size); width: var(--activity-dial-size); height: var(--activity-dial-size); border-radius: 50%; background: #243a2a; }
@@ -12,5 +13,6 @@
 .icon > svg { width: 18px; height: 18px; }
 .check { position: absolute; bottom: -1px; right: -1px; display: grid; place-items: center; width: 13px; height: 13px; border: 1px solid #25351c; border-radius: 50%; color: #273517; background: #f3d991; }
 .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: clamp(10px, 2.6vw, 12px); line-height: 1.15; color: var(--activity-color); font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.available { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; padding: 2px 4px; border-radius: 7px; background: #e2c77826; color: #f3d991; font-size: 10px; line-height: 1.2; font-weight: 650; font-variant-numeric: tabular-nums; }
 .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (prefers-reduced-motion: reduce) { .fill { transition: none; } }

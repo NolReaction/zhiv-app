@@ -143,7 +143,8 @@ test("Plesk lessons compare class odds without buying and keep representative ar
 
 test("order and travel lessons separate fish selection from consumption and owned gear from buying", () => {
   const [requirements, reward] = sectionGuideLessons.orders;
-  assert.match(requirements.text, /выбор оставшихся видов: он уже заполнен/);
+  assert.match(requirements.text, /Перед сдачей рыбного заказа можно заменить выбранные виды/);
+  assert.match(requirements.text, /Недостающие предметы ведут к источнику без запуска работы/);
   assert.match(reward.text, /тап добавляет рыбу или заменяет одну в заполненном классе, минус убирает одну/);
   assert.match(reward.text, /Только «Отдать заказ».*потратит рыбу/);
   assert.match(reward.text, /Закрытие ничего не расходует/);

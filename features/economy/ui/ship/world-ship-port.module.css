@@ -1,0 +1,70 @@
+.port { display: grid; gap: 8px; min-width: 0; color: #344b43; }
+.port h3, .port p { margin: 0; }
+.port button { font: inherit; touch-action: manipulation; }
+.summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #64705a; font-size: 11px; }
+.orders { display: grid; gap: 8px; min-width: 0; }
+.order { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px; min-width: 0; border: 1px solid #b5b695; border-radius: 10px; background: #faf3df; box-shadow: inset 0 1px #fff9; }
+.order[data-delivered] { background: #e6ebda; border-color: #a8b696; }
+.orderHeader { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.orderNumber { display: grid; place-items: center; flex: 0 0 23px; height: 23px; border: 1px solid #aab6a2; border-radius: 6px; background: #e2e8d7; color: #456456; font-size: 11px; font-weight: 700; }
+.orderHeader h3 { flex: 1; min-width: 0; color: #344e43; font-size: 12px; font-weight: 650; line-height: 1.3; overflow-wrap: anywhere; }
+.difficulty { flex: 0 0 auto; padding: 3px 5px; border-radius: 5px; background: #e5ead7; color: #526747; font-size: 9px; }
+.difficulty[data-difficulty="medium"] { background: #eee5c9; color: #796232; }
+.difficulty[data-difficulty="hard"] { background: #edddce; color: #86503b; }
+.items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
+.items li { display: grid; align-content: space-between; gap: 4px; min-width: 0; padding: 5px; border: 1px solid #d3cdb4; border-radius: 7px; background: #fffaf0; }
+.items li[data-loaded] { background: #edf0e3; border-color: #c1ccb0; }
+.material { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.material > :first-child { flex: 0 0 auto; }
+.materialText { display: grid; gap: 2px; min-width: 0; }
+.materialText > span { font-size: 10px; line-height: 1.25; overflow-wrap: anywhere; }
+.materialText > strong { font-size: 11px; font-variant-numeric: tabular-nums; }
+.port .load, .port .source { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 44px; min-width: 0; padding: 5px; border: 1px solid #637e61; border-radius: 6px; background: #395d4b; color: #f6eed7; font-size: 10px; line-height: 1.3; text-align: center; }
+.port .load:hover:not(:disabled) { background: #47725a; }
+.port .source { border-color: #c9bd9e; background: #f2ead5; color: #79623e; }
+.loaded, .shortfall { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 44px; font-size: 10px; color: #526d47; }
+.shortfall { color: #8b6544; }
+.orderFooter { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 5px; min-width: 0; }
+.payment, .rewardItem { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; min-width: 0; }
+.payment strong { font-size: 11px; font-variant-numeric: tabular-nums; }
+.paymentStatus { display: inline-flex; align-items: center; gap: 4px; color: #73765e; font-size: 9px; }
+.bonus { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid #b4b499; border-radius: 9px; background: #e1e9dd; }
+.bonus > strong { font-size: 15px; }
+.bonus > span { font-size: 11px; }
+.bonusProgress { margin-left: auto; font-variant-numeric: tabular-nums; color: #5c7055; }
+.hint { color: #6a715e; font-size: 10px; line-height: 1.45; }
+.empty { display: grid; justify-items: center; gap: 10px; padding: 24px 12px; text-align: center; }
+.empty > svg { color: #647f70; }
+.empty h3 { font-size: 16px; }
+.empty p { color: #61705e; font-size: 12px; line-height: 1.5; }
+.empty .load { padding: 8px 12px; min-height: 40px; font-size: 12px; }
+.countdown { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 5px; }
+.countdown strong { font-variant-numeric: tabular-nums; }
+.recovery { display: grid; gap: 8px; padding: 10px; border: 1px solid #bca588; border-radius: 9px; background: #f4e9cf; color: #745a3c; font-size: 12px; line-height: 1.5; }
+.recovery button { display: inline-flex; justify-self: start; align-items: center; gap: 6px; min-height: 40px; padding: 8px 10px; border: 1px solid #9f9e7a; border-radius: 8px; background: #e7e4cd; color: #4c5c3e; }
+@media (min-width: 480px) {
+  .order { grid-template-columns: minmax(100px, .8fr) minmax(0, 1.6fr); column-gap: 12px; }
+  .orderHeader { align-content: start; align-items: start; flex-wrap: wrap; }
+  .orderHeader h3 { flex-basis: calc(100% - 29px); font-size: 13px; }
+  .difficulty { margin-left: 29px; }
+  .items { grid-column: 2; grid-row: 1 / span 2; }
+  .orderFooter { grid-column: 1; align-self: end; }
+  .order > .hint { grid-column: 1 / -1; }
+  .materialText > span { font-size: 11px; }
+  .port .load, .port .source { font-size: 11px; }
+}
+@media (max-width: 359px) { .order { padding: 8px; }.orderHeader h3 { font-size: 11px; }.difficulty { font-size: 8px; }.items { gap: 5px; }.material { gap: 4px; } }
+@media (forced-colors: active) { .order, .orderNumber, .items li, .bonus, .load, .source { border-color: CanvasText; } }
+
+.timing { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; color: #526747; font-size: 11px; }
+.timing > span { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.timing strong { font-variant-numeric: tabular-nums; }
+.port .replace { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; padding: 6px 8px; border: 1px solid #b5b294; border-radius: 7px; background: #e8e4ce; color: #4d634b; font-size: 11px; }
+.order > .replace { justify-self: start; }
+.port button:disabled { opacity: .55; cursor: not-allowed; }
+.confirmation { display: grid; gap: 8px; padding: 12px; border: 1px solid #aa9669; border-radius: 9px; background: #f5e8bf; color: #574b30; font-size: 12px; }
+.confirmation p { line-height: 1.5; }
+.confirmation > div { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.confirmation button { min-height: 40px; padding: 8px 12px; border: 1px solid #8f9571; border-radius: 7px; background: #f6f0d8; color: #40563f; }
+.confirmation button:last-child { background: #395d4b; color: #f6eed7; }
+.departure { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 10px; color: #6a715e; }

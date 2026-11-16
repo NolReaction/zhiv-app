@@ -27,7 +27,7 @@ const read = (a, circle) => ok(social.getDevGuestProfile(a.token, circle));
   const a = player(), b = player(), circle = connect(a, b);
   const before = structuredClone(globalThis.__zhivDevEconomyStore?.profiles);
   const result = read(a, circle);
-  assert.equal(result.homeLevel, 1); assert.equal(result.completedExplorations, 0);
+  assert.equal(result.homeLevel, 1); assert.equal(result.completedExplorations, 0); assert.equal(result.playerXp, 0);
   assert.deepEqual(result.collections, { travel: [], fishing: [], quarry: [] }); assert.deepEqual(result.achievements, []);
   assert.equal(result.ownerPublicId, a.me.user.publicId); assert.equal(result.user.publicId, b.me.user.publicId);
   assert.equal(model.guestProfileSchema.safeParse(result).success, true);
@@ -51,7 +51,7 @@ test("guest projection only contains known personal discoveries and safe earned 
   assert.deepEqual(result.collections, { travel: ["acorn"], fishing: [fish], quarry: ["quartz_cluster"] });
   assert.deepEqual(result.achievements, [{ id: "home_builder", level: 4 }]);
   assert.deepEqual(record, before);
-  assert.deepEqual(Object.keys(result).sort(), ["ownerPublicId", "circleId", "user", "homeLevel", "completedExplorations", "achievements", "collections", "tapStats", "serverTime"].sort());
+  assert.deepEqual(Object.keys(result).sort(), ["ownerPublicId", "circleId", "user", "homeLevel", "completedExplorations", "achievements", "collections", "tapStats", "fishingSummary", "playerXp", "serverTime"].sort());
   for (const secret of ["wallet", "inventory", "jobs", "fishingCastSeed", "rareDropState", "unlockedAt", "travelSeconds", "quarrySeconds", "linked_email", "saved_recovery_code", "status", "bestSeries"])
     assert.equal(JSON.stringify(result).includes(secret), false, secret);
   result.collections.travel.push("forged"); assert.deepEqual(read(a, circle).collections.travel, ["acorn"]);
@@ -100,7 +100,8 @@ test("API binds every successful response to viewer friendship and subject and n
   assert.equal(called.url, `/api/v1/people/${circle}/game-profile`); assert.equal(called.options.cache, "no-store");
   assert.equal(called.options.credentials, "same-origin");
   assert.equal(called.options.headers["X-Zhiv-Profile"], "tap-stats-v1");
-  const legacy = { ...value }; delete legacy.tapStats;
+  assert.equal(called.options.headers["X-Zhiv-Fishing-Profile"], "v1");
+  const legacy = { ...value }; delete legacy.tapStats; delete legacy.fishingSummary;
   globalThis.fetch = async () => Response.json(legacy);
   assert.deepEqual(await api.getGuestProfile(a.me.user.publicId, circle, b.me.user.publicId), value, "new clients accept an older server without tap statistics");
   for (const patch of [{ ownerPublicId: b.me.user.publicId }, { circleId: key() }, { user: { ...value.user, publicId: a.me.user.publicId } }]) {
@@ -122,8 +123,11 @@ test("closed or switched profile ignores even a transport that finishes after ca
 
 test("strict profile schema rejects hidden IDs duplicated discoveries invalid tiers and private nested fields", () => {
   const a = player(), b = player(), circle = connect(a, b), value = read(a, circle);
+  assert.equal(model.guestProfileSchema.safeParse({ ...value, achievements: [{ id: "explorer", level: 4 }] }).success, true,
+    "the new fourth explorer tier is a public achievement");
   for (const patch of [
-    { achievements: [{ id: "linked_email", level: 1 }] }, { achievements: [{ id: "explorer", level: 4 }] },
+    { achievements: [{ id: "linked_email", level: 1 }] }, { achievements: [{ id: "explorer", level: 5 }] },
+    { achievements: [{ id: "first_path", level: 2 }] },
     { achievements: [{ id: "first_path", level: 1, unlockedAt: value.serverTime }] },
     { collections: { ...value.collections, travel: ["acorn", "acorn"] } },
     { collections: { ...value.collections, fishing: ["ancient_core"] } },
@@ -181,4 +185,52 @@ test("tap statistics reject private fields malformed counts and impossible serie
   assert.equal(model.guestProfileSchema.safeParse({ ...value, tapStats: { lifetimeTaps: 200000, bestSeries: 100001 } }).success, true, "continued server sessions may exceed the local clicker legacy cap");
   const legacy = { ...value }; delete legacy.tapStats;
   assert.equal(model.guestProfileSchema.parse(legacy).tapStats, null, "older API responses do not invent a level");
+});
+
+
+test("friend level uses authoritative development XP while tap records remain private", () => {
+  const a = player(), b = player(), circle = connect(a, b);
+  economy.getDevEconomy(b.token);
+  const record = globalThis.__zhivDevEconomyStore.profiles.get(b.me.user.publicId);
+  record.state.progression.player = { version: 1, xp: 5000, workSeconds: 0, awardedLevels: [], badges: [],
+    season: { id: "2026-11", points: 123, awardedMilestones: [] } };
+  const before = structuredClone(record);
+  const result = read(a, circle);
+  assert.equal(result.playerXp, 5000);
+  assert.equal(result.tapStats, null);
+  assert.deepEqual(record, before);
+  assert.equal(model.guestProfileSchema.safeParse(result).success, true);
+  const html = renderToStaticMarkup(createElement(ui.GuestProfileContents, { profile: result }));
+  assert.match(html, /Уровень 13/);
+  assert.doesNotMatch(JSON.stringify(result), /workSeconds|awardedLevels|awardedMilestones|"season"/);
+  assert.equal(model.guestProfileSchema.safeParse({ ...result, playerXp: -1 }).success, false);
+});
+
+
+test("a friend sees equipped tackle, installed modules and the three heaviest delivered species only", () => {
+  const viewer = player(), friend = player(), outsider = player(), circle = connect(viewer, friend);
+  assert.equal(read(viewer, circle).fishingSummary, null);
+  economy.getDevEconomy(friend.token);
+  const state = globalThis.__zhivDevEconomyStore.profiles.get(friend.me.user.publicId).state;
+  state.fishing.equippedBaitId = "crumb_bait";
+  const caughtAt = "2026-11-10T00:01:00Z";
+  const record = weightGrams => ({ weightGrams, caughtAt });
+  state.boat = { level: 1, upgrades: ["oars", "crate"], completedVoyages: 9, records: {
+    fish: record(900), fish_silverfin: record(100), fish_dace: record(1400), fish_bream: record(1400), unknown: record(50000),
+  }, voyage: { slots: [{ fishId: "fish_rudd" }], catches: [{ fishId: "fish_rudd", weightGrams: 9999 }] } };
+  const before = structuredClone(state);
+  const result = read(viewer, circle);
+  const expected = { rodId: "reed_rod", hookId: "bare_hook", baitId: "crumb_bait", completedVoyages: 9,
+    modules: { engine: 1, hull: 1, tank: 0, storage: 1 }, records: [
+      { fishId: "fish_bream", weightGrams: 1400 }, { fishId: "fish_dace", weightGrams: 1400 }, { fishId: "fish", weightGrams: 900 },
+    ] };
+  assert.deepEqual(result.fishingSummary, expected);
+  assert.deepEqual(state, before);
+  const markup = renderToStaticMarkup(createElement(ui.GuestProfileContents, { profile: model.guestProfileSchema.parse(result) }));
+  assert.match(markup, /Самые тяжёлые уловы/); assert.match(markup, /1,4 кг/); assert.match(markup, /900 г/);
+  for (const invalid of [{ fuel: 1 }, { records: [expected.records[0], expected.records[0]] }, { hookId: "future_hook" }])
+    assert.equal(model.guestProfileSchema.safeParse({ ...result, fishingSummary: { ...expected, ...invalid } }).success, false);
+  assert.deepEqual(social.getDevGuestProfile(outsider.token, circle), { kind: "not-found" });
+  ok(social.removeDevPerson(viewer.token, circle));
+  assert.deepEqual(social.getDevGuestProfile(viewer.token, circle), { kind: "not-found" });
 });

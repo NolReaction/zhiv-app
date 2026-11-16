@@ -9,6 +9,29 @@ import kotlin.test.*
 
 class ProgressionRewardsTest {
     private fun at(value: String)=Instant.parse(value)
+    @Test fun `v14 new rewards preserve legacy tutorial promises and a started daily chain through merge`() {
+        val fresh=EconomyRules.initial()
+        assertEquals(7,fresh.tutorialOrder.rewardVersion)
+        assertEquals(ProgressionReward(100,20),ProgressionRewardRules.onboardingRewardForState(fresh))
+        assertEquals(ProgressionReward(100,40),ProgressionRewardRules.onboardingRewardForState(fresh.copy(
+            tutorialOrder=fresh.tutorialOrder.copy(rewardVersion=6))))
+        val legacy=fresh.copy(tutorialOrder=fresh.tutorialOrder.copy(rewardVersion=5))
+        assertEquals(ProgressionReward(1000,200),ProgressionRewardRules.onboardingRewardForState(legacy))
+        for (version in listOf(5,6,7)) {
+            var state=DailyRewardsState(rewardVersion=version)
+            var pearls=0L
+            for (step in 1..7) {
+                val time=at("2026-10-26T12:00:00Z").plusSeconds(step*86400L)
+                val view=ProgressionRewardRules.dailyView(state,time)
+                pearls+=view.reward.pearls
+                state=ProgressionRewardRules.afterClaim(state,time)
+                assertEquals(version,state.rewardVersion)
+            }
+            assertEquals(when(version) { 5 -> 1000L; 6 -> 300L; else -> 140L },pearls)
+            assertTrue(state.completed)
+        }
+        assertEquals(5,ProgressionRewardRules.mergeDaily(DailyRewardsState(2,rewardVersion=5),DailyRewardsState(3,rewardVersion=6)).rewardVersion)
+    }
     @Test fun `onboarding qualification requires the server order and preserves legacy paid steps`() {
         val initial=EconomyRules.initial(0,0,0)
         for (version in 1..3) {
@@ -20,14 +43,29 @@ class ProgressionRewardsTest {
         assertFalse(ProgressionRewardRules.onboardingEligible(initial.copy(buildings=initial.buildings+("home" to 5))))
     }
     @Test fun `catalog pays finite achievement pearls and seven valuable bundles`() {
-        assertEquals(4120L,ProgressionRewardRules.achievementPearls.values.flatten().sum())
-        assertEquals(33,ProgressionRewardRules.achievementPearls.values.sumOf { it.size })
+        assertEquals(4190L,ProgressionRewardRules.achievementPearls.values.flatten().sum())
+        assertEquals(43,ProgressionRewardRules.achievementPearls.values.sumOf { it.size })
         assertEquals(320L,ProgressionRewardRules.daily.sumOf { it.coins })
-        assertEquals(1000L,ProgressionRewardRules.daily.sumOf { it.pearls })
-        assertEquals(listOf(80L,100L,120L,140L,160L,180L,220L),ProgressionRewardRules.daily.map { it.pearls })
+        assertEquals(140L,ProgressionRewardRules.daily.sumOf { it.pearls })
+        assertEquals(listOf(10L,10L,20L,20L,20L,20L,40L),ProgressionRewardRules.daily.map { it.pearls })
         assertEquals(20L,ProgressionRewardRules.daily.sumOf { it.items.values.sum() })
         assertEquals(setOf("wood","stone","fiber","berries","fish","planks","ancient_core"),ProgressionRewardRules.daily.flatMap { it.items.keys }.toSet())
         assertEquals(listOf(0L),ProgressionRewardRules.achievementPearls.getValue("full_collection"))
+    }
+    @Test fun `new course moves pearls to later milestones while all existing award promises remain`() {
+        var current=0L; var legacy=0L; var promised=0L
+        for ((id,targets) in GameRewards.tiers) {
+            assertEquals(GameRewards.legacyTiers.getValue(id),targets.take(GameRewards.legacyTiers.getValue(id).size))
+            targets.indices.forEach { index ->
+                current+=ProgressionRewardRules.achievementPearlsForVersion(id,index+1,7)
+                legacy+=ProgressionRewardRules.achievementPearlsForVersion(id,index+1,6)
+                if(index<GameRewards.legacyTiers.getValue(id).size) promised+=ProgressionRewardRules.achievementPearlsForVersion(id,index+1,6)
+            }
+        }
+        assertEquals(4190L,current); assertEquals(4120L,promised); assertEquals(5890L,legacy)
+        assertEquals(listOf(5L,10L,35L,61L),GameRewards.tiers.getValue("master_recipes"))
+        assertEquals(10L,ProgressionRewardRules.achievementPearlsForVersion("first_path",1,7))
+        assertEquals(40L,ProgressionRewardRules.achievementPearlsForVersion("first_path",1,6))
     }
     @Test fun `next UTC date and twenty hours are independent fences`() {
         val late=DailyRewardsState(2,at("2026-10-05T23:59:00Z"))
@@ -44,11 +82,11 @@ class ProgressionRewardsTest {
         for(home in 1..5) {
             val cycle=ProgressionRewardRules.dailyCycle(home)
             assertEquals(coins[home-1],cycle.sumOf { it.coins })
-            assertEquals(1000L,cycle.sumOf { it.pearls })
+            assertEquals(140L,cycle.sumOf { it.pearls })
             assertTrue(cycle.all { it.items.values.sum() in 2L..4L })
             assertEquals(1L,cycle.sumOf { it.items["ancient_core"] ?: 0L })
             assertTrue(cycle.all { it.items.size>=2 })
-            val view=ProgressionRewardRules.dailyView(DailyRewardsState(3),at("2026-10-05T12:00:00Z"),home)
+            val view=ProgressionRewardRules.dailyView(DailyRewardsState(3, rewardVersion=7),at("2026-10-05T12:00:00Z"),home)
             assertEquals(home,view.homeLevel); assertEquals(cycle[2],view.reward)
             assertEquals(cycle,view.cycle.map { it.reward })
         }
@@ -56,7 +94,7 @@ class ProgressionRewardsTest {
         assertEquals(ProgressionRewardRules.dailyCycle(5),ProgressionRewardRules.dailyCycle(99))
     }
     @Test fun `skips preserve the gift and the seventh permanently completes the chain`() {
-        val state=DailyRewardsState(7,at("2026-09-01T12:00:00Z"))
+        val state=DailyRewardsState(7,at("2026-09-01T12:00:00Z"), rewardVersion=7)
         val opened=ProgressionRewardRules.dailyView(state,at("2026-10-05T12:00:00Z"))
         assertEquals(7,opened.step); assertTrue(opened.claimable)
         val finished=ProgressionRewardRules.afterClaim(state,at("2026-10-05T12:00:00Z"))
@@ -115,7 +153,7 @@ class ProgressionRewardsTest {
         assertFailsWith<AuthFailure> { validateRewardClaim(ProgressionRewardClaim("00000000-0000-1000-8000-000000000001","1234-5678-ABCD","daily")) }
     }
     @Test fun `onboarding has one fixed visible gift and accepts no client reward or progress flags`() {
-        assertEquals(ProgressionReward(1_000,200),ProgressionRewardRules.onboarding)
+        assertEquals(ProgressionReward(100,20),ProgressionRewardRules.onboarding)
         val base="\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"ownerPublicId\":\"1234-5678-ABCD\",\"kind\":\"onboarding\""
         assertEquals("onboarding",decodeRewardClaim(Json.parseToJsonElement("{$base}")).kind)
         for(extra in listOf(",\"reward\":{\"pearls\":100}",",\"completed\":true",",\"skipped\":false",",\"now\":1",
@@ -123,15 +161,19 @@ class ProgressionRewardsTest {
             decodeRewardClaim(Json.parseToJsonElement("{$base$extra}")) }
         val before=EconomyRules.initial(0,0,0)
         val paid=ProgressionRewardRules.credit(before,ProgressionRewardRules.onboarding)
-        assertEquals(before.wallet.coins+1_000,paid.wallet.coins)
-        assertEquals(before.wallet.pearls+200,paid.wallet.pearls)
+        assertEquals(before.wallet.coins+100,paid.wallet.coins)
+        assertEquals(before.wallet.pearls+20,paid.wallet.pearls)
         assertEquals(before.inventory,paid.inventory)
         assertEquals(before.progression,paid.progression)
     }
     @Test fun `reward catalogs preserve cached clients and reject ambiguous versions`() {
         assertEquals(4, requestedRewardCatalog(io.ktor.http.Parameters.Empty))
         assertEquals(5, requestedRewardCatalog(io.ktor.http.parametersOf("catalog", "5")))
-        for (parameters in listOf(io.ktor.http.parametersOf("catalog", "6"),
+        assertEquals(6, requestedRewardCatalog(io.ktor.http.parametersOf("catalog", "6")))
+        assertEquals(7, requestedRewardCatalog(io.ktor.http.parametersOf("catalog", "7")))
+        assertEquals(8, requestedRewardCatalog(io.ktor.http.parametersOf("catalog", "8")))
+        assertEquals(9, requestedRewardCatalog(io.ktor.http.parametersOf("catalog", "9")))
+        for (parameters in listOf(io.ktor.http.parametersOf("catalog", "10"),
             io.ktor.http.parametersOf("catalog", listOf("5", "5")),
             io.ktor.http.Parameters.build { append("catalog", "5"); append("extra", "1") })) {
             assertFailsWith<AuthFailure> { requestedRewardCatalog(parameters) }
@@ -142,9 +184,12 @@ class ProgressionRewardsTest {
         val current = ProgressionRewardsView("AAAA-0000-0001", "2026-10-22T12:00:00Z",
             daily = ProgressionRewardRules.dailyView(DailyRewardsState(), at("2026-10-22T12:00:00Z")), achievementRewards = rows)
         assertEquals(33, rewardCatalogView(current, 5).achievementRewards.size)
+        assertEquals(40, rewardCatalogView(current, 8).achievementRewards.size)
+        assertEquals(43, rewardCatalogView(current, 9).achievementRewards.size)
+        assertFalse(rewardCatalogView(current, 8).achievementRewards.any { it.achievementId == "forest_cuisine" })
         val legacy = rewardCatalogView(current, 4)
-        assertEquals(4, legacy.catalogVersion); assertEquals(rows.take(21), legacy.achievementRewards)
-        assertEquals(3000L, legacy.achievementRewards.sumOf { it.pearls })
+        assertEquals(4, legacy.catalogVersion); assertEquals(rows.filter { it.level <= GameRewards.legacyTiers.getValue(it.achievementId).size }.take(21), legacy.achievementRewards)
+        assertEquals(1860L, legacy.achievementRewards.sumOf { it.pearls })
         assertEquals(current.daily, legacy.daily)
     }
 

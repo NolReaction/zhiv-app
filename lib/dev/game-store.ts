@@ -1,6 +1,7 @@
 import { devGameStore as store, type GameProfileRecord } from "./game-state";
 export { resetDevGameStoreForTests } from "./game-state";
 import { creditDevWorldTaps, getDevCollectionCount } from "@/lib/dev/world-store";
+import { creditDevEconomyTapBoost } from "./economy-store";
 import { naturalItems } from "@/features/game/game-rewards";
 import { getDevItemStreak, getDevIdentity, lookupDevUser, getDevFriendPublicIds, getDevAchievements, awardDevGameTaps } from "@/lib/dev/api-store";
 import type { GameProgress, GameLeaderboard, GameSession, GameBatchResponse, GameAchievements, GameLeaderboardMetric, GameLeaderboardScope } from "@/features/game/game-api";
@@ -61,7 +62,7 @@ export function getDevGameLeaderboard(token: string | undefined, scope: GameLead
   const eligible = [...store().profiles.values()].flatMap(candidate => {
     const monthly = candidate.monthlyTaps.get(month);
     const taps = metric === "best_series" ? candidate.bestSeries : monthly?.taps ?? 0;
-    if (!candidate.leaderboardOptIn || taps === 0 || (friends && !friends.has(candidate.ownerPublicId))) return [];
+    if (taps === 0 || (friends && !friends.has(candidate.ownerPublicId))) return [];
     const found = lookupDevUser(token, candidate.ownerPublicId);
     if (found.kind !== "ok") return [];
     return [{ ownerPublicId: candidate.ownerPublicId, displayName: found.value.user.displayName, taps, updatedAt: metric === "best_series" ? 0 : monthly!.updatedAt }];
@@ -75,7 +76,7 @@ export function getDevGameLeaderboard(token: string | undefined, scope: GameLead
     })),
     myRank: position < 0 ? null : rankAt(position),
     monthlyTaps: own.monthlyTaps.get(month)?.taps ?? 0,
-    leaderboardOptIn: own.leaderboardOptIn,
+    leaderboardOptIn: true,
   } };
 }
 
@@ -202,6 +203,7 @@ export function submitDevGameBatch(
     awardDevGameTaps(own.ownerPublicId, own.lifetimeTaps, now, own.bestSeries);
   }
   creditDevWorldTaps(own.ownerPublicId, `tap:${session.id}:${payload.sequence}`, acceptedTaps, now);
+  creditDevEconomyTapBoost(own.ownerPublicId, acceptedTaps, now);
   session.lastReceipt = { ...payload, rejectionCode, acceptedTaps, rejectedTaps: payload.tapCount - acceptedTaps };
   session.nextSequence++;
   return { kind: "ok" as const, value: {

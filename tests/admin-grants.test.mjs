@@ -27,7 +27,7 @@ test("basket sends visible currency units with every selected kind in one reques
 });
 
 test("preflight accounts for market reservation and a warehouse upgrade in the same package", () => {
-  const state = { buildings: { home: 2, warehouse: 1 }, jobs: [], storage: { used: 35, reserved: 10, capacity: 50 } };
+  const state = { buildings: { home: 2, warehouse: 1, workshop: 1 }, jobs: [], storage: { used: 35, reserved: 10, capacity: 50 } };
   assert.match(grantBasketIssue([entry("item", "wood", 10)], state, economyCatalog), /Не хватает места/);
   assert.equal(grantBasketIssue([entry("item", "wood", 10), entry("building", "warehouse", 2)], state, economyCatalog), null);
   assert.match(grantBasketIssue([entry("item", "wood", 8000), entry("item", "stone", 8000)], state, economyCatalog), /10 000/);

@@ -48,7 +48,7 @@ cleanup() {
 trap cleanup EXIT
 source scripts/lib/reset-game-progress.sh
 
-echo 'Stopping site traffic; sign-ins and friends will be retained, game and check-in history will restart.'
+echo 'Stopping site traffic; sign-ins, friends and check-in history will be retained; game progress will restart.'
 services_stopped=true
 "${compose[@]}" stop --timeout 30 caddy web api
 reset_game_progress_with_rehearsal
@@ -56,4 +56,4 @@ reset_game_progress_with_rehearsal
 services_stopped=false
 "${compose[@]}" exec -T api curl -fsS --max-time 10 http://127.0.0.1:8080/readyz
 echo
-echo 'The one-time 0.7.1 reset is complete. Clients will refresh their gameplay state; existing sign-ins and friends still work.'
+echo 'The one-time 0.7.2 reset is complete. Clients will refresh their gameplay state; existing sign-ins and friends still work.'

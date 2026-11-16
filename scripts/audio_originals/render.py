@@ -28,6 +28,8 @@ ASSET_REVISIONS = {
     **{f"forest.{time}.01": "sparse-v3" for time in ("day", "night")},
     "campfire.01": "calm-v4",
     "cooking.simmer.01": "bubbles-v2",
+    "ship.arrival.01": "presence-v2",
+    "music.fishing.01": "riverside-v2",
 }
 
 

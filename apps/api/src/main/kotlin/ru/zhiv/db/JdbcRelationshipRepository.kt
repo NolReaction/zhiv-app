@@ -698,8 +698,9 @@ class JdbcRelationshipRepository(
         connection.prepareStatement("SELECT preserve_recipient_denies(?)").use { it.setObject(1,firstUserId); it.execute() }
     }
 
-    private fun listPeople(connection: Connection, currentUserId: UUID): List<PersonSnapshot> =
-        connection.prepareStatement(
+    private fun listPeople(connection: Connection, currentUserId: UUID): List<PersonSnapshot> {
+        val buyer = friendSummaryBuyer(connection, currentUserId)
+        return connection.prepareStatement(
             """
             WITH direct_people AS (
                 SELECT c.id, c.created_at, c.direct_user_low_id, c.direct_user_high_id,
@@ -724,7 +725,9 @@ class JdbcRelationshipRepository(
                            THEN 'WAITING_AFTER_REENABLE'
                        ELSE 'WAITING_INITIAL'
                    END AS check_in_state,
-                   latest.checked_at AS last_check_in_at
+                   latest.checked_at AS last_check_in_at,
+                   friend_economy.state AS friend_economy,
+                   coalesce(friend_lots.listings,'[]'::jsonb) AS friend_listings
               FROM direct_people
               JOIN app_users other
                 ON other.id = direct_people.other_user_id
@@ -736,6 +739,15 @@ class JdbcRelationshipRepository(
                    THEN direct_people.direct_user_high_id ELSE direct_people.direct_user_low_id END
               CROSS JOIN LATERAL effective_recipient_sharing(CAST(? AS uuid), direct_people.other_user_id) mine
               CROSS JOIN LATERAL effective_recipient_sharing(direct_people.other_user_id, CAST(? AS uuid)) theirs
+              LEFT JOIN economy_profiles friend_economy ON friend_economy.user_id=other.id
+              LEFT JOIN LATERAL (
+                  SELECT jsonb_agg(jsonb_build_object('id', lot.id, 'itemId', lot.item_id, 'quantity', lot.quantity,
+                      'totalPrice', lot.total_price, 'currencyScale', lot.currency_scale)
+                      ORDER BY lot.created_at DESC, lot.id DESC) AS listings
+                  FROM (SELECT id,item_id,quantity,total_price,currency_scale,created_at FROM economy_market_listings
+                      WHERE seller_id=other.id AND status='active' AND theirs.sharing_mode<>'OFF'
+                      ORDER BY created_at DESC,id DESC LIMIT 10) lot
+              ) friend_lots ON TRUE
               LEFT JOIN LATERAL (
                   SELECT event.checked_at
                     FROM check_in_audiences audience
@@ -762,10 +774,11 @@ class JdbcRelationshipRepository(
             statement.setObject(5, currentUserId)
             statement.executeQuery().use { result ->
                 buildList {
-                    while (result.next()) add(result.toPersonSnapshot())
+                    while (result.next()) add(result.toPersonSnapshot().copy(gameSummary = result.friendGameSummary(buyer)))
                 }
             }
         }
+    }
 
     private fun countAudienceRecipients(connection: Connection, currentUserId: UUID): Int =
         connection.prepareStatement(

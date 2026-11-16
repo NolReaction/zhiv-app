@@ -27,3 +27,9 @@
 .tapStats dd { margin: 0; color: #e6efdd; font-size: 18px; font-weight: 650; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .privateStats { margin: 0 !important; font-size: 11px !important; color: #9faa96 !important; }
 @media (max-width: 340px) { .awards { grid-template-columns: 1fr; } .stats dd { font-size: 19px; } }
+
+.fishing { min-width: 0; }
+.fishing dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; margin: 0 0 12px; }
+.fishing dt { font-size: 11px; color: #b7c4ab; }
+.fishing dd, .fishing li { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.fishing ol { margin: 0; padding-inline-start: 1.3em; }

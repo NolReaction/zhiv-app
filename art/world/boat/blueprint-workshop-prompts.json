@@ -1,0 +1,22 @@
+{
+  "generator": "Built-in image_gen.imagegen",
+  "date": "2026-11-02",
+  "delivery": "Project assets; PNG masters and WebP runtime copies. No third-party game images embedded.",
+  "assets": [
+    {
+      "master": "art/world/boat/blueprint-landing-net.png",
+      "runtime": "public/world/boat/blueprint-landing-net.webp",
+      "prompt": "Use case: stylized-concept. Asset type: fictional fishing-game collectible blueprint artwork, landscape 3:2 image. Create a flat rectangular sheet of dark indigo cyanotype paper, an elegant detailed chalk-white and faded cyan technical concept drawing of ONE collapsible fishing landing net: wooden telescoping handle, brass collars, large oval hoop and hand-knotted mesh. Large main diagonal three-quarter drawing across the whole sheet, two small exploded detail studies in opposite corners, delicate drafting construction lines and tiny dimension ticks but absolutely NO letters, numbers or readable writing. Restrained authentic worn blueprint grain and fold lines, precise confident linework, mature mechanical workshop aesthetic. Entire image is the PAPER with no tabletop, frame, hands, props, or UI; no torn gaps because code will reveal it as 3 puzzle fragments. High visual fidelity at small size. No logos or watermarks."
+    },
+    {
+      "master": "art/world/boat/blueprint-telescope.png",
+      "runtime": "public/world/boat/blueprint-telescope.webp",
+      "prompt": "Use case: stylized-concept. Asset type: fictional fishing-game collectible blueprint artwork, landscape 3:2 image. Create a flat rectangular sheet of dark indigo cyanotype paper, an elegant detailed chalk-white and faded cyan technical concept drawing of ONE brass nautical telescope mounted on a small timber tripod swivel base: stepped cylindrical brass tube, leather grip, glass objective and eyepiece. Large main diagonal three-quarter drawing across the whole sheet, two small exploded lens and hinge detail studies in opposite corners, delicate drafting construction lines and tiny dimension ticks but absolutely NO letters, numbers or readable writing. Restrained authentic worn blueprint grain and fold lines, precise confident linework, mature mechanical workshop aesthetic. Entire image is the PAPER with no tabletop, frame, hands, props, or UI; no torn gaps because code will reveal it as 3 puzzle fragments. High visual fidelity at small size. No logos or watermarks."
+    },
+    {
+      "master": "art/world/boat/garage-background.png",
+      "runtime": "public/world/boat/garage-background.webp",
+      "prompt": "Use case: stylized-concept. Asset type: landscape 3:2 background only for a boat upgrade garage in a handcrafted forest adventure game. Original richly detailed but readable illustrated wooden riverside boathouse workshop at dusk, dark petrol-green and charcoal plank walls, aged beams, work lights casting soft warm amber pools from upper corners, a few shelves and ropes on distant side walls. Central lower two thirds an EMPTY spacious timber dry-dock floor with subtle keel cradle shadows: this empty space must comfortably hold a separately composited full-sized small boat. Camera wide orthographic-ish side three-quarter elevated 25 degrees; clear horizontal stage. Strong dimensional lighting and tactile wood/metal texture, mature atmospheric game art rather than preschool cartoon. Dark edges quieter than center. No boat, no vehicle, no characters, no prominent tools across center, no writing, no signs, no logos, no UI, no watermark."
+    }
+  ]
+}

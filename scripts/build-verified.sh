@@ -14,4 +14,5 @@ if [[ ! -x "${vinext}" ]]; then
 fi
 
 echo "Running bounded vinext build..."
-exec node "${script_dir}/run-bounded-build.mjs" "${vinext}" build
+node "${script_dir}/run-bounded-build.mjs" "${vinext}" build --precompress
+exec node "${script_dir}/compact-sites-standalone.mjs"

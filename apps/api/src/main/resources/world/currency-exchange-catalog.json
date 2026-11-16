@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "offers": [
+    { "id": "gold_pouch_v1", "name": "Кошель золота", "pearls": 40, "coins": 1000, "bonusPercent": 0 },
+    { "id": "gold_casket_v1", "name": "Шкатулка золота", "pearls": 100, "coins": 2750, "bonusPercent": 10 },
+    { "id": "gold_chest_v1", "name": "Сундук золота", "pearls": 200, "coins": 6000, "bonusPercent": 20 }
+  ]
+}

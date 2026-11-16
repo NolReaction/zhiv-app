@@ -1,0 +1,302 @@
+{
+  "kind": "reputation-rule-fixture",
+  "assumptions": [
+    "All buildings, recipes and tackle are available from the first day; every basket is explicitly supplied by the fixture.",
+    "Baseline work is counted for every supplied ingredient; production, money sourcing and login feasibility are not simulated.",
+    "Each independent scenario assigns the single weekly contract to one resident; their weekly rewards cannot be combined on one account.",
+    "No purchase XP, social gifts, welcome gifts or achievement pearls are included. Weekly stages are supplied immediately.",
+    "These results test reputation rules and work obligations; they are not a forecast of a new player's completion time."
+  ],
+  "scenarios": [
+    {
+      "residentId": "plesk",
+      "ordinaryPerDay": 3,
+      "days": 30,
+      "ordinary": 90,
+      "weeklyStages": 15,
+      "completedWeekly": 5,
+      "xp": 1134,
+      "bonusPercent": 4,
+      "milestones": [
+        {
+          "rank": "companion",
+          "day": 4,
+          "xp": 178
+        },
+        {
+          "rank": "friend",
+          "day": 15,
+          "xp": 621
+        }
+      ],
+      "suppliedItemValue": 45441,
+      "payoutCoins": 56833,
+      "visibleWeeklyPearls": 50,
+      "baselineWorkHours": 118.7,
+      "manufacturingHours": 32.5
+    },
+    {
+      "residentId": "plesk",
+      "ordinaryPerDay": 5,
+      "days": 30,
+      "ordinary": 150,
+      "weeklyStages": 15,
+      "completedWeekly": 5,
+      "xp": 1666,
+      "bonusPercent": 4,
+      "milestones": [
+        {
+          "rank": "companion",
+          "day": 2,
+          "xp": 152
+        },
+        {
+          "rank": "friend",
+          "day": 11,
+          "xp": 645
+        }
+      ],
+      "suppliedItemValue": 78016,
+      "payoutCoins": 97569,
+      "visibleWeeklyPearls": 50,
+      "baselineWorkHours": 200.13,
+      "manufacturingHours": 51.87
+    },
+    {
+      "residentId": "builder",
+      "ordinaryPerDay": 3,
+      "days": 30,
+      "ordinary": 90,
+      "weeklyStages": 15,
+      "completedWeekly": 5,
+      "xp": 1336,
+      "bonusPercent": 4,
+      "milestones": [
+        {
+          "rank": "companion",
+          "day": 3,
+          "xp": 153
+        },
+        {
+          "rank": "friend",
+          "day": 14,
+          "xp": 618
+        }
+      ],
+      "suppliedItemValue": 95690,
+      "payoutCoins": 119637,
+      "visibleWeeklyPearls": 50,
+      "baselineWorkHours": 184.53,
+      "manufacturingHours": 70.8
+    },
+    {
+      "residentId": "builder",
+      "ordinaryPerDay": 5,
+      "days": 30,
+      "ordinary": 150,
+      "weeklyStages": 15,
+      "completedWeekly": 5,
+      "xp": 1919,
+      "bonusPercent": 7,
+      "milestones": [
+        {
+          "rank": "companion",
+          "day": 2,
+          "xp": 154
+        },
+        {
+          "rank": "friend",
+          "day": 10,
+          "xp": 651
+        },
+        {
+          "rank": "close_friend",
+          "day": 29,
+          "xp": 1859
+        }
+      ],
+      "suppliedItemValue": 136565,
+      "payoutCoins": 170739,
+      "visibleWeeklyPearls": 50,
+      "baselineWorkHours": 278.72,
+      "manufacturingHours": 100.9
+    },
+    {
+      "residentId": "lopukh",
+      "ordinaryPerDay": 3,
+      "days": 30,
+      "ordinary": 90,
+      "weeklyStages": 15,
+      "completedWeekly": 5,
+      "xp": 1268,
+      "bonusPercent": 4,
+      "milestones": [
+        {
+          "rank": "companion",
+          "day": 3,
+          "xp": 151
+        },
+        {
+          "rank": "friend",
+          "day": 15,
+          "xp": 677
+        }
+      ],
+      "suppliedItemValue": 63499,
+      "payoutCoins": 79407,
+      "visibleWeeklyPearls": 50,
+      "baselineWorkHours": 158.51,
+      "manufacturingHours": 54.87
+    },
+    {
+      "residentId": "lopukh",
+      "ordinaryPerDay": 5,
+      "days": 30,
+      "ordinary": 150,
+      "weeklyStages": 15,
+      "completedWeekly": 5,
+      "xp": 1900,
+      "bonusPercent": 7,
+      "milestones": [
+        {
+          "rank": "companion",
+          "day": 2,
+          "xp": 164
+        },
+        {
+          "rank": "friend",
+          "day": 10,
+          "xp": 639
+        },
+        {
+          "rank": "close_friend",
+          "day": 29,
+          "xp": 1840
+        }
+      ],
+      "suppliedItemValue": 114848,
+      "payoutCoins": 143619,
+      "visibleWeeklyPearls": 50,
+      "baselineWorkHours": 287.49,
+      "manufacturingHours": 97.77
+    },
+    {
+      "residentId": "kamneshmyg",
+      "ordinaryPerDay": 3,
+      "days": 30,
+      "ordinary": 90,
+      "weeklyStages": 15,
+      "completedWeekly": 5,
+      "xp": 1476,
+      "bonusPercent": 4,
+      "milestones": [
+        {
+          "rank": "companion",
+          "day": 1,
+          "xp": 187
+        },
+        {
+          "rank": "friend",
+          "day": 13,
+          "xp": 655
+        }
+      ],
+      "suppliedItemValue": 103100,
+      "payoutCoins": 128901,
+      "visibleWeeklyPearls": 50,
+      "baselineWorkHours": 202.5,
+      "manufacturingHours": 71.85
+    },
+    {
+      "residentId": "kamneshmyg",
+      "ordinaryPerDay": 5,
+      "days": 30,
+      "ordinary": 150,
+      "weeklyStages": 15,
+      "completedWeekly": 5,
+      "xp": 2008,
+      "bonusPercent": 7,
+      "milestones": [
+        {
+          "rank": "companion",
+          "day": 1,
+          "xp": 205
+        },
+        {
+          "rank": "friend",
+          "day": 8,
+          "xp": 648
+        },
+        {
+          "rank": "close_friend",
+          "day": 28,
+          "xp": 1838
+        }
+      ],
+      "suppliedItemValue": 154610,
+      "payoutCoins": 193301,
+      "visibleWeeklyPearls": 50,
+      "baselineWorkHours": 303.42,
+      "manufacturingHours": 104.83
+    },
+    {
+      "residentId": "leaftail",
+      "ordinaryPerDay": 3,
+      "days": 30,
+      "ordinary": 90,
+      "weeklyStages": 15,
+      "completedWeekly": 5,
+      "xp": 1745,
+      "bonusPercent": 4,
+      "milestones": [
+        {
+          "rank": "companion",
+          "day": 2,
+          "xp": 178
+        },
+        {
+          "rank": "friend",
+          "day": 11,
+          "xp": 643
+        }
+      ],
+      "suppliedItemValue": 138596,
+      "payoutCoins": 173272,
+      "visibleWeeklyPearls": 50,
+      "baselineWorkHours": 306.36,
+      "manufacturingHours": 127.78
+    },
+    {
+      "residentId": "leaftail",
+      "ordinaryPerDay": 5,
+      "days": 30,
+      "ordinary": 150,
+      "weeklyStages": 15,
+      "completedWeekly": 5,
+      "xp": 2145,
+      "bonusPercent": 7,
+      "milestones": [
+        {
+          "rank": "companion",
+          "day": 2,
+          "xp": 180
+        },
+        {
+          "rank": "friend",
+          "day": 9,
+          "xp": 659
+        },
+        {
+          "rank": "close_friend",
+          "day": 26,
+          "xp": 1812
+        }
+      ],
+      "suppliedItemValue": 241130,
+      "payoutCoins": 301452,
+      "visibleWeeklyPearls": 50,
+      "baselineWorkHours": 547.37,
+      "manufacturingHours": 217.28
+    }
+  ]
+}

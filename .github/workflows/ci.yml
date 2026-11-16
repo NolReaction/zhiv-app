@@ -56,6 +56,23 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Install audio preparation test tools
+        timeout-minutes: 10
+        run: |
+          # The Azure mirror has throttled downloads to ~50 kB/s on some runners.
+          # Keep Ubuntu's signed packages, using its main archive instead.
+          # Hosted images may resolve mirror+file: through apt-mirrors.txt.
+          for source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; do
+            if [ -f "$source" ]; then
+              sudo sed -i -E 's@https?://azure\.archive\.ubuntu\.com/ubuntu/?@https://archive.ubuntu.com/ubuntu/@g' "$source"
+            fi
+          done
+          # A stalled package mirror must not consume the whole web-test budget.
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=60 install -y --no-install-recommends ffmpeg
+          ffmpeg -version
+          ffprobe -version
+
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
 
@@ -68,11 +85,14 @@ jobs:
       - name: Check committed Tiled export
         run: npm run world:check
 
+      - name: Check progression report matches the current rules
+        run: node scripts/build-progression-report.mjs --check
+
       - name: Check audio catalog and asset licenses
         run: npm run audio:check
 
       - name: Type-check
-        run: npx tsc --noEmit --incremental false
+        run: npm run typecheck
 
       - name: Build the VPS application
         run: npm run build:vps
@@ -81,7 +101,7 @@ jobs:
         run: npm run build
 
       - name: Run web test shard
-        run: node --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/3 tests/*.test.mjs
+        run: node scripts/run-node.mjs --serial --test --test-shard=${{ matrix.shard }}/3 tests/*.test.mjs
 
   web:
     name: Web checks
@@ -147,10 +167,15 @@ jobs:
         run: |
           ./gradlew --no-daemon test \
             --tests ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest \
+            --tests ru.zhiv.db.JdbcNeighborRepositoryIntegrationTest \
+            --tests ru.zhiv.economy.NeighborRulesTest \
+            --tests ru.zhiv.economy.NeighborRoutesTest \
             --tests ru.zhiv.economy.EconomyMarketRulesTest \
             --tests ru.zhiv.db.JdbcLeaftailV12IntegrationTest \
+            --tests ru.zhiv.db.JdbcEconomyRepositoryIntegrationTest \
             --tests ru.zhiv.db.JdbcCollectionV12IntegrationTest \
             --tests ru.zhiv.economy.EconomyLeaftailShopTest \
+            --tests ru.zhiv.economy.EconomyLeaftailRelicsTest \
             --tests ru.zhiv.economy.EconomyLeaftailAssortmentTest \
             --tests ru.zhiv.economy.EconomyBookProgressionTest \
             --tests ru.zhiv.economy.EconomyFourthStageTest \
@@ -164,7 +189,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
-          for name in ('ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest', 'ru.zhiv.economy.EconomyMarketRulesTest', 'ru.zhiv.db.JdbcLeaftailV12IntegrationTest', 'ru.zhiv.db.JdbcCollectionV12IntegrationTest', 'ru.zhiv.economy.EconomyLeaftailShopTest', 'ru.zhiv.economy.EconomyLeaftailAssortmentTest', 'ru.zhiv.economy.EconomyBookProgressionTest', 'ru.zhiv.economy.EconomyFourthStageTest', 'ru.zhiv.world.WorldRulesTest', 'ru.zhiv.economy.EconomyWardrobeTest', 'ru.zhiv.db.JdbcPremiumCostumesIntegrationTest'):
+          for name in ('ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest', 'ru.zhiv.db.JdbcNeighborRepositoryIntegrationTest', 'ru.zhiv.economy.NeighborRulesTest', 'ru.zhiv.economy.NeighborRoutesTest', 'ru.zhiv.economy.EconomyMarketRulesTest', 'ru.zhiv.db.JdbcLeaftailV12IntegrationTest', 'ru.zhiv.db.JdbcEconomyRepositoryIntegrationTest', 'ru.zhiv.db.JdbcCollectionV12IntegrationTest', 'ru.zhiv.economy.EconomyLeaftailShopTest', 'ru.zhiv.economy.EconomyLeaftailRelicsTest', 'ru.zhiv.economy.EconomyLeaftailAssortmentTest', 'ru.zhiv.economy.EconomyBookProgressionTest', 'ru.zhiv.economy.EconomyFourthStageTest', 'ru.zhiv.world.WorldRulesTest', 'ru.zhiv.economy.EconomyWardrobeTest', 'ru.zhiv.db.JdbcPremiumCostumesIntegrationTest'):
               path = Path('apps/api/build/test-results/test') / f'TEST-{name}.xml'
               report = ET.parse(path).getroot()
               count = int(report.get('tests', '0'))
@@ -183,10 +208,15 @@ jobs:
           name: market-sales-test-reports-${{ github.run_attempt }}
           path: |
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcMarketSaleClaimsIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcNeighborRepositoryIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.NeighborRulesTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.NeighborRoutesTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyMarketRulesTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcLeaftailV12IntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcEconomyRepositoryIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcCollectionV12IntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyLeaftailShopTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyLeaftailRelicsTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyLeaftailAssortmentTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyBookProgressionTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.economy.EconomyFourthStageTest.xml
@@ -221,10 +251,20 @@ jobs:
         run: |
           ./gradlew --no-daemon test \
             --tests ru.zhiv.game.ProgressionRewardsTest \
+            --tests ru.zhiv.game.ProgressionRewardsRoutesTest \
             --tests ru.zhiv.db.JdbcProgressionRewardsIntegrationTest \
             --tests ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest \
             --tests ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest \
             --tests ru.zhiv.db.JdbcSchemaBaselineIntegrationTest \
+            --tests ru.zhiv.db.JdbcNeighborConfigurationMigrationIntegrationTest \
+            --tests ru.zhiv.db.JdbcEconomyRewardPromisesMigrationIntegrationTest \
+            --tests ru.zhiv.db.JdbcRewardMigrationCompatibilityIntegrationTest \
+            --tests ru.zhiv.db.JdbcNewPlayerRewardCourseMigrationIntegrationTest \
+            --tests ru.zhiv.db.JdbcNeighborV14StockMigrationIntegrationTest \
+            --tests ru.zhiv.db.JdbcNeighborMarketSupportMigrationIntegrationTest \
+            --tests ru.zhiv.db.JdbcNeighborDiscountMigrationIntegrationTest \
+            --tests ru.zhiv.db.JdbcAchievementCourseMigrationIntegrationTest \
+            --tests ru.zhiv.db.JdbcResidentActivityMigrationIntegrationTest \
             --tests ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest \
             --tests ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest \
             --tests ru.zhiv.db.JdbcGameProgressResetIntegrationTest \
@@ -236,7 +276,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
-          for name in ('ru.zhiv.game.ProgressionRewardsTest', 'ru.zhiv.db.JdbcProgressionRewardsIntegrationTest', 'ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest', 'ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest', 'ru.zhiv.db.JdbcSchemaBaselineIntegrationTest', 'ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest', 'ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest', 'ru.zhiv.db.JdbcGameProgressResetIntegrationTest', 'ru.zhiv.db.JdbcGameplayGenerationIntegrationTest'):
+          for name in ('ru.zhiv.game.ProgressionRewardsTest', 'ru.zhiv.game.ProgressionRewardsRoutesTest', 'ru.zhiv.db.JdbcProgressionRewardsIntegrationTest', 'ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest', 'ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest', 'ru.zhiv.db.JdbcSchemaBaselineIntegrationTest', 'ru.zhiv.db.JdbcNeighborConfigurationMigrationIntegrationTest', 'ru.zhiv.db.JdbcEconomyRewardPromisesMigrationIntegrationTest', 'ru.zhiv.db.JdbcRewardMigrationCompatibilityIntegrationTest', 'ru.zhiv.db.JdbcNewPlayerRewardCourseMigrationIntegrationTest', 'ru.zhiv.db.JdbcNeighborV14StockMigrationIntegrationTest', 'ru.zhiv.db.JdbcNeighborMarketSupportMigrationIntegrationTest', 'ru.zhiv.db.JdbcNeighborDiscountMigrationIntegrationTest', 'ru.zhiv.db.JdbcAchievementCourseMigrationIntegrationTest', 'ru.zhiv.db.JdbcResidentActivityMigrationIntegrationTest', 'ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest', 'ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest', 'ru.zhiv.db.JdbcGameProgressResetIntegrationTest', 'ru.zhiv.db.JdbcGameplayGenerationIntegrationTest'):
               report = ET.parse(Path('apps/api/build/test-results/test') / f'TEST-{name}.xml').getroot()
               count = int(report.get('tests', '0'))
               assert report.get('name') == name and count > 0, f'{name}: missing or empty suite'
@@ -254,10 +294,20 @@ jobs:
           name: one-time-rewards-test-reports-${{ github.run_attempt }}
           path: |
             apps/api/build/test-results/test/TEST-ru.zhiv.game.ProgressionRewardsTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.game.ProgressionRewardsRoutesTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcProgressionRewardsIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcOneTimeDailyRewardsMigrationIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcOnboardingRewardMigrationIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcSchemaBaselineIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcNeighborConfigurationMigrationIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcEconomyRewardPromisesMigrationIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcRewardMigrationCompatibilityIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcNewPlayerRewardCourseMigrationIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcNeighborV14StockMigrationIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcNeighborMarketSupportMigrationIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcNeighborDiscountMigrationIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcAchievementCourseMigrationIntegrationTest.xml
+            apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcResidentActivityMigrationIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcReleaseUpgradeIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcMigrationTimeoutIntegrationTest.xml
             apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcGameProgressResetIntegrationTest.xml
@@ -319,7 +369,7 @@ jobs:
             echo "Security observations must run with real PostgreSQL." >&2
             exit 1
           fi
-          for suite in JdbcMailRepositoryIntegrationTest JdbcAdminEconomyGrantsIntegrationTest JdbcFirstHarvestIntegrationTest JdbcEarthLocationIntegrationTest; do
+          for suite in JdbcMailRepositoryIntegrationTest JdbcAdminEconomyGrantsIntegrationTest JdbcFirstHarvestIntegrationTest JdbcEarthLocationIntegrationTest JdbcNeighborRepositoryIntegrationTest JdbcNeighborConfigurationMigrationIntegrationTest JdbcEconomyRewardPromisesMigrationIntegrationTest JdbcRewardMigrationCompatibilityIntegrationTest JdbcNewPlayerRewardCourseMigrationIntegrationTest JdbcNeighborV14StockMigrationIntegrationTest JdbcNeighborMarketSupportMigrationIntegrationTest JdbcNeighborDiscountMigrationIntegrationTest JdbcAchievementCourseMigrationIntegrationTest JdbcResidentActivityMigrationIntegrationTest; do
             mail_report="apps/api/build/test-results/test/TEST-ru.zhiv.db.${suite}.xml"
             test -s "${mail_report}"
             grep --quiet --extended-regexp 'tests="[1-9][0-9]*"' "${mail_report}"
@@ -334,6 +384,8 @@ jobs:
           reports = [ET.parse(path).getroot() for path in Path('apps/api/build/test-results/test').glob('TEST-*.xml')]
           totals = {key: sum(int(report.get(key, '0')) for report in reports) for key in ('tests', 'failures', 'errors', 'skipped')}
           passed = totals['tests'] - totals['failures'] - totals['errors'] - totals['skipped']
+          assert reports and totals['tests'] > 0, 'Backend test reports must not be empty'
+          assert all(totals[key] == 0 for key in ('failures', 'errors', 'skipped')), f'Backend failures or skipped PostgreSQL suites: {totals}'
           print(f"Backend verification: {passed} passed, {totals['skipped']} skipped, {totals['failures']} failures, {totals['errors']} errors.")
           security = next(report for report in reports if report.get('name') == 'ru.zhiv.db.JdbcSecurityObservationsIntegrationTest')
           print(f"Security observations PostgreSQL: {security.get('tests')} tests, {security.get('skipped', '0')} skipped.")
@@ -385,6 +437,22 @@ jobs:
 
       - name: Validate Compose configuration
         run: docker compose -f deploy/compose.yml config --quiet
+
+      - name: Check Caddy routes for production and localhost
+        run: |
+          for domain in im-alive.ru localhost; do
+            docker compose -f deploy/compose.yml run --rm --no-deps -T -e DOMAIN="$domain" \
+              --entrypoint caddy caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile |
+              tee "$RUNNER_TEMP/caddy-$domain.json" |
+              jq -e --arg domain "$domain" '
+                [.apps.http.servers[].routes[] |
+                  select(any(.match[]?.host[]?; . == "auto-gorizont.ru"))] as $routes |
+                if $domain == "localhost" then $routes == []
+                else ($routes | length) == 1 and
+                  ([$routes[] | .. | objects | select(.handler? == "reverse_proxy") |
+                    .upstreams[].dial] == ["unix//srv/deploy/avto-gorizont/site.sock"])
+                end'
+          done
 
       - name: Validate monitoring configuration and alert rules
         run: |
@@ -477,6 +545,12 @@ jobs:
           if (JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).maintenance !== true) throw new Error('Maintenance status was intercepted by the gate');
           NODE
 
+      - name: Exercise the shared Caddy hosts during game maintenance
+        shell: bash
+        run: |
+          caddy_image=$(docker compose -f deploy/compose.yml images -q caddy)
+          python3 scripts/smoke-shared-caddy.py "$caddy_image" < "$RUNNER_TEMP/caddy-im-alive.ru.json"
+
       - name: Exercise private administration and real monitoring
         run: node scripts/smoke-admin.mjs
 
@@ -514,7 +588,7 @@ jobs:
             throw new Error('The real deployment did not reopen a ready build');
           NODE
 
-      - name: Rehearse the one-time 0.7.1 fresh start without losing sign-ins or friends
+      - name: Rehearse the one-time 0.7.2 game reset without losing sign-ins, friends or check-ins
         shell: bash
         run: |
           test "$DOMAIN" = localhost
@@ -611,7 +685,9 @@ jobs:
           preserved_snapshot() {
             docker compose -f deploy/compose.yml exec -T db psql -X -A -t -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
           SELECT md5(jsonb_build_object(
-            'users', (SELECT jsonb_agg(to_jsonb(u) - 'last_check_in_at' ORDER BY id) FROM app_users u),
+            'users', (SELECT jsonb_agg(to_jsonb(u) ORDER BY id) FROM app_users u),
+            'checkins', (SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM check_ins c),
+            'audiences', (SELECT jsonb_agg(to_jsonb(a) ORDER BY check_in_id, recipient_user_id) FROM check_in_audiences a),
             'sessions', (SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM app_sessions s),
             'identities', (SELECT jsonb_agg(to_jsonb(i) ORDER BY provider, subject) FROM account_login_identities i),
             'circles', (SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM circles c),
@@ -635,7 +711,7 @@ jobs:
           ORDER BY u.id LIMIT 1;
           SQL
           preserved_before="$(preserved_snapshot)"
-          bash scripts/deploy-update.sh --reset-game-progress-0.7.1
+          bash scripts/deploy-update.sh --reset-game-progress-0.7.2
           test "$(preserved_snapshot)" = "$preserved_before"
           test ! -e deploy/runtime/maintenance
           curl --fail --silent --show-error --insecure --max-time 20 https://localhost/readyz
@@ -643,12 +719,12 @@ jobs:
           docker compose -f deploy/compose.yml exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
           DO $$ BEGIN
             IF (SELECT generation FROM gameplay_generations) <> 1
-                OR (SELECT count(*) FROM gameplay_reset_runs WHERE reset_id = '0.7.1') <> 1
-                OR EXISTS (SELECT 1 FROM check_ins) OR EXISTS (SELECT 1 FROM check_in_audiences)
+                OR (SELECT count(*) FROM gameplay_reset_runs WHERE reset_id = '0.7.2') <> 1
+                OR NOT EXISTS (SELECT 1 FROM check_ins)
                 OR EXISTS (SELECT 1 FROM game_daily_rewards) OR EXISTS (SELECT 1 FROM game_reward_claims)
                 OR EXISTS (SELECT 1 FROM game_achievement_reward_claims WHERE achievement_id NOT IN ('linked_email', 'saved_recovery_code'))
-                OR EXISTS (SELECT 1 FROM app_users WHERE last_check_in_at IS NOT NULL) THEN
-              RAISE EXCEPTION 'One-time fresh start did not clear history and reward progress.';
+                OR EXISTS (SELECT 1 FROM game_profiles WHERE lifetime_taps <> 0 OR best_series <> 0) THEN
+              RAISE EXCEPTION 'One-time game reset did not preserve check-ins or clear game reward progress.';
             END IF;
           END $$;
           -- New activity after release must survive an accidentally repeated command.
@@ -657,6 +733,7 @@ jobs:
                  'UTC', (now() AT TIME ZONE 'UTC')::date FROM app_sessions ORDER BY id LIMIT 1;
           UPDATE app_users u SET last_check_in_at = c.checked_at FROM check_ins c WHERE c.user_id = u.id;
           SQL
+          preserved_after_progress="$(preserved_snapshot)"
           bash scripts/reset-game-progress.sh --confirm-reset-game-progress
           docker compose -f deploy/compose.yml exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
           DO $$ BEGIN
@@ -668,7 +745,7 @@ jobs:
             END IF;
           END $$;
           SQL
-          test "$(preserved_snapshot)" = "$preserved_before"
+          test "$(preserved_snapshot)" = "$preserved_after_progress"
           curl --fail --silent --show-error --insecure --max-time 20 https://localhost/readyz
           fresh_start_snapshots
 

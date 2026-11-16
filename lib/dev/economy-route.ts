@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import type { EconomyView, EconomyResult } from "@/features/economy/domain/model";
 import { isDevPresenceActive } from "./activity-store";
 import { NextResponse } from "next/server";
 import { guardDevApi } from "./api-guard";
@@ -36,10 +38,20 @@ export async function readDevEconomyBody(request: Request, limit = 4096) {
   } catch { return { body: null }; }
   finally { reader.releaseLock(); }
 }
-export function respondDevEconomy<T>(action: () => T) {
-  try { return NextResponse.json(action(), { headers: NO_STORE_HEADERS }); }
+export function respondDevEconomy<T>(action: () => T, respond: (value: T) => Response = value => NextResponse.json(value, { headers: NO_STORE_HEADERS })) {
+  try { return respond(action()); }
   catch (error) {
     if (error instanceof DevEconomyError) return economyErrorResponse(error.code, error.message, error.status);
     throw error;
   }
+}
+
+// The fingerprint describes the actual public catalog, including hotfixes within a catalog version.
+export function economySnapshotResponse(request: Request, value: EconomyView | EconomyResult) {
+  const state = "state" in value ? value.state : value;
+  const tag = createHash("sha256").update(JSON.stringify(state.catalog)).digest("hex");
+  const headers = { ...NO_STORE_HEADERS, Vary: "X-Economy-Catalog", "X-Economy-Catalog": tag };
+  if (request.headers.get("X-Economy-Catalog") !== tag) return NextResponse.json(value, { headers });
+  const compact = { ...state, catalog: tag };
+  return NextResponse.json("state" in value ? { ...value, state: compact } : compact, { headers });
 }

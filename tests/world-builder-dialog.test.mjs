@@ -64,7 +64,7 @@ test("confirmed work shows its building, timer and pearl completion; navigation 
   assert.match(html, /Уровень 2/);
   assert.match(html, /1:30/);
   assert.doesNotMatch(html, /Осталось/);
-  assert.match(html, /Завершить сейчас за 2 жемчужины/);
+  assert.match(html, /Завершить сейчас за 1 жемчужину/);
   assert.match(html, /data-construction-speedup="paid-home-upgrade"/);
   const buttons = elements(tree).filter(element => element.type === "button");
   assert.equal(buttons.length, 1); buttons[0].props.onClick();
@@ -93,7 +93,7 @@ test("a pending pearl command stays visible in the builder and retries respect t
   const retry = elements(view.tree).find(element => element.type === "button" && element.props.children === "Проверить результат");
   assert.equal(retry.props.disabled, true);
   retry.props.onClick(); assert.equal(retries, 0);
-  assert.match(view.html, /disabled=""[^>]*aria-label="Завершить сейчас за 2 жемчужины"/);
+  assert.match(view.html, /disabled=""[^>]*aria-label="Завершить сейчас за 1 жемчужину"/);
   controller.now += 1000;
   view = conversation(controller);
   elements(view.tree).find(element => element.type === "button" && element.props.children === "Проверить результат").props.onClick();

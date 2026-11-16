@@ -1,10 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { BranchPage } from "@/features/progression/branch-page";
+import { headers } from "next/headers";
+import { BranchAccessGate } from "@/features/progression/access/branch-access-gate";
+import { readAdminPageAccess } from "@/lib/server/admin-page-access";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Дерево развития мира · Я живой",
-  description: "Дерево развития мира Мохлика: все ингредиенты, рецепты, производственные цепочки, расчёты экономики, постройки и торговля.",
-  robots: { index: false, follow: false },
+  title: "Внутренняя мастерская · Я живой",
+  description: "Закрытые инструменты развития и проверки игрового мира.",
+  robots: { index: false, follow: false, noarchive: true },
 };
 
 export const viewport: Viewport = {
@@ -16,6 +20,8 @@ export const viewport: Viewport = {
   themeColor: "#171d16",
 };
 
-export default function ProgressionPage() {
-  return <BranchPage />;
+export default async function ProgressionPage() {
+  const requestHeaders = await headers();
+  const access = await readAdminPageAccess(new Request("http://localhost/branch", { headers: requestHeaders }));
+  return <BranchAccessGate key={access.status === "allowed" ? access.publicId : access.status} initial={access} />;
 }

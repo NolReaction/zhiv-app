@@ -1,3 +1,7 @@
+import { familiarEconomyItems } from "@/features/economy/domain/familiar-items";
+import { guestFishingSummary } from "@/features/people/guest-fishing-summary";
+import { publicBoatState } from "@/features/economy/domain/boat-fishing";
+import { effectiveCraftSkills } from "@/features/economy/domain/craft-skill";
 import { promoRequestSchema, type PromoRequest, type PromoResult } from "@/features/promo/model";
 import type { PromoCatalog } from "@/lib/server/promo-catalog";
 import { wardrobeItems, wardrobeOwned } from "@/features/world/domain/wardrobe";
@@ -7,6 +11,7 @@ import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, ECONOMY_MAX_PEARLS, format
 import { marketBudgetReset, marketDailyLimit, marketDay, marketHomeRange, marketItemUnlocked, marketListingEligible, marketMinimumPrice, marketSaleFee, marketCanTrade, marketShowcaseCurrent, marketSlotCount } from "@/features/economy/domain/market-rules";
 import { awardDevEconomyAchievements, awardDevMarketSale, getDevIdentity, getDevGuestWorldAccess, lookupDevUser } from "@/lib/dev/api-store";
 import type { GuestWorld } from "@/features/people/guest-world-model";
+import { friendGameSummary } from "@/features/people/friend-game-summary";
 import { consumeDevLegacyEconomy, getDevCollectionFinds, hasDevLegacyJourney, getDevLegacyWardrobe, syncDevWorldWardrobe } from "@/lib/dev/world-store";
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, economyCatalog, economyCommandSchema, economyResidentOrdersSchema, marketCommandSchema, type EconomyCommand,
   type EconomyMarketListing, type EconomyResult, type EconomyState, type EconomyView, type MarketCommand, type MarketView } from "@/features/economy/domain/model";
@@ -21,12 +26,23 @@ import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order"
 import { ensureStageOrders, stageOrdersProgress } from "@/features/economy/domain/stage-orders";
 import { persistEconomyItemUnlocks, unlockedEconomyItems } from "@/features/economy/domain/item-unlocks";
 import { foodState } from "@/features/economy/domain/food";
+import { migrateTradeActivity, tradeRelationsState } from "@/features/economy/domain/trade-relations";
+import { shipOrdersState } from "@/features/economy/domain/ship-orders";
+import { creditEconomyTapBoost, settleEconomyTapBoost } from "@/features/economy/domain/tap-boost";
+import { emptyTapBoost } from "@/features/economy/domain/tap-boost-model";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev/dev-model";
 import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
+import { applyDevShipCommand } from "@/features/economy/dev/dev-ship";
+import { applyDevBoatCommand, finishDevBoatWork } from "@/features/economy/dev/dev-boat";
 import { BARTER_DAILY_LIMIT, barterCommandSchema, barterSameHomeBand, type BarterCommand, type BarterOffer, type BarterView, type BarterResult } from "@/features/economy/domain/barter-model";
+import { neighborCommandSchema, type NeighborCommand, type NeighborView, type NeighborAdminView } from "@/features/economy/domain/neighbor-model";
+import { neighborActiveHour, neighborListingReason, neighborOfferItems, neighborOfferPrice, neighborShopReason } from "@/features/economy/domain/neighbor-rules";
+import { devNeighborSettings, devNeighborCycle, saveDevNeighborCycle, markDevNeighborOfferBought, devNeighborBoughtItems, devNeighborUsage,
+  devNeighborGlobalSpent, devNeighborExperienced, markDevNeighborExperienced, recordDevNeighborSale, removeDevNeighborOwner,
+  resetDevNeighborStoreForTests, ensureDevNeighborTimer, devNeighborScanCursor, saveDevNeighborScanCursor, devNeighborHistory, devNeighborVersion } from "./neighbor-store";
 
 type Receipt = { signature: string; message: string; acceptedRevision: number; action?: ReceiptCommand["action"] };
-type ReceiptCommand = EconomyCommand | MarketCommand | EconomyDevCommand;
+type ReceiptCommand = EconomyCommand | MarketCommand | EconomyDevCommand | NeighborCommand;
 type Profile = { revision: number; state: EconomyState; receipts: Map<string, Receipt>; legacyJourneys: Set<string> };
 type Listing = Omit<EconomyMarketListing, "owned" | "sellerName"> & { currencyScale?: 1 | 10 };
 type Showcase = { refreshAt: number; ids: string[] };
@@ -34,7 +50,7 @@ type BarterReceipt = { signature: string; message: string; acceptedRevision: num
 type TradeTurnover = { day: string; buysUsed: number; salesUsed: number; barterUsed: number };
 type PromoClaim = { requestId: string; title: string; reward: PromoResult["reward"]; acceptedRevision: number; signature: string };
 type Store = { promoClaims: Map<string, Map<string, PromoClaim>>; turnover: Map<string, TradeTurnover>; profiles: Map<string, Profile>; listings: Map<string, Listing>; showcases: Map<string, Showcase>;
-  resetMarketReceipts: Map<string, { revision: number; receipts: Map<string, Receipt> }>;
+  resetMarketReceipts: Map<string, { revision: number; receipts: Map<string, Receipt>; tutorialRewardVersion?: 5 | 6 | 7 }>;
   barterOffers: Map<string, BarterOffer>; barterShowcases: Map<string, Showcase>; barterReceipts: Map<string, Map<string, BarterReceipt>> };
 const globalStore = globalThis as typeof globalThis & { __zhivDevEconomyStore?: Store };
 function store(): Store {
@@ -52,7 +68,7 @@ function store(): Store {
   }
   return value;
 }
-export const resetDevEconomyStoreForTests = () => { delete globalStore.__zhivDevEconomyStore; };
+export const resetDevEconomyStoreForTests = () => { delete globalStore.__zhivDevEconomyStore; resetDevNeighborStoreForTests(); };
 export { EconomyRuleError as DevEconomyError };
 function fail(code: string, message: string, status = 409): never { throw new EconomyRuleError(code, message, status); }
 function profile(token: string | undefined, now: number) {
@@ -64,11 +80,14 @@ function profile(token: string | undefined, now: number) {
     const legacy = consumeDevLegacyEconomy(token, now);
     const retained = store().resetMarketReceipts.get(owner);
     value = { revision: retained?.revision ?? 0, state: newEconomyState(legacy), receipts: new Map(retained?.receipts), legacyJourneys: new Set() };
+    if (retained?.tutorialRewardVersion !== undefined && value.state.tutorialOrder)
+      value.state.tutorialOrder.rewardVersion = retained.tutorialRewardVersion;
     store().resetMarketReceipts.delete(owner);
     if (economyCatalog.fishing) value.state.fishingShop = createFishingShop(value.state, now, randomInt);
     store().profiles.set(owner, value);
   }
   normalizeCurrency(value);
+  migrateTradeActivity(value.state, now);
   value.state.fishing ??= fishingState({});
   normalizeFishStockInventory(value.state);
   value.state.wardrobe = wardrobeOwned(value.state.wardrobe, getDevLegacyWardrobe(owner));
@@ -84,6 +103,8 @@ function normalizeCurrency(value: Profile) {
 }
 function view(owner: string, value: Profile, now: number): EconomyView {
   const state = structuredClone(value.state);
+  state.progression = { ...state.progression, skills: effectiveCraftSkills(state) };
+  settleEconomyTapBoost(state, now);
   ensureStageOrders(state, economyCatalog, now);
   const unlockedItems = unlockedEconomyItems(state, legacyItemHistory(owner));
   delete state.fishingCastSeed;
@@ -93,12 +114,25 @@ function view(owner: string, value: Profile, now: number): EconomyView {
   state.jobs = state.jobs.map(job => publicEconomyJob(job, now));
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
     tutorialOrder: tutorialOrderProgress(state), stageOrders: stageOrdersProgress(state), food: foodState(state), residentOrders: economyResidentOrdersSchema.parse(state.residentOrders),
-    marketSlots: marketSlotCount(state), unlockedItems,
+    tradeRelations: tradeRelationsState(state), ship: shipOrdersState(state, now), tapBoost: state.tapBoost ?? emptyTapBoost(),
+    marketSlots: marketSlotCount(state), unlockedItems, familiarItems: familiarEconomyItems(state, legacyItemHistory(owner)), boat: publicBoatState(state.boat),
     productionSlots: state.productionSlots ?? {}, workshopStarterClaimed: state.workshopStarterClaimed ?? false, wardrobe: wardrobeOwned(state.wardrobe), fishingShop: state.fishingShop ?? null, leaftailShop: state.leaftailShop ?? { cycle: -1, purchased: {} }, storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }
 function bump(value: Profile) {
   if (value.revision >= Number.MAX_SAFE_INTEGER) fail("ECONOMY_CAPACITY", "Состояние требует обслуживания");
   value.revision++;
+}
+
+/** The authenticated game store invokes this only after its one-use batch receipt check. */
+export function creditDevEconomyTapBoost(owner: string, acceptedTaps: number, now: number) {
+  const value = store().profiles.get(owner);
+  if (!value || acceptedTaps <= 0) return;
+  const next = structuredClone(value.state);
+  // Clock-only writes do not invalidate a material command created just before a tap.
+  if (creditEconomyTapBoost(next, acceptedTaps, now)) {
+    value.state.jobs = next.jobs;
+    value.state.tapBoost = next.tapBoost;
+  }
 }
 function receipt(value: Profile, owner: string, command: ReceiptCommand, now: number, scope = ""): EconomyResult | null {
   if (owner !== command.ownerPublicId) return fail("ECONOMY_OWNER_CHANGED", "Аккаунт изменился. Обновите хозяйство");
@@ -119,6 +153,10 @@ function commandSignature(command: ReceiptCommand) {
   const parts: unknown[] = [command.ownerPublicId, command.expectedRevision, command.action, command.targetId, command.quantity, command.totalPrice];
   if ("fishSelection" in command && command.fishSelection != null)
     parts.push(Object.entries(command.fishSelection).sort(([first], [second]) => first < second ? -1 : first > second ? 1 : 0));
+  if (command.action === "load_ship_cargo" && "voyageId" in command)
+    parts.push(command.voyageId, command.orderId, command.itemId);
+  if ("reel" in command && command.reel != null) parts.push(command.reel);
+  if ("castHeldMs" in command && command.castHeldMs !== undefined) parts.push(command.castHeldMs);
   return JSON.stringify(parts);
 }
 function removeFishEscrow(state: EconomyState, listingId: string) {
@@ -155,6 +193,7 @@ function knownMarketState(owner: string, state: EconomyState): EconomyState {
 /** Seal discovery from the prior state before inspecting any newly transferred goods. */
 function persistItemUnlocks(owner: string, previous: EconomyState, next: EconomyState, confirmedRewards: readonly string[] = []) {
   const prior = unlockedEconomyItems(previous, legacyItemHistory(owner));
+  next.familiarItems = [...new Set([...familiarEconomyItems(previous, legacyItemHistory(owner)), ...familiarEconomyItems(next)])].sort();
   next.unlockedItems = [...new Set([...prior, ...(next.unlockedItems ?? [])])].sort();
   next.itemUnlockVersion = 1;
   persistEconomyItemUnlocks(next, confirmedRewards);
@@ -163,7 +202,8 @@ function commit(owner: string, value: Profile, next: EconomyState, command: Rece
   reconcileFishStock(next);
   persistItemUnlocks(owner, value.state, next);
   bump(value); value.state = next;
-  if (!["grant_currency", "grant_item", "grant_fishing_gear", "grant_wardrobe", "grant_upgrade_cost", "set_building_level", "finish_jobs", "apply_settlement"].includes(command.action))
+  if (!["grant_currency", "grant_item", "grant_fishing_gear", "grant_wardrobe", "grant_upgrade_cost", "set_building_level", "finish_jobs", "apply_settlement",
+    "prepare_boat", "grant_boat_upgrade_cost", "finish_boat_work", "finish_boat_travel", "set_boat_blueprint", "set_boat_module_level"].includes(command.action))
     awardDevEconomyAchievements(owner, next, now);
   value.receipts.set(receiptKey(command), {
     signature: scope + commandSignature(command),
@@ -192,7 +232,8 @@ export function commandDevEconomy(token: string | undefined, input: EconomyComma
   const reserved = escrowItems(owner);
   const fishing = command.action === "start_fishing" || command.action === "start_exploration"
     && economyCatalog.fishing?.routeIds.includes(command.targetId);
-  const message = applyEconomyCommand(next, command, now, () => fishing ? crypto.randomUUID() : command.requestId, reserved, randomInt);
+  const privateIdentity = fishing || ["open_ship_voyage", "depart_boat", "begin_boat_cast", "inspect_telescope"].includes(command.action);
+  const message = applyEconomyCommand(next, command, now, () => privateIdentity ? crypto.randomUUID() : command.requestId, reserved, randomInt);
   assertEconomyStorageTransition(value.state, next, reserved);
   const wardrobeChanged = JSON.stringify(value.state.wardrobe) !== JSON.stringify(next.wardrobe);
   const result = commit(owner, value, next, command, message, now);
@@ -210,6 +251,19 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
   const next: EconomyState = structuredClone(value.state);
   let message: string;
   switch (command.action) {
+    case "prepare_boat":
+    case "grant_boat_upgrade_cost":
+    case "finish_boat_work":
+    case "finish_boat_travel":
+    case "set_boat_module_level":
+    case "set_boat_blueprint":
+      message = applyDevBoatCommand(next, command, now);
+      break;
+    case "prepare_ship":
+    case "grant_ship_cargo":
+    case "shorten_ship_wait":
+      message = applyDevShipCommand(next, command, now, () => crypto.randomUUID());
+      break;
     case "apply_settlement": {
       if (next.jobs.length) return fail("ECONOMY_BUILDING_BUSY", "Сначала завершите или отмените задания и заберите результаты");
       next.buildings = economyDevSettlement(command.quantity);
@@ -265,9 +319,16 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
     }
     case "finish_jobs": {
       const jobs = next.jobs.filter(job => (command.targetId === "all" || job.kind === command.targetId) && Date.parse(job.finishesAt) > now);
-      if (!jobs.length) return fail("ECONOMY_DEV_NO_JOBS", "Нет незавершённых работ этого типа");
-      for (const job of jobs) job.finishesAt = new Date(now).toISOString();
-      message = `DEV: ускорено работ: ${jobs.length}. Заберите результат у объекта или в путешествиях`;
+      const boatWork = (command.targetId === "all" || command.targetId === "construction") && finishDevBoatWork(next, now);
+      if (!jobs.length && !boatWork) return fail("ECONOMY_DEV_NO_JOBS", "Нет незавершённых работ этого типа");
+      for (const job of jobs) {
+        if (job.miningBatch) {
+          job.startedAt = new Date(now - job.miningBatch.quantity * job.miningBatch.unitSeconds * 1000).toISOString();
+          if (next.tapBoost?.jobId === job.id) next.tapBoost.appliedAt = new Date(now).toISOString();
+        }
+        job.finishesAt = new Date(now).toISOString();
+      }
+      message = `DEV: ускорено работ: ${jobs.length + Number(boatWork)}. Заберите результат у объекта или в путешествиях`;
       break;
     }
   }
@@ -298,11 +359,14 @@ export function creditDevLegacyJourney(token: string | undefined, journey: { id:
 /** A game reset preserves account-level limits; deleting a test identity also removes its history. */
 export function removeDevEconomyOwner(owner: string, options: { deleteHistory?: boolean } = {}) {
   const saved = store().profiles.get(owner);
+  if (getDevConfirmedMarketSales(owner)) markDevNeighborExperienced(owner);
+  removeDevNeighborOwner(owner, options.deleteHistory);
   if (options.deleteHistory) { store().turnover.delete(owner); store().promoClaims.delete(owner); store().resetMarketReceipts.delete(owner); }
   else if (saved) {
     if (saved.revision >= Number.MAX_SAFE_INTEGER) fail("ECONOMY_CAPACITY", "Состояние требует обслуживания");
     store().resetMarketReceipts.set(owner, { revision: saved.revision + 1,
-      receipts: new Map([...saved.receipts].filter(([, receipt]) => receipt.action === "claim_sale")) });
+      tutorialRewardVersion: saved.state.tutorialOrder?.rewardVersion ?? 5,
+      receipts: new Map([...saved.receipts].filter(([, receipt]) => receipt.action === "claim_sale" || receipt.action === "buy_offer")) });
   }
   store().profiles.delete(owner);
   store().showcases.delete(owner);
@@ -339,6 +403,17 @@ function requireMarket(state: EconomyState) {
 const compareListings = (a: Listing, b: Listing) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
 
 /** No profile(), normalization, legacy conversion, showcase writes or host initialization during a visit. */
+export function getDevFriendGameSummary(viewer: string, target: string, worldVisible: boolean) {
+  const saved = globalStore.__zhivDevEconomyStore;
+  const seller = saved?.profiles.get(target)?.state, buyer = saved?.profiles.get(viewer)?.state;
+  const known = buyer ? knownMarketState(viewer, buyer) : undefined;
+  const listings = worldVisible ? [...(saved?.listings.values() ?? [])]
+    .filter(listing => listing.sellerPublicId === target && listing.status === "active")
+    .sort(compareListings).map(listing => ({ id: listing.id, itemId: listing.itemId, quantity: listing.quantity,
+      totalPrice: nominalEconomyMoney(listing.totalPrice, listing.currencyScale ?? 1) })) : [];
+  return friendGameSummary(seller, known, worldVisible, listings);
+}
+
 export function getDevGuestWorldEconomy(viewer: string, target: string, sellerName: string, legacy: { homeLevel: number; workshopLevel: number }):
   { world: Pick<GuestWorld["world"], "buildings" | "jobs">; market: GuestWorld["market"] } {
   const saved = globalStore.__zhivDevEconomyStore;
@@ -454,6 +529,7 @@ function commandDevMarket(token: string | undefined, input: MarketCommand, now: 
       next.fishing = { ...current, escrow: { ...current.escrow, [listing.id]: fishStockCost } };
     }
     store().listings.set(listing.id, listing);
+    ensureDevNeighborTimer(() => { runDevNeighborTick(); });
     return { ...commit(owner, value, next, command, "Лот размещён на прилавке", now), listing: publicListing(listing, owner, token) };
   }
   const listing = store().listings.get(command.targetId.toLowerCase());
@@ -514,11 +590,28 @@ function commandDevMarket(token: string | undefined, input: MarketCommand, now: 
   const buyer = getDevIdentity(token)!;
   listing.sale = { buyerPublicId: owner, buyerName: buyer.user.displayName, buyerAvatarUrl: buyer.profile.avatarUrl,
     proceedsCoins: proceeds, claimedAt: null };
+  markDevNeighborExperienced(listing.sellerPublicId);
   awardDevMarketSale(listing.sellerPublicId, now);
   return { ...commit(owner, value, next, command, "Покупка получена. Продавец сможет забрать выручку в своей лавке", now, receiptScope), listing: publicListing(listing, owner, token) };
 }
 
 /** Achievement reads must not initialize an economy, mint conversion grants or expose the private cast seed. */
+/** Read confirmed species weights directly from saves, including profiles created before rankings existed. */
+export function* devFishingRecordWeights() {
+  const profiles = globalStore.__zhivDevEconomyStore?.profiles;
+  if (!profiles) return;
+  for (const [ownerPublicId, profile] of profiles) {
+    for (const [fishId, record] of Object.entries(profile.state.boat?.records ?? {})) {
+      yield { ownerPublicId, fishId, weightGrams: record.weightGrams };
+    }
+  }
+}
+
+export function getDevGuestFishingSummary(owner: string) {
+  const state = globalStore.__zhivDevEconomyStore?.profiles.get(owner)?.state;
+  return state ? guestFishingSummary(state) : null;
+}
+
 export function getDevEconomyAchievementState(owner: string): Pick<EconomyState, "completedExplorations" | "buildings" | "fishing" | "progression" | "residentOrders"> | null {
   const state = store().profiles.get(owner)?.state;
   if (!state) return null;
@@ -526,9 +619,144 @@ export function getDevEconomyAchievementState(owner: string): Pick<EconomyState,
     progression: inheritEconomyCollection(state.progression, getDevCollectionFinds(owner)), residentOrders: structuredClone(state.residentOrders) };
 }
 
-/** A verified completed trade, not a listing attempt, qualifies the seller. */
+/** The sale medal requires a real player, matching the PostgreSQL buyer-character fence. */
 export function getDevConfirmedMarketSales(owner: string): number {
-  return [...store().listings.values()].some(listing => listing.sellerPublicId === owner && listing.status === "sold") ? 1 : 0;
+  return [...store().listings.values()].some(listing => listing.sellerPublicId === owner && listing.status === "sold"
+    && listing.sale?.buyerKind !== "world_character") ? 1 : 0;
+}
+
+/** Daily stock may be initialized by a read, but reads never purchase a player's listing. */
+export function getDevEconomyNeighbor(token: string | undefined, now = Date.now()): NeighborView {
+  const { owner, value } = profile(token, now), settings = devNeighborSettings();
+  const known = knownMarketState(owner, value.state), reason = neighborShopReason(known, settings);
+  const day = marketDay(now);
+  let cycle = devNeighborCycle(owner, now);
+  if (!cycle && reason === null) {
+    const rank = (id: string) => createHash("sha256").update(`${owner}:${day}:${id}`).digest("hex");
+    const ids = neighborOfferItems(known, settings).map(id => ({ id, rank: rank(id) })).sort((a, b) => a.rank.localeCompare(b.rank) || a.id.localeCompare(b.id))
+      .slice(0, settings.offerSlots).map(item => item.id);
+    cycle = saveDevNeighborCycle(owner, now, ids.map(itemId => ({ id: crypto.randomUUID(), itemId, quantity: settings.offerQuantity,
+      totalPrice: neighborOfferPrice(itemId, settings.offerQuantity, settings), purchased: false })));
+  }
+  // A frozen cycle is never replenished, but unavailable goods must not remain visible after a reset or admin restriction.
+  const visibleItems = new Set(settings.allowedItemIds.filter(itemId => marketItemUnlocked(known, itemId)));
+  const offers = cycle?.offers.filter(offer => visibleItems.has(offer.itemId)) ?? [];
+  const usage = devNeighborUsage(owner, now);
+  return {
+    ownerPublicId: owner, serverTime: new Date(now).toISOString(),
+    character: { id: "berest", kind: "world_character", name: settings.name, description: settings.description,
+      world: { buildings: { ...settings.buildings }, equipment: { ...settings.equipment }, gifts: [], hiddenGifts: [], jobs: [] } },
+    shop: { cycleId: day, refreshAt: marketBudgetReset(now), available: reason === null, reason, offers: structuredClone(offers) },
+    buying: { enabled: settings.enabled && settings.autoBuyEnabled && neighborActiveHour(settings, now), firstDelaySeconds: settings.firstDelaySeconds,
+      staleAfterSeconds: settings.staleAfterSeconds, maxLotsPerDay: settings.maxLotsPerDay, dailyBudgetCoins: settings.dailyBudgetCoins,
+      maxLotCoins: settings.maxLotCoins, usedLots: usage.usedLots, spentCoins: usage.spentCoins,
+      firstSale: !devNeighborExperienced(owner) && !getDevConfirmedMarketSales(owner), buyPriceBps: settings.buyPriceBps,
+      sellPriceBps: settings.sellPriceBps, offerQuantity: settings.offerQuantity,
+      globalRemainingCoins: Math.max(0, settings.globalDailyBudgetCoins - devNeighborGlobalSpent(now)),
+      allowedItemIds: [...visibleItems], boughtItemIds: [...devNeighborBoughtItems(owner, now)] },
+  };
+}
+
+export function commandDevEconomyNeighbor(token: string | undefined, input: NeighborCommand, now = Date.now()): EconomyResult {
+  const parsed = neighborCommandSchema.safeParse(input);
+  if (!parsed.success) return fail("INVALID_ECONOMY_COMMAND", "Некорректный запрос лавки соседа", 400);
+  const command = parsed.data, { owner, value } = profile(token, now);
+  const replay = receipt(value, owner, command, now, "neighbor:");
+  if (replay) return replay;
+  const settings = devNeighborSettings(), known = knownMarketState(owner, value.state);
+  const reason = neighborShopReason(known, settings);
+  if (reason) return fail("NEIGHBOR_UNAVAILABLE", "Лавка соседа сейчас недоступна");
+  const offer = devNeighborCycle(owner, now)?.offers.find(offer => offer.id === command.targetId.toLowerCase());
+  if (!offer) return fail("NEIGHBOR_OFFER_UNAVAILABLE", "Предложение больше недоступно. Обновите лавку");
+  if (offer.purchased) return fail("NEIGHBOR_OFFER_UNAVAILABLE", "Вы уже купили эту партию");
+  if (!settings.allowedItemIds.includes(offer.itemId) || !marketItemUnlocked(known, offer.itemId))
+    return fail("NEIGHBOR_OFFER_UNAVAILABLE", "Этот предмет сейчас недоступен в лавке");
+  if (command.quantity !== offer.quantity || command.totalPrice < offer.totalPrice)
+    return fail("NEIGHBOR_QUOTE_CHANGED", "Условия покупки изменились. Обновите лавку");
+  const next = structuredClone(value.state), turnover = tradeTurnover(owner, now);
+  const traded = marketMinimumPrice(offer.itemId, offer.quantity);
+  if (turnover.buysUsed + traded > marketDailyLimit(next.buildings.home ?? 1))
+    return fail("ECONOMY_MARKET_DAILY_LIMIT", "Дневной объём покупок исчерпан. Он обновится в 00:00 UTC");
+  if (next.wallet.coins < offer.totalPrice) return fail("ECONOMY_RESOURCES", "Не хватает монет");
+  creditEconomyItems(next, { [offer.itemId]: offer.quantity });
+  assertEconomyStorageTransition(value.state, next, escrowItems(owner));
+  next.wallet.coins -= offer.totalPrice;
+  const result = commit(owner, value, next, command, "Покупка у лесного соседа получена", now, "neighbor:");
+  markDevNeighborOfferBought(owner, offer, now);
+  store().turnover.set(owner, { ...turnover, buysUsed: turnover.buysUsed + traded });
+  return result;
+}
+
+/** One bounded synchronous transaction per lot, shared by scheduled and trusted manual callers. */
+export function buyDevNeighborListing(listingId: string, options: { now?: number; manual?: boolean; expectedTotalPrice?: number; playerPublicId?: string; requestId?: string } = {}): boolean {
+  const now = options.now ?? Date.now(), listing = store().listings.get(listingId.toLowerCase());
+  if (!listing) return false;
+  if (options.playerPublicId && listing.sellerPublicId !== options.playerPublicId) return false;
+  if (options.expectedTotalPrice != null && listing.totalPrice !== options.expectedTotalPrice) return false;
+  const seller = store().profiles.get(listing.sellerPublicId);
+  if (!seller) return false;
+  const settings = devNeighborSettings(), known = knownMarketState(listing.sellerPublicId, seller.state);
+  const reason = neighborListingReason(listing, known, settings, { now, manual: options.manual,
+    firstSale: !devNeighborExperienced(listing.sellerPublicId) && !getDevConfirmedMarketSales(listing.sellerPublicId),
+    usage: devNeighborUsage(listing.sellerPublicId, now), globalSpentCoins: devNeighborGlobalSpent(now), boughtItemIds: devNeighborBoughtItems(listing.sellerPublicId, now) });
+  if (reason || seller.revision >= Number.MAX_SAFE_INTEGER) return false;
+  const turnover = tradeTurnover(listing.sellerPublicId, now), traded = marketMinimumPrice(listing.itemId, listing.quantity);
+  if (turnover.salesUsed + traded > marketDailyLimit(seller.state.buildings.home ?? 1)) return false;
+  const sellerNext = structuredClone(seller.state), proceeds = listing.totalPrice - marketSaleFee(listing.totalPrice, listing.feeBps ?? 0);
+  removeFishEscrow(sellerNext, listing.id);
+  reconcileFishStock(sellerNext);
+  persistItemUnlocks(listing.sellerPublicId, seller.state, sellerNext);
+  // Every check above precedes all writes: a competing player purchase or cancellation closes the same row.
+  bump(seller); seller.state = sellerNext;
+  listing.status = "sold"; listing.closedAt = new Date(now).toISOString();
+  listing.sale = { buyerKind: "world_character", buyerCharacterId: "berest", buyerPublicId: null,
+    buyerName: settings.name, buyerAvatarUrl: null, proceedsCoins: proceeds, claimedAt: null };
+  store().turnover.set(listing.sellerPublicId, { ...turnover, salesUsed: turnover.salesUsed + traded });
+  recordDevNeighborSale({ id: crypto.randomUUID(), listingId: listing.id, sellerPublicId: listing.sellerPublicId,
+    itemId: listing.itemId, quantity: listing.quantity, totalPrice: listing.totalPrice, proceedsCoins: proceeds,
+    createdAt: new Date(now).toISOString(), source: options.manual ? "manual" : "auto", ...(options.requestId ? { requestId: options.requestId } : {}) }, now);
+  return true;
+}
+
+/** Read existing local state only; listing settlement remains shared with the automatic worker. */
+export function getDevAdminNeighbor(token: string, target?: string, now = Date.now()): NeighborAdminView {
+  const settings = devNeighborSettings(), user = target ? lookupDevUser(token, target) : null;
+  if (target && user?.kind !== "ok") fail("NEIGHBOR_PLAYER_NOT_FOUND", "Профиль не найден", 404);
+  const usage = target ? devNeighborUsage(target, now) : { usedLots: 0, spentCoins: 0 };
+  const globalSpentCoins = devNeighborGlobalSpent(now), saved = store(), seller = target ? saved.profiles.get(target) : undefined;
+  const pending = [...saved.listings.values()].filter(row => row.status === "active" && row.sellerPublicId === target)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)).slice(0, 100).map(listing => {
+      let reason = !seller ? "Хозяйство не открыто" : neighborListingReason(listing, knownMarketState(target!, seller.state), settings, {
+        now, manual: true, firstSale: !devNeighborExperienced(target!), usage: devNeighborUsage(target!, now),
+        globalSpentCoins, boughtItemIds: devNeighborBoughtItems(target!, now),
+      });
+      if (!reason && seller && (seller.revision >= Number.MAX_SAFE_INTEGER
+        || tradeTurnover(target!, now).salesUsed + marketMinimumPrice(listing.itemId, listing.quantity) > marketDailyLimit(seller.state.buildings.home ?? 1)))
+        reason = "Рыночный лимит игрока исчерпан";
+      const feeCoins = marketSaleFee(listing.totalPrice, listing.feeBps ?? 0);
+      return { id: listing.id, sellerPublicId: listing.sellerPublicId, sellerName: user?.kind === "ok" ? user.value.user.displayName : "Житель леса",
+        itemId: listing.itemId, quantity: listing.quantity, totalPrice: listing.totalPrice, proceedsCoins: listing.totalPrice - feeCoins,
+        feeCoins, createdAt: listing.createdAt, eligible: reason === null, reason };
+    });
+  return { serverTime: new Date(now).toISOString(), settings, version: devNeighborVersion(), receipt: null,
+    pausedReason: !settings.enabled ? "Сосед отключён" : !settings.autoBuyEnabled ? "Автоматический выкуп на паузе"
+      : !neighborActiveHour(settings, now) ? "Вне времени работы" : globalSpentCoins >= settings.globalDailyBudgetCoins ? "Общий дневной бюджет исчерпан" : null,
+    player: user?.kind === "ok" ? { publicId: user.value.user.publicId, name: user.value.user.displayName } : null,
+    usage: { usedLots: usage.usedLots, spentCoins: usage.spentCoins, globalSpentCoins }, pending, history: devNeighborHistory(target) };
+}
+
+export function runDevNeighborTick(now = Date.now()): number {
+  const active = [...store().listings.values()].filter(listing => listing.status === "active")
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  const key = (listing: Listing) => `${listing.createdAt}:${listing.id}`;
+  const cursor = devNeighborScanCursor();
+  const after = cursor ? active.findIndex(listing => key(listing) > cursor) : 0;
+  const start = after < 0 ? 0 : after;
+  const candidates = [...active.slice(start), ...active.slice(0, start)].slice(0, 100);
+  let purchased = 0;
+  for (const listing of candidates) if (buyDevNeighborListing(listing.id, { now })) purchased++;
+  if (candidates.length) saveDevNeighborScanCursor(key(candidates[candidates.length - 1]));
+  return purchased;
 }
 
 const barterUnlocked = (state: EconomyState) => (state.buildings.home ?? 1) >= 3 && marketUnlocked(state);

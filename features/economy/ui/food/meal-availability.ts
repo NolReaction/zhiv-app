@@ -7,22 +7,22 @@ import { worldMissingRequirements, worldRecipeUnlockReason, worldRequirements } 
 export type MealConsumer = "hero" | "builder";
 
 export function availableMealRecipe(state: EconomyView, itemId: string) {
-  return state.catalog.recipes.find(recipe => (recipe.rewards[itemId] ?? 0) > 0
+  return state.catalog.recipes.find(recipe => !recipe.retired && (recipe.rewards[itemId] ?? 0) > 0
     && !worldMissingRequirements(state, worldRequirements(recipe, recipe)).length
     && !worldRecipeUnlockReason(state, recipe));
 }
 
-/** Owned meals remain usable even when their recipe has not been unlocked. */
+/** The picker is a pantry, not a recipe catalog. Gifted meals remain usable. */
 export function visibleMeals(state: EconomyView) {
-  return state.catalog.food?.meals.filter(meal => (state.inventory[meal.itemId] ?? 0) > 0 || availableMealRecipe(state, meal.itemId)) ?? [];
+  return state.catalog.food?.meals.filter(meal => (state.inventory[meal.itemId] ?? 0) > 0) ?? [];
 }
 
 /** Feeding describes one explicit meal debit; local mood is not hunger. */
 export function mealBlockedReason(economy: ReadyEconomy, consumer: MealConsumer) {
   const state = economy.snapshot, food = foodState(state);
   if (consumer === "hero") {
-    if (food.heroMeal) return "Мохлик уже сыт: обед поможет в следующей вылазке.";
-    return economyActorConflict(state.jobs, "departure", economy.now)?.message ?? null;
+    if (food.heroMeal) return "Мохлик уже сыт: оставшийся запас сил поможет в вылазках.";
+    return economyActorConflict(state.jobs, "departure", economy.now, state.boat)?.message ?? null;
   }
   const construction = state.jobs.find(job => job.kind === "construction");
   if (construction) {

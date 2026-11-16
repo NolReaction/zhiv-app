@@ -19,8 +19,6 @@ export type ConnectionStatusProps = {
   className?: string;
 };
 
-export const CONNECTION_PENDING_DELAY_MS = 900;
-
 const subscribeToBrowser = () => () => {};
 const browserAvailable = () => typeof document !== "undefined";
 const serverBrowserAvailable = () => false;
@@ -94,22 +92,7 @@ export function ConnectionStatus(props: ConnectionStatusProps) {
   }, [browser]);
   useLayoutEffect(() => { latest.current = props; }, [props]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const hasPending = pending || count > 0, transportIssue = !online || reconnecting || Boolean(error) || limited;
-  const [pendingDisplay, setPendingDisplay] = useState({ pending: hasPending, visible: hasPending && transportIssue });
-  let display = pendingDisplay;
-  if (display.pending !== hasPending || hasPending && transportIssue && !display.visible) {
-    display = { pending: hasPending, visible: hasPending && transportIssue };
-    setPendingDisplay(display);
-  }
-  useEffect(() => {
-    if (!display.pending || display.visible) return;
-    const cycle = display;
-    const timeout = setTimeout(() => {
-      setPendingDisplay(current => current === cycle ? { ...current, visible: true } : current);
-    }, CONNECTION_PENDING_DELAY_MS);
-    return () => clearTimeout(timeout);
-  }, [display]);
-  const visible = transportIssue || hasPending && display.visible;
+  const visible = !online || reconnecting || Boolean(error) || limited;
   const interactive = !portalHost || typeof portalHost.showPopover === "function";
   useEffect(() => {
     if (!visible || !portalHost || !fallback.current) return;
@@ -128,7 +111,7 @@ export function ConnectionStatus(props: ConnectionStatusProps) {
   const Icon = limited ? Clock3 : online ? Wifi : WifiOff;
   async function retry() {
     const current = latest.current;
-    if (current.online && !current.reconnecting && !current.pending && !current.error && !current.rateLimited && !(current.queuedCount && current.queuedCount > 0)) return;
+    if (current.online && !current.reconnecting && !current.error && !current.rateLimited) return;
     if (requested.current || !current.onRetry || !current.online || current.reconnecting || current.busy || (current.retrySeconds ?? 0) > 0) return;
     requested.current = true; setRetrying(true);
     try { await current.onRetry(); }
@@ -138,7 +121,7 @@ export function ConnectionStatus(props: ConnectionStatusProps) {
   const content = <>
     <span className={`${styles.anchor} ${className ?? ""}`} aria-live="polite" data-connection-status data-online={online} data-rate-limited={limited || undefined} data-connection-pending={pending || count > 0 || undefined}>
       {interactive ? <Popover.Trigger asChild><button ref={trigger} type="button" className={styles.indicator} aria-label={label} title={label}
-        data-connection-toggle data-unstable={transportIssue || hasPending || undefined}>
+        data-connection-toggle data-unstable>
         <Icon size={25} aria-hidden="true" />{count > 0 && <span className={styles.count} aria-hidden="true">{count > 9 ? "9+" : count}</span>}
       </button></Popover.Trigger> : <span className={styles.indicator} data-connection-passive data-passive data-unstable role="img" aria-label={label}>
         <Icon size={25} aria-hidden="true" />{count > 0 && <span className={styles.count} aria-hidden="true">{count > 9 ? "9+" : count}</span>}

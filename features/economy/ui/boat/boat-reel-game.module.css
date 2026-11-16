@@ -1,0 +1,23 @@
+.attempt { display: contents; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.instrument, .message { position: absolute; z-index: 2; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 52px); pointer-events: none; }
+.instrument { left: max(16px, env(safe-area-inset-left)); display: flex; align-items: flex-end; gap: 6px; }
+.readout, .message { background: #112d33f2; color: #e8e7cc; border: 1px solid var(--river-edge); border-radius: 8px; }
+.readout { display: grid; width: 116px; box-sizing: border-box; gap: 7px; padding: 8px; }
+.distance { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; }
+.distance strong { color: #e4d09c; font-variant-numeric: tabular-nums; }
+.readout small { color: #d3ca9e; font-size: 10px; }
+.message { left: 50%; transform: translateX(-50%); display: grid; gap: 6px; width: max-content; max-width: min(360px, calc(100% - 28px)); padding: 8px 12px; font-size: 12px; line-height: 1.45; text-align: center; }
+.message button { pointer-events: auto; }
+@media (max-width: 820px) {
+  .message[data-with-meter] { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 207px); }
+}
+@media (max-width: 400px) {
+  .instrument { left: max(10px, env(safe-area-inset-left)); }
+  .readout { width: 100px; }
+  .readout small { white-space: normal; }
+}
+@media (max-height: 500px) {
+  .instrument { bottom: calc(max(6px, env(safe-area-inset-bottom)) + 45px); left: max(10px, env(safe-area-inset-left)); }
+  .message[data-with-meter] { bottom: calc(max(6px, env(safe-area-inset-bottom)) + 151px); }
+}

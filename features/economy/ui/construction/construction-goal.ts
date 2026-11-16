@@ -36,7 +36,7 @@ function constructionReserves(state: EconomyView, cost: EconomyCost) {
     visiting.add(itemId);
     const source = worldMaterialSource(state, itemId);
     const recipe = source?.kind === "production" ? state.catalog.recipes.find(entry => entry.id === source.targetId)
-      : state.catalog.recipes.find(entry => (entry.rewards[itemId] ?? 0) > 0);
+      : state.catalog.recipes.find(entry => !entry.retired && (entry.rewards[itemId] ?? 0) > 0);
     if (recipe) {
       recipes.set(itemId, recipe);
       for (const [inputId, amount] of Object.entries(recipe.cost.items)) if (amount > 0) visit(inputId);

@@ -1,0 +1,17 @@
+.relationship { position: relative; display: grid; gap: 7px; min-width: 0; padding: 10px 12px; border: 1px solid var(--resident-border, #a9b68a); border-radius: 8px; background: var(--resident-background, linear-gradient(120deg, #e0e7ca, #f0ecd4)); color: var(--resident-ink, #405b3c); }
+.reputation { display: grid; gap: 6px; min-width: 0; }
+.progressLabel { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 11px; }
+.progressLabel > span { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 5px; font-weight: 650; }
+.progressLabel small { font-size: 9px; font-weight: 400; opacity: .8; }
+.progressLabel strong { font-size: 10px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.reputation progress { display: block; width: 100%; height: 5px; overflow: hidden; border: 0; border-radius: 5px; background: #ffffff66; color: var(--resident-accent, #829464); accent-color: var(--resident-accent, #829464); }
+.reputation progress::-webkit-progress-bar { border-radius: 5px; background: #ffffff66; }
+.reputation progress::-webkit-progress-value { border-radius: 5px; background: var(--resident-accent, #829464); }
+.reputation progress::-moz-progress-bar { border-radius: 5px; background: var(--resident-accent, #829464); }
+.benefit { display: flex; gap: 5px; align-items: center; min-width: 0; }
+.benefit > svg { flex-shrink: 0; }
+.benefit strong { font-size: 10px; font-weight: 650; line-height: 1.4; }
+.daily { margin: 0; font-size: 10px; line-height: 1.4; opacity: .85; }
+.daily strong { font-variant-numeric: tabular-nums; font-weight: 650; }
+@container (min-width: 480px) { .relationship { grid-template-columns: minmax(0, 1fr) auto; gap: 7px 16px; align-items: center; } .reputation { grid-column: 1 / -1; } .daily { text-align: right; } }
+@media (forced-colors: active) { .relationship { border-color: ButtonText; } }

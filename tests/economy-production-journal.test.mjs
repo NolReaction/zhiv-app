@@ -77,7 +77,11 @@ test("browser coordination requires an exclusive Web Lock and releases on abort"
     try { await callback({ name: "lock" }); } finally { held = false; }
   } } } });
   try {
-    const first = new AbortController(), release = await browserJournalCoordinator(owner, first.signal);
+    const discarded = new AbortController(), canceled = browserJournalCoordinator(owner, discarded.signal);
+    discarded.abort();
+    const first = new AbortController(), acquiring = browserJournalCoordinator(owner, first.signal);
+    assert.equal(await canceled, null);
+    const release = await acquiring; assert.equal(calls, 1, "only the live mount requests the account lock");
     assert.equal(typeof release, "function");
     assert.equal(await browserJournalCoordinator(owner, new AbortController().signal), null);
     first.abort(); await new Promise(resolve => setImmediate(resolve));
@@ -130,4 +134,18 @@ test("schema-valid cached recipe durations outside the Date range cannot crash p
   assert.equal(reserveProduction(snapshot, entry), null);
   assert.doesNotThrow(() => productionProjection(snapshot, [entry]));
   assert.deepEqual(productionProjection(snapshot, [entry]).jobs, []);
+});
+
+test("local reservations require confirmed expedition mastery and cannot invent its progress", () => {
+  const snapshot = state();
+  snapshot.inventory = { planks: 2, rope: 1 };
+  snapshot.progression.recipes = { make_planks: 2, make_rope: 1 };
+  const original = structuredClone(snapshot);
+  assert.equal(reserveProduction(snapshot, intent("make_trade_crate")), null);
+  assert.deepEqual(snapshot, original);
+  snapshot.progression.routes.forest = 2;
+  snapshot.progression.routes.old_woodland = 1;
+  const projected = reserveProduction(snapshot, intent("make_trade_crate"));
+  assert.equal(projected.jobs[0].recipeId, "make_trade_crate");
+  assert.deepEqual(projected.progression, snapshot.progression);
 });

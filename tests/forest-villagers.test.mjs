@@ -586,14 +586,15 @@ for (const role of ["host", "guest"]) test(`social ${role} waits for its own pri
 });
 
 
-for (const houseLevel of [1, 2]) test(`the actual Tiled rabbit at house ${houseLevel} cuts a tree, delivers in front of the facade, unloads promptly and rests without changing geometry`, () => {
+for (const houseLevel of [1, 2]) test(`the actual Tiled rabbit at house ${houseLevel} cuts a tree, delivers to marked storage, unloads promptly and rests without changing geometry`, () => {
   const levels = { ...initialPreviewLevels(TILED_WORLD), quarry: 1, woodlot: 1, "lopukh-home": houseLevel };
   const scene = previewWorldScene(TILED_WORLD, levels), saved = structuredClone(scene), state = setup(scene, { buildings: levels });
   const mind = state.residents.lopukh, places = forestVillagerPlaces(scene, "lopukh"), plan = places.woodcutting;
-  const house = scene.sites.find(site => site.id === "lopukh-home"), front = house.bounds.y + house.bounds.height + 44 * 45 / 48 + 2;
   assert.ok(plan); assert.ok(plan.work[0].id.startsWith("lopukh-work-tree-"), "the authored work zone selects the tree-side work positions");
   for (const stop of [...plan.work, ...plan.delivery, ...plan.rest]) {
-    assert.ok(isWalkable(places.navigation, stop.position)); assert.ok(stop.position.y >= front);
+    assert.ok(isWalkable(places.navigation, stop.position));
+    assert.deepEqual(stop.position, scene.destinations.find(marker => marker.id === stop.id).position,
+      "explicit Tiled stops stay exactly where authored, including positions beside the house");
   }
   for (const id of ["kamneshmyg", "leaftail"]) state.residents[id].available = false;
   assert.equal(beginWoodcutterCycle(mind, places), true);
@@ -605,7 +606,6 @@ for (const houseLevel of [1, 2]) test(`the actual Tiled rabbit at house ${houseL
     assert.ok(canTraverse(places.navigation, previous, mind.position), "every real footstep keeps all authored blockers");
     assert.ok(Math.hypot(mind.position.x - previous.x, mind.position.y - previous.y) <= 39 * .05 + 1e-6);
     if (actions.at(-1) !== mind.action) actions.push(mind.action);
-    if (mind.action === "carry" || mind.action === "unload") assert.ok(mind.position.y >= front);
     if (mind.action === "unload") {
       unloadAt ??= elapsed;
       assert.equal(mind.route, null); assert.ok(plan.delivery.some(stop => distanceBetween(stop.position, mind.position) < .1));

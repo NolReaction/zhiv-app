@@ -156,21 +156,71 @@ test("the first offline tap after the idle deadline cannot resume AFK", async ()
   f.session.environment(true, true); f.session.check(); await f.session.retry();
   assert.equal(f.session.getSnapshot().mode, "away"); assert.equal(f.sent.length, 0);
 });
-test("failed heartbeats reconnect automatically after backoff with one request in flight", async () => {
-  let time = instant, attempts = 0, release;
-  const owner = crypto.randomUUID();
+test("one lost heartbeat reply keeps gameplay usable and retries the identical heartbeat once", async () => {
+  let time = instant, reconciles = 0, release;
+  const commands = [], owner = crypto.randomUUID();
+  const f = fixture({ now: () => time, reconcile: async () => { reconciles++; return true; }, send: async command => {
+    commands.push({ ...command });
+    const answer = commandDevPresence(owner, command, time);
+    if (commands.length === 2) throw new Error("Lost reply after server commit");
+    if (commands.length === 3) return new Promise(resolve => { release = () => resolve(answer); });
+    return answer;
+  } });
+  const stop = f.session.start(true, true);
+  try {
+    await flush(); const connections = [...f.connected];
+    time += 30_000; f.session.input(); f.session.check(); await flush();
+    assert.equal(f.session.getSnapshot().mode, "active");
+    time += 2999; f.session.check(); await f.session.retry(); assert.equal(commands.length, 2);
+    time++; f.session.input(); f.session.check(); f.session.check(); await flush();
+    assert.deepEqual(commands[2], commands[1]); assert.equal(commands.length, 3);
+    release(); await flush(); assert.equal(f.session.getSnapshot().mode, "active");
+    assert.deepEqual(f.connected, connections); assert.equal(reconciles, 1);
+    time += 30_000; f.session.check(); await flush();
+    assert.equal(commands[3].sequence, commands[1].sequence + 1);
+    assert.equal(commands[3].active, true, "new input during retry is acknowledged by the next heartbeat");
+  } finally { stop(); }
+});
+
+test("repeated failed heartbeats cannot extend the confirmed lease; a late ACK cannot reopen it", async () => {
+  let time = instant, beats = 0, resolveLate;
+  const commands = [], owner = crypto.randomUUID();
   const f = fixture({ now: () => time, send: async command => {
-    attempts++;
-    if (command.kind === "heartbeat") throw new Error("Connection lost");
-    if (attempts === 3) return new Promise(resolve => { release = () => resolve(commandDevPresence(owner, command, time)); });
+    commands.push({ ...command });
+    if (command.kind === "heartbeat") {
+      if (++beats < 3) throw new TypeError("Network unreachable");
+      return new Promise(resolve => { resolveLate = () => resolve(commandDevPresence(owner, command, instant + 45_000)); });
+    }
     return commandDevPresence(owner, command, time);
   } });
-  f.session.start(true, true); await flush(); time += 30_000; f.session.check(); await flush();
-  assert.equal(f.session.getSnapshot().mode, "error"); assert.equal(attempts, 2);
-  time += 2999; f.session.check(); await flush(); assert.equal(attempts, 2);
-  time++; f.session.check(); f.session.check(); await flush();
-  assert.equal(attempts, 3); assert.equal(f.session.getSnapshot().mode, "connecting");
-  release(); await flush(); assert.equal(f.session.getSnapshot().mode, "active");
+  const stop = f.session.start(true, true);
+  try {
+    await flush(); const id = commands[0].presenceId;
+    for (const elapsed of [30_000, 33_000, 39_000, 89_999]) { time = instant + elapsed; f.session.check(); await flush(); }
+    assert.equal(f.session.getSnapshot().mode, "active"); assert.equal(beats, 3);
+    time++; f.session.check(); assert.equal(f.session.getSnapshot().mode, "error"); assert.equal(f.connected.at(-1), null);
+    resolveLate(); await flush(); assert.equal(f.session.getSnapshot().mode, "error");
+    time += 3000; f.session.check(); await flush(); assert.equal(f.session.getSnapshot().mode, "active");
+    assert.notEqual(commands.at(-1).presenceId, id);
+  } finally { stop(); }
+});
+
+test("a heartbeat rate limit immediately releases the old connection and respects Retry-After", async t => {
+  const { sendPresence } = await vite.ssrLoadModule("/features/activity/api.ts");
+  t.mock.method(globalThis, "fetch", async () => new Response("", { status: 429, headers: { "Retry-After": "180" } }));
+  const commands = [], owner = crypto.randomUUID(); let time = instant;
+  const f = fixture({ now: () => time, send: async command => {
+    commands.push({ ...command });
+    if (command.kind === "heartbeat") return sendPresence(command);
+    return commandDevPresence(owner, command, time);
+  } });
+  const stop = f.session.start(true, true);
+  try {
+    await flush(); time += 30_000; f.session.check(); await flush();
+    assert.equal(f.session.getSnapshot().mode, "error"); assert.equal(f.connected.at(-1), null);
+    time += 179_999; f.session.check(); await flush(); assert.equal(commands.length, 2);
+    time++; f.session.check(); await flush(); assert.equal(f.session.getSnapshot().mode, "active");
+  } finally { stop(); }
 });
 test("explicit AFK return stays paused across errors and offline until reconciliation succeeds", async () => {
   let calls = 0, release;

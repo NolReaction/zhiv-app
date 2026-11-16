@@ -61,6 +61,10 @@ import ru.zhiv.db.JdbcProgressionRewardsRepository
 import ru.zhiv.game.ProgressionRewardsRepository
 import ru.zhiv.game.progressionRewardsRoutes
 import ru.zhiv.db.JdbcEconomyRepository
+import ru.zhiv.db.JdbcNeighborRepository
+import ru.zhiv.db.NeighborMaintenance
+import ru.zhiv.economy.NeighborRepository
+import ru.zhiv.economy.neighborRoutes
 import ru.zhiv.db.JdbcEconomyMarketRepository
 import ru.zhiv.db.JdbcEconomyBarterRepository
 import ru.zhiv.economy.EconomyBarterRepository
@@ -136,6 +140,8 @@ import ru.zhiv.db.JdbcAdminPromoRepository
 fun Application.module() {
     val config = AppConfig.fromEnvironment()
     val dataSource = DatabaseFactory.create(config)
+    val neighborRepository = JdbcNeighborRepository(dataSource, AdminConfig(config.adminPublicIds))
+    val neighborMaintenance = NeighborMaintenance(neighborRepository)
     val tapMaintenance = ru.zhiv.db.TapActivityMaintenance(dataSource)
     val earthMaintenance = EarthLocationMaintenance(dataSource)
     val pushConfig = WebPushConfig.fromEnvironment()
@@ -152,6 +158,7 @@ fun Application.module() {
     val mailer = if (authConfig.emailEnabled) SmtpLoginMailer(authConfig) else null
 
     monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
+        neighborMaintenance.close()
         tapMaintenance.close()
         earthMaintenance.close()
         pushMaintenance?.close()
@@ -184,6 +191,7 @@ fun Application.module() {
         progressionRewards = JdbcProgressionRewardsRepository(dataSource),
         onboarding = JdbcOnboardingRepository(dataSource),
         economyMarket = JdbcEconomyMarketRepository(dataSource),
+        neighbor = neighborRepository,
         economyBarter = JdbcEconomyBarterRepository(dataSource),
         forestMemory = JdbcForestMemoryRepository(dataSource),
         admin = JdbcAdminRepository(dataSource, AdminConfig(config.adminPublicIds)),
@@ -220,6 +228,7 @@ fun Application.installZhivApi(
     forestMemory: ForestMemoryRepository? = null,
     economy: EconomyRepository? = null,
     economyMarket: EconomyMarketRepository? = null,
+    neighbor: NeighborRepository? = null,
     progressionRewards: ProgressionRewardsRepository? = null,
     onboarding: OnboardingRepository? = null,
     economyBarter: EconomyBarterRepository? = null,
@@ -407,6 +416,7 @@ fun Application.installZhivApi(
         progressionRewards?.let { progressionRewardsRoutes(it, tokenCodec, config, presence) }
         economy?.let { economyRoutes(it, tokenCodec, config, presence) }
         economyMarket?.let { economyMarketRoutes(it, tokenCodec, config, presence) }
+        neighbor?.let { neighborRoutes(it, tokenCodec, config, presence) }
         economyBarter?.let { economyBarterRoutes(it, tokenCodec, config, presence) }
         forestMemory?.let { forestMemoryRoutes(it, tokenCodec, config, presence) }
         onboarding?.let { onboardingRoutes(it, tokenCodec, config, presence) }

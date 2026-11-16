@@ -24,7 +24,8 @@ function player(home = 4, pearls = 50_000) {
 }
 const read = (p, time = now) => economy.getDevEconomy(p.token, time);
 const command = (p, action, targetId, extra = {}, time = now) => ({ requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,
-  expectedRevision: read(p, time).revision, action, targetId, quantity: 1, totalPrice: 0, ...extra });
+  expectedRevision: read(p, time).revision, action, targetId, quantity: 1,
+  totalPrice: action === "buy_production_slot" ? slots.productionSlotOffer(read(p, time), targetId)?.pricePearls ?? 0 : 0, ...extra });
 const issue = (p, action, target, time = now) => economy.commandDevEconomy(p.token, command(p, action, target, {}, time), time);
 
 test("old saves and snapshots default to one slot and expose only the five real production stations", () => {
@@ -43,12 +44,19 @@ test("old saves and snapshots default to one slot and expose only the five real 
   assert.equal(slots.productionSlotCount({ productionSlots: { workshop: 999 } }, "workshop"), 3);
 });
 
-test("both premium slot tiers are available at home one and persist independently per station", () => {
+test("second slot opens at home one and third requires the completed home three without spending on rejection", () => {
   const p = player(1); const before = read(p);
   const second = issue(p, "buy_production_slot", "workshop").state;
   assert.deepEqual(second.productionSlots, { workshop: 2 });
   assert.deepEqual(second.wallet, { coins: 100_000, pearls: 49_800 });
   assert.deepEqual(second.inventory, before.inventory);
+  for (const home of [1, 2]) {
+    p.row.state.buildings.home = home;
+    const locked = read(p);
+    assert.throws(() => issue(p, "buy_production_slot", "workshop"), { code: "ECONOMY_HOME_REQUIRED" });
+    assert.deepEqual(read(p), locked);
+  }
+  p.row.state.buildings.home = 3;
   const third = issue(p, "buy_production_slot", "workshop").state;
   assert.equal(third.productionSlots.workshop, 3); assert.equal(third.wallet.pearls, 49_300);
   assert.equal(slots.productionSlotCount(third, "kiln"), 1);
@@ -56,7 +64,18 @@ test("both premium slot tiers are available at home one and persist independentl
   assert.equal(slots.productionSlotOffer(third, "workshop"), null);
 });
 
-test("invalid stations, missing buildings, insufficient pearls and forged batch or price cannot buy capacity", () => {
+test("a previously purchased third slot remains usable below its new purchase gate", () => {
+  const p = player(1);
+  p.row.state.productionSlots = { workshop: 3 };
+  for (let index = 0; index < 3; index++) issue(p, "start_production", "make_planks");
+  const state = read(p);
+  assert.equal(state.productionSlots.workshop, 3);
+  assert.equal(state.jobs.length, 3);
+  assert.equal(state.wallet.pearls, 50_000);
+  assert.equal(slots.productionSlotOffer(state, "workshop"), null);
+});
+
+test("invalid stations, missing buildings, insufficient pearls and forged batch cannot buy capacity", () => {
   const p = player(4, 199);
   for (const station of ["quarry", "home", "warehouse", "unknown"]) {
     const before = read(p);
@@ -66,11 +85,25 @@ test("invalid stations, missing buildings, insufficient pearls and forged batch 
   assert.throws(() => issue(p, "buy_production_slot", "workshop"), { code: "ECONOMY_PEARLS" });
   p.row.state.buildings.dryer = 0;
   assert.throws(() => issue(p, "buy_production_slot", "dryer"), { code: "ECONOMY_BUILDING_REQUIRED" });
-  for (const extra of [{ quantity: 2 }, { totalPrice: 1 }, { totalPrice: 200 }]) {
+  const before = read(p);
+  assert.throws(() => economy.commandDevEconomy(p.token, command(p, "buy_production_slot", "workshop", { quantity: 2 }), now), { code: "INVALID_ECONOMY_COMMAND" });
+  assert.deepEqual(read(p), before);
+});
+
+test("missing, cheaper and more expensive quotes never spend pearls or change the current tier", () => {
+  const p = player();
+  for (const totalPrice of [0, 1, 199, 201, 500]) {
     const before = read(p);
-    assert.throws(() => economy.commandDevEconomy(p.token, command(p, "buy_production_slot", "workshop", extra), now), { code: "INVALID_ECONOMY_COMMAND" });
-    assert.deepEqual(read(p), before);
+    assert.throws(() => economy.commandDevEconomy(p.token, command(p, "buy_production_slot", "workshop", { totalPrice }), now),
+      { code: "ECONOMY_PRODUCTION_SLOT_PRICE_CHANGED" });
+    assert.deepEqual(read(p), before, "a rejected quote cannot create a receipt debit or revise the profile");
   }
+  issue(p, "buy_production_slot", "workshop");
+  const second = read(p);
+  assert.throws(() => economy.commandDevEconomy(p.token, command(p, "buy_production_slot", "workshop", { totalPrice: 200 }), now),
+    { code: "ECONOMY_PRODUCTION_SLOT_PRICE_CHANGED" });
+  assert.deepEqual(read(p), second, "a fresh revision cannot reuse the previous tier's quote");
+  assert.equal(issue(p, "buy_production_slot", "workshop").state.wallet.pearls, 49_300);
 });
 
 test("receipt replay spends once while stale revisions and cross-account commands cannot buy another tier", () => {
@@ -124,7 +157,7 @@ test("several growing crops share one collecting hero while mining retains its o
   const beforeSecondCollection = read(p, ripe);
   assert.throws(() => issue(p, "start_collection", growing.jobs[1].id, ripe), { code: "ECONOMY_COLLECTOR_BUSY" });
   assert.deepEqual(read(p, ripe), beforeSecondCollection);
-  const miner = issue(p, "start_exploration", "cave", ripe).state.jobs.find(job => job.targetId === "cave");
+  const miner = issue(p, "start_exploration", "quarry_stone", ripe).state.jobs.find(job => job.targetId === "quarry_stone");
   assert.equal(miner.actorId, "miner");
   const beforeSecondMining = read(p, ripe);
   assert.throws(() => issue(p, "start_exploration", "quarry_stone", ripe), { code: "ECONOMY_MINER_BUSY" });

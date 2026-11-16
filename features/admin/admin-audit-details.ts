@@ -8,6 +8,7 @@ const labels: Record<string, string> = {
   grant_economy: "Выдача игроку", adjust_economy: "Корректировка баланса", mail_broadcast: "Рассылка игрокам", promo_create: "Создание промокода", promo_update: "Изменение промокода",
   promo_delete: "Удаление промокода", set_tag: "Тег", ban: "Блокировка", unban: "Разблокировка",
   watch: "Наблюдение", unwatch: "Снятие наблюдения", clear_signal: "Сигнал проверен",
+  neighbor_settings: "Настройки лесного соседа", neighbor_buy: "Выкуп лесным соседом",
 };
 export const adminActionName = (action: string) => labels[action] ?? action;
 const count = (value: number) => new Intl.NumberFormat("ru-RU").format(value);
@@ -24,6 +25,12 @@ export function adminActionDetails(details: string): string {
     const payload = record(JSON.parse(details));
     const value = payload.request ? record(payload.request) : payload;
     const delivery = value.delivery === "notify" ? " · Письмо и уведомление" : value.delivery === "silent" ? " · Тихо" : "";
+    if (value.settings && typeof value.expectedVersion === "number") {
+      const settings = record(value.settings);
+      return `${text(settings.name) || "Лесной сосед"} · ${settings.enabled ? "включён" : "отключён"} · автоматический выкуп ${settings.autoBuyEnabled ? "включён" : "на паузе"}`;
+    }
+    if (text(value.listingId) && text(value.playerPublicId) && number(value.expectedTotalPrice))
+      return `Лот ${text(value.listingId)} · ${count(number(value.expectedTotalPrice))} монет · Персонаж мира`;
     if ((value.kind === "item" || value.kind === "achievement") && text(value.rewardId)) {
       const reward = (value.kind === "item" ? GAME_ITEMS : GAME_ACHIEVEMENTS).find(item => item.id === value.rewardId);
       return `${value.kind === "item" ? "Календарный предмет" : "Достижение"}: ${reward?.title ?? text(value.rewardId)}${delivery}`;

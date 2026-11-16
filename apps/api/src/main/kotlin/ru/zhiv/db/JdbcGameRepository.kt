@@ -215,6 +215,7 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
             UPDATE game_sessions SET last_sequence=?,last_tap_count=?,last_accepted=?,last_run_id=?,last_batch_at=?,run_taps=?,run_id=?,run_updated_at=?,last_tap_times=?,last_rejection_code=?,event_tokens=?,event_updated_at=? WHERE id=?
         """.trimIndent(), sequence, tapCount, accepted, runId, instant, runTaps, if (accepted > 0) runId else game.runId, if (accepted > 0) eventEnd else game.runUpdatedAt, tapTimes?.let { c.createArrayOf("bigint", it.toTypedArray()) }, rejectionCode, eventTokens, if (validTimes?.isNotEmpty() == true) java.time.Instant.ofEpochMilli(eventAt).atOffset(ZoneOffset.UTC) else game.eventUpdated, sessionId)
         creditWorldTaps(c, actor.id, "tap:$sessionId:$sequence", accepted, instant)
+        creditEconomyTapBoost(c, actor.id, accepted, instant.toInstant())
         recordTapActivity(c, actor.id, instant, accepted, tapCount-accepted, eligible?.take(accepted),
             if(continuing) priorRun.runUpdatedAt?.toInstant()?.toEpochMilli() else null)
         GameBatchResponse(sessionId.toString(), sequence, accepted, tapCount - accepted, false, progress(c, actor, instant), if (accepted > 0 || game.runId == runId) runTaps else 0L, rejectionCode)
@@ -227,7 +228,7 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
         val current = progress(c, actor, now(c))
         if (current.visibilityVersion != expectedVersion) {
             if (current.visibilityVersion == expectedVersion + 1 && current.leaderboardOptIn == visible) return@tx current
-            fail("GAME_VISIBILITY_CONFLICT", "Настройка рейтинга уже изменилась. Обновите её.")
+            fail("GAME_VISIBILITY_CONFLICT", "Настройка статистики профиля уже изменилась. Обновите её.")
         }
         c.update("UPDATE game_profiles SET leaderboard_opt_in=?,visibility_version=visibility_version+1,updated_at=clock_timestamp() WHERE user_id=?", visible, actor.id)
         progress(c, actor, now(c))
@@ -238,22 +239,41 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
         val actor = lockActor(c, sessionHash)
         val instant = now(c)
         val current = progress(c, actor, instant)
-        val score = if (metric == "best_series") "p.best_series" else "COALESCE(m.taps,0)"
-        val place = if (metric == "best_series") "rank() OVER (ORDER BY $score DESC)" else "row_number() OVER (ORDER BY $score DESC,m.updated_at,u.id)"
+        val monthly = metric == "monthly_taps"
+        val participants = if (monthly) "(SELECT user_id, taps, updated_at FROM game_monthly_scores WHERE month=?)" else "game_profiles"
+        val score = if (monthly) "s.taps" else "s.best_series"
+        val ordering = if (monthly) "$score DESC, s.updated_at, s.user_id" else "$score DESC, s.user_id"
+        val place = if (monthly) "row_number() OVER (ORDER BY $ordering)" else "rank() OVER (ORDER BY $score DESC)"
+        val values = if (monthly) arrayOf<Any>(actor.id, month(instant), scope, actor.id, actor.id) else arrayOf<Any>(actor.id, scope, actor.id, actor.id)
         val ranked = c.rows("""
             WITH eligible AS (
-                SELECT $place AS place, row_number() OVER (ORDER BY $score DESC,${if (metric == "monthly_taps") "m.updated_at," else ""}u.id) AS position,
+                SELECT $place AS place, row_number() OVER (ORDER BY $ordering) AS position,
                        u.display_name,u.tag_text,u.tag_color,$score AS score,u.id=? AS is_me
-                FROM game_profiles p JOIN app_users u ON u.id=p.user_id
-                LEFT JOIN game_monthly_scores m ON m.user_id=u.id AND m.month=?
-                WHERE $score>0 AND p.leaderboard_opt_in AND u.deleted_at IS NULL AND u.banned_at IS NULL
+                FROM $participants s JOIN app_users u ON u.id=s.user_id
+                WHERE $score>0 AND u.deleted_at IS NULL AND u.banned_at IS NULL
                   AND (?='global' OR u.id=? OR u.id IN (SELECT user_id FROM active_direct_friend_ids(?)))
             ) SELECT place,display_name,score,is_me,position,tag_text,tag_color FROM eligible WHERE position<=100 OR is_me ORDER BY position
-        """.trimIndent(), actor.id, month(instant), scope, actor.id, actor.id) {
+        """.trimIndent(), *values) {
             it.getLong(5) to GameLeaderboardEntry(it.getLong(1), it.getString(2), it.getLong(3), it.getBoolean(4), tag=it.playerTag())
         }
         GameLeaderboard(actor.publicId, current.month, current.serverTime, ranked.filter { it.first <= 100 }.map { it.second },
-            ranked.firstOrNull { it.second.isMe }?.second?.rank, current.monthlyTaps, current.leaderboardOptIn, scope, metric, current.bestSeries)
+            ranked.firstOrNull { it.second.isMe }?.second?.rank, current.monthlyTaps, true, scope, metric, current.bestSeries)
+    }
+
+    override suspend fun fishingRecords(sessionHash: ByteArray, scope: String): FishingRecordsBoard = tx { c ->
+        if (scope != "global" && scope != "friends") fail("INVALID_GAME_SCOPE", "Выберите круг сравнения", 400)
+        val actor = lockActor(c, sessionHash)
+        FishingRecordsBoard(actor.publicId, scope, leaderboardOptIn = true, visibilityVersion = 0,
+            fishingRecordLeaders(c, actor.id, scope))
+    }
+
+    override suspend fun setFishingVisibility(sessionHash: ByteArray, request: GameVisibilityRequest): FishingRecordVisibility = tx { c ->
+        if (request.expectedVersion !in 0L until MAX_SAFE_INTEGER) fail("INVALID_GAME_VISIBILITY", "Некорректная версия настроек", 400)
+        val actor = lockActor(c, sessionHash)
+        requireOwner(actor, request.ownerPublicId)
+        // Older clients may still send this preference. The board is automatic;
+        // the response is authoritative and no player data needs to be written.
+        FishingRecordVisibility(actor.publicId, leaderboardOptIn = true, visibilityVersion = 0)
     }
 
     override suspend fun achievements(sessionHash: ByteArray): GameAchievements = tx { c ->

@@ -7,6 +7,7 @@ export type WorldRecipeGroup = { key: string; recipe: WorldRecipe; methods: Worl
 export function worldRecipeGroups(state: EconomyView, recipes: readonly WorldRecipe[], { includeFuture = false }: { includeFuture?: boolean } = {}): WorldRecipeGroup[] {
   const groups = new Map<string, WorldRecipeGroup>();
   for (const recipe of recipes) {
+    if (recipe.retired) continue;
     if (!includeFuture && worldMissingRequirements(state, worldRequirements(recipe, recipe)).length) continue;
     const key = JSON.stringify([recipe.buildingId, Object.keys(recipe.rewards).sort()]);
     const group = groups.get(key);

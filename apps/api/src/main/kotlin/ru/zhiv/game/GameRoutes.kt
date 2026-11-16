@@ -47,15 +47,24 @@ fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppC
                 if (metric !in setOf("monthly_taps", "best_series")) throw AuthFailure("INVALID_GAME_METRIC", "Выберите вид рейтинга", 400)
                 call.respond(repository.leaderboard(hash, checkNotNull(scope), checkNotNull(metric)))
             }
+            get("/fishing-records") {
+                val hash = call.gameSessionHash(config, codec)
+                val scopes = call.request.queryParameters.getAll("scope")
+                val scope = if (scopes == null) "global" else scopes.singleOrNull()
+                if (scope != "global" && scope != "friends") throw AuthFailure("INVALID_GAME_SCOPE", "Выберите круг сравнения", 400)
+                call.respond(repository.fishingRecords(hash, scope))
+            }
             get("/achievements") {
                 val hash = call.gameSessionHash(config, codec)
                 val versions = call.request.queryParameters.getAll("catalog")
                 val version = versions?.singleOrNull() ?: if (versions == null) "1" else null
-                if (version !in setOf("1", "2", "3", "4", "5", "6")) throw AuthFailure("INVALID_GAME_CATALOG", "Неизвестный каталог достижений", 400)
+                if (version !in setOf("1", "2", "3", "4", "5", "6", "7", "8")) throw AuthFailure("INVALID_GAME_CATALOG", "Неизвестный каталог достижений", 400)
                 val result = repository.achievements(hash)
                 call.respond(when (version) {
-                    "6" -> result
-                    "5" -> result.copy(achievements = result.achievements.take(15))
+                    "8" -> result
+                    "7" -> result.copy(achievements = result.achievements.take(19))
+                    "6" -> result.copy(achievements = result.achievements.take(19).map(::legacyAchievementView))
+                    "5" -> result.copy(achievements = result.achievements.take(15).map(::legacyAchievementView))
                     else -> result.copy(achievements = result.achievements.take(when (version) { "4" -> 7; "3" -> 6; else -> 3 })
                         .map { it.copy(tiers = emptyList()) })
                 })
@@ -84,6 +93,11 @@ fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppC
                 val receipt = repository.submitBatch(hash, sessionId, request.sequence, request.tapCount, runId, request.tapTimes)
                 RuntimeMetrics.shared.recordGameBatch(receipt.acceptedTaps, receipt.rejectedTaps, receipt.replayed)
                 call.respond(receipt)
+            }
+            post("/fishing-records/visibility") {
+                val hash = call.gameSessionHash(config, codec, writing = true)
+                call.requireGameplayPresence(presence, hash)
+                call.respond(repository.setFishingVisibility(hash, call.receive<GameVisibilityRequest>()))
             }
             patch("/visibility") {
                 val hash = call.gameSessionHash(config, codec, writing = true)

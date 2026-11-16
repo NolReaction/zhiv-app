@@ -1,3 +1,5 @@
+import { mergeCraftSkills, effectiveCraftSkills, type BuildingSkillHistory } from "./craft-skill";
+import { mergePlayerProgression } from "./player-progression";
 import collectionCatalog from "@/apps/api/src/main/resources/world/collections-catalog.json";
 import { ECONOMY_MAX_ITEMS, economyProgressionSchema, type EconomyJob, type EconomyProgression } from "./model";
 
@@ -19,7 +21,7 @@ export function advanceEconomyProgression(value: EconomyProgression | undefined,
   const current = value ?? newEconomyProgression();
   const next = structuredClone(current);
   if (job.kind === "exploration") next.routes[job.targetId] = add(next.routes[job.targetId] ?? 0, 1);
-  if (job.kind === "production" && job.recipeId) next.recipes[job.recipeId] = add(next.recipes[job.recipeId] ?? 0, 1);
+  if (job.kind === "production" && job.recipeId && job.cooking?.successful !== false) next.recipes[job.recipeId] = add(next.recipes[job.recipeId] ?? 0, 1);
   const seconds = Math.max(0, Math.floor((Date.parse(job.finishesAt) - Date.parse(job.startedAt)) / 1000));
   const travel = job.kind === "exploration" && collectionCatalog.travel.routes.includes(job.targetId);
   const quarry = job.kind === "exploration" && collectionCatalog.quarry.routes.includes(job.targetId)
@@ -45,7 +47,7 @@ export function advanceEconomyProgression(value: EconomyProgression | undefined,
   return next;
 }
 
-export function mergeEconomyProgression(left: EconomyProgression | undefined, right: EconomyProgression | undefined): EconomyProgression {
+export function mergeEconomyProgression(left: EconomyProgression | undefined, right: EconomyProgression | undefined, leftHistory?: BuildingSkillHistory, rightHistory?: BuildingSkillHistory): EconomyProgression {
   const first = left ?? newEconomyProgression(), second = right ?? newEconomyProgression();
   const mergeCounts = (a: Record<string, number>, b: Record<string, number>) =>
     Object.fromEntries([...new Set([...Object.keys(a), ...Object.keys(b)])].map(id => [id, add(a[id] ?? 0, b[id] ?? 0)]));
@@ -64,7 +66,10 @@ export function mergeEconomyProgression(left: EconomyProgression | undefined, ri
       if (missing) finds.add(missing);
     }
   }
-  return { routes: mergeCounts(first.routes, second.routes), recipes: mergeCounts(first.recipes, second.recipes),
+  const player = mergePlayerProgression(first.player, second.player);
+  const skills = mergeCraftSkills(leftHistory ? effectiveCraftSkills({ ...leftHistory, progression: first }) : first.skills,
+    rightHistory ? effectiveCraftSkills({ ...rightHistory, progression: second }) : second.skills);
+  return { ...(player ? { player } : {}), ...(skills ? { skills } : {}), routes: mergeCounts(first.routes, second.routes), recipes: mergeCounts(first.recipes, second.recipes),
     collections: { finds: [...finds].sort(), travelSeconds, quarrySeconds } };
 }
 

@@ -195,7 +195,7 @@ function validateRoute(scene: FixedWorldScene, path: WorldPath): string | null {
       let end = point;
       if (site === homeSite && i === points.length - 1) {
         // Feet may brush the doorway edge on the last small approach, not cross the house.
-        const segmentLength = distance(previous, point), threshold = WORLD_INTERACTION_LIMITS.homeDock;
+        const segmentLength = distance(previous, point), threshold = WORLD_INTERACTION_LIMITS.legacyHomeApproach;
         if (segmentLength <= threshold) continue;
         const t = (segmentLength - threshold) / segmentLength;
         end = { x: previous.x + (point.x - previous.x) * t, y: previous.y + (point.y - previous.y) * t };

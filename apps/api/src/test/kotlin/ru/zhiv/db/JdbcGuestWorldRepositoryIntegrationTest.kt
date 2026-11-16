@@ -24,6 +24,7 @@ import ru.zhiv.security.TokenCodec
 import ru.zhiv.world.WorldEquipment
 import ru.zhiv.world.WorldState
 import ru.zhiv.world.worldJson
+import java.sql.SQLException
 import java.util.UUID
 import kotlin.test.*
 
@@ -79,6 +80,43 @@ class JdbcGuestWorldRepositoryIntegrationTest {
         return market.market(seller.hash).mine.single { it.id !in before }
     }
     private suspend fun buy(buyer: Player,lot: EconomyMarketListing) = command(buyer,"buy_listing",lot.id,lot.quantity,lot.totalPrice)
+
+    @Test fun `people summaries batch friend XP and eligible active lots with privacy and no read writes`() = runBlocking<Unit> {
+        val buyer=player();val seller=player();val circle=connect(buyer,seller)
+        edit(seller) { it.copy(progression=it.progression.copy(player=EconomyPlayerProgress(xp=480)),
+            inventory=it.inventory+("tools" to 1L), unlockedItems=it.unlockedItems+"tools") }
+        val lots=List(4) { offer(seller) }
+        val toolsPrice=EconomyRules.catalog.items.single { it.id=="tools" }.baseSellPrice
+        market.command(seller.hash,command(seller,"create_listing","tools",1,toolsPrice))
+        fun saved() = source.connection.use { c -> c.economyRows("SELECT state::text FROM economy_profiles WHERE user_id=?",seller.id) { it.getString(1) }.single() }
+        val stateBefore=saved()
+        val summary=ok(relationships.listPeople(buyer.hash)).people.single().gameSummary!!
+        assertEquals(5,summary.level);assertTrue(summary.market.available)
+        assertEquals(4,summary.market.count);assertEquals(3,summary.market.listings.size)
+        assertTrue(summary.market.listings.all { it.id in lots.map { lot -> lot.id } && it.itemId=="berries" && it.totalPrice==20L })
+        assertEquals(stateBefore,saved())
+        assertEquals("23514", assertFailsWith<SQLException> {
+            execute("UPDATE economy_market_listings SET total_price=2,currency_scale=1 WHERE id=?",UUID.fromString(lots.first().id))
+        }.sqlState, "The current database rejects legacy denominations for active listings")
+        assertEquals(4,ok(relationships.listPeople(buyer.hash)).people.single().gameSummary!!.market.count)
+        edit(buyer) { it.copy(itemUnlockVersion=1,unlockedItems=it.unlockedItems+"tools") }
+        assertEquals(5,ok(relationships.listPeople(buyer.hash)).people.single().gameSummary!!.market.count)
+        ok(relationships.updateSharing(seller.hash,circle,SharingMode.OFF))
+        val hidden=ok(relationships.listPeople(buyer.hash)).people.single().gameSummary!!
+        assertEquals(5,hidden.level);assertEquals(FriendMarketSummary(false,"world_hidden",0,emptyList()),hidden.market)
+        ok(relationships.removePerson(buyer.hash,circle))
+        assertTrue(ok(relationships.listPeople(buyer.hash)).people.isEmpty())
+    }
+
+    @Test fun `people summaries do not initialize untouched games or reveal deleted friends`() = runBlocking<Unit> {
+        val buyer=player(false);val seller=player(false);connect(buyer,seller)
+        val before=scalar("SELECT count(*) FROM economy_profiles WHERE user_id IN (?,?)",buyer.id,seller.id)
+        val summary=ok(relationships.listPeople(buyer.hash)).people.single().gameSummary!!
+        assertEquals(1,summary.level);assertEquals("buyer_locked",summary.market.reason)
+        assertEquals(before,scalar("SELECT count(*) FROM economy_profiles WHERE user_id IN (?,?)",buyer.id,seller.id))
+        execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?",seller.id)
+        assertTrue(ok(relationships.listPeople(buyer.hash)).people.isEmpty())
+    }
 
     @Test fun `visiting untouched legacy and new worlds does not initialize or mutate either account`() = runBlocking<Unit> {
         val viewer=player(false);val friend=player(false);val circle=connect(viewer,friend)
@@ -150,7 +188,7 @@ class JdbcGuestWorldRepositoryIntegrationTest {
         edit(buyer){it.copy(inventory=mapOf("berries" to 50L))}
         assertEquals("ECONOMY_STORAGE_FULL",assertFailsWith<AuthFailure>{worlds.purchase(buyer.hash,circle,buy(buyer,lot))}.code)
         edit(buyer){it.copy(inventory=mapOf("berries" to 20L))}
-        execute("INSERT INTO economy_market_daily_turnover(user_id,trade_day,buys_value) VALUES (?,(clock_timestamp() AT TIME ZONE 'UTC')::date,2400)",buyer.id)
+        execute("INSERT INTO economy_market_daily_turnover(user_id,trade_day,buys_value) VALUES (?,(clock_timestamp() AT TIME ZONE 'UTC')::date,?)",buyer.id,EconomyMarketRules.dailyTradeLimit(2))
         assertEquals("ECONOMY_MARKET_DAILY_LIMIT",assertFailsWith<AuthFailure>{worlds.purchase(buyer.hash,circle,buy(buyer,lot))}.code)
         assertEquals(1000L,economy.snapshot(buyer.hash).wallet.coins)
         assertEquals(listOf(lot.id),worlds.world(buyer.hash,circle).market.listings.map { it.id })
@@ -166,7 +204,7 @@ class JdbcGuestWorldRepositoryIntegrationTest {
         val buyer=player();val seller=player();val circle=connect(buyer,seller)
         edit(seller){it.copy(buildings=it.buildings + ("home" to 5),inventory=mapOf("tools" to 1L),
             unlockedItems=(it.unlockedItems+"tools").distinct())}
-        market.command(seller.hash,command(seller,"create_listing","tools",1,1000))
+        market.command(seller.hash,command(seller,"create_listing","tools",1,1030))
         val lot=market.market(seller.hash).mine.single()
         val storefront=worlds.world(buyer.hash,circle).market
         assertTrue(storefront.available);assertNull(storefront.reason)

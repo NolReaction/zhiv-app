@@ -285,7 +285,8 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
 
   // A stale check-in is dangerous: identity and API traffic are always network-only.
-  if (url.pathname.startsWith("/api/") || url.pathname === "/admin" || url.pathname.startsWith("/admin/") || url.pathname === "/app-status.json") return;
+  if (url.pathname.startsWith("/api/") || url.pathname === "/admin" || url.pathname.startsWith("/admin/")
+    || url.pathname === "/branch" || url.pathname.startsWith("/branch/") || url.pathname === "/app-status.json") return;
 
   if (request.mode === "navigate") {
     const networkResponse = fetch(request);

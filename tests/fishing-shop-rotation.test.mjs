@@ -282,12 +282,14 @@ test('higher delivery rewards and free order replacements cannot refill an exhau
 test('starter tackle is cheaper only in new stock while a saved old quote stays exact', () => {
   const p = player(); fund(p);
   const state = persisted(p), current = createFishingShop(state, now, () => 0);
-  assert.equal(current.offers.find(offer => offer.itemId === 'river_rod').unitPrice, 1800);
-  assert.equal(current.offers.find(offer => offer.itemId === 'barbed_hook').unitPrice, 1200);
+  const currentPrice = id => [...economyCatalog.fishing.rods, ...economyCatalog.fishing.hooks].find(item => item.id === id).price;
+  assert.equal(current.offers.find(offer => offer.itemId === 'river_rod').unitPrice, currentPrice('river_rod'));
+  assert.equal(current.offers.find(offer => offer.itemId === 'barbed_hook').unitPrice, currentPrice('barbed_hook'));
+  assert.ok(currentPrice('river_rod') < 18000);
   const alternate = createFishingShop({ ...state, fishing: { ...state.fishing,
     ownedRods: [...state.fishing.ownedRods, 'float_rod'], ownedHooks: [...state.fishing.ownedHooks, 'spoon_hook'] } }, now, max => max - 1);
-  assert.equal(alternate.offers.find(offer => offer.itemId === 'brook_rod').unitPrice, 900);
-  assert.equal(alternate.offers.find(offer => offer.itemId === 'round_hook').unitPrice, 600);
+  assert.equal(alternate.offers.find(offer => offer.itemId === 'brook_rod').unitPrice, currentPrice('brook_rod'));
+  assert.equal(alternate.offers.find(offer => offer.itemId === 'round_hook').unitPrice, currentPrice('round_hook'));
   state.fishingShop = { ...current, offers: current.offers.map(offer => offer.itemId === 'river_rod' ? { ...offer, unitPrice: 18000 } : offer) };
   const before = read(p), saved = before.fishingShop.offers.find(offer => offer.itemId === 'river_rod');
   assert.equal(saved.unitPrice, 18000);

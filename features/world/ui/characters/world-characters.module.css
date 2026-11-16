@@ -1,4 +1,14 @@
 .scrim[data-slot="dialog-overlay"] { z-index: 90; background: #07191099; }
+.relationship { display: grid; gap: 8px; width: 100%; min-width: 0; margin-top: 3px; padding-top: 12px; border-top: 1px solid #a9b08a66; text-align: left; font-size: 12px; line-height: 1.4; }
+.friendshipHeading { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--friendship-accent); font-weight: 650; overflow-wrap: anywhere; }
+.friendshipHeading svg { flex: 0 0 auto; fill: var(--friendship-soft); }
+.friendshipTrack { display: block; height: 6px; overflow: hidden; border: 1px solid #9ba77b40; border-radius: 8px; background: #d4d7b7; box-shadow: inset 0 1px 2px #5d70451a; }
+.friendshipTrack > span { display: block; height: 100%; border-radius: inherit; background: var(--friendship-accent); transition: width 400ms ease; }
+.friendshipHint { color: #59664c; font-size: 11px; text-align: center; overflow-wrap: anywhere; }
+.friendshipBenefit { display: block; padding-top: 3px; color: #5d593b; font-size: 11px; text-align: center; text-wrap: pretty; }
+.friendshipBenefit svg { display: inline-block; margin-right: 5px; color: var(--friendship-accent); vertical-align: -2px; }
+.benefitTail, .benefitValue { white-space: nowrap; }
+.benefitValue { color: var(--friendship-accent); font-weight: 650; }
 .dialog[data-slot="dialog-content"] { position: fixed; z-index: 100; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(760px, calc(100vw - 24px)); max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; border: 1px solid #9aab7b; border-radius: 24px; padding: 24px; color: var(--forest-ink, #394d3e); background: var(--forest-paper, #e6d9b7); box-shadow: 0 20px 70px #020b0788; outline: none; scrollbar-width: thin; scrollbar-color: #788260 transparent; }
 .header { display: flex; align-items: flex-start; gap: 16px; margin: -24px -24px 20px; padding: 20px 24px; border-bottom: 1px solid #9caf7760; background: linear-gradient(125deg, #2d4632, #213629); }
 .header > div { flex: 1; min-width: 0; }
@@ -9,14 +19,17 @@
 .close:hover { background: #e5eaca20; }
 .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
 .grid > li { min-width: 0; }
-.card { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; height: 100%; min-height: 250px; padding: 15px 12px 18px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 18px; color: inherit; background: var(--forest-paper-light, #f0e6ca); font: inherit; text-align: center; }
-.available { cursor: pointer; border-color: #98a67b; background: radial-gradient(ellipse at 50% 25%, #b3c18d55, transparent 72%), var(--forest-paper-light, #f0e6ca); box-shadow: inset 0 1px #fff7, 0 3px 10px #6a704310; transition: background-color .15s, border-color .15s; }
-.available:hover { border-color: #748960; background-color: #e5e4c9; }
+.card { --friendship-accent: #567348; --friendship-soft: #829c572b; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; height: 100%; min-height: 250px; padding: 14px 16px 16px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 18px; color: inherit; background: var(--forest-paper-light, #f0e6ca); font: inherit; text-align: center; }
+.card[data-friendship-rank="3"] { --friendship-accent: #3f7560; --friendship-soft: #6a9e7e2b; }
+.card[data-friendship-rank="4"], .card[data-friendship-rank="5"] { --friendship-accent: #8b6c2f; --friendship-soft: #b6934730; }
+.available { cursor: pointer; border-color: #a5ad85; background: radial-gradient(ellipse at 50% 18%, #b9c99b50, transparent 62%), linear-gradient(180deg, #f3ecd5, #eae4c6); box-shadow: inset 0 1px #fff9, 0 3px 10px #6a704310; transition: border-color .15s, box-shadow .15s; }
+.available:hover { border-color: var(--friendship-accent); box-shadow: inset 0 1px #fff9, 0 4px 12px #53643d24; }
+.identity { display: grid; gap: 4px; width: 100%; min-width: 0; }
 .card strong { color: var(--forest-ink, #394d3e); font-size: 1rem; line-height: 1.3; font-weight: 600; }
 .card small { color: var(--forest-muted, #59624d); font-size: .75rem; line-height: 1.4; }
-.stage { display: grid; place-items: center; width: 100%; min-height: 142px; }
-.portrait { display: block; width: min(100%, 160px); height: auto; aspect-ratio: 1; image-rendering: pixelated; }
-.visit { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: auto; padding-top: 9px; color: var(--forest-primary, #466347); font-size: .8125rem; }
+.stage { display: grid; place-items: center; width: 100%; min-height: 132px; }
+.portrait { display: block; width: min(100%, 144px); height: auto; aspect-ratio: 1; image-rendering: pixelated; }
+.visit { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-top: auto; padding-top: 12px; color: var(--forest-primary, #466347); font-size: .8125rem; }
 .locked { cursor: default;  border-color: var(--forest-border, #c8bd98); background: #e5dcc0; }
 .silhouette { display: block; width: min(100%, 144px); height: auto; aspect-ratio: 1; fill: #77836e; }
 .silhouette .shadow { fill: #69715b20; }
@@ -24,7 +37,9 @@
 .locked strong { color: var(--forest-muted, #59624d); font-size: .875rem; }
 .dialog button:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 3px; }
 .dialog .close:focus-visible { outline-color: #e1eeb6; }
-@media (max-width: 620px) { .dialog[data-slot="dialog-content"] { padding: 18px; }.grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }.header { margin: -18px -18px 18px; padding: 16px 18px; }.card { min-height: 238px; padding: 10px 8px 14px; }.stage { min-height: 130px; }.portrait { max-width: 144px; } }
-@media (max-width: 360px) { .dialog[data-slot="dialog-content"] { width: calc(100vw - 16px); padding: 14px; border-radius: 18px; }.header { margin: -14px -14px 16px; padding: 14px; gap: 10px; }.grid { gap: 9px; }.card { min-height: 224px; }.stage { min-height: 115px; }.card strong { font-size: .9375rem; }
+@media (max-width: 620px) { .dialog[data-slot="dialog-content"] { padding: 18px; }.grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }.header { margin: -18px -18px 18px; padding: 16px 18px; }.card { min-height: 238px; padding: 10px 11px 14px; }.stage { min-height: 112px; }.portrait { max-width: 128px; } }
+@media (max-width: 360px) { .dialog[data-slot="dialog-content"] { width: calc(100vw - 16px); padding: 14px; border-radius: 18px; }.header { margin: -14px -14px 16px; padding: 14px; gap: 10px; }.grid { gap: 9px; }.card { min-height: 224px; padding-inline: 9px; }.stage { min-height: 100px; }.card strong { font-size: .9375rem; }
 .locked strong { font-size: .8125rem; }.card small { font-size: .6875rem; }.title { font-size: 1.3rem; } }
-@media (prefers-reduced-motion: reduce) { .scrim[data-state] { animation: none; }.available { transition: none; } }
+@media (max-width: 360px) { .relationship { gap: 7px; padding-top: 10px; }.friendshipHeading { gap: 5px; font-size: 11px; }.friendshipHeading svg { width: 12px; height: 12px; }.friendshipBenefit svg { display: none; } }
+@media (prefers-reduced-motion: reduce) { .scrim[data-state] { animation: none; }.available, .friendshipTrack > span { transition: none; } }
+@media (forced-colors: active) { .card, .relationship { border-color: ButtonText; }.friendshipHeading, .friendshipBenefit { color: ButtonText; }.friendshipTrack { border: 1px solid ButtonText; }.friendshipTrack > span { background: Highlight; } }

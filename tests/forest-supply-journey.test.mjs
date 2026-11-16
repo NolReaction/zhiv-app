@@ -15,7 +15,9 @@ const {advanceForestDirector}=await load("simulation/forest-director");
 const {requestClearingSleep,advanceClearingActivity}=await load("simulation/clearing-activity");
 const {syncForestJourneyTravel,forestJourneyWalking,forestJourneyActorAway,forestJourneyFishingFrame}=await load("activities/journeys/forest-journey-travel");
 const {forestJourneyGatheringFrame}=await load("activities/journeys/forest-supply-journey");
-const {gatheringGesture,isForestSupplyRoute}=await load("activities/journeys/forest-gathering");
+const {forestGardenGroundBasket}=await load("activities/garden/forest-garden-painter");
+const {FORAGING_BASKET_CYCLE,isForestSupplyRoute}=await load("activities/journeys/forest-gathering");
+const {forestGatheringBasketVisual}=await load("activities/journeys/forest-gathering-rig");
 const {canTraverse,isWalkable}=await load("navigation/navigation");
 const {forestTrailDestination}=await load("navigation/forest-trails");
 const world=previewWorldScene(TILED_WORLD,initialPreviewLevels(TILED_WORLD)),start=1_000_000;
@@ -29,6 +31,11 @@ function tick(s,j,now,{still=false,cancelled=[],dusk=0}={}) {
   if(!s.clearing.activeInteraction)assert.ok(canTraverse(s.clearing.navigation,before,s.clearing.position));
   const frame=forestJourneyGatheringFrame(s,world,still);
   if(frame)assert.deepEqual({x:frame.x,y:frame.y},s.clearing.position,"drawing and reservations share actual feet");
+  if(frame?.tool==="basket"&&frame.held&&frame.action==="walk") {
+    assert.equal(frame.basket.x,frame.x,"the garden carry keeps the basket at the belly in every facing");
+    assert.equal(frame.basket.y,frame.y-frame.size*.15);
+    assert.equal(forestGatheringBasketVisual(frame).arms.length,2);
+  }
 }
 function walkUntil(s,j,now,predicate,options) {
   for(let n=0;n<3000&&!predicate();n++)tick(s,j,now+n*50,options);
@@ -36,12 +43,12 @@ function walkUntil(s,j,now,predicate,options) {
 }
 
 test("only exact woodland exploration targets get a supply activity",()=>{
-  for(const route of ["forest","forest_camp","old_woodland"])assert.equal(isForestSupplyRoute(route),true);
-  for(const route of [undefined,"shore","shore_camp","cave","quarry_work","coastal_deposits","uplands","custom_forest"])assert.equal(isForestSupplyRoute(route),false);
+  for(const route of ["forest","old_woodland"])assert.equal(isForestSupplyRoute(route),true);
+  for(const route of [undefined,"forest_camp","shore","shore_camp","cave","quarry_work","coastal_deposits","uplands","custom_forest"])assert.equal(isForestSupplyRoute(route),false);
 });
 
 test("confirmed supply jobs walk to the real woodland, gather visibly, return on the server deadline and await claim",()=>{
-  for(const route of ["forest","forest_camp","old_woodland"]) {
+  for(const route of ["forest","old_woodland"]) {
     const session=create(),s=session.state,j=job(route),saved=structuredClone(j);
     try {
       syncForestJourneyTravel(s,world,null,start,false);syncForestJourneyTravel(s,world,j,start,false);
@@ -51,22 +58,30 @@ test("confirmed supply jobs walk to the real woodland, gather visibly, return on
       assert.equal(isWalkable(s.clearing.navigation,s.journeyTravel.shore),true);
       walkUntil(s,j,start,()=>s.journeyTravel.phase==="gathering",{dusk:1});
       const feet={...s.clearing.position},actions=new Set();
-      for(const age of [0,6.2,11.2,14.2,17.2,21.2,26.2,41.2,58.2]) {
+      for(const age of [0,.8,3.3,4.3,4.95,5.6,7.6]) {
         s.director.elapsed=s.journeyTravel.gathering.phaseAt+age;
         const frame=forestJourneyGatheringFrame(s,world);actions.add(frame.action);
         assert.deepEqual(s.clearing.position,feet);assert.equal(forestJourneyActorAway(s,j,start+600_000),false);
-        assert.equal(frame.basket.x,feet.x+s.clearing.size*.37);assert.equal(frame.basket.size,s.clearing.size*.32);
-        if(!frame.held)assert.equal(frame.basket.y,feet.y);
+        assert.equal(frame.basket.size,s.life.garden.basket.size);
+        assert.equal(s.life.garden.basket.journeyOwner,j.id);
+        if(!frame.held)assert.deepEqual({x:frame.basket.x,y:frame.basket.y},s.journeyTravel.gathering.groundBasket);
       }
-      assert.ok(["look","search","pick","lift","pack","rest"].every(action=>actions.has(action)));
+      assert.ok(["look","pick","lift","pack","rest"].every(action=>actions.has(action)));
       s.director.elapsed+=100_000;syncForestJourneyTravel(s,world,j,start+600_000,false);
-      assert.equal(s.journeyTravel.phase,"gathering","local animation cannot complete a real job");
+      assert.equal(s.journeyTravel.phase,"leaving","a completed search lifts the basket and walks to another local stop");
+      assert.equal(s.life.garden.basket.held,true);
+      assert.notDeepEqual(s.journeyTravel.shore,feet);
+      walkUntil(s,j,start+600_000,()=>s.journeyTravel.phase==="gathering");
+      const secondFeet={...s.clearing.position};
+      assert.ok(Math.hypot(secondFeet.x-feet.x,secondFeet.y-feet.y)>=12);
       syncForestJourneyTravel(s,world,j,start+1800_000,false);
-      assert.equal(s.journeyTravel.phase,"packing");assert.deepEqual(s.clearing.position,feet);
+      assert.equal(s.journeyTravel.phase,"packing");assert.deepEqual(s.clearing.position,secondFeet);
       s.director.elapsed+=1.21;syncForestJourneyTravel(s,world,j,start+1800_000,false);
       assert.equal(s.journeyTravel.phase,"returning");
       walkUntil(s,j,start+1800_000,()=>s.journeyTravel.phase==="ready");
-      assert.deepEqual(s.clearing.position,world.actor.spawn);assert.equal(forestJourneyGatheringFrame(s,world).action,"ready");
+      assert.deepEqual(s.clearing.position,world.actor.spawn);assert.equal(forestJourneyGatheringFrame(s,world),null);
+      assert.equal(s.life.garden.basket.journeyOwner,undefined);assert.equal(s.life.garden.basket.held,false);
+      assert.deepEqual(s.life.garden.basket.position,s.life.garden.basket.homePosition);
       assert.deepEqual(j,saved,"scene never claims, modifies deadlines or awards resources");
       assert.ok(!JSON.stringify(captureForestMemory(s,world)).includes(j.id));
       syncForestJourneyTravel(s,world,null,start+1900_000,false);assert.equal(s.journeyTravel,undefined);
@@ -84,7 +99,7 @@ test("cancellation turns from current feet and stows an empty basket without wai
       const before={...s.clearing.position};s.director.elapsed+=21;
       syncForestJourneyTravel(s,world,j,start+100_000,false,[j.id]);
       assert.deepEqual(s.clearing.position,before);assert.equal(s.journeyTravel.cancelled,true);
-      assert.equal(forestJourneyGatheringFrame(s,world).filled,false);
+      assert.equal(Boolean(forestJourneyGatheringFrame(s,world)?.filled),false);
       if(working){s.director.elapsed+=1.21;syncForestJourneyTravel(s,world,j,start+100_000,false,[j.id]);}
       assert.equal(s.journeyTravel.phase,"returning");
       walkUntil(s,j,start+100_000,()=>!s.journeyTravel,{cancelled:[j.id]});
@@ -135,6 +150,22 @@ test("ready supply presentation yields once to an authorized berry activity and 
   }finally{session.release()}
 });
 
+test("reduced motion freezes basket contents together with the unfinished search gesture",()=>{
+  const session=create(),s=session.state,j=job();
+  try {
+    syncForestJourneyTravel(s,world,j,start+600_000,false);
+    s.director.elapsed=s.journeyTravel.gathering.phaseAt+2;
+    syncForestJourneyTravel(s,world,j,start+600_000,true);
+    const before=forestJourneyGatheringFrame(s,world,true);
+    assert.equal(before.itemVisible,false);assert.equal(before.filled,false);
+    s.director.elapsed+=100;
+    syncForestJourneyTravel(s,world,j,start+600_000,true);
+    assert.deepEqual(forestJourneyGatheringFrame(s,world,true),before);
+    syncForestJourneyTravel(s,world,j,start+600_000,false);
+    assert.equal(forestJourneyGatheringFrame(s,world).filled,false,"resuming continues the same uncompleted pick");
+  }finally{session.release()}
+});
+
 test("a sleeping Mochlik finishes the real doorway exit before the supply walk",()=>{
   const session=create(),s=session.state,j=job();
   try {
@@ -148,29 +179,44 @@ test("a sleeping Mochlik finishes the real doorway exit before the supply walk",
   }finally{session.release()}
 });
 
-test("gathering variations pause, carry a finding only until its pack gesture, and sample without side effects",()=>{
-  const first=gatheringGesture(13,0),next=gatheringGesture(41,0);
-  assert.notEqual(first.item,next.item);assert.notEqual(first.direction,next.direction);
-  assert.equal(gatheringGesture(25,0).action,"rest");assert.equal(gatheringGesture(25,0).itemVisible,false);
-  assert.equal(gatheringGesture(10,0).itemVisible,false);assert.equal(gatheringGesture(11.5,0).itemVisible,true);
-  assert.equal(gatheringGesture(18.8,0).itemVisible,false);
-  assert.deepEqual(gatheringGesture(10,0,true),gatheringGesture(1000,0,true));
+test("searching transfers a finding to the actual parked opening before lifting the same basket",()=>{
+  const session=create(),s=session.state,j=job();
+  try {
+    syncForestJourneyTravel(s,world,j,start+600_000,false);
+    const phaseAt=s.journeyTravel.gathering.phaseAt,basket=s.life.garden.basket;
+    const sample=age=>{s.director.elapsed=phaseAt+age;const frame=forestJourneyGatheringFrame(s,world);return {frame,visual:forestGatheringBasketVisual(frame)}};
+    assert.equal(sample(2).frame.itemVisible,false,"inspection leaves both hands empty");
+    assert.equal(sample(4).frame.itemVisible,true);
+    const almost=sample(FORAGING_BASKET_CYCLE.pickStart+FORAGING_BASKET_CYCLE.pickSeconds*(.8-1e-7));
+    assert.ok(Math.abs(almost.visual.pickedBerry.x-almost.frame.basket.x)<1e-7);
+    assert.ok(Math.abs(almost.visual.pickedBerry.y-(almost.frame.basket.y-almost.frame.basket.size*8/14))<1e-7);
+    assert.equal(sample(5.5).frame.itemVisible,false);
+    assert.equal(sample(7.6).frame.held,true,"only the physical pickup releases the basket from the ground");
+    assert.strictEqual(s.life.garden.basket,basket);
+  }finally{session.release()}
 });
 
 test("a replacement assignment finishes the current grounded gesture and starts from those feet",()=>{
-  const session=create(),s=session.state,j=job(),next={...job("forest_camp"),startedAt:new Date(start+600_000).toISOString(),finishesAt:new Date(start+3000_000).toISOString()};
+  const session=create(),s=session.state,j=job(),next={...job("old_woodland"),startedAt:new Date(start+600_000).toISOString(),finishesAt:new Date(start+3000_000).toISOString()};
   try {
     syncForestJourneyTravel(s,world,j,start+600_000,false);
-    s.director.elapsed=s.journeyTravel.gathering.phaseAt+11;
+    s.director.elapsed=s.journeyTravel.gathering.phaseAt+4.4;
     const feet={...s.clearing.position},source=forestJourneyGatheringFrame(s,world);
     syncForestJourneyTravel(s,world,next,start+600_000,false);
     assert.equal(s.journeyTravel.jobId,j.id);assert.equal(s.journeyTravel.phase,"packing");
-    assert.deepEqual(forestJourneyGatheringFrame(s,world).hand,source.hand,"the first stow frame preserves the current grip");
+    const preserved=forestJourneyGatheringFrame(s,world);
+    assert.deepEqual(preserved.hand,source.hand,"the first stow frame preserves the current grip");
+    const beforeVisual=forestGatheringBasketVisual(source),afterVisual=forestGatheringBasketVisual(preserved);
+    assert.deepEqual(afterVisual.arms,beforeVisual.arms);assert.deepEqual(afterVisual.pickedBerry,beforeVisual.pickedBerry);
     for(let n=0;n<3;n++)syncForestJourneyTravel(s,world,next,start+600_000,false);
     assert.equal(s.journeyTravel.jobId,j.id,"a second camera cannot bypass the current cleanup");
     s.director.elapsed+=1.21;syncForestJourneyTravel(s,world,next,start+600_000,false);
-    assert.equal(s.journeyTravel.jobId,next.id);assert.deepEqual(s.clearing.position,feet);
-    assert.equal(s.journeyTravel.phase,"gathering","the next woodland assignment already occupies its safe destination");
+    assert.equal(s.journeyTravel.jobId,j.id,"the one borrowed basket must be returned before a replacement takes it");
+    assert.deepEqual(s.clearing.position,feet);
+    walkUntil(s,next,start+600_000,()=>s.journeyTravel?.jobId===next.id);
+    assert.notEqual(s.life.garden.basket.journeyOwner,j.id,"the old ownership is released at the real home marker");
+    walkUntil(s,next,start+650_000,()=>s.journeyTravel?.phase==="gathering");
+    assert.equal(s.life.garden.basket.journeyOwner,next.id);
   }finally{session.release()}
 });
 
@@ -194,7 +240,9 @@ test("arriving lowers the real carried basket and cancellation preserves its cur
     const first=forestJourneyGatheringFrame(s,world);assert.equal(first.action,"setdown");assert.equal(first.held,true);
     s.director.elapsed=s.journeyTravel.gathering.phaseAt+.6;
     const midway=forestJourneyGatheringFrame(s,world);
-    assert.ok(midway.basket.y>first.basket.y&&midway.basket.y<midway.y,"basket approaches its actual floor gradually");
+    const ground=s.journeyTravel.gathering.groundBasket;
+    const distance=point=>Math.hypot(point.x-ground.x,point.y-ground.y);
+    assert.ok(distance(midway.basket)>0&&distance(midway.basket)<distance(first.basket),"basket approaches its actual parked point gradually, including a point behind the feet");
     syncForestJourneyTravel(s,world,j,start+100_000,false,[j.id]);
     const stowing=forestJourneyGatheringFrame(s,world);
     assert.ok(Math.abs(stowing.basket.y-midway.basket.y)<1e-10);
@@ -215,6 +263,94 @@ test("a ready or released supply job hands off to a new shore or mine job in the
       assert.equal(s.journeyTravel.jobId,next.id);assert.equal(s.journeyTravel.phase,"leaving");
       assert.equal(forestJourneyActorAway(s,next,start+1800_000),false,"no intermediate hidden frame between accepted assignments");
       assert.deepEqual(s.clearing.position,feet);
+    }finally{session.release()}
+  }
+});
+
+test("woodland borrows one physical garden basket only after reaching it and preserves its contents",()=>{
+  const session=create(),s=session.state,j=job("old_woodland"),basket=s.life.garden.basket;
+  try {
+    basket.berries=3;
+    syncForestJourneyTravel(s,world,null,start,false);syncForestJourneyTravel(s,world,j,start,false);
+    assert.equal(forestJourneyGatheringFrame(s,world),null,"no imaginary basket before pickup");
+    assert.ok(forestGardenGroundBasket(s.life.garden,s.clearing.size));
+    walkUntil(s,j,start,()=>s.journeyTravel.gathering.basketStage==="pickup");
+    assert.strictEqual(s.life.garden.basket,basket);assert.equal(basket.journeyOwner,j.id);
+    assert.equal(forestGardenGroundBasket(s.life.garden,s.clearing.size),null,"the original painter yields its sole basket");
+    const pickup=forestJourneyGatheringFrame(s,world);
+    assert.deepEqual(s.journeyTravel.gathering.basketFrom,basket.homePosition);
+    assert.ok(Math.hypot(pickup.basket.x-basket.homePosition.x,pickup.basket.y-basket.homePosition.y)<1,"pickup begins at the existing prop");
+    walkUntil(s,j,start,()=>s.journeyTravel.phase==="gathering");
+    syncForestJourneyTravel(s,world,j,start+100_000,false,[j.id]);
+    walkUntil(s,j,start+100_000,()=>!s.journeyTravel,{cancelled:[j.id]});
+    assert.strictEqual(s.life.garden.basket,basket);assert.equal(basket.berries,3);
+    assert.equal(basket.journeyOwner,undefined);assert.equal(basket.held,false);
+    assert.deepEqual(basket.position,basket.homePosition);assert.ok(forestGardenGroundBasket(s.life.garden,s.clearing.size));
+  }finally{session.release()}
+});
+
+test("coastal deposits work on dry shore with a shovel and never borrow the garden basket",()=>{
+  const session=create(),s=session.state,j=job("coastal_deposits"),basket=s.life.garden.basket,saved=structuredClone(basket);
+  try {
+    syncForestJourneyTravel(s,world,j,start+600_000,false);
+    assert.equal(s.journeyTravel.phase,"gathering");assert.equal(s.journeyTravel.gathering.tool,"shovel");
+    assert.deepEqual(s.clearing.position,forestTrailDestination(world,"fishing"));
+    assert.ok(isWalkable(s.clearing.navigation,s.clearing.position));
+    const frames=[0,8,15,20,27].map(age=>{s.director.elapsed=s.journeyTravel.gathering.phaseAt+age;return forestJourneyGatheringFrame(s,world)});
+    assert.ok(frames.every(frame=>frame.tool==="shovel"&&frame.shovel));
+    assert.ok(new Set(frames.map(frame=>frame.action)).size>=3,"digging alternates with quiet inspection");
+    assert.strictEqual(s.life.garden.basket,basket);assert.deepEqual(basket,saved);
+    assert.ok(forestGardenGroundBasket(s.life.garden,s.clearing.size));
+    assert.equal(forestJourneyFishingFrame(s,world),null,"shore work does not also draw a fishing rod");
+  }finally{session.release()}
+});
+
+test("reduced motion can cancel a paused pickup and finish a long assignment without stranding basket ownership",()=>{
+  for(const pickup of [true,false]) {
+    const session=create(),s=session.state,j=job("old_woodland");
+    try {
+      if(pickup) {
+        syncForestJourneyTravel(s,world,null,start,false);syncForestJourneyTravel(s,world,j,start,false);
+        walkUntil(s,j,start,()=>s.journeyTravel.gathering.basketStage==="pickup");
+      } else syncForestJourneyTravel(s,world,j,start+600_000,false);
+      const feet={...s.clearing.position};s.clearing.elapsed=2000;s.director.elapsed+=2000;
+      syncForestJourneyTravel(s,world,j,start+1800_000,true,pickup?[j.id]:[]);
+      assert.deepEqual(s.clearing.position,feet);assert.equal(s.journeyTravel.phase,"returning");
+      assert.equal(s.life.garden.basket.journeyOwner,undefined);
+      assert.equal(s.journeyTravel.beganAt,2000,"the return budget starts now, not when the long trip began");
+      walkUntil(s,j,start+1800_000,()=>pickup?!s.journeyTravel:s.journeyTravel.phase==="ready",{cancelled:pickup?[j.id]:[]});
+      assert.equal(s.life.garden.basket.journeyOwner,undefined);
+    }finally{session.release()}
+  }
+});
+
+test("a scene refresh stows the existing grounded prop before retargeting local work",()=>{
+  const session=create(),s=session.state,j=job(),nextScene={...world};
+  try {
+    syncForestJourneyTravel(s,world,j,start+600_000,false);s.director.elapsed=s.journeyTravel.gathering.phaseAt+4.4;
+    const before=forestJourneyGatheringFrame(s,world),feet={...s.clearing.position};
+    syncForestJourneyTravel(s,nextScene,j,start+600_000,false);
+    const after=forestJourneyGatheringFrame(s,nextScene);
+    assert.equal(s.journeyTravel.phase,"packing");assert.equal(s.journeyTravel.gathering.resumeGathering,true);
+    assert.deepEqual(after.basket,before.basket);assert.deepEqual(after.hand,before.hand);assert.deepEqual(s.clearing.position,feet);
+    s.director.elapsed+=1.21;syncForestJourneyTravel(s,nextScene,j,start+600_000,false);
+    assert.equal(s.journeyTravel.phase,"gathering","an unchanged safe work point resumes after the lift");
+    assert.equal(s.life.garden.basket.journeyOwner,j.id);
+  }finally{session.release()}
+});
+
+test("a new local assignment waits for fishing tackle without a hidden intermediate frame",()=>{
+  for(const route of ["old_woodland","coastal_deposits"]) {
+    const session=create(),s=session.state,previous=job("shore"),next={...job(route),startedAt:new Date(start+600_000).toISOString()};
+    try {
+      syncForestJourneyTravel(s,world,previous,start+600_000,false);assert.equal(s.journeyTravel.phase,"fishing");
+      const feet={...s.clearing.position};
+      for(let n=0;n<120&&s.journeyTravel?.jobId!==next.id;n++) {
+        tick(s,next,start+600_000+n*50);
+        assert.equal(forestJourneyActorAway(s,next,start+600_000+n*50),false,"cleanup and dispatch keep the body visible");
+      }
+      assert.equal(s.journeyTravel?.jobId,next.id);
+      assert.ok(Math.hypot(s.clearing.position.x-feet.x,s.clearing.position.y-feet.y)<2,"new work departs from the finished tackle gesture");
     }finally{session.release()}
   }
 });

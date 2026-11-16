@@ -22,6 +22,7 @@ function enterGame(p) {
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const rewards = await vite.ssrLoadModule("/lib/dev/progression-rewards-store.ts");
 const api = await vite.ssrLoadModule("/features/game/game-rewards-api.ts");
+const { createGameRewardsSession } = await vite.ssrLoadModule("/features/game/game-rewards-session.ts");
 const { GET } = await vite.ssrLoadModule("/app/api/v1/game/rewards/route.ts");
 const { POST } = await vite.ssrLoadModule("/app/api/v1/game/rewards/claims/route.ts");
 beforeEach(() => { identities.resetDevStoreForTests(); activePresence.clear(); process.env.NODE_ENV = "test"; delete globalThis.__rewardTestToken; });
@@ -29,7 +30,7 @@ after(async () => { delete globalThis.__rewardTestToken; if (initialMode == null
 const read = (suffix = "") => new Request(`http://localhost:3000/api/v1/game/rewards${suffix}`);
 const player = () => { const p = enterGame(identities.createDevIdentity("Мохлик", crypto.randomUUID())); globalThis.__rewardTestToken = p.token; return p; };
 const command = p => ({ requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId, kind: "daily" });
-const post = (body, headers = {}) => new Request("http://localhost:3000/api/v1/game/rewards/claims", { method: "POST",
+const post = (body, headers = {}) => new Request("http://localhost:3000/api/v1/game/rewards/claims?catalog=8", { method: "POST",
   headers: { "Content-Type": "application/json", Origin: "http://localhost:3000", ...(activePresence.has(globalThis.__rewardTestToken) ? { "X-Game-Presence": activePresence.get(globalThis.__rewardTestToken) } : {}), ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
 
 test("rewards require session and expose no-store private state without issuing a gift", async () => {
@@ -40,8 +41,8 @@ test("rewards require session and expose no-store private state without issuing 
   assert.equal(opened.catalogVersion, 4);
   assert.equal(api.gameRewardsSchema.safeParse(opened).success, true);
   assert.deepEqual(opened.daily.cycle.map(row => row.reward.coins), [30, 30, 40, 40, 50, 50, 80]);
-  assert.equal(opened.daily.cycle.reduce((sum, row) => sum + row.reward.pearls, 0), 1000);
-  assert.equal(opened.achievementRewards.reduce((sum, row) => sum + row.pearls, 0), 3000);
+  assert.equal(opened.daily.cycle.reduce((sum, row) => sum + row.reward.pearls, 0), 140);
+  assert.equal(opened.achievementRewards.reduce((sum, row) => sum + row.pearls, 0), 1860);
   assert.deepEqual(economy.getDevEconomy(p.token).wallet, before.wallet);
   assert.equal((await GET(read("?step=7"))).status, 400);
 });
@@ -50,7 +51,7 @@ test("manual HTTP claim echoes its key and a lost-response retry returns the sam
   assert.equal(response.status, 200); assert.equal(response.headers.get("Cache-Control"), "no-store");
   const first = await response.json(); assert.equal(api.gameRewardResultSchema.safeParse(first).success, true);
   assert.equal(first.requestId, request.requestId); assert.equal(first.claim.kind, "daily"); assert.equal(first.claim.step, 1);
-  assert.deepEqual(first.claim.reward, { coins: 30, pearls: 80, items: { wood: 2, stone: 1 } });
+  assert.deepEqual(first.claim.reward, { coins: 30, pearls: 10, items: { wood: 2, stone: 1 } });
   const repeat = await (await POST(post(request))).json(); assert.equal(repeat.replayed, true); assert.deepEqual(repeat.claim, first.claim);
   assert.equal(repeat.economy.wallet.coins, first.economy.wallet.coins);
   const duplicate = await POST(post(command(p))); assert.equal(duplicate.status, 409); assert.equal((await duplicate.json()).code, "DAILY_REWARD_COOLDOWN");
@@ -86,7 +87,7 @@ test("cross-site wrong content-type forged gift and excessive bodies leave walle
   assert.equal((await (await GET(read())).json()).daily.step, 1);
 });
 
-test("intentional onboarding completion credits 100 visible pearls and 1000 coins once without consuming daily", async () => {
+test("intentional onboarding completion credits 10 visible pearls and 100 coins once without consuming daily", async () => {
   const p = player(), initial = economy.getDevEconomy(p.token);
   globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.inventory.berries = 1;
   const before = economy.commandDevEconomy(p.token, { requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,
@@ -100,9 +101,9 @@ test("intentional onboarding completion credits 100 visible pearls and 1000 coin
   const response = await POST(post(request)), first = await response.json();
   assert.equal(response.status, 200);
   assert.equal(api.gameRewardResultSchema.safeParse(first).success, true);
-  assert.deepEqual(first.claim.reward, { coins: 1000, pearls: 200, items: {} });
-  assert.equal(first.economy.wallet.coins - before.wallet.coins, 1000);
-  assert.equal(first.economy.wallet.pearls - before.wallet.pearls, 200);
+  assert.deepEqual(first.claim.reward, { coins: 100, pearls: 20, items: {} });
+  assert.equal(first.economy.wallet.coins - before.wallet.coins, 100);
+  assert.equal(first.economy.wallet.pearls - before.wallet.pearls, 20);
   assert.equal(first.rewards.onboarding.claimedAt, first.claim.claimedAt);
   assert.equal(first.rewards.daily.claimable, true);
   assert.equal(first.rewards.daily.step, 1);
@@ -132,24 +133,97 @@ test("reward reads negotiate new activity rows while cached clients retain their
   globalThis.__rewardTestToken = p.token;
   const legacy = await (await GET(read())).json();
   const current = await (await GET(read("?catalog=5"))).json();
+  const previous = await (await GET(read("?catalog=6"))).json();
+  assert.equal(previous.catalogVersion, 6);
+  const latest = await (await GET(read("?catalog=8"))).json();
+  assert.equal(latest.catalogVersion, 8);
+  assert.equal(latest.achievementRewards.length, 40);
+  assert.deepEqual(latest.daily.cycle, current.daily.cycle);
   assert.equal(legacy.catalogVersion, 4); assert.equal(legacy.achievementRewards.length, 21);
   assert.equal(current.catalogVersion, 5); assert.equal(current.achievementRewards.length, 33);
   assert.deepEqual(current.achievementRewards.slice(0, 21), legacy.achievementRewards);
-  for (const suffix of ["?catalog=6", "?catalog=5&catalog=5", "?catalog=5&other=1"]) {
+  for (const suffix of ["?catalog=10", "?catalog=5&catalog=5", "?catalog=5&other=1"]) {
     assert.equal((await GET(read(suffix))).status, 400);
   }
 });
 
-test("claim reply negotiation preserves one receipt across old and new cached clients", async () => {
-  const p = player(), request = command(p);
-  const legacy = await (await POST(post(request))).json();
-  const nextRequest = new Request("http://localhost:3000/api/v1/game/rewards/claims?catalog=5", post(request));
-  const response = await POST(nextRequest), current = await response.json();
-  assert.equal(response.status, 200); assert.equal(current.replayed, true);
-  assert.deepEqual(current.claim, legacy.claim); assert.deepEqual(current.economy.wallet, legacy.economy.wallet);
-  assert.equal(legacy.rewards.achievementRewards.length, 21);
-  assert.equal(current.rewards.catalogVersion, 5); assert.equal(current.rewards.achievementRewards.length, 33);
-  assert.equal(api.gameRewardResultSchema.safeParse(current).success, true);
+test("old reward claims require an update before any new payout and keep accepted receipts intact", async () => {
+  const p = player(), request = command(p), before = economy.getDevEconomy(p.token);
+  for (const suffix of ["", "?catalog=4", "?catalog=5", "?catalog=6", "?catalog=7"]) {
+    const denied = await POST(new Request(`http://localhost:3000/api/v1/game/rewards/claims${suffix}`, post(request)));
+    assert.equal(denied.status, 409);
+    assert.equal(denied.headers.get("Cache-Control"), "no-store");
+    const error = await denied.json();
+    assert.equal(error.code, "APP_UPDATE_REQUIRED"); assert.match(error.message, /Обновите приложение/);
+    assert.deepEqual(economy.getDevEconomy(p.token).wallet, before.wallet);
+    assert.equal(economy.getDevEconomy(p.token).revision, before.revision);
+    assert.equal((await (await GET(read(suffix))).json()).daily.lastClaimAt, null);
+  }
+  const paidResponse = await POST(post(request)), paid = await paidResponse.json();
+  assert.equal(paidResponse.status, 200); assert.equal(paid.replayed, false);
+  assert.equal(paid.rewards.catalogVersion, 8); assert.equal(paid.rewards.achievementRewards.length, 40);
+  assert.equal(api.gameRewardResultSchema.safeParse(paid).success, true);
+  const staleRetry = await POST(new Request("http://localhost:3000/api/v1/game/rewards/claims?catalog=7", post(request)));
+  assert.equal(staleRetry.status, 409); assert.equal((await staleRetry.json()).code, "APP_UPDATE_REQUIRED");
+  assert.deepEqual(economy.getDevEconomy(p.token).wallet, paid.economy.wallet);
+  const replay = await (await POST(post(request))).json();
+  assert.equal(replay.replayed, true); assert.deepEqual(replay.claim, paid.claim);
+  assert.deepEqual(replay.economy.wallet, paid.economy.wallet);
+  assert.equal(replay.acceptedRevision, paid.acceptedRevision);
   const bad = await POST(new Request("http://localhost:3000/api/v1/game/rewards/claims?catalog=5&catalog=5", post(command(p))));
   assert.equal(bad.status, 400);
+});
+
+test("the update-required response is definitive for the reward transport and leaves a claim available after reload", async () => {
+  const p = player(), before = economy.getDevEconomy(p.token), originalFetch = globalThis.fetch;
+  const storage = new Map(), errors = [], sent = [];
+  globalThis.fetch = async (url, init) => {
+    const path = new URL(url, "http://localhost:3000");
+    path.searchParams.set("catalog", "7");
+    if (init?.method === "POST") {
+      sent.push(JSON.parse(init.body));
+      const response = await POST(new Request(path, post(init.body)));
+      errors.push(await response.clone().json());
+      return response;
+    }
+    return GET(new Request(path));
+  };
+  const session = createGameRewardsSession(p.me.user.publicId, { get: api.getGameRewards, send: api.claimGameReward }, {
+    getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key),
+  });
+  const stop = session.activate();
+  try {
+    await session.refresh();
+    assert.equal(await session.claimDaily(), undefined);
+    assert.equal(errors[0].code, "APP_UPDATE_REQUIRED");
+    assert.equal(session.getSnapshot().error, errors[0].message);
+    assert.equal(session.getSnapshot().uncertain, false);
+    assert.equal(session.getSnapshot().pending, null); assert.equal(storage.size, 0);
+    assert.equal(session.getSnapshot().data.daily.claimable, true);
+    assert.deepEqual(economy.getDevEconomy(p.token).wallet, before.wallet);
+    assert.equal(economy.getDevEconomy(p.token).revision, before.revision);
+    const accepted = await (await POST(post(sent[0]))).json();
+    assert.equal(accepted.replayed, false, "the rejected old request did not consume its UUID");
+    assert.equal(api.gameRewardResultSchema.safeParse(accepted).success, true);
+  } finally { stop(); globalThis.fetch = originalFetch; }
+});
+
+test("cooking variety uses the new reward contract and cached clients cannot claim an unreadable new medal", async () => {
+  const p = player(), owner = p.me.user.publicId;
+  economy.getDevEconomy(p.token);
+  const state = globalThis.__zhivDevEconomyStore.profiles.get(owner).state;
+  state.progression.recipes = { cook_grilled_fish: 1, cook_compote: 1, dry_berries: 1 };
+  const request = { requestId: crypto.randomUUID(), ownerPublicId: owner, kind: "achievement", achievementId: "forest_cuisine", level: 1 };
+  const before = structuredClone(economy.getDevEconomy(p.token));
+  const denied = await POST(post(request));
+  assert.equal(denied.status, 409); assert.equal((await denied.json()).code, "APP_UPDATE_REQUIRED");
+  assert.deepEqual(economy.getDevEconomy(p.token).wallet, before.wallet);
+  const accepted = await POST(new Request("http://localhost:3000/api/v1/game/rewards/claims?catalog=9", post(request)));
+  assert.equal(accepted.status, 200);
+  const result = await accepted.json();
+  assert.equal(result.rewards.catalogVersion, 9); assert.equal(result.rewards.achievementRewards.length, 43);
+  assert.equal(result.claim.reward.pearls, 10); assert.equal(api.gameRewardResultSchema.safeParse(result).success, true);
+  const cached = await (await GET(read("?catalog=8"))).json();
+  assert.equal(cached.achievementRewards.length, 40);
+  assert.equal(cached.achievementRewards.some(row => row.achievementId === "forest_cuisine"), false);
 });

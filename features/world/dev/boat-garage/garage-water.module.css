@@ -1,0 +1,11 @@
+.water{pointer-events:none}
+.flow{animation:garage-water-flow 46s ease-in-out infinite}
+.glint{fill:none;stroke:#d6e9d5;stroke-width:1.2;stroke-linecap:round;opacity:.12;animation:garage-water-glint 13s ease-in-out infinite}
+.water[data-active=false] .flow,.water[data-active=false] .glint{animation-play-state:paused}
+.waterPresentation{pointer-events:none}
+.editableRig{pointer-events:auto}
+.reflection,.immersion{pointer-events:none}
+.contactWavelets{fill:none;stroke:#aad7cc;stroke-width:1.45;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+@keyframes garage-water-flow{0%,100%{transform:translate(-7px,3px)}45%{transform:translate(8px,-4px)}75%{transform:translate(1px,-8px)}}
+@keyframes garage-water-glint{0%,100%{opacity:.035}45%{opacity:.2}70%{opacity:.08}}
+@media(prefers-reduced-motion:reduce){.flow,.glint{animation:none!important}}
