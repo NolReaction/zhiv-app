@@ -13,22 +13,22 @@
 
 ## Как объединена история
 
-База интеграции — `master` `d45316b`. Перенесён итог мобильной разработки `493d399..4c4cab6`, после чего обновлена документация и включён native CI для master. Сохраняются единая новость 0.7.2 и исправления очистки релиза. Слияние в master выполняется через squash, поэтому прежние 134 промежуточных коммита не возвращаются в его историю.
+База интеграции - `master` `d45316b`. Перенесён итог мобильной разработки `493d399..4c4cab6`, после чего обновлена документация и включён native CI для master. Сохраняются единая новость 0.7.2 и исправления очистки релиза. Интеграция вошла в master одним squash-коммитом `205f0d9` через [PR #43](https://github.com/NolReaction/zhiv-app/pull/43), поэтому прежние 134 промежуточных коммита не вернулись в его историю.
 
-Ветка `experiment/native-mobile` остаётся источником истории. Новые изменения начинайте от актуального master; не сливайте старую ветку повторно обычным merge. Архив прежнего master — `archive/master-before-0.7.2-squash-2026-11-16`.
+Ветка `experiment/native-mobile` остаётся источником истории. Новые изменения начинайте от актуального master; не сливайте старую ветку повторно обычным merge. Архив прежнего master - `archive/master-before-0.7.2-squash-2026-11-16`.
 
 ## Проверка объединённого кандидата
 
 До слияния проверяются общий CI и Native mobile app для текущего SHA: веб/VPS и Sites, TypeScript/архитектура/lint, игровые тесты и отчёт экономики, Ktor/PostgreSQL, миграции, production Compose, scanner секретов, геометрия экранов, Android debug APK/lint/JUnit и сборки iOS Simulator/unsigned device.
 
-Исторические результаты исходной мобильной ветки: [общий CI](https://github.com/NolReaction/zhiv-app/actions/runs/43733695099) и [Native CI](https://github.com/NolReaction/zhiv-app/actions/runs/43733695101). Они не заменяют результаты нового кандидата. Актуальные проверки доступны в PR интеграции и [Actions](https://github.com/NolReaction/zhiv-app/actions).
+Исторические результаты исходной мобильной ветки: [общий CI](https://github.com/NolReaction/zhiv-app/actions/runs/43733695099) и [Native CI](https://github.com/NolReaction/zhiv-app/actions/runs/43733695101). Они не заменяют результаты нового кандидата. Для кандидата интеграции `2036774` успешно завершились [общий CI](https://github.com/NolReaction/zhiv-app/actions/runs/43974350871), [повторный push CI](https://github.com/NolReaction/zhiv-app/actions/runs/43974299985) и [Native CI](https://github.com/NolReaction/zhiv-app/actions/runs/43974351109). Дерево master `205f0d9` совпадает с проверенным кандидатом.
 
 ## Сервер и установка
 
 1. Выбрать полный SHA объединённого выпуска с успешными проверками. Проверить исходный SHA сервера, историю Flyway и резервную копию по [инструкции эксплуатации](../operations/operations.md#второй-сайт-на-imlive-cloud).
 2. Выполнить штатное обновление web/API. С V82 применяются V83 и V84; с уже совместимой V84 новые миграции не требуются. Общий маршрут «Авто-Горизонта» сохраняется. Обычное обновление не сбрасывает игроков.
 3. Проверить `/healthz`, `/readyz`, веб-вход и `/mobile/connect`; затем собрать клиент для того же HTTPS origin через `npm ci` и `npm run mobile:sync` по [мобильной инструкции](../development/native-mobile.md).
-4. Устанавливать поверх прежней версии с тем же bundle/application ID и подписью. Team Xcode и Android signing key — настройки разработчика, их не следует затирать при обновлении Git.
+4. Устанавливать поверх прежней версии с тем же bundle/application ID и подписью. Team Xcode и Android signing key - настройки разработчика, их не следует затирать при обновлении Git.
 5. Для APNs/FCM отдельно выполнить [настройку провайдеров](../operations/native-push.md). Старому мобильному сеансу без платформы после V84 может понадобиться повторный вход. Без этих настроек remote push остаётся отключён.
 
 ## Приёмка на устройствах
