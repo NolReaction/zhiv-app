@@ -21,7 +21,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
       export function useEffect(callback, deps) { const i = cursor++, previous = slots[i]?.deps; if (!previous || deps.some((value, index) => !Object.is(value, previous[index]))) effects.push({ i, callback, deps }); }
       export function useImperativeHandle(ref, create, deps) { useEffect(() => { if (ref) ref.current = create(); return () => { if (ref) ref.current = null; }; }, [...deps, ref]); }
       export function commit() { const pending = effects; effects = []; for (const { i, callback, deps } of pending) { slots[i]?.cleanup?.(); slots[i] = { deps, cleanup: callback() }; } }
-      export function useNotificationDevice(owner, online, apply) { useEffect(() => { apply(snapshot); }, [snapshot, apply]); return { busy: false, state: {}, pauseRefresh() {}, resumeRefresh() {}, refresh() {}, toggle() {} }; }
+      export function useNotificationDevice(owner, online, apply) { useEffect(() => { if (snapshot) apply(snapshot); }, [snapshot, apply]); return { busy: false, state: {}, pauseRefresh() {}, resumeRefresh() {}, refresh() {}, toggle() {} }; }
       export function saveNotificationPreferences(owner, preferences) { return new Promise((resolve, reject) => saves.push({ owner, preferences, resolve, reject })); }
     `; },
     transform(source, id) { if (id.endsWith("/features/notifications/notification-settings.tsx")) return source
@@ -43,16 +43,16 @@ afterEach(() => {
 });
 const tick = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setImmediate(resolve)); };
 function elements(tree) { const result = []; function walk(node) { if (!isValidElement(node)) return; result.push(node); Children.forEach(node.props.children, walk); } walk(tree); return result; }
-function setup() {
+function setup({ loaded = true, isOnline = true } = {}) {
   const initial = { ownerPublicId: "AAAA-0000-0001", preferences: defaultNotificationPreferences("Europe/Moscow"), delivery: { configured: true, publicKey: "public", reason: null }, subscription: { subscribed: false } };
-  hooks.reset(initial);
+  hooks.reset(loaded ? initial : null);
   const listeners = new Map();
   globalThis.window = { addEventListener: (type, callback) => listeners.set(type, callback), removeEventListener: (type, callback) => { if (listeners.get(type) === callback) listeners.delete(type); } };
   globalThis.HTMLElement = class { isConnected = true; focused = 0; attributes = {}; focus() { this.focused++; } getAttribute(name) { return this.attributes[name] ?? null; } };
   const trigger = new globalThis.HTMLElement();
   const heading = new globalThis.HTMLElement();
   globalThis.document = { activeElement: trigger };
-  const exitRef = { current: null }, props = { ownerPublicId: initial.ownerPublicId, isOnline: true, onSessionLost() {}, exitRef };
+  const exitRef = { current: null }, props = { ownerPublicId: initial.ownerPublicId, isOnline, onSessionLost() {}, exitRef };
   function render() {
     hooks.begin(); const wrapper = NotificationSettingsPanel(props), tree = wrapper.type(wrapper.props); hooks.commit();
     const nodes = elements(tree);
@@ -175,4 +175,15 @@ test("offline changes still warn and validation errors never silently clear the 
   app.render().nodes.find(node => node.props.id === "notification-test-until").props.onChange({ target: { value: "23:00" } });
   app.render().save.props.onClick(); app.render(); assert.equal(hooks.saves.length, 0);
   app.exitRef.current.requestLeave(() => left++); assert.equal(app.render().dialog.props.open, true); assert.equal(left, 0);
+});
+
+test("remote device controls remain reachable while account preference loading is offline", () => {
+  const app = setup({ loaded: false, isOnline: false });
+  const view = app.render();
+  assert.equal(view.save, undefined, "shared preference form has not loaded");
+  const remote = view.nodes.find(node => node.type.name === "NativeRemoteDeviceCard");
+  assert.ok(remote, "device-scoped remote consent must not depend on preference GET success");
+  assert.equal(remote.props.ownerPublicId, app.initial.ownerPublicId);
+  assert.equal(remote.props.isOnline, false);
+  assert.equal(remote.props.disabled, false, "the remote card may immediately disable native delivery offline");
 });

@@ -1,10 +1,12 @@
 "use client";
 
+import { deviceSettingsStorage } from "@/lib/client-persistence";
+
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { createEarthAtlasStore } from "./earth-atlas-storage";
 
 function browserStorage() {
-  try { return typeof window === "undefined" ? undefined : window.localStorage; } catch { return undefined; }
+  return deviceSettingsStorage();
 }
 
 export function useEarthAtlas(owner: string | null) {

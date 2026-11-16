@@ -1,4 +1,5 @@
 "use client";
+import { deviceHaptic } from "@/lib/device-runtime";
 
 import { ForestSkillsPanel } from "@/features/economy/ui/skills/forest-skills-panel";
 import { AudioSettingsPanel } from "@/features/audio/ui/audio-settings";
@@ -93,7 +94,7 @@ function WorldProfileSession({ presenceKey, ownerPublicId, ...props }: Props) {
   const call = props.onCall ? () => {
     if (callTimer.current) clearTimeout(callTimer.current);
     setCallPulse(value => value + 1);
-    try { navigator.vibrate?.(12); } catch { /* Visual feedback works without device vibration. */ }
+    deviceHaptic("selection");
     props.onCall?.();
     callTimer.current = setTimeout(() => setCallPulse(0), 1200);
   } : undefined;

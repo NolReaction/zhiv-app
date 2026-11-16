@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { z } from "zod";
 import { gameplayGenerationHeaders, reportGameplayReset } from "@/lib/gameplay-generation";
 import { ApiError } from "@/lib/check-in-api";
@@ -8,7 +9,7 @@ import { mailClaimReceiptSchema } from "./claim-receipt";
 async function request<T>(path: string, owner: string, schema: z.ZodType<T, unknown>, signal?: AbortSignal, body?: unknown) {
   return withRequestDeadline(10_000, signal, async requestSignal => {
     const generation = gameplayGenerationHeaders();
-    const response = await fetch(path, { method: body ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal: requestSignal,
+    const response = await apiFetch(path, { method: body ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal: requestSignal,
       headers: { Accept: "application/json", ...generation, ...(body ? { "Content-Type": "application/json" } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}) });
     const raw: unknown = await response.json().catch(() => null);

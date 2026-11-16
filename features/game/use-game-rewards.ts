@@ -6,22 +6,24 @@ import type { GameAchievementId } from "./game-api";
 import { createGameRewardsSession } from "./game-rewards-session";
 import { claimDailyWithAudio, claimAchievementWithAudio } from "./game-rewards-audio";
 import { createGameRewardsRefresh } from "./game-rewards-refresh";
+import { clientJournalStorage, type ClientJournalStorage } from "@/lib/client-journal-storage";
 
-type RewardsService = { session: ReturnType<typeof createGameRewardsSession>; connect: () => () => void };
+type RewardsService = { session: ReturnType<typeof createGameRewardsSession>; connect: () => () => void; journal?: ClientJournalStorage };
 const sessions = new Map<string | null, RewardsService>();
-function sessionFor(owner: string | null) {
+function sessionFor(owner: string | null, journal?: ClientJournalStorage) {
   let service = sessions.get(owner);
-  if (!service) {
+  if (!service || service.journal !== journal) {
     let storage: Storage | undefined;
     try { storage = typeof window === "undefined" ? undefined : window.sessionStorage; } catch { /* In-memory recovery still works. */ }
-    const session = createGameRewardsSession(owner, { get: getGameRewards, send: claimGameReward }, storage);
-    service = { session, connect: createGameRewardsRefresh(session) };
+    const session = createGameRewardsSession(owner, { get: getGameRewards, send: claimGameReward }, storage, journal);
+    service = { session, connect: createGameRewardsRefresh(session), journal };
     sessions.set(owner, service);
   }
   return service;
 }
 export function useGameRewards(owner: string | null, isOnline: boolean, onSessionLost?: () => void, onConfirmed?: (result: GameRewardResult) => void) {
-  const { session, connect } = useMemo(() => sessionFor(owner), [owner]);
+  const journal = owner ? clientJournalStorage(owner) : undefined;
+  const { session, connect } = useMemo(() => sessionFor(owner, journal), [owner, journal]);
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const [now, setNow] = useState(() => session.now());
   const confirmed = useRef({ owner, callback: onConfirmed });

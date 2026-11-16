@@ -2,6 +2,7 @@ import { Bell, BellOff } from "lucide-react";
 import styles from "./notification-settings.module.css";
 
 export type NotificationDeviceState = {
+  deliveryMode?: "push" | "local";
   connected: boolean;
   configured: boolean;
   support: { supported: boolean; reason: string | null };
@@ -29,11 +30,12 @@ export function NotificationDeviceCard({ id, state, onToggle, onRetry }: {
   onRetry: () => void;
 }) {
   const { connected, configured, support, permission, phase, prepared, isOnline, error, notice, disabled } = state;
+  const local = state.deliveryMode === "local";
   const working = phase !== "idle";
   const permitted = permission === "granted";
   const retry = !connected && !prepared && !working;
   const available = connected || (configured && support.supported);
-  const blocked = disabled || working || !isOnline || !available;
+  const blocked = disabled || working || (!isOnline && !(local && connected)) || !available;
   const title = connected ? !configured ? "Устройство подключено, отправка недоступна"
     : permission === "denied" ? "Устройство подключено, уведомления запрещены"
       : !support.supported ? "Устройство подключено, уведомления недоступны"
@@ -41,7 +43,9 @@ export function NotificationDeviceCard({ id, state, onToggle, onRetry }: {
           : "Подключены на этом устройстве"
     : permitted ? "Разрешение получено, подключение не завершено"
       : "На этом устройстве выключены";
-  const hint = !configured
+  const hint = local ? permission === "denied" ? "Разрешите уведомления в настройках приложения на телефоне и вернитесь сюда."
+    : "Телефон напомнит о сроках стройки, путешествий и производства, известных этому устройству. Изменения с другого устройства появятся после синхронизации."
+    : !configured
     ? "Отправка ещё не подключена на сервере. Вы уже можете выбрать события и сохранить настройки."
     : support.reason ?? (permission === "denied" ? "Разрешите уведомления в настройках браузера или устройства, затем вернитесь сюда."
       : !support.supported ? "Этот браузер пока не поддерживает уведомления. Откройте приложение в поддерживаемом браузере."
@@ -74,11 +78,11 @@ export function NotificationDeviceCard({ id, state, onToggle, onRetry }: {
           if (retry) onRetry();
           else if (connected || prepared) onToggle();
         }}>{buttonLabel}</button>}
-      {!isOnline && <p id={`${id}-device-offline`} className={styles.deviceStatus}>
+      {!isOnline && !(local && connected) && <p id={`${id}-device-offline`} className={styles.deviceStatus}>
         {connected ? "Для отключения уведомлений нужно подключение к интернету." : "Для подключения уведомлений нужен интернет. Вернитесь сюда, когда связь появится."}
       </p>}
       {(working || (notice && !error)) && <p id={`${id}-device-status`} className={styles.deviceStatus} role="status" aria-live="polite" aria-atomic="true">
-        {working ? progressLabels[phase] : notice}
+        {working ? local && phase === "subscribing" ? "Разрешите уведомления на телефоне…" : progressLabels[phase] : notice}
       </p>}
       {error && <p id={`${id}-device-error`} className={styles.deviceError} role="alert">{error}</p>}
     </div>

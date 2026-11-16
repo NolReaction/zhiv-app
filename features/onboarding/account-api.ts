@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { ApiError } from "@/lib/check-in-api";
 import { gameplayGenerationHeaders, reportGameplayReset } from "@/lib/gameplay-generation";
 import { onboardingAccountSchema, type OnboardingDecision } from "@/lib/onboarding-contract";
@@ -6,7 +7,7 @@ import { withRequestDeadline, retryAfterMs } from "@/lib/request-deadline";
 export function requestOnboardingAccount(owner: string, decision?: OnboardingDecision, signal?: AbortSignal) {
   return withRequestDeadline(8_000, signal, async deadline => {
     const generation = gameplayGenerationHeaders();
-    const response = await fetch(`/api/v1/onboarding${decision ? "" : `?ownerPublicId=${encodeURIComponent(owner)}`}`, {
+    const response = await apiFetch(`/api/v1/onboarding${decision ? "" : `?ownerPublicId=${encodeURIComponent(owner)}`}`, {
       method: decision ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal: deadline,
       headers: { ...generation, Accept: "application/json", ...(decision ? { "Content-Type": "application/json" } : {}) },
       ...(decision ? { body: JSON.stringify(decision) } : {}),

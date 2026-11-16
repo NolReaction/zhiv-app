@@ -48,6 +48,8 @@ export function NotificationOnboardingCard({ id, state, onEnable, onRetry, onCon
           : !state.configured ? "Подключить уведомления можно будет позже в настройках профиля."
             : permitted ? "Разрешение уже есть. Осталось подключить это устройство к профилю."
               : "Нажми кнопку и разреши уведомления в запросе устройства. Настройки событий можно изменить в профиле.");
+  const localHint = state.deliveryMode === "local" && state.permission !== "denied" && !preparing
+    ? "Телефон напомнит о делах, запущенных в приложении. Сроки обновляются при синхронизации; время показа может зависеть от настроек телефона." : hint;
   const progress = state.phase === "saving" ? "Сохраняем подключение к профилю…"
     : connecting ? "Подтверди запрос уведомлений на устройстве…"
       : preparing ? "Проверяем готовность уведомлений…" : state.notice;
@@ -59,7 +61,7 @@ export function NotificationOnboardingCard({ id, state, onEnable, onRetry, onCon
       <div><span className={styles.eyebrow}>Перед знакомством</span><h2 id={`${id}-title`}>Включим уведомления?</h2></div>
     </div>
     <p className={styles.summary}>Подскажем, когда закончится стройка, путешествие или производство.</p>
-    <p id={`${id}-hint`} className={styles.hint}>{hint}</p>
+    <p id={`${id}-hint`} className={styles.hint}>{localHint}</p>
     {!state.isOnline && <p className={styles.hint}>Для подключения нужен интернет. Можно продолжить знакомство и вернуться к уведомлениям позже.</p>}
     {progress && <p className={styles.status} role="status" aria-live="polite">{progress}</p>}
     {state.error && <p id={`${id}-error`} className={styles.error} role="alert">{state.error}</p>}

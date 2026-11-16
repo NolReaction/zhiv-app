@@ -308,6 +308,25 @@ test("one tap dispatches a single unit, reports shortages and refuses repeated s
     action(render()).props.onClick();
     assert.equal(calls.length, before + 2, "a definitive old error cannot block an otherwise valid new order");
 
+    hooks.reset(); Object.assign(economy, { busy: false, uncertain: false, error: null, productionQueueAvailable: true });
+    let resolveSave;
+    economy.act = (...args) => { calls.push(args); return new Promise(resolve => { resolveSave = resolve; }); };
+    const beforeSave = calls.length, savingButton = action(render());
+    const acceptance = savingButton.props.onClick();
+    assert.match(renderToStaticMarkup(render()), /Сохраняем…/);
+    assert.doesNotMatch(renderToStaticMarkup(render()), />Сохранено</);
+    savingButton.props.onClick(); assert.equal(calls.length, beforeSave + 1, "a pending SQLite save cannot accept a duplicate press");
+    resolveSave(true); await acceptance;
+    assert.match(renderToStaticMarkup(render()), />Сохранено</, "success is visible only after durable acknowledgement");
+    hooks.reset();
+    const failed = action(render()).props.onClick(); resolveSave(false); await failed;
+    assert.match(renderToStaticMarkup(render()), /Не удалось начать/);
+    assert.doesNotMatch(renderToStaticMarkup(render()), />Сохранено</);
+    hooks.reset();
+    const retired = action(render()).props.onClick();
+    economy.snapshot = { ...economy.snapshot, ownerPublicId: "OTHER" }; render(); resolveSave(true); await retired;
+    assert.doesNotMatch(renderToStaticMarkup(render()), />Сохранено</, "a former owner's save cannot update the new card");
+
     hooks.reset();
     const aidCalls = [], aid = controller({ buildings: { home: 1, garden: 1, warehouse: 1 }, tutorialOrder: newTutorialOrder(),
       progression: { recipes: {}, routes: {}, buildings: {} } }, { productionQueueAvailable: true,

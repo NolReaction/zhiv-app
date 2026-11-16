@@ -9,9 +9,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { LoginForm } from "./account-entry";
 import { AccountLifecycle } from "./account-lifecycle";
 import type { MeResponse } from "@/lib/check-in-contract";
+import { getClientPlatform } from "@/lib/client-platform";
 import styles from "./account-access.module.css";
 
 export function AccountAccess({ mode = "access", active = true, isOnline, onSessionLost, onUpdated }: { mode?: "access" | "manage"; active?: boolean; isOnline: boolean; onSessionLost: () => void; onUpdated: (me: MeResponse) => void }) {
+  const native = getClientPlatform();
   const titleId = useId();
   const [access, setAccess] = useState<Access | null>(null);
   const [options, setOptions] = useState<AuthOptions | null>(null);
@@ -58,19 +60,19 @@ export function AccountAccess({ mode = "access", active = true, isOnline, onSess
       {mode === "access" && <>
       <p className={styles.hint}>{access.methods.length ? "Входите в этот профиль в любом браузере. Остальные устройства останутся подключены." : "Привяжите ВК или почту, чтобы возвращаться в этот профиль на других устройствах."}</p>
       {access.methods.map(method => <p key={method.provider} className={styles.method}>{method.label} <span>Привязано</span></p>)}
-      {options && <LoginForm link isOnline={isOnline} options={{ ...options, vk: options.vk && !access.methods.some(m => m.provider === "vk"), email: options.email && !access.methods.some(m => m.provider === "email") }} onDone={async () => { await refresh(); setNotice("Почта привязана к этому профилю."); }} />}
+      {options && <LoginForm link isOnline={isOnline} options={{ ...options, vk: options.vk && !access.methods.some(m => m.provider === "vk"), email: options.email && !access.methods.some(m => m.provider === "email") }} onDone={async () => { await refresh(); setNotice(native ? "Настройки аккаунта обновлены." : "Почта привязана к этому профилю."); }} />}
       {options && !options.vk && !options.email && <p className={styles.hint}>Новые способы входа пока недоступны. Сохраните резервный код ниже.</p>}
       </>}
       {mode === "manage" && options && <AccountLifecycle access={access} options={options} isOnline={isOnline} onDeleted={onSessionLost} onChanged={async me => { onUpdated(me); await refresh(); }} />}
       {mode === "access" && <>
       <h3><MonitorSmartphone size={20} aria-hidden /> Устройства</h3>
-      <p className={styles.hint}>Отдельный сеанс для каждого браузера. Название устройства определяется приблизительно.</p>
+      <p className={styles.hint}>Отдельный сеанс для каждого устройства. Название определяется приблизительно.</p>
       <ul className={styles.sessions}>{access.sessions.map(session => <li key={session.id}>
-        <div><strong>{session.label}</strong><span>{session.current ? "Этот браузер" : `Последний вход или открытие настроек: ${new Date(session.lastSeenAt).toLocaleString("ru-RU")}`}</span></div>
+        <div><strong>{session.label}</strong><span>{session.current ? native ? "Это приложение" : "Этот браузер" : `Последний вход или открытие настроек: ${new Date(session.lastSeenAt).toLocaleString("ru-RU")}`}</span></div>
         {!session.current && <button className={styles.secondary} disabled={!isOnline || busy} onClick={() => setConfirm(session.id)}>Завершить</button>}
       </li>)}</ul>
       {access.sessions.some(s => !s.current) && <button className={styles.secondary} disabled={!isOnline || busy} onClick={() => setConfirm("others")}>Выйти на остальных устройствах</button>}
-      <button className={styles.secondary} disabled={!isOnline || busy} onClick={() => setConfirm("logout")}>Выйти в этом браузере</button>
+      <button className={styles.secondary} disabled={!isOnline || busy} onClick={() => setConfirm("logout")}>{native ? "Выйти из приложения" : "Выйти в этом браузере"}</button>
       </>}
     </>}
     <TransientNotice message={error} kind="error" />

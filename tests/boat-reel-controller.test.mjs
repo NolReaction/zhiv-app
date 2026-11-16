@@ -44,6 +44,7 @@ after(() => vite.close());
 const hooks = await vite.ssrLoadModule(virtual);
 const { useBoatReelController: invokeController } = await vite.ssrLoadModule("/features/economy/ui/boat/use-boat-reel-controller.ts");
 const { initialBoatReel, stepBoatReel, replayBoatReel } = await vite.ssrLoadModule("/features/economy/domain/boat-reel.ts");
+const { installClientJournalStorage } = await vite.ssrLoadModule("/lib/client-journal-storage.ts");
 const checkpoint = await vite.ssrLoadModule("/features/economy/ui/boat/boat-reel-checkpoint.ts");
 const at = Date.parse("2026-11-03T10:00:00Z"), globals = ["window", "document", "requestAnimationFrame", "cancelAnimationFrame"];
 let clock, nextFrame, frames, values, savedGlobals;
@@ -59,6 +60,7 @@ beforeEach(t => {
 });
 afterEach(() => {
   hooks.unmount();
+  installClientJournalStorage(undefined);
   for (const [name, descriptor] of savedGlobals) {
     if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete globalThis[name];
   }
@@ -283,4 +285,112 @@ test("denied session storage cannot stop play or fabricate a completed submissio
   const f = fixture(); f.frame(0); f.value.changeHeld(true); f.frame(50);
   assert.equal(f.value.reel.tick, 1); assert.deepEqual(f.submissions, []);
   hooks.unmount(); assert.equal(frames.size, 0);
+});
+
+const settleNative = async f => { for (let i = 0; i < 3; i++) { await new Promise(resolve => setImmediate(resolve)); f?.render(); } };
+function nativeDrafts() {
+  const rows = new Map(), pending = [];
+  let blocked = false, failed = false, valid = true;
+  const check = () => { if (!valid || failed) throw Error("SQLite unavailable"); };
+  const port = {
+    getItem: key => { check(); return rows.get(key) ?? null; }, getKeys: () => [...rows.keys()],
+    async setItem(key, value) { if (blocked) await new Promise(resolve => pending.push(resolve)); check(); rows.set(key, value); },
+    async removeItem(key) { check(); rows.delete(key); },
+  };
+  installClientJournalStorage(() => port);
+  return { rows, port, block() { blocked = true; }, release() { blocked = false; pending.splice(0).forEach(resolve => resolve()); },
+    fail() { failed = true; }, recover() { failed = false; }, invalidate() { valid = false; } };
+}
+
+test("native reel waits for checkpoint retention before readiness and manual input", async () => {
+  const disk = nativeDrafts(); disk.block();
+  const attempt = { ...challenge(), rulesVersion: 6, fishRarity: "common", resistance: "steady", motorResponse: 0, hullDamping: 0, biteAt: new Date(at).toISOString() };
+  const f = fixture({ challenge: attempt });
+  await settleNative(f); assert.equal(f.value.ready, false);
+  f.value.hookFish(); f.value.changeHeld(true); f.frame(100);
+  assert.equal(f.value.playing, false); assert.equal(disk.rows.size, 0); assert.equal(f.submissions.length, 0);
+  disk.release(); await settleNative(f);
+  assert.equal(f.value.ready, true);
+  f.value.hookFish(); f.value.changeHeld(true); await settleNative(f);
+  assert.equal(f.value.playing, true);
+  assert.equal(JSON.parse(disk.rows.get(checkpoint.boatReelCheckpointKey("owner", "voyage", attempt.id))).hooked, true);
+});
+
+test("native terminal result waits for durable trace and async economic acceptance before sent state", async () => {
+  const attempt = challenge(), terminal = saveTerminal(attempt), disk = nativeDrafts();
+  let acknowledge, calls = 0;
+  const f = fixture({ challenge: attempt, disabled: true, onSubmit(trace) {
+    calls++;
+    const persisted = JSON.parse(disk.rows.get(checkpoint.boatReelCheckpointKey("owner", "voyage", attempt.id)));
+    assert.equal(persisted.endTick, terminal.tick); assert.deepEqual(trace.inputs, persisted.inputs);
+    return new Promise(resolve => { acknowledge = resolve; });
+  } });
+  await settleNative(f); assert.equal(f.value.ready, true);
+  disk.block(); f.render({ disabled: false }); await settleNative(f);
+  assert.equal(calls, 0); assert.equal(f.value.waitingForConfirmation, false);
+  f.value.submit(); assert.equal(calls, 0);
+  disk.release(); await settleNative(f);
+  assert.equal(calls, 1); assert.equal(f.value.waitingForConfirmation, false);
+  f.value.submit(); window.dispatchEvent(new Event("online")); await settleNative(f); assert.equal(calls, 1);
+  acknowledge(true); await settleNative(f);
+  assert.equal(f.value.waitingForConfirmation, true); assert.equal(f.value.retryNeeded, false);
+});
+
+test("native checkpoint failure freezes provisional controls and keeps the last confirmed trace for reopening", async () => {
+  const attempt = challenge(), disk = nativeDrafts(), f = fixture({ challenge: attempt });
+  await settleNative(f); f.value.changeHeld(true); f.frame(150); window.dispatchEvent(new Event("pagehide")); await settleNative(f);
+  const key = checkpoint.boatReelCheckpointKey("owner", "voyage", attempt.id), committed = disk.rows.get(key);
+  disk.fail(); f.value.changeHeld(true); await settleNative(f);
+  assert.equal(f.value.ready, false); assert.match(f.value.storageError, /сохранение/); assert.equal(f.value.held, false);
+  f.frame(1000); f.value.submit(); assert.equal(f.submissions.length, 0); assert.equal(disk.rows.get(key), committed);
+  hooks.unmount(); disk.recover();
+  const restored = fixture({ challenge: attempt, now: at + 250 }); await settleNative(restored);
+  assert.equal(restored.value.ready, true); assert.equal(restored.value.held, false);
+  assert.deepEqual(restored.value.reel, replayBoatReel(attempt, [{ tick: 0, held: true }, { tick: 3, held: false }], 5));
+});
+
+test("native terminal checkpoint failure never calls the economic submitter", async () => {
+  const attempt = challenge(); saveTerminal(attempt);
+  const disk = nativeDrafts(), f = fixture({ challenge: attempt, disabled: true }); await settleNative(f);
+  disk.fail(); f.render({ disabled: false }); await settleNative(f);
+  assert.equal(f.submissions.length, 0); assert.equal(f.value.ready, false); assert(f.value.storageError);
+  window.dispatchEvent(new Event("online")); f.value.submit(); await settleNative(f); assert.equal(f.submissions.length, 0);
+});
+
+test("native close during a checkpoint cannot deliver late, and the next mount restores the committed result", async () => {
+  const attempt = challenge(); saveTerminal(attempt);
+  const disk = nativeDrafts(), f = fixture({ challenge: attempt, disabled: true }); await settleNative(f);
+  disk.block(); f.render({ disabled: false }); await settleNative(f);
+  hooks.unmount();
+  const reopened = fixture({ challenge: attempt }); await settleNative(reopened); assert.equal(reopened.value.ready, false);
+  disk.release(); await settleNative(reopened);
+  assert.equal(f.submissions.length, 0); assert.equal(reopened.submissions.length, 1); assert(reopened.value.waitingForConfirmation);
+});
+
+test("native owner invalidation while saving prevents result submission", async () => {
+  const attempt = challenge(); saveTerminal(attempt);
+  const disk = nativeDrafts(), f = fixture({ challenge: attempt, disabled: true }); await settleNative(f);
+  disk.block(); f.render({ disabled: false }); await settleNative(f); disk.invalidate(); disk.release(); await settleNative(f);
+  assert.equal(f.submissions.length, 0); assert.equal(f.value.ready, false); assert(f.value.storageError);
+});
+
+test("unknown native economic acknowledgement freezes retry while preserving the exact terminal draft", async () => {
+  const attempt = challenge(); saveTerminal(attempt);
+  const disk = nativeDrafts(); let calls = 0;
+  const f = fixture({ challenge: attempt, onSubmit() { calls++; return Promise.reject(Error("Lost SQLite acknowledgement")); } });
+  await settleNative(f);
+  assert.equal(calls, 1); assert.equal(f.value.waitingForConfirmation, false); assert.equal(f.value.retryNeeded, false); assert(f.value.storageError);
+  const before = disk.rows.get(checkpoint.boatReelCheckpointKey("owner", "voyage", attempt.id));
+  f.value.submit(); window.dispatchEvent(new Event("online")); f.frame(500); await settleNative(f);
+  assert.equal(calls, 1); assert.equal(disk.rows.get(checkpoint.boatReelCheckpointKey("owner", "voyage", attempt.id)), before);
+});
+
+test("native late economic acknowledgement after unmount cannot update a replacement controller", async () => {
+  const attempt = challenge(); saveTerminal(attempt); nativeDrafts();
+  let resolve;
+  const f = fixture({ challenge: attempt, onSubmit() { return new Promise(complete => { resolve = complete; }); } });
+  await settleNative(f); hooks.unmount();
+  installClientJournalStorage(undefined);
+  const other = fixture({ owner: "other" }); resolve(true); await settleNative(other);
+  assert.equal(other.value.waitingForConfirmation, false); assert.equal(other.submissions.length, 0);
 });

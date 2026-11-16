@@ -14,6 +14,8 @@ import {
   type AccountAction, type AccountProofRole, type LifecycleState, type MergePreview, type ProfileSource, type ProviderChoices,
 } from "@/lib/account-lifecycle";
 import { TransientNotice } from "@/components/app-notifications";
+import { getClientPlatform } from "@/lib/client-platform";
+import { NativeAccountManagement } from "./native-account-entry";
 import styles from "./account-access.module.css";
 
 const actionLabels: Record<AccountAction, string> = { email: "Сменить почту", merge: "Объединить профили", delete: "Удалить профиль" };
@@ -87,9 +89,18 @@ function AccountProofForm({ action, role, methods, options, isOnline, onVerified
   </div>;
 }
 
-export function AccountLifecycle({ access, options, isOnline, onChanged, onDeleted }: {
+type AccountLifecycleProps = {
   access: AccountAccess; options: AuthOptions; isOnline: boolean; onChanged: (me: MeResponse) => Promise<void>; onDeleted: () => void;
-}) {
+};
+
+export function AccountLifecycle(props: AccountLifecycleProps) {
+  return getClientPlatform() ? <NativeAccountManagement isOnline={props.isOnline} onRefresh={async () => {
+    const me = await getMe();
+    if (me) await props.onChanged(me); else props.onDeleted();
+  }} /> : <BrowserAccountLifecycle {...props} />;
+}
+
+function BrowserAccountLifecycle({ access, options, isOnline, onChanged, onDeleted }: AccountLifecycleProps) {
   const [action, setAction] = useState<AccountAction | null>(null);
   const [state, setState] = useState<LifecycleState>(emptyLifecycle);
   const [preview, setPreview] = useState<MergePreview | null>(null);

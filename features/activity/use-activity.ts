@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { sendPresence } from "./api";
 import { createActivitySession } from "./session";
 import { setGamePresence } from "./transport-state";
+import { deviceIsActive, deviceIsOnline, subscribeDeviceEnvironment } from "@/lib/device-runtime";
 export function useActivity(owner: string | null, reconcile: () => Promise<boolean>, onSessionLost: () => void, onPause: () => void) {
   const session = useMemo(() => ({ owner, session: createActivitySession({ send: sendPresence,
     reconcile: async () => false, sessionLost: () => {}, connected: setGamePresence,
@@ -16,10 +17,11 @@ export function useActivity(owner: string | null, reconcile: () => Promise<boole
     if (!owner) return;
     let stop: (() => void) | undefined;
     // The economy/world hooks activate before reconciliation starts (also in StrictMode).
-    const kickoff = setTimeout(() => { stop = session.start(navigator.onLine, !document.hidden); }, 0);
+    const kickoff = setTimeout(() => { stop = session.start(deviceIsOnline(), deviceIsActive()); }, 0);
     const input = (event: Event) => { if (event.isTrusted) session.input(); };
-    const environment = () => session.environment(navigator.onLine, !document.hidden);
-    const pageHide = () => session.environment(navigator.onLine, false);
+    const environment = () => session.environment(deviceIsOnline(), deviceIsActive());
+    const pageHide = () => session.environment(deviceIsOnline(), false);
+    const unsubscribeDevice = subscribeDeviceEnvironment(environment);
     const clock = setInterval(() => { session.check(); setNow(Date.now()); }, 1000);
     for (const name of ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const) window.addEventListener(name, input, { passive: true, capture: true });
     window.addEventListener("online", environment); window.addEventListener("offline", environment);
@@ -27,7 +29,7 @@ export function useActivity(owner: string | null, reconcile: () => Promise<boole
     window.addEventListener("zhiv:presence-expired", session.expired);
     document.addEventListener("visibilitychange", environment);
     return () => {
-      clearTimeout(kickoff); clearInterval(clock); stop?.(); setGamePresence(null);
+      unsubscribeDevice(); clearTimeout(kickoff); clearInterval(clock); stop?.(); setGamePresence(null);
       for (const name of ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const) window.removeEventListener(name, input, { capture: true });
       window.removeEventListener("online", environment); window.removeEventListener("offline", environment);
       window.removeEventListener("pagehide", pageHide); window.removeEventListener("pageshow", environment);

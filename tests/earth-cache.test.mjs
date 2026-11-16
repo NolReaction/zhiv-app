@@ -685,3 +685,18 @@ test("a stalled disk body still falls back to network while another timed-out ph
     assert.equal(s.controller.getSnapshot().failed, 0);
   } finally { finish?.(); await tick(); }
 });
+
+test("iOS native bundled runtime resolves opaque origins without disabling remote tile storage", async () => {
+  const s = platform({ origin: "capacitor://localhost/index.html", fetcher: async url => new Response(
+    url.endsWith("manifest.json") ? '{"schemaVersion":1}' : "license", { headers: { "content-type": "application/json" } }) });
+  const local = "/vendor/maplibre-gl-6.15.0/manifest.json";
+  assert.deepEqual((await s.controller.readResource(local, "json")).data, { schemaVersion: 1 });
+  assert.equal(s.cache.writes, 0);
+  assert.equal(s.controller.getSnapshot().storageIssue, null);
+  for (const url of ["capacitor://other/vendor/maplibre-gl-6.15.0/manifest.json", "custom://localhost/vendor/maplibre-gl-6.15.0/manifest.json", "/api/v1/me", "/vendor/arbitrary.mjs"]) {
+    await assert.rejects(s.controller.readResource(url), /allowlist|Unsupported/);
+  }
+  await s.controller.readResource(`${base}/attribution.txt`, "string");
+  assert.equal(s.cache.writes, 1);
+  assert.equal(s.controller.getSnapshot().storageIssue, null);
+});

@@ -60,6 +60,7 @@
 .retry:hover { background: #acc58216; border-color: #c1d49555; }
 .retry:focus-visible { outline: 2px solid #d1e4a6; outline-offset: 4px; }
 .recover { display: inline-flex; min-height: 44px; align-items: center; margin-top: 2px; color: #b5c6a5; font-size: 12px; text-underline-offset: 3px; }
+button.recover { padding: 0; border: 0; background: transparent; font-family: inherit; text-decoration: underline; cursor: pointer; }
 .recover:focus-visible { outline: 2px solid #d1e4a6; outline-offset: 4px; border-radius: 3px; }
 
 .splash[data-phase="leaving"] .logo { animation: logo-retreat var(--splash-exit-ms) cubic-bezier(.5, 0, .7, .35) both; }

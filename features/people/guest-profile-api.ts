@@ -1,10 +1,11 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { ApiError } from "@/lib/check-in-api";
 import { withRequestDeadline } from "@/lib/request-deadline";
 import { guestProfileSchema, type GuestProfile } from "./guest-profile-model";
 
 export async function getGuestProfile(ownerPublicId: string, circleId: string, targetPublicId: string, signal?: AbortSignal): Promise<GuestProfile> {
   return withRequestDeadline(8_000, signal, async requestSignal => {
-    const response = await fetch(`/api/v1/people/${encodeURIComponent(circleId)}/game-profile`, {
+    const response = await apiFetch(`/api/v1/people/${encodeURIComponent(circleId)}/game-profile`, {
       cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json", "X-Zhiv-Profile": "tap-stats-v1", "X-Zhiv-Fishing-Profile": "v1" }, signal: requestSignal,
     });
     if (!response.ok) throw new ApiError(response.status === 404 ? "Профиль недоступен. Возможно, изменились настройки видимости или связь." : "Не удалось открыть профиль", response.status);

@@ -2,11 +2,13 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { getWorld, sendWorldCommand } from "./api";
 import { createWorldSession } from "./session";
+import { clientJournalStorage } from "@/lib/client-journal-storage";
 
 function receiptStorage() { try { return typeof window === "undefined" ? undefined : window.sessionStorage; } catch { return undefined; } }
 
 export function useWorld(owner: string | null, onSessionLost: () => void, enabled = true) {
-  const session = useMemo(() => createWorldSession(owner, { get: getWorld, send: sendWorldCommand }, () => {}, receiptStorage()), [owner]);
+  const journal = owner ? clientJournalStorage(owner) : undefined;
+  const session = useMemo(() => createWorldSession(owner, { get: getWorld, send: sendWorldCommand }, () => {}, receiptStorage(), journal), [owner, journal]);
   useEffect(() => { session.setSessionLost(onSessionLost); }, [session, onSessionLost]);
   useEffect(() => { session.setAvailable(enabled); }, [session, enabled]);
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);

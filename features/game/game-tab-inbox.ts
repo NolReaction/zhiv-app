@@ -4,7 +4,7 @@ import { createUuidV4 } from "@/lib/browser-uuid";
 import { gameJournalStore } from "@/features/game/game-sync-journal";
 import { GameSyncClient, type GameTapInput, type GameSyncSnapshot } from "@/features/game/game-sync";
 
-const inputSchema = z.object({ id: z.guid(), ownerPublicId: z.string(), runId: z.guid(),
+export const gameInputSchema = z.object({ id: z.guid(), ownerPublicId: z.string(), runId: z.guid(),
   count: z.number().int().min(1).max(60), capturedAt: z.number().int().safe().nonnegative() });
 type InboxStorage = Pick<Storage, "getItem" | "setItem" | "removeItem" | "key" | "length">;
 
@@ -21,7 +21,7 @@ export function gameTabInbox(owner: string, storage: InboxStorage = localStorage
     return keys.flatMap(key => {
       const raw = storage.getItem(key);
       if (!raw) return [];
-      const input = inputSchema.parse(JSON.parse(raw));
+      const input = gameInputSchema.parse(JSON.parse(raw));
       if (input.ownerPublicId !== owner || key !== prefix + input.id) throw new Error("Input owner mismatch");
       return [input];
     }).sort((a, b) => a.capturedAt - b.capturedAt || a.id.localeCompare(b.id));
@@ -35,7 +35,7 @@ export function gameTabInbox(owner: string, storage: InboxStorage = localStorage
         .reduce((sum, item) => sum + item.count, saved?.pendingBatch?.tapCount ?? 0);
       const pending = list().reduce((sum, item) => sum + (imported.has(item.id) ? 0 : item.count), queued);
       if (pending + count > 30000) return 0;
-      const input = inputSchema.parse({ id: createUuidV4(), ownerPublicId: owner, runId, count, capturedAt });
+      const input = gameInputSchema.parse({ id: createUuidV4(), ownerPublicId: owner, runId, count, capturedAt });
       storage.setItem(prefix + input.id, JSON.stringify(input));
       return count;
     },

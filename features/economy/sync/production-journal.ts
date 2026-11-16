@@ -8,7 +8,11 @@ import { recipeUnlocksMet } from "@/features/economy/domain/recipe-unlock";
 
 export const PRODUCTION_JOURNAL_LIMIT = 12;
 export type ProductionIntent = { requestId: string; targetId: string; command?: EconomyCommand };
-export type JournalStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+export type JournalStorage = {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void | Promise<void>;
+  removeItem(key: string): void | Promise<void>;
+};
 export type ProductionJournal = { version: 1; owner: string; snapshot: EconomyView; snapshotWallTime?: number; entries: ProductionIntent[] };
 const intentSchema = z.object({ requestId: economyCommandSchema.shape.requestId, targetId: economyCommandSchema.shape.targetId,
   command: economyCommandSchema.optional() }).strict();

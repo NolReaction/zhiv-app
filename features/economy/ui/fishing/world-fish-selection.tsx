@@ -1,6 +1,7 @@
 "use client";
 
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { isStoragePromise } from "@/lib/client-journal-storage";
 import { Dialog } from "radix-ui";
 import { Check, Minus, RotateCcw, WandSparkles, X } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
@@ -16,7 +17,7 @@ export type WorldFishSelectionProps = {
   contextId: string;
   confirmLabel: "Готовить" | "Отдать заказ" | "Выставить лот" | "Продать";
   summary?: string;
-  onConfirm: (selection: FishSelection) => boolean;
+  onConfirm: (selection: FishSelection) => boolean | Promise<boolean>;
   onClose: () => void;
   onCloseAutoFocus?: (event: Event) => void;
 };
@@ -32,6 +33,8 @@ export function WorldFishSelection(props: WorldFishSelectionProps) {
   const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const latest = useRef({ props, choice }), sent = useRef<Choice | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const titleId = useId(), descriptionId = useId();
   useLayoutEffect(() => { latest.current = { props, choice }; }, [props, choice]);
   if (choice.owner !== state.ownerPublicId || choice.revision !== state.revision || choice.context !== contextId || choice.requirements !== requirements) {
@@ -113,7 +116,14 @@ export function WorldFishSelection(props: WorldFishSelectionProps) {
             setNotice("Выбор изменился. Проверьте количество рыбы."); return;
           }
           sent.current = choice; setSubmitting(true);
-          if (!current.props.onConfirm({ ...choice.selection })) { sent.current = null; setSubmitting(false); setNotice("Не удалось отправить. Проверьте условия и попробуйте ещё раз."); }
+          const complete = (accepted: boolean) => {
+            if (!mounted.current || latest.current.choice !== choice || latest.current.props.economy.snapshot.ownerPublicId !== choice.owner) return;
+            if (!accepted) { sent.current = null; setSubmitting(false); setNotice("Не удалось сохранить действие. Проверьте условия и попробуйте ещё раз."); }
+          };
+          try {
+            const accepted = current.props.onConfirm({ ...choice.selection });
+            if (isStoragePromise(accepted)) void accepted.then(complete, () => complete(false)); else complete(accepted);
+          } catch { complete(false); }
         }}>{confirmLabel}</button>
       </Dialog.Content>
     </Dialog.Portal>

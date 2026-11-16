@@ -21,9 +21,12 @@ internal fun enqueueMailNotification(c: Connection, user: UUID, mailId: UUID, no
         SELECT m.user_id,'mail:' || m.id::text,'mail',?,? FROM player_mail_messages m
         WHERE m.user_id=? AND m.id=? AND m.notify AND m.read_at IS NULL
           AND EXISTS(SELECT 1 FROM notification_preferences p WHERE p.user_id=m.user_id)
-          AND EXISTS(SELECT 1 FROM notification_subscriptions n JOIN app_sessions s ON s.id=n.session_id AND s.user_id=n.user_id
+          AND (EXISTS(SELECT 1 FROM notification_subscriptions n JOIN app_sessions s ON s.id=n.session_id AND s.user_id=n.user_id
             WHERE n.user_id=m.user_id AND s.revoked_at IS NULL AND s.expires_at>?)
-        ON CONFLICT(user_id,source_key) DO NOTHING""",now,now,user,mailId,now)
+            OR EXISTS(SELECT 1 FROM native_notification_subscriptions n JOIN app_sessions s
+              ON s.id=n.session_id AND s.user_id=n.user_id AND s.mobile_platform=n.platform
+              WHERE n.user_id=m.user_id AND s.revoked_at IS NULL AND s.expires_at>?))
+        ON CONFLICT(user_id,source_key) DO NOTHING""",now,now,user,mailId,now,now)
 }
 
 /** Durable reservation before network I/O. An interrupted/ambiguous send is
@@ -32,9 +35,16 @@ class NotificationDispatcher(
     private val source: DataSource,
     private val sender: PushSender,
     private val clock: () -> Instant = Instant::now,
+    private val nativeSender: NativePushSender? = null,
+    private val nativePlatforms: Set<String> = setOf("ios", "android"),
+    private val webConfigured: Boolean = true,
 ) {
     private data class Event(val key: String, val category: String, val due: Instant, val attempts: Int)
     private data class Batch(val id: UUID, val user: UUID)
+    private data class Target(val updatedAt: Instant, val browser: BrowserPushSubscription? = null,
+        val native: NativePushSubscription? = null, val session: UUID? = null) {
+        fun supports(category: String): Boolean = browser != null || category in nativePushCategories
+    }
     private data class Sources(val state: EconomyState?, val hasLegacyJourney: Boolean, val unreadMail: Set<String>) {
         val jobs: List<EconomyJob> get() = state?.jobs.orEmpty()
     }
@@ -53,9 +63,33 @@ class NotificationDispatcher(
               AND s.revoked_at IS NULL AND s.expires_at>?::timestamptz)
     """,user,now.minusSeconds(120).notificationSqlTime(),user,now.minusSeconds(120).notificationSqlTime(),now.notificationSqlTime()) { it.getBoolean(1) }.single()
     private fun subscribed(c: Connection,user: UUID,now: Instant): Boolean = c.economyRows("""
-        SELECT 1 FROM notification_subscriptions n JOIN app_sessions s ON s.id=n.session_id AND s.user_id=n.user_id
-        WHERE n.user_id=? AND s.revoked_at IS NULL AND s.expires_at>?::timestamptz LIMIT 1
-    """,user,now.notificationSqlTime()) { true }.isNotEmpty()
+        SELECT EXISTS(SELECT 1 FROM notification_subscriptions n JOIN app_sessions s ON s.id=n.session_id AND s.user_id=n.user_id
+          WHERE n.user_id=? AND s.revoked_at IS NULL AND s.expires_at>?::timestamptz)
+        OR EXISTS(SELECT 1 FROM native_notification_subscriptions n JOIN app_sessions s
+          ON s.id=n.session_id AND s.user_id=n.user_id AND s.mobile_platform=n.platform
+          WHERE n.user_id=? AND s.revoked_at IS NULL AND s.expires_at>?::timestamptz)
+    """,user,now.notificationSqlTime(),user,now.notificationSqlTime()) { it.getBoolean(1) }.single()
+    private fun targets(c: Connection,user: UUID,now: Instant): List<Target> {
+        val browser=if(!webConfigured) emptyList() else c.economyRows("""SELECT n.endpoint,n.p256dh,n.auth,n.updated_at
+            FROM notification_subscriptions n JOIN app_sessions s ON s.id=n.session_id AND s.user_id=n.user_id
+            WHERE n.user_id=? AND s.revoked_at IS NULL AND s.expires_at>?::timestamptz
+            ORDER BY n.updated_at DESC FOR SHARE OF n,s""",user,now.notificationSqlTime()) {
+            Target(it.getObject(4,OffsetDateTime::class.java).toInstant(),BrowserPushSubscription(it.getString(1),PushKeys(it.getString(2),it.getString(3))))
+        }
+        val native=if(nativeSender==null) emptyList() else c.economyRows("""SELECT n.platform,n.token,n.updated_at,n.session_id
+            FROM native_notification_subscriptions n JOIN app_sessions s
+              ON s.id=n.session_id AND s.user_id=n.user_id AND s.mobile_platform=n.platform
+            WHERE n.user_id=? AND s.revoked_at IS NULL AND s.expires_at>?::timestamptz
+            ORDER BY n.updated_at DESC FOR SHARE OF n,s""",user,now.notificationSqlTime()) {
+            Target(it.getObject(3,OffsetDateTime::class.java).toInstant(),native=NativePushSubscription(it.getString(1),it.getString(2)),session=it.getObject(4,UUID::class.java))
+        }.filter { it.native?.platform in nativePlatforms }
+        return (browser+native).sortedByDescending { it.updatedAt }
+    }
+    private fun deferUnconfigured(c: Connection,user: UUID,events: List<Event>,now: Instant,reserved: Boolean) {
+        events.forEach { c.economyUpdate("""UPDATE notification_events SET state='pending',batch_id=NULL,
+            attempts=greatest(0,attempts-?),next_attempt_at=? WHERE user_id=? AND source_key=?""",
+            if(reserved) 1 else 0,now.plusSeconds(300).notificationSqlTime(),user,it.key) }
+    }
     private fun dismiss(c: Connection,user: UUID,events: List<Event>) {
         events.forEach { c.economyUpdate("UPDATE notification_events SET state='dismissed' WHERE user_id=? AND source_key=?",user,it.key) }
     }
@@ -131,9 +165,16 @@ class NotificationDispatcher(
         val valid=current.filter { it.event !in stale }
         val waiting=valid.filter { it.readiness.dueAt>now || it.readiness.blockedUntil!=null }
         postpone(c,user,waiting,now,wasReserved=false)
-        val ready=(valid-waiting.toSet()).map { it.event }
+        val dueReady=(valid-waiting.toSet()).map { it.event }
+        if(dueReady.isEmpty()) return@transaction null
+        if(visible(c,user,now) || !subscribed(c,user,now)) { dismiss(c,user,dueReady); return@transaction null }
+        val targets=targets(c,user,now)
+        if(targets.isEmpty()) { deferUnconfigured(c,user,dueReady,now,false); return@transaction null }
+        val ready=dueReady.filter { event -> targets.any { it.supports(event.category) } }
+        // Native game timers are local; they never become a second remote reminder.
+        val unsupported=dueReady-ready.toSet()
+        if(!webConfigured) deferUnconfigured(c,user,unsupported,now,false) else dismiss(c,user,unsupported)
         if(ready.isEmpty()) return@transaction null
-        if(visible(c,user,now) || !subscribed(c,user,now)) { dismiss(c,user,ready); return@transaction null }
         val after=budgetAfter(c,user,p,now)
         if(after>now) {
             ready.forEach { c.economyUpdate("UPDATE notification_events SET next_attempt_at=? WHERE user_id=? AND source_key=?",after.notificationSqlTime(),user,it.key) }
@@ -156,9 +197,14 @@ class NotificationDispatcher(
         }
         val postponed=current.filter { it.readiness.dueAt>now || it.readiness.blockedUntil!=null }
         postpone(c,batch.user,postponed,now,wasReserved=true)
-        val readySources=current-postponed.toSet()
+        val candidates=current-postponed.toSet()
+        val targets=targets(c,batch.user,now)
+        val readySources=candidates.filter { source -> targets.any { it.supports(source.event.category) } }
         val ready=readySources.map { it.event }
-        dismiss(c,batch.user,queued-ready.toSet()-postponed.map { it.event }.toSet())
+        val unavailable=candidates-readySources.toSet()
+        if(targets.isEmpty() && subscribed(c,batch.user,now)) deferUnconfigured(c,batch.user,unavailable.map { it.event },now,true)
+        else dismiss(c,batch.user,unavailable.map { it.event })
+        dismiss(c,batch.user,queued-candidates.map { it.event }.toSet()-postponed.map { it.event }.toSet())
         if(owner==null || p==null || ready.isEmpty() || visible(c,batch.user,now)) {
             dismiss(c,batch.user,ready)
             c.economyUpdate("UPDATE notification_batches SET state='dismissed',finished_at=? WHERE id=?",now.notificationSqlTime(),batch.id)
@@ -170,14 +216,9 @@ class NotificationDispatcher(
             c.economyUpdate("UPDATE notification_batches SET state='dismissed',finished_at=? WHERE id=?",now.notificationSqlTime(),batch.id)
             return@transaction
         }
-        // One most recently connected device receives the summary. This avoids
-        // multiplying the daily budget by the number of browsers on the account.
-        val subscription=c.economyRows("""SELECT n.endpoint,n.p256dh,n.auth FROM notification_subscriptions n
-            JOIN app_sessions s ON s.id=n.session_id AND s.user_id=n.user_id
-            WHERE n.user_id=? AND s.revoked_at IS NULL AND s.expires_at>?::timestamptz
-            ORDER BY n.updated_at DESC LIMIT 1 FOR SHARE OF n,s""",batch.user,now.notificationSqlTime()) {
-            BrowserPushSubscription(it.getString(1),PushKeys(it.getString(2),it.getString(3)))
-        }.singleOrNull()
+        // Prefer the latest connected eligible device. Mixed game-timer batches
+        // can only use Web Push; native supports mail/check-in and keeps timers local.
+        val deliveryTarget=targets.firstOrNull { device -> ready.all { device.supports(it.category) } }
         val categories=ready.map { it.category }.toSet()
         // Production quantities are already public and exact. Check the whole
         // summary against current storage, including market AND barter escrow.
@@ -201,7 +242,11 @@ class NotificationDispatcher(
             else -> "checkin"
         }
         val payload=PushPayload(message.title,message.body,"mochlik-updates","/?notification=$target&owner=$owner",owner)
-        val result=if(subscription==null) PushResult.EXPIRED else sender.send(subscription,payload)
+        val result=when {
+            deliveryTarget?.browser!=null -> sender.send(deliveryTarget.browser,payload)
+            deliveryTarget?.native!=null -> nativeSender?.send(deliveryTarget.native,payload.copy(tag=batch.id.toString())) ?: PushResult.RETRY
+            else -> PushResult.EXPIRED
+        }
         val status=when(result) {
             PushResult.DELIVERED -> "delivered"
             PushResult.UNCERTAIN -> "uncertain"
@@ -209,11 +254,14 @@ class NotificationDispatcher(
             else -> "dismissed"
         }
         c.economyUpdate("UPDATE notification_batches SET state=?,finished_at=? WHERE id=?",status,now.notificationSqlTime(),batch.id)
-        if(result==PushResult.EXPIRED && subscription!=null) c.economyUpdate("DELETE FROM notification_subscriptions WHERE user_id=? AND endpoint_hash=?",batch.user,notificationEndpointHash(subscription.endpoint))
+        if(result==PushResult.EXPIRED) {
+            deliveryTarget?.browser?.let { c.economyUpdate("DELETE FROM notification_subscriptions WHERE user_id=? AND endpoint_hash=?",batch.user,notificationEndpointHash(it.endpoint)) }
+            deliveryTarget?.native?.let { c.economyUpdate("DELETE FROM native_notification_subscriptions WHERE user_id=? AND session_id=? AND token_hash=?",batch.user,deliveryTarget.session,nativeNotificationTokenHash(it.platform,it.token)) }
+        }
         ready.forEach { event ->
             if(result==PushResult.RETRY && event.attempts<3) c.economyUpdate("""UPDATE notification_events
                 SET state='pending',batch_id=NULL,next_attempt_at=? WHERE user_id=? AND source_key=?""",
-                now.plusSeconds(if(event.attempts==1) 300 else 1800).notificationSqlTime(),batch.user,event.key)
+                maxOf(now.plusSeconds(if(event.attempts==1) 300 else 1800),deliveryTarget?.native?.let { nativeSender?.retryNotBefore(it.platform) } ?: now).notificationSqlTime(),batch.user,event.key)
             else c.economyUpdate("UPDATE notification_events SET state=? WHERE user_id=? AND source_key=?",if(status=="failed") "dismissed" else status,batch.user,event.key)
         }
     }
@@ -228,6 +276,7 @@ class NotificationDispatcher(
             c.economyUpdate("UPDATE notification_batches SET state='uncertain',finished_at=? WHERE state='sending' AND reserved_at<?::timestamptz",now.notificationSqlTime(),now.minusSeconds(120).notificationSqlTime())
             c.economyUpdate("DELETE FROM notification_batches WHERE reserved_at<?::timestamptz",now.minusSeconds(32L*86400).notificationSqlTime())
             c.economyUpdate("DELETE FROM notification_subscriptions WHERE session_id IN (SELECT id FROM app_sessions WHERE expires_at<=?::timestamptz)",now.notificationSqlTime())
+            c.economyUpdate("DELETE FROM native_notification_subscriptions WHERE session_id IN (SELECT id FROM app_sessions WHERE expires_at<=?::timestamptz)",now.notificationSqlTime())
         }
         val users=transaction { c -> c.economyRows("""SELECT user_id FROM notification_events WHERE state='pending'
             AND next_attempt_at<=?::timestamptz GROUP BY user_id ORDER BY min(next_attempt_at) LIMIT ?""",now.notificationSqlTime(),maxAccounts) { it.getObject(1,UUID::class.java) } }
@@ -236,12 +285,13 @@ class NotificationDispatcher(
         return count
     }
 }
-internal class NotificationMaintenance(source: DataSource,sender: PushSender) : AutoCloseable {
+internal class NotificationMaintenance(source: DataSource,sender: PushSender,nativeSender: NativePushSender?=null,
+    nativePlatforms: Set<String> = setOf("ios", "android"),webConfigured: Boolean=true) : AutoCloseable {
     private val log=LoggerFactory.getLogger(NotificationMaintenance::class.java)
-    private val dispatcher=NotificationDispatcher(source,sender)
-    private val executor=Executors.newSingleThreadScheduledExecutor { task -> Thread(task,"web-push-delivery").apply { isDaemon=true } }
+    private val dispatcher=NotificationDispatcher(source,sender,nativeSender=nativeSender,nativePlatforms=nativePlatforms,webConfigured=webConfigured)
+    private val executor=Executors.newSingleThreadScheduledExecutor { task -> Thread(task,"push-delivery").apply { isDaemon=true } }
     init { executor.scheduleWithFixedDelay({
-        try { dispatcher.tick() } catch(error: Exception) { log.warn("Web push delivery will retry: {}",error.javaClass.simpleName) }
+        try { dispatcher.tick() } catch(error: Exception) { log.warn("Push delivery will retry: {}",error.javaClass.simpleName) }
     },30,30,TimeUnit.SECONDS) }
     override fun close() { executor.shutdownNow(); executor.awaitTermination(6,TimeUnit.SECONDS) }
 }

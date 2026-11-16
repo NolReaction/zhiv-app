@@ -42,7 +42,7 @@ test("game reset reviews every table and the latest migration without clearing i
   }
   for (const name of ["app_sessions", "account_login_identities", "account_recovery_codes",
     "circles", "circle_memberships", "direct_requests", "admin_actions", "promo_redemptions", "managed_promo_codes",
-    "notification_subscriptions", "notification_preferences", "admin_mail_broadcasts", "player_security_observations",
+    "notification_subscriptions", "native_notification_subscriptions", "notification_preferences", "admin_mail_broadcasts", "player_security_observations",
     "earth_sharing_settings", "earth_sharing_recipients", "neighbor_settings", "app_users",
     "earth_latest_locations", "earth_frozen_locations", "check_ins", "check_in_audiences"]) assert.ok(preserved.includes(name), name);
   for (const table of ["economy_market_listings", "economy_market_receipts", "neighbor_identity", "neighbor_shop_cycles",
@@ -152,3 +152,12 @@ test("standalone reset refuses the deployment lock before any Docker action", ()
   assert.match(result.stderr, /Another deployment or game reset/);
   assert.deepEqual(await calls(), []);
 }));
+
+
+test("gameplay reset preserves mobile authorization proofs with browser sessions", () => {
+  const preserved = sql.match(/preserved_tables text\[\] := ARRAY\[([\s\S]*?)\];/)?.[1] ?? "";
+  const cleared = sql.match(/cleared_tables text\[\] := ARRAY\[([\s\S]*?)\];/)?.[1] ?? "";
+  assert.match(preserved, /'mobile_authorization_codes'/);
+  assert.match(preserved, /'app_sessions'/);
+  assert.doesNotMatch(cleared, /'mobile_authorization_codes'/);
+});

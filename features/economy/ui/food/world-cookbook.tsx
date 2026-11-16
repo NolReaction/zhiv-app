@@ -46,13 +46,13 @@ export function WorldCookbook({ economy, recipes, focusedRecipeId, navigationReq
     if (pendingClaims.current.owner !== state.ownerPublicId) pendingClaims.current = { owner: state.ownerPublicId, ids: new Set() };
     if (lastCooking && pendingClaims.current.ids.delete(lastCooking.jobId)) setResult({ owner: state.ownerPublicId, ...lastCooking });
   }, [state.ownerPublicId, lastCooking]);
-  const claimEconomy: ReadyEconomy = { ...economy, act: (...args) => {
+  const claimEconomy: ReadyEconomy = { ...economy, act: ((...args: Parameters<ReadyEconomy["act"]>) => {
     const tracked = economy.snapshot.jobs.filter(job => Boolean(job.cooking) && (args[0] === "claim_job" && args[1] === job.id || args[0] === "claim_production" && args[1] === job.targetId));
     for (const job of tracked) pendingClaims.current.ids.add(job.id);
     const accepted = economy.act(...args);
     if (accepted === false) for (const job of tracked) pendingClaims.current.ids.delete(job.id);
     return accepted;
-  } };
+  }) as ReadyEconomy["act"] };
   const resultRecipe = result?.owner === state.ownerPublicId ? recipes.find(recipe => recipe.id === result.recipeId) : undefined;
   const recipeTitle = (recipe: WorldRecipe) => recipe.experiment && !experimentDiscovered(state, recipe) ? recipe.experiment.title : itemName(state, Object.keys(recipe.rewards)[0]);
   const heading = useRef<HTMLHeadingElement>(null), listing = useRef<HTMLDivElement>(null);

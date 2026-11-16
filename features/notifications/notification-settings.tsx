@@ -9,7 +9,9 @@ import { ApiError } from "@/lib/check-in-api";
 import { saveNotificationPreferences } from "./notification-api";
 import { notificationPreferencesSchema, type NotificationPreferences, type NotificationSnapshot } from "./notification-contract";
 import { NotificationDeviceCard } from "./notification-device-card";
+import { NativeRemoteDeviceCard } from "./native-remote-device-card";
 import { useNotificationDevice } from "./use-notification-device";
+import { getNativeNotifications } from "./native-notifications";
 import styles from "./notification-settings.module.css";
 
 const topics = [
@@ -104,11 +106,13 @@ function NotificationSettingsForOwner({ ownerPublicId, isOnline, onSessionLost, 
       if (!isCurrent()) return;
       if (value.ownerPublicId !== ownerPublicId) throw new Error("Профиль изменился. Откройте настройки заново.");
       setSnapshot(value); setDraft(value.preferences); setNotice("Настройки сохранены");
+      await getNativeNotifications()?.setPreferences(value);
       if (pendingLeave.current) finishLeave();
     });
   }
   return <section className={styles.card} aria-labelledby={`${id}-title`} data-notification-settings>
     <header className={styles.heading}><Bell size={21} aria-hidden="true" /><div><h2 ref={headingRef} tabIndex={-1} id={`${id}-title`}>Уведомления</h2><p>Только нужные события, в удобное время</p></div></header>
+    <NativeRemoteDeviceCard ownerPublicId={ownerPublicId} isOnline={isOnline} disabled={saving} />
     {!snapshot || snapshot.ownerPublicId !== ownerPublicId || !draft ? <div className={styles.loading} role="status">{device.loadError || "Загружаем настройки…"}{device.loadError && <button type="button" disabled={!isOnline} onClick={() => void device.refresh(true)}>Попробовать снова</button>}</div> : <>
       <NotificationDeviceCard id={id} state={{ ...device.state, disabled: saving }} onToggle={device.toggle} onRetry={() => void device.refresh(true)} />
       <fieldset className={styles.topics} disabled={busy}>
@@ -138,8 +142,10 @@ function NotificationSettingsForOwner({ ownerPublicId, isOnline, onSessionLost, 
           </div> : <p className={styles.hint}>Готовые события придут при ближайшей отправке. Тихие часы действуют отдельно.</p>}
         </details>
       </div>
-      <p className={styles.hint}>Пока вы играете, пуши не приходят. Готовые дела объединяем; собранные награды и отменённые задания не напоминают о себе. Настройки событий общие для аккаунта, подключение отдельное на каждом устройстве.</p>
-      <p className={styles.hint}>Новое приложение устанавливается с именем «Я Живой». На iPhone прежняя установка может сохранить старое имя в системной подписи уведомлений.</p>
+      {device.state.deliveryMode === "local" ? <p className={styles.hint}>На этом телефоне работают локальные напоминания о стройке, путешествиях и производстве. После отмены или ускорения обновляем их при синхронизации. Письма администрации и напоминания об отметках подключаются отдельно в блоке «Сообщения сервера». Тихие часы и лимиты учитываются; телефон может задержать показ.</p> : <>
+        <p className={styles.hint}>Пока вы играете, пуши не приходят. Готовые дела объединяем; собранные награды и отменённые задания не напоминают о себе. Настройки событий общие для аккаунта, подключение отдельное на каждом устройстве.</p>
+        <p className={styles.hint}>Новое приложение устанавливается с именем «Я Живой». На iPhone прежняя установка может сохранить старое имя в системной подписи уведомлений.</p>
+      </>}
       <div className={styles.actions}><button type="button" className={styles.save} disabled={busy || !isOnline || !dirty} onClick={save}><Check size={17} aria-hidden="true" />{saving ? "Сохраняем…" : "Сохранить настройки"}</button><span role="status" aria-live="polite">{notice || (!isOnline ? "Для сохранения нужно подключение к интернету" : dirty ? "Есть несохранённые изменения" : "")}</span></div>
     </>}
     <Dialog open={confirmLeave} onOpenChange={open => { if (!open) cancelLeave(); }}>

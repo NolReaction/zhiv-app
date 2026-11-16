@@ -7,6 +7,7 @@ import java.net.URI
 import java.util.UUID
 
 fun ApplicationCall.isTrustedWrite(config: AppConfig): Boolean {
+    if (verifiedMobileToken() != null) return true
     val origin = request.headers[HttpHeaders.Origin] ?: return !config.production
     val normalized = runCatching {
         val uri = URI(origin)
@@ -23,7 +24,9 @@ fun ApplicationCall.isTrustedWrite(config: AppConfig): Boolean {
 }
 
 fun ApplicationCall.sessionCookie(config: AppConfig): String? =
-    request.cookies[config.cookieName]?.takeIf { it.length <= 128 }
+    verifiedMobileToken() ?: request.cookies[config.cookieName]?.takeIf {
+        it.length <= 128 && !ru.zhiv.auth.isMobileToken(it)
+    }
 
 fun sessionCookieHeader(config: AppConfig, rawToken: String): String = buildString {
     append(config.cookieName)

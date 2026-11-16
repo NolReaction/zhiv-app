@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-fetch";
 import { ApiError } from "@/lib/check-in-api";
 import { withRequestDeadline } from "@/lib/request-deadline";
 import { guestWorldSchema, type GuestWorld, type GuestWorldTarget } from "./guest-world-model";
@@ -5,7 +6,7 @@ import { guestWorldSchema, type GuestWorld, type GuestWorldTarget } from "./gues
 /** Bind even a valid response to the exact account and friend that requested it. */
 export async function getGuestWorld(ownerPublicId: string, target: GuestWorldTarget, signal?: AbortSignal): Promise<GuestWorld> {
   return withRequestDeadline(10_000, signal, async requestSignal => {
-    const response = await fetch(`/api/v1/people/${encodeURIComponent(target.circleId)}/world`, {
+    const response = await apiFetch(`/api/v1/people/${encodeURIComponent(target.circleId)}/world`, {
       cache: "no-store", credentials: "same-origin", headers: { Accept: "application/json" }, signal: requestSignal,
     });
     if (!response.ok) throw new ApiError(response.status === 404

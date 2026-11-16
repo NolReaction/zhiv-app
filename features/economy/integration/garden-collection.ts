@@ -1,4 +1,4 @@
-import type { EconomyCommand, EconomyJob, EconomyView } from "@/features/economy/domain/model";
+import type { EconomyJob, EconomyView } from "@/features/economy/domain/model";
 import type { EconomySceneGarden, EconomySceneGardenOrder, GardenHarvestEvent, GardenHarvestRequest } from "@/features/world/state/economy/economy-garden-state";
 import { economyActorConflict } from "@/features/economy/domain/actor-availability";
 import { GARDEN_BERRY_ITEM_IDS, hasGardenBerryReward } from "@/features/economy/domain/garden-berries";
@@ -43,7 +43,7 @@ function harvestMembers(snapshot: EconomyView, job: EconomyJob) {
 const harvestSize = (jobs: EconomyJob[]) => jobs.reduce((total, job) => total + Object.values(job.rewards).reduce((sum, amount) => sum + amount, 0), 0);
 
 type Input = { snapshot: EconomyView | null; now: number; busy: boolean; uncertain: boolean; retryAt: number; error?: string | null; sceneAvailable: boolean };
-type Act = (action: EconomyCommand["action"], targetId: string) => boolean | void;
+type Act = (action: "claim_garden_collection" | "claim_job" | "start_garden_collection", targetId: string) => boolean | void;
 // A forest session can outlive a UI controller for the same account. Its event
 // channels require monotonic IDs even after the controller is recreated.
 let requestSequence = 0;

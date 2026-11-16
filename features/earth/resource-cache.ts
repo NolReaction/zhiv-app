@@ -165,12 +165,18 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
   function originalUrl(value: string): string {
     const prefix = `${EARTH_CACHE_PROTOCOL}://resource?url=`;
     if (value.startsWith(prefix)) value = decodeURIComponent(value.slice(prefix.length));
-    const origin = options.origin ?? (typeof location === "undefined" ? undefined : location.origin);
+    // Custom WebView schemes have an opaque URL.origin ("null"). Use the full
+    // document URL for resolution and compare the explicitly supported native host.
+    const origin = options.origin ?? (typeof location === "undefined" ? undefined : location.href);
     if (value.length > 2048) throw new Error("Unsupported map resource URL");
     const url = new URL(value, origin);
     if (url.username || url.password || url.hash) throw new Error("Unsupported map resource URL");
     if (url.protocol === "https:" && url.hostname === "tiles.openfreemap.org" && !url.port) return url.href;
-    if (origin && url.origin === origin && !url.search && VENDOR_PATH.test(url.pathname)) return url.href;
+    const local = origin ? new URL(origin) : null;
+    const sameOrigin = local && (url.origin !== "null" && url.origin === local.origin
+      || local.protocol === "capacitor:" && local.hostname === "localhost" && !local.port
+        && url.protocol === local.protocol && url.host === local.host);
+    if (sameOrigin && !url.search && VENDOR_PATH.test(url.pathname)) return url.href;
     throw new Error("Map resource is outside the public cache allowlist");
   }
   function vendorVersion(url: string): string | null {
@@ -316,6 +322,7 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
     memoryBytes -= session.get(url)?.bytes.byteLength ?? 0;
     session.delete(url);
     update({ memoryBytes, memoryEntries: session.size });
+    if (new URL(url).protocol === "capacitor:") return;
     await initialize();
     await cacheOperation(() => serialize(async () => {
       try { if (cache) { const disk = cache; await diskMutation(() => disk.delete(url)); } }
@@ -369,7 +376,7 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
     const memory = session.get(url);
     if (memory) { remember(url, memory); return memory; }
     if (invalidated.has(url)) return null;
-    if (!cache) return null;
+    if (!cache || new URL(url).protocol === "capacitor:") return null;
     try {
       const disk = cache;
       const response = await cacheOperation(() => disk.match(url));
@@ -401,6 +408,9 @@ export function createEarthResourceCache(options: EarthCacheOptions = {}) {
   async function save(url: string, resource: StoredResource) {
     if (resource.cacheControl && /\bno-store\b/i.test(resource.cacheControl)) return;
     remember(url, resource);
+    // These bytes already live in the signed app bundle. Cache Storage accepts
+    // only HTTP(S) requests; a native file must not disable caching remote tiles.
+    if (new URL(url).protocol === "capacitor:") return;
     if (!writable || !cache) return;
     if (resource.bytes.byteLength > maxBytes) {
       update({ storageIssue: "resource-too-large" }); remember(url, resource); return;

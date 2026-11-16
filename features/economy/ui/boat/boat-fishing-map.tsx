@@ -1,5 +1,7 @@
 "use client";
 
+import { mapStorageResult } from "@/lib/client-journal-storage";
+
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertDialog, Dialog } from "radix-ui";
 import { ArrowLeft, BookOpen, CircleHelp, Clock3, Fish, FishingRod, Sailboat, X } from "lucide-react";
@@ -34,6 +36,8 @@ type Props = { economy: ReadyEconomy; disabled: boolean; send: BoatSend; onClose
 
 /** A separate river view shares the saved voyage, never a second source of rewards. */
 export function BoatFishingMap({ economy, disabled, send, onClose, appearance, suspended = false, timeZone = "UTC" }: Props) {
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const state = economy.snapshot, boat = boatState(state), config = boatConfig(state.catalog);
   const serverVoyage = boat.voyage!, voyage = economy.localBoatVoyage ?? serverVoyage;
   const challenge = voyage.challenge;
@@ -160,7 +164,7 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
     setCourseForCast(null);
   };
   const returnLocked = disabled || suspended || Boolean(economy.preparedBoatPending);
-  const finishReturn = () => { if (!returnLocked && send("return_boat", voyage.id)) setConfirmReturn(false); };
+  const finishReturn = () => { if (!returnLocked) void mapStorageResult(send("return_boat", voyage.id), accepted => { if (accepted && mounted.current) setConfirmReturn(false); }); };
   const requestReturn = () => { if (!returnLocked) { if (completed) finishReturn(); else setConfirmReturn(true); } };
   return <section ref={river} className={styles.map} data-boat-map data-fishing-stage={frame.stage}
     data-water-input={!controlsSuspended && !completed || undefined} data-local-reveal={revealVisible && (showLocal || landed && recent?.preview) ? true : undefined} aria-label="Карта речной рыбалки">
@@ -182,23 +186,27 @@ export function BoatFishingMap({ economy, disabled, send, onClose, appearance, s
       {challenge && <BoatReelGame owner={state.ownerPublicId} voyageId={voyage.id} challenge={challenge} ownCast={preparedFight || castAim.owns(voyage.castsUsed, challenge.id)} now={economy.now} readClock={economy.readServerNow} disabled={localDisabled}
         queued={queued} uncertain={!preparedFight && economy.uncertain} error={economy.error} coachView={showHints ? coach.view : undefined} onCoachObservation={showHints ? coach.observe : undefined}
         suspended={controlsSuspended} onVisualState={publishVisual} onSubmit={(reel, outcome) => {
-          const sent = send("submit_boat_cast", voyage.id, { ...reel, deferred: true });
-          if (sent && outcome === "caught") {
-            const at = economy.readServerNow?.() ?? economy.now;
-            setRecentLanding(previous => previous?.index === lastIndex ? previous : { index: lastIndex, at, preview: challenge.landingPreview, rarity: challenge.fishRarity });
-          }
-          if (sent && reel.missedBite) setMissedCast(reel.challengeId);
-          return sent;
+          return mapStorageResult(send("submit_boat_cast", voyage.id, { ...reel, deferred: true }), sent => {
+            if (!mounted.current) return sent;
+            if (sent && outcome === "caught") {
+              const at = economy.readServerNow?.() ?? economy.now;
+              setRecentLanding(previous => previous?.index === lastIndex ? previous : { index: lastIndex, at, preview: challenge.landingPreview, rarity: challenge.fishRarity });
+            }
+            if (sent && reel.missedBite) setMissedCast(reel.challengeId);
+            return sent;
+          });
         }} />}
       {(!challenge || expired || pendingLanding || preparedCast && queued) && usableCasts > 0 && displayedCount < voyage.maxCatches && <BoatCastControl key={followup ?? voyage.castsUsed}
         voyageId={voyage.id} castNumber={voyage.castsUsed + 1} awaitingLanding={awaitingLanding}
         disabled={controlsSuspended || !preparedCast && (disabled && !awaitingLanding || Boolean(economy.preparedBoatPending))}
         onChargingChange={setAiming} onCast={(power, heldMs, quality, dock) => {
-          if (send("begin_boat_cast", voyage.id, { castHeldMs: heldMs })) {
-            castAim.release(voyage.castsUsed + 1, power);
-            setReleasedCast({ voyageId: voyage.id, number: voyage.castsUsed + 1, quality, dock });
-            setMissedCast(null);
-          }
+          void mapStorageResult(send("begin_boat_cast", voyage.id, { castHeldMs: heldMs }), accepted => {
+            if (accepted && mounted.current) {
+              castAim.release(voyage.castsUsed + 1, power);
+              setReleasedCast({ voyageId: voyage.id, number: voyage.castsUsed + 1, quality, dock });
+              setMissedCast(null);
+            }
+          });
         }} />}
     </div>
     {ownRelease && !controlsSuspended && !aiming && !economy.error && (!liveChallenge || stage === "casting" || stage === "soaking") &&

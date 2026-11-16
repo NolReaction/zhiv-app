@@ -105,6 +105,8 @@ import ru.zhiv.db.EarthLocationMaintenance
 import ru.zhiv.security.TokenCodec
 import ru.zhiv.auth.*
 import ru.zhiv.db.JdbcAuthRepository
+import ru.zhiv.db.JdbcMobileAuthRepository
+import ru.zhiv.http.MobileSessionAuthentication
 import ru.zhiv.admin.AdminConfig
 import ru.zhiv.admin.AdminRepository
 import ru.zhiv.admin.adminRoutes
@@ -124,6 +126,13 @@ import java.security.MessageDigest
 import ru.zhiv.notifications.NotificationRepository
 import ru.zhiv.notifications.WebPushConfig
 import ru.zhiv.notifications.WebPushSender
+import ru.zhiv.notifications.NativePushConfig
+import ru.zhiv.notifications.NativeProviderPushSender
+import ru.zhiv.notifications.NativeNotificationRepository
+import ru.zhiv.notifications.nativeNotificationRoutes
+import ru.zhiv.notifications.PushSender
+import ru.zhiv.notifications.PushResult
+import ru.zhiv.db.JdbcNativeNotificationRepository
 import ru.zhiv.mail.MailRepository
 import ru.zhiv.mail.mailRoutes
 import ru.zhiv.db.JdbcMailRepository
@@ -146,7 +155,12 @@ fun Application.module() {
     val earthMaintenance = EarthLocationMaintenance(dataSource)
     val pushConfig = WebPushConfig.fromEnvironment()
     val pushSender = if (pushConfig.configured) WebPushSender(pushConfig) else null
-    val pushMaintenance = pushSender?.let { NotificationMaintenance(dataSource, it) }
+    val nativePushConfig = NativePushConfig.fromEnvironment()
+    val nativePushSender = if (nativePushConfig.anyConfigured) NativeProviderPushSender(nativePushConfig) else null
+    val pushMaintenance = if (pushSender != null || nativePushSender != null) NotificationMaintenance(
+        dataSource, pushSender ?: PushSender { _, _ -> PushResult.REJECTED }, nativePushSender,
+        setOf("ios", "android").filter(nativePushConfig::configured).toSet(), webConfigured = pushSender != null,
+    ) else null
     val repository = JdbcZhivRepository(dataSource)
     val relationships = JdbcRelationshipRepository(dataSource)
     val groups = JdbcGroupRepository(dataSource)
@@ -163,6 +177,7 @@ fun Application.module() {
         earthMaintenance.close()
         pushMaintenance?.close()
         pushSender?.close()
+        nativePushSender?.close()
         telegram?.close()
         vk?.close()
         dataSource.close()
@@ -180,6 +195,7 @@ fun Application.module() {
         recovery = recovery,
         readiness = JdbcReadinessProbe(dataSource),
         auth = JdbcAuthRepository(dataSource),
+        mobileAuth = JdbcMobileAuthRepository(dataSource),
         authConfig = authConfig,
         telegram = telegram,
         mailer = mailer,
@@ -198,6 +214,7 @@ fun Application.module() {
         incidents = UserIncidentRepository(dataSource),
         feedback = JdbcFeedbackRepository(dataSource, AdminConfig(config.adminPublicIds)),
         notifications = JdbcNotificationRepository(dataSource, pushConfig),
+        nativeNotifications = JdbcNativeNotificationRepository(dataSource, nativePushConfig::configured),
         promo = JdbcPromoRepository(dataSource),
         adminPromo = JdbcAdminPromoRepository(dataSource, AdminConfig(config.adminPublicIds)),
         playerMail = JdbcMailRepository(dataSource, AdminConfig(config.adminPublicIds)),
@@ -241,6 +258,8 @@ fun Application.installZhivApi(
     playerMail: MailRepository? = null,
     earthLocations: EarthLocationRepository? = null,
     rateLimitClock: () -> Long = System::currentTimeMillis,
+    mobileAuth: MobileAuthRepository? = null,
+    nativeNotifications: NativeNotificationRepository? = null,
 ) {
     val metrics = RuntimeMetrics.shared
     val traffic = RequestTraffic()
@@ -326,6 +345,10 @@ fun Application.installZhivApi(
             requestKey { call -> clientIpKey(call) }
         }
     }
+    install(MobileSessionAuthentication) {
+        cookieName = config.cookieName
+        validate = { raw -> identities.findSessionUserId(tokenCodec.hash(raw)) != null }
+    }
     install(ContentNegotiation) {
         json(Json {
             ignoreUnknownKeys = false
@@ -407,6 +430,7 @@ fun Application.installZhivApi(
             presence = presence,
         )
         auth?.let { authRoutes(it, identities, tokenCodec, config, authConfig, telegram, mailer, vk) }
+        mobileAuth?.let { mobileAuthRoutes(it, tokenCodec, config) }
         rateLimit(RateLimitName("check-in-attempt")) { checkInRoutes(checkIns, tokenCodec, config, presence) }
         gameEventRoutes(identities, tokenCodec, config, gameEvents)
         games?.let { gameRoutes(it, tokenCodec, config, presence) }
@@ -422,6 +446,7 @@ fun Application.installZhivApi(
         onboarding?.let { onboardingRoutes(it, tokenCodec, config, presence) }
         feedback?.let { feedbackRoutes(it, tokenCodec, config) }
         notifications?.let { notificationRoutes(it, tokenCodec, config) }
+        nativeNotifications?.let { nativeNotificationRoutes(it, tokenCodec) }
         playerMail?.let { mailRoutes(it, tokenCodec, config, presence) }
         promo?.let { promoRoutes(it, tokenCodec, config, presence) }
         adminPromo?.let { adminPromoRoutes(it, tokenCodec, config) }

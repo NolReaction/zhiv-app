@@ -32,6 +32,7 @@ const hooks = await vite.ssrLoadModule(hooksId);
 const { useEarthLocation: renderLocationHook } = await vite.ssrLoadModule("/features/earth/use-earth-location.ts");
 const { useEarthSharing: renderSharingHook } = await vite.ssrLoadModule("/features/earth/use-earth-sharing.ts");
 const { getEarthLocationPreferenceStore, earthLocationPreferenceKey } = await vite.ssrLoadModule("/features/earth/location-preferences.ts");
+const { installClientJournalStorage } = await vite.ssrLoadModule("/lib/client-journal-storage.ts");
 
 function locationDevice(mode = "prompt") {
   const descriptors = new Map(["window", "document", "navigator"].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
@@ -65,6 +66,64 @@ function mountLocation(props) {
 
 const locationFix = (latitude = 55) => ({ coords: { latitude, longitude: 37, accuracy: 40 }, timestamp: 1_000 });
 const settle = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
+
+test("a native location hook waits for durable consent and master OFF defeats its delayed lookup", async () => {
+  const device = locationDevice("granted"), owner = "MMMM-NNNN-PPPP", key = earthLocationPreferenceKey(owner);
+  const committed = new Map(), pending = [];
+  const storage = {
+    getItem: name => committed.get(name) ?? null,
+    getKeys: () => [...committed.keys()],
+    setItem: (name, value) => new Promise(resolve => pending.push(() => { committed.set(name, value); resolve(); })),
+    async removeItem(name) { committed.delete(name); },
+  };
+  installClientJournalStorage(() => storage);
+  const mount = mountLocation({ ownerPublicId: owner, enabled: true, autoStart: true });
+  try {
+    let location = mount.render(); await settle();
+    assert.equal(device.watches.length, 0, "a cold native session does not auto-request GPS");
+    location.locate(); await settle();
+    assert.equal(pending.length, 1); assert.equal(device.watches.length, 0, "the native write still has no acknowledgement");
+    pending[0](); await settle(); await settle();
+    assert.equal(device.watches.length, 1);
+    location = mount.render(); location.stop();
+    const preference = getEarthLocationPreferenceStore(owner);
+    const suppressed = preference.suppressAutomaticStart(); await settle(); pending[1](); await suppressed;
+    location.locate(); await settle();
+    const off = preference.setEnabled(false);
+    pending[2](); await settle(); await settle();
+    assert.equal(device.watches.length, 1, "late ACTIVE cannot start a second watch after OFF");
+    pending[3](); await off;
+    assert.equal(committed.get(key), "off");
+  } finally { mount.destroy(); installClientJournalStorage(undefined); device.restore(); }
+});
+
+test("native map entry with an OS grant commits a fresh lookup while OFF and ghost keep it private and stopped", async () => {
+  for (const mode of ["map", "off", "ghost", "failed-write"]) {
+    const device = locationDevice("granted"), owner = `native-auto-${mode}`, key = earthLocationPreferenceKey(owner);
+    const committed = new Map(mode === "off" ? [[key, "off"]] : []), writes = [];
+    installClientJournalStorage(() => ({
+      getItem: name => committed.get(name) ?? null, getKeys: () => [...committed.keys()],
+      async setItem(name, value) { writes.push(value); if (mode === "failed-write") throw new Error("disk full"); committed.set(name, value); },
+      async removeItem(name) { committed.delete(name); },
+    }));
+    const props = { ownerPublicId: owner, enabled: true, autoStart: mode === "ghost" ? false : "granted" };
+    const mount = mountLocation(props);
+    try {
+      mount.render(); await settle(); await settle(); mount.render();
+      assert.equal(device.watches.length, mode === "map" ? 1 : 0, mode);
+      if (mode === "map") {
+        assert.deepEqual(writes, ["active"]);
+        device.watches[0].success(locationFix());
+        assert.equal(mount.render().position.latitude, 55);
+        props.enabled = false; props.autoStart = null; mount.render();
+        assert.deepEqual(device.cleared, [0]);
+        props.enabled = true; props.autoStart = "granted"; mount.render(); await settle();
+        assert.equal(device.watches.length, 2);
+      }
+      if (mode === "off" || mode === "ghost") assert.deepEqual(writes, [], "rendering never overrides a privacy restriction");
+    } finally { mount.destroy(); installClientJournalStorage(undefined); device.restore(); }
+  }
+});
 
 test("cold map mounts and remounts show private GPS despite stale or unavailable Permissions", async () => {
   for (const mode of ["prompt", "denied", "missing", "reject", "pending"]) {

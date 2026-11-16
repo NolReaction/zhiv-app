@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { isStoragePromise } from "@/lib/client-journal-storage";
 import { Clock3, Flame, LockKeyhole } from "lucide-react";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
@@ -33,6 +34,8 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
   const button = useRef<HTMLButtonElement>(null);
   const fishFocusOrigin = useRef<{ element: HTMLButtonElement | null; owner: string; recipeId: string } | null>(null);
   const pending = useRef<{ owner: string; revision: number; busySeen: boolean; previousError: string | null } | null>(null);
+  const saving = useRef(false), mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const latest = useRef({ economy, recipe, tutorialHarvestActive });
   const [choosingFish, setChoosingFish] = useState(false);
   const [feedback, setFeedback] = useState<{ text: string; owner: string; revision: number; recipeId: string } | null>(null);
@@ -91,13 +94,14 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
     playUiCue(getAudioRuntime(), "ui.error");
     return false;
   }
-  function start(selection?: FishSelection): boolean {
+  function start(selection?: FishSelection): boolean | Promise<boolean> {
+    if (saving.current) return false;
     context();
     const current = latest.current, snapshot = current.economy.productionSnapshot ?? current.economy.snapshot;
     if (snapshot.ownerPublicId !== owner || snapshot.revision !== revision || current.recipe.id !== recipe.id
       || current.tutorialHarvestActive !== tutorialHarvestActive) return false;
     const currentReason = worldProductionReason(snapshot, current.recipe, 1);
-    const wait = !durableProduction && current.economy.directActionsAvailable === false ? "Восстанавливаем соединение. Дождитесь подтверждения."
+    const wait = current.economy.storagePending ? "Сохраняем предыдущее действие." : !durableProduction && current.economy.directActionsAvailable === false ? "Восстанавливаем соединение. Дождитесь подтверждения."
       : current.economy.uncertain ? "Проверяем последнее действие. Дождитесь подтверждения."
       : !durableProduction && current.economy.retryAt > current.economy.now ? `Повторите через ${Math.ceil((current.economy.retryAt - current.economy.now) / 1000)} с.`
         : current.economy.busy || !durableProduction && (pending.current || (current.economy.pendingProductionCount ?? 0) > 0) ? "Дождитесь завершения действия." : null;
@@ -114,11 +118,19 @@ export function WorldProductionCard({ economy, recipe, focused = false, tutorial
       ? "start_tutorial_harvest" : "start_production";
     const accepted = selection ? current.economy.act(action, current.recipe.id, 1, 0, selection)
       : current.economy.act(action, current.recipe.id, 1);
-    if (!accepted) return deny("Не удалось начать. Проверьте соединение и попробуйте ещё раз.");
-    pending.current = { owner: snapshot.ownerPublicId, revision: snapshot.revision, busySeen: false, previousError: current.economy.error };
-    setChoosingFish(false);
-    setNotice(durableProduction ? "Сохранено" : "Запускаем…");
-    return true;
+    const complete = (saved: boolean) => {
+      if (!mounted.current || latest.current.economy.snapshot.ownerPublicId !== owner || latest.current.recipe.id !== recipe.id) return false;
+      if (!saved) return deny("Не удалось начать производство. Проверьте свободное место и попробуйте ещё раз.");
+      pending.current = { owner: snapshot.ownerPublicId, revision: snapshot.revision, busySeen: false, previousError: current.economy.error };
+      setChoosingFish(false);
+      setNotice(durableProduction ? "Сохранено" : "Запускаем…");
+      return true;
+    };
+    if (isStoragePromise(accepted)) {
+      saving.current = true; setNotice("Сохраняем…");
+      return accepted.then(complete, () => complete(false)).finally(() => { saving.current = false; });
+    }
+    return complete(accepted);
   }
   return <div className={`${styles.entry} ${actionOnly ? styles.actionEntry : ""}`} data-production-product={undiscovered ? "experiment" : Object.keys(recipe.rewards).sort().join(":")}>
     <CookingExperimentTerms state={state} recipe={recipe} id={`${detailId}-experiment`} />
