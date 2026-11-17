@@ -2,7 +2,7 @@
 
 Полный общий React-клиент Мохлика в Capacitor для iPhone и Android. Нативные вход/API/хранилище, геопозиция, локальные и серверные уведомления, lifecycle, сеть, safe areas, память, вибрация и sharing. Лаборатория остаётся доступна из настроек устройства.
 
-Собственный Android-код пишется на **Kotlin**: [`android/app/src/main/kotlin/`](android/app/src/main/kotlin/), тесты — [`android/app/src/test/kotlin/`](android/app/src/test/kotlin/). iOS-модули написаны на Swift. Готовые Java-библиотеки Capacitor/Android подключаются как зависимости.
+Собственный Android-код пишется на **Kotlin**: [`android/app/src/main/kotlin/`](android/app/src/main/kotlin/), тесты - [`android/app/src/test/kotlin/`](android/app/src/test/kotlin/). iOS-модули написаны на Swift. Готовые Java-библиотеки Capacitor/Android подключаются как зависимости.
 
 **Для входа требуется совместимый web/API из общей кодовой базы `master` и схема V84.** Старый веб-релиз без мобильной интеграции не содержит `/mobile/connect` и мобильного PKCE-обмена. Сверяйте фактически развёрнутую версию; сборка клиента не выполняет серверный деплой. [Состав интеграции и приёмка](../../docs/releases/native-integration.md).
 
@@ -16,9 +16,9 @@ npm run mobile:ios
 npm run mobile:android
 ```
 
-Origin по умолчанию: `https://im-alive.ru`. Другой HTTPS origin задаётся `VITE_MOBILE_API_ORIGIN` перед сборкой; публичный ключ внешних карт — `NEXT_PUBLIC_MAPTILER_KEY`. `mobile:build` записывает origin в нативные проекты, `mobile:sync` переносит bundle и плагины. После изменений повторить sync и сборку в IDE. Signing team остаётся локальной настройкой разработчика.
+Origin по умолчанию: `https://im-alive.ru`. Другой HTTPS origin задаётся `VITE_MOBILE_API_ORIGIN` перед сборкой; публичный ключ внешних карт - `NEXT_PUBLIC_MAPTILER_KEY`. `mobile:build` записывает origin в нативные проекты, `mobile:sync` переносит bundle и плагины. После изменений повторить sync и сборку в IDE. Signing team остаётся локальной настройкой разработчика.
 
-`mobile:dev` не подменяет нативные модули браузерными имитациями. Автоматические проверки: `npm run test:mobile`, `npm run typecheck`, `npm run architecture:check`, `npm run lint`; нативные сборки и проверки — `.github/workflows/mobile.yml`.
+`mobile:dev` не подменяет нативные модули браузерными имитациями. Автоматические проверки: `npm run test:mobile`, `npm run typecheck`, `npm run architecture:check`, `npm run lint`; нативные сборки и проверки - `.github/workflows/mobile.yml`.
 
 [Подробная инструкция, точное покрытие и матрица устройств](../../docs/development/native-mobile.md).
 

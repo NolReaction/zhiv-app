@@ -8,7 +8,7 @@
 
 Разработка велась в `experiment/native-mobile` до `4c4cab6`; интеграция переносит её итог в очищенный `master` `d45316b`, сохраняя единую новость 0.7.2. Старая ветка остаётся историей разработки. В мобильном клиенте браузерные установка PWA и автообновление заменены установкой мобильного пакета; веб/PWA продолжает работать отдельно.
 
-Собственные Android-модули находятся в `apps/mobile/android/app/src/main/kotlin/ru/zhiv/mochlik/lab`, JUnit-тесты — в `src/test/kotlin/ru/zhiv/mochlik/lab`. Новые Android-функции пишутся на Kotlin. iOS использует Swift. В 0.3.1 все 12 собственных Android-классов и прежние Java-тесты переведены на Kotlin; формат SQLite, настройки, ключ Keystore и публичные имена методов Capacitor сохранены. Удаление приложения/сброс данных для перехода не требуется; для обновления нужна та же подпись.
+Собственные Android-модули находятся в `apps/mobile/android/app/src/main/kotlin/ru/zhiv/mochlik/lab`, JUnit-тесты - в `src/test/kotlin/ru/zhiv/mochlik/lab`. Новые Android-функции пишутся на Kotlin. iOS использует Swift. В 0.3.1 все 12 собственных Android-классов и прежние Java-тесты переведены на Kotlin; формат SQLite, настройки, ключ Keystore и публичные имена методов Capacitor сохранены. Удаление приложения/сброс данных для перехода не требуется; для обновления нужна та же подпись.
 
 | Область | Реализация |
 | --- | --- |
@@ -37,7 +37,7 @@
 
 ## Сборка и установка
 
-Нужны Node.js 22.13+ (CI: 24); для iOS — Mac и Xcode 26+, для Android — JDK 21 и SDK 36. Проекты рассчитаны на iOS 15+ и Android API 24+. Существующий Ktor API собирается JDK 25.
+Нужны Node.js 22.13+ (CI: 24); для iOS - Mac и Xcode 26+, для Android - JDK 21 и SDK 36. Проекты рассчитаны на iOS 15+ и Android API 24+. Существующий Ktor API собирается JDK 25.
 
 Android-сборка закрепляет Kotlin 2.3.21, AGP 8.13.2 и Gradle 8.14.3. Цель Kotlin JVM 21 совпадает с Java-целью подключённых модулей Capacitor. AGP обновлён в пределах 8.13 для поддержки Kotlin 2.3; сгенерированные `capacitor.*.gradle` не редактируются вручную. При обновлении версий сверять [матрицу Kotlin/Gradle/AGP](https://kotlinlang.org/docs/gradle-configure-project.html) и [поддержку Kotlin 2.3 в AGP 8.13.2](https://developer.android.com/build/releases/agp-8-13-0-release-notes).
 
@@ -77,7 +77,7 @@ npm run mobile:android
 VITE_MOBILE_API_ORIGIN=https://your-test-host.example npm run mobile:sync
 ```
 
-По умолчанию origin — `https://im-alive.ru`. Для внешних карт используется тот же публичный `NEXT_PUBLIC_MAPTILER_KEY`, что и в веб-сборке. URL должен быть HTTPS origin без пути, query, пароля и fragment. Изменение сервера отделяет сохранённый сеанс от прежнего backend.
+По умолчанию origin - `https://im-alive.ru`. Для внешних карт используется тот же публичный `NEXT_PUBLIC_MAPTILER_KEY`, что и в веб-сборке. URL должен быть HTTPS origin без пути, query, пароля и fragment. Изменение сервера отделяет сохранённый сеанс от прежнего backend.
 
 ## Вход и границы доверия
 
@@ -147,7 +147,7 @@ iOS использует Core Location, режим location и системны�
 
 Пользователь проверил первый стенд на iPhone: разрешение, координаты, повторный запуск; затем прислал рабочие экраны полного клиента (главная, профиль, карта и собственная точка). Это подтверждает основной запуск, но не заменяет приёмку 0.3.2 и длительного фонового режима. На текущем этапе выполнены профильные JS-тесты транспорта, владельцев, SQLite-восстановления, уведомлений, lifecycle и общих браузерных контрактов; результаты полной сборки фиксируются в `WORK_STATE.md` и [PR №41](https://github.com/NolReaction/zhiv-app/pull/41).
 
-GitHub Actions собирает Android APK, запускает lint/JUnit и проверяет итоговый merged manifest push-службы; собирает iOS для симулятора и iPhone без подписи, запускает исполняемые Swift-проверки URL-политики. `NativeBridgeContractTest` проверяет публичные JVM-сигнатуры и имена методов/плагинов, доступность конструкторов компонентов Android и reflection callback разрешения геопозиции после перевода на Kotlin. Отдельно проверяются Ktor/PostgreSQL, Sites, Next/VPS и production Compose. Добавлена браузерная проверка `npm run test:mobile-layout`: реальные стили мобильной сборки, навигация и настройки на 320/440 px, в landscape и при обоих способах применения Android-insets. Проверяются края контента, вырезы, нижняя панель, отсутствие горизонтальной прокрутки и доступность последнего элемента. В CI используются Playwright 1.62.1 и Chromium 151 с CDP-подменой safe-area env(); `BROWSER_EXECUTABLE_PATH` задаёт браузер, `PLAYWRIGHT_NODE_MODULES` — внешнюю установку Playwright. CI сохраняет снимки экрана. Это проверка геометрии с заданными insets, не эмуляция iOS. Наличие workflow не равно его успешному завершению.
+GitHub Actions собирает Android APK, запускает lint/JUnit и проверяет итоговый merged manifest push-службы; собирает iOS для симулятора и iPhone без подписи, запускает исполняемые Swift-проверки URL-политики. `NativeBridgeContractTest` проверяет публичные JVM-сигнатуры и имена методов/плагинов, доступность конструкторов компонентов Android и reflection callback разрешения геопозиции после перевода на Kotlin. Отдельно проверяются Ktor/PostgreSQL, Sites, Next/VPS и production Compose. Добавлена браузерная проверка `npm run test:mobile-layout`: реальные стили мобильной сборки, навигация и настройки на 320/440 px, в landscape и при обоих способах применения Android-insets. Проверяются края контента, вырезы, нижняя панель, отсутствие горизонтальной прокрутки и доступность последнего элемента. В CI используются Playwright 1.62.1 и Chromium 151 с CDP-подменой safe-area env(); `BROWSER_EXECUTABLE_PATH` задаёт браузер, `PLAYWRIGHT_NODE_MODULES` - внешнюю установку Playwright. CI сохраняет снимки экрана. Это проверка геометрии с заданными insets, не эмуляция iOS. Наличие workflow не равно его успешному завершению.
 
 На **обоих физических телефонах** нужны:
 
@@ -160,7 +160,7 @@ GitHub Actions собирает Android APK, запускает lint/JUnit и п
 7. Часы/Dynamic Island/системные панели, поворот, клавиатура, ссылки, жесты, звук/беззвучный режим.
 8. Прогулка и неподвижность с погашенным экраном; измерение батареи, памяти и температуры.
 
-Локальная web-сборка не заменяет эти испытания. Публикация TestFlight/Google Play и настройка production-сервиса — отдельные действия.
+Локальная web-сборка не заменяет эти испытания. Публикация TestFlight/Google Play и настройка production-сервиса - отдельные действия.
 
 ## Основные источники
 
